@@ -1,0 +1,19 @@
+# Entorno
+.env
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Django
+db.sqlite3
+media/
+staticfiles/
+
+# IDE / SO
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

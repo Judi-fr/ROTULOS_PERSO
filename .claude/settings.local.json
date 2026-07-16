@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/Scripts/django-admin.exe startproject *)",
+      "Bash(.venv/Scripts/python.exe manage.py startapp documents apps/documents)",
+      "Bash(.venv/Scripts/python.exe manage.py startapp processing apps/processing)",
+      "Bash(.venv/Scripts/python.exe manage.py startapp labels apps/labels)",
+      "PowerShell($conn = Get-NetTCPConnection -LocalPort 8321 -State Listen -ErrorAction SilentlyContinue; if \\($conn\\) { Stop-Process -Id $conn.OwningProcess -Force -Confirm:$false }; Remove-Item \"C:\\\\Users\\\\ezeri\\\\Documents\\\\ROTULOS_PERSO\\\\server.log\" -Force -Confirm:$false -ErrorAction SilentlyContinue; \"servidor detenido\")"
+    ]
+  }
+}
