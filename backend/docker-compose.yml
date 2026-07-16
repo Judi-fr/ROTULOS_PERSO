@@ -1,0 +1,41 @@
+name: rotulos-perso
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rotulos}
+      POSTGRES_USER: ${POSTGRES_USER:-rotulos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?definir POSTGRES_PASSWORD en .env}
+    volumes:
+      # Los datos persisten aunque el contenedor se borre
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # Expuesto al host para poder inspeccionar la base con un cliente local
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rotulos} -d ${POSTGRES_DB:-rotulos}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    env_file: .env
+    environment:
+      # El host es "db": el nombre del servicio dentro de la red de Compose
+      DATABASE_URL: postgres://${POSTGRES_USER:-rotulos}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rotulos}
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+    # En desarrollo: código montado como volumen + runserver con autoreload.
+    # Para producción se quita el volumen y se usa el CMD del Dockerfile (gunicorn).
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

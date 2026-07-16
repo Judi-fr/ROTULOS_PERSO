@@ -1,0 +1,15 @@
+# No copiar al contexto de build
+.venv/
+__pycache__/
+*.py[cod]
+db.sqlite3
+.env
+.env.example
+media/
+staticfiles/
+.git/
+.gitignore
+.vscode/
+.idea/
+Dockerfile
+docker-compose.yml
