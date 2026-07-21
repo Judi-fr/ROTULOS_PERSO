@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<!--
+  PÁGINA DE PRUEBA TEMPORAL — NO ES PARTE DE LA APP.
+  Sirve solo para validar el login con Google contra el backend.
+  Cuando exista el frontend real, borrar la carpeta oauth-test/ completa.
+
+  Uso:
+    1. Backend corriendo:  python manage.py runserver  (puerto 8000)
+    2. Servir esta página: python -m http.server 3000  (desde oauth-test/)
+    3. Abrir http://localhost:3000  (origen autorizado en Google Console)
+-->
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Prueba OAuth Google — Rótulos Perso</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 3rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.2rem; }
+    pre { background: #f4f4f4; padding: 1rem; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+    .ok { border-left: 4px solid #2e7d32; }
+    .error { border-left: 4px solid #c62828; }
+    .aviso { color: #666; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <h1>Prueba de login con Google (página temporal)</h1>
+  <p class="aviso">
+    Al iniciar sesión, esta página envía el ID token de Google a
+    <code>POST http://localhost:8000/api/v1/auth/google/</code> y muestra la respuesta.
+  </p>
+
+  <!-- Botón oficial de Google Identity Services -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <div id="g_id_onload"
+       data-client_id="639018151961-c7mc5vsqfhpv3i208ok7a93647tlh1mf.apps.googleusercontent.com"
+       data-callback="onGoogleCredential"
+       data-auto_prompt="false">
+  </div>
+  <div class="g_id_signin" data-type="standard" data-text="signin_with" data-locale="es"></div>
+
+  <h2 id="resultado-titulo" hidden>Respuesta del backend</h2>
+  <img id="avatar" hidden alt="Foto de perfil" width="72" height="72" style="border-radius: 50%">
+  <pre id="resultado" hidden></pre>
+
+  <script>
+    async function onGoogleCredential(googleResponse) {
+      const pre = document.getElementById("resultado");
+      const titulo = document.getElementById("resultado-titulo");
+      pre.hidden = false;
+      titulo.hidden = false;
+      pre.textContent = "Enviando credential al backend...";
+
+      try {
+        const res = await fetch("http://localhost:8000/api/v1/auth/google/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credential: googleResponse.credential }),
+        });
+        const data = await res.json();
+        pre.className = res.ok ? "ok" : "error";
+        pre.textContent =
+          "HTTP " + res.status + "\n\n" + JSON.stringify(data, null, 2);
+        const avatar = document.getElementById("avatar");
+        if (res.ok && data.user && data.user.picture) {
+          avatar.src = data.user.picture;
+          avatar.hidden = false;
+        }
+      } catch (err) {
+        pre.className = "error";
+        pre.textContent =
+          "Error de red (¿está corriendo el backend en :8000?):\n" + err;
+      }
+    }
+  </script>
+</body>
+</html>

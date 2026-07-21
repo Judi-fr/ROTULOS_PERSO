@@ -41,10 +41,12 @@ DJANGO_APPS = [
 
 THIRD_PARTY_APPS = [
     "rest_framework",
+    "rest_framework.authtoken",  # tokens de sesión para el frontend (SPA)
     "corsheaders",
 ]
 
 LOCAL_APPS = [
+    "apps.accounts",    # autenticación (Google Sign-In)
     "apps.documents",   # carga y gestión de archivos (imágenes / PDF)
     "apps.processing",  # agente embebido: convierte el documento a formato código
     "apps.labels",      # rótulos generados, plantillas e impresión
@@ -118,6 +120,17 @@ REST_FRAMEWORK = {
 # ---------------------------------------------------------------------------
 
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
+
+# ---------------------------------------------------------------------------
+# Google OAuth / Sign-In
+# ---------------------------------------------------------------------------
+
+# client_id / client_secret creados en Google Cloud Console (ver .env).
+# El client_id se usa como "audience" al verificar el ID token en el Flujo A.
+# El client_secret solo hace falta si se implementa el Flujo B (redirect/code).
+GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID", default="")
+GOOGLE_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET", default="")
+GOOGLE_REDIRECT_URI = env("GOOGLE_REDIRECT_URI", default="")
 
 # ---------------------------------------------------------------------------
 # Validación de contraseñas
