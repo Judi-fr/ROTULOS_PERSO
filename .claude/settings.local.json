@@ -5,7 +5,23 @@
       "Bash(.venv/Scripts/python.exe manage.py startapp documents apps/documents)",
       "Bash(.venv/Scripts/python.exe manage.py startapp processing apps/processing)",
       "Bash(.venv/Scripts/python.exe manage.py startapp labels apps/labels)",
-      "PowerShell($conn = Get-NetTCPConnection -LocalPort 8321 -State Listen -ErrorAction SilentlyContinue; if \\($conn\\) { Stop-Process -Id $conn.OwningProcess -Force -Confirm:$false }; Remove-Item \"C:\\\\Users\\\\ezeri\\\\Documents\\\\ROTULOS_PERSO\\\\server.log\" -Force -Confirm:$false -ErrorAction SilentlyContinue; \"servidor detenido\")"
+      "PowerShell($conn = Get-NetTCPConnection -LocalPort 8321 -State Listen -ErrorAction SilentlyContinue; if \\($conn\\) { Stop-Process -Id $conn.OwningProcess -Force -Confirm:$false }; Remove-Item \"C:\\\\Users\\\\ezeri\\\\Documents\\\\ROTULOS_PERSO\\\\server.log\" -Force -Confirm:$false -ErrorAction SilentlyContinue; \"servidor detenido\")",
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "mcp__claude-in-chrome__navigate",
+      "mcp__claude-in-chrome__computer",
+      "mcp__claude-in-chrome__javascript_tool",
+      "Bash(git check-ignore *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(DJANGO_SETTINGS_MODULE=config.settings.dev .venv/Scripts/python.exe -c ' *)",
+      "Bash(.venv/Scripts/python.exe manage.py check)",
+      "Bash(curl -s -X POST http://localhost:8000/api/v1/auth/register/ -H \"Content-Type: application/json\" -d '{\"email\":\"vivo@test.com\",\"password\":\"clave-fuerte-2468\",\"first_name\":\"Vivo\"}' -w \"\\\\nHTTP %{http_code}\\\\n\")",
+      "Bash(netstat -ano)",
+      "Bash(curl -s http://localhost:3000/ -w \"\\\\nHTTP %{http_code}\\\\n\")",
+      "Bash(curl -s http://localhost:3000/)",
+      "PowerShell(Get-ChildItem C:\\\\Users\\\\ezeri\\\\Documents\\\\ROTULOS_PERSO | Select-Object Name; \"--- backend ---\"; Get-ChildItem C:\\\\Users\\\\ezeri\\\\Documents\\\\ROTULOS_PERSO\\\\backend | Select-Object Name; \"--- .env ---\"; Test-Path C:\\\\Users\\\\ezeri\\\\Documents\\\\ROTULOS_PERSO\\\\backend\\\\.env; Test-Path C:\\\\Users\\\\ezeri\\\\Documents\\\\ROTULOS_PERSO\\\\.env; \"--- venv ---\"; Get-ChildItem C:\\\\Users\\\\ezeri\\\\Documents\\\\ROTULOS_PERSO -Directory -Recurse -Depth 1 | Where-Object { $_.Name -in '.venv','venv','env' } | Select-Object FullName)",
+      "PowerShell($py = Get-Command python -ErrorAction SilentlyContinue; if \\($py\\) { \"python: \" + $py.Source; python --version } else { \"python no encontrado\" }; $py3 = Get-Command py -ErrorAction SilentlyContinue; if \\($py3\\) { \"py launcher: \" + $py3.Source })",
+      "PowerShell(\"--- package.json? ---\")"
     ]
   }
 }

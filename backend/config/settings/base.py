@@ -5,6 +5,7 @@ Ajustes comunes a todos los entornos. Los valores sensibles o que varían
 por entorno se leen desde variables de entorno / archivo .env.
 """
 
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -24,7 +25,7 @@ environ.Env.read_env(BASE_DIR / ".env")
 
 SECRET_KEY = env("SECRET_KEY")
 DEBUG = env("DEBUG")
-ALLOWED_HOSTS = env("ALLOWED_HOSTS")
+ALLOWED_HOSTS = ["localhost", "127.0.0.1", "192.168.1.34", "100.105.137.61"]
 
 # ---------------------------------------------------------------------------
 # Aplicaciones
@@ -41,7 +42,6 @@ DJANGO_APPS = [
 
 THIRD_PARTY_APPS = [
     "rest_framework",
-    "rest_framework.authtoken",  # tokens de sesión para el frontend (SPA)
     "corsheaders",
 ]
 
@@ -100,6 +100,14 @@ DATABASES = {
 # ---------------------------------------------------------------------------
 
 REST_FRAMEWORK = {
+    # Toda la API se autentica con JWT (djangorestframework-simplejwt).
+    # El frontend manda el access token en el header:
+    #   Authorization: Bearer <access>
+    # Tanto el login con Google como el de email/contraseña emiten JWT,
+    # así el frontend maneja un único tipo de token sin importar el método.
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
     ],
@@ -131,6 +139,18 @@ CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
 GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID", default="")
 GOOGLE_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET", default="")
 GOOGLE_REDIRECT_URI = env("GOOGLE_REDIRECT_URI", default="")
+
+# ---------------------------------------------------------------------------
+# JWT (djangorestframework-simplejwt)
+# ---------------------------------------------------------------------------
+
+# El access token es de vida corta y viaja en cada petición; cuando expira,
+# el frontend usa el refresh (vida larga) para obtener uno nuevo sin volver
+# a pedir credenciales. La firma se hace con SECRET_KEY.
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+}
 
 # ---------------------------------------------------------------------------
 # Validación de contraseñas
