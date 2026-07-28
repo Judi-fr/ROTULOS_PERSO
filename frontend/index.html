@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Acceso a Plugin</title>
+  <link href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.materialdesignicons.com/4.8.95/css/materialdesignicons.min.css">
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css">
+  <link rel="stylesheet" href="assets/css/index.css">
+
+</head>
+<body>
+  <script>
+   window.onGoogleCredential = function(response){
+    console.log("CALLBACK EJECUTADO");
+    console.log(response);
+  }
+  </script>
+  <main class="d-flex align-items-center min-vh-100 py-3 py-md-0">
+    <div class="container">
+      <div class="card login-card">
+        <div class="row no-gutters">
+          <div class="col-md-5">
+            <img src="assets/images/LogoLogin3.png" alt="login" class="login-card-img">
+          </div>
+          <div class="col-md-7">
+            <div class="card-body">
+              <div class="brand-wrapper">
+                <img src="assets/images/HLLogoFinal.jpg" alt="logo" class="logo">
+              </div>
+              <p class="login-card-description">Ingresa con tu cuenta</p>
+      
+    
+              <form action="" id="login-form">
+                  <div class="form-group">
+
+                  <!-- Botón oficial de Google Identity Services -->
+                  <script src="https://accounts.google.com/gsi/client" async defer></script>
+                  <div id="g_id_onload"
+                       data-client_id="639018151961-c7mc5vsqfhpv3i208ok7a93647tlh1mf.apps.googleusercontent.com"
+                       data-callback="onGoogleCredential"
+                       data-auto_prompt="false">
+                  </div>
+                  <div class="g_id_signin"
+                       data-type="standard"
+                       data-text="signin_with"
+                       data-locale="es">
+                       
+                       <div class="S9gUrf-YZQYjf" style="position: relative;">
+                           <div>
+                               <div tabindex="0"
+                                    role="button"
+                                    aria-labelledby="button-label"
+                                    class="nsm7Bb-HzV7m-LgbsSe hJDwNd-SxQuSe i5vt6e-Ia7Qfc uaxL4e-RbRzK">
+                                   ...
+                               </div>
+                           </div>
+                   
+                           <iframe
+                           src="https://accounts.google.com/gsi/button?type=standard&text=signin_with&..._812956_762834&cas=CJQ7DXNt6qdBT3I%2FYuhKIFI6%2Fg8aaIbuq%2BVYRBJk65A&hl=es"
+                           class="L5Fo6C-PQbLGe"
+                           allow="identity-credentials-get"
+                           id="gsi_812956_762834"
+                           title="Botón de Acceder con Google"
+                           style="display: block; position: relative; top: 0px; left: 0px; height: 0px; width: 0px; border: 0px;">
+                       </iframe>
+                       #document (https://accounts.google.com/gsi/button?type=standard&text=signin_with&is_fe...812956_762834&cas=CJQ7DXNt6qdBT3I%2FYuhKIFI6%2Fg8aaIbuq%2BVYRBJk65A&hl=es)
+               
+                   </div>
+               </div>
+               <div class="login-divider">o</div>
+
+                    <label for="user" class="sr-only">Usuario</label>
+                    <input type="text" name="user" id="user" class="form-control" placeholder="usuario">
+                  </div>
+                  <div class="form-group mb-4">
+                    <label for="password" class="sr-only">Clave</label>
+                    <input type="password" name="password" id="password" class="form-control" placeholder="***********">
+                  </div>
+                  <input name="login" id="login" class="btn btn-block login-btn mb-4" type="submit" value="Login">
+                </form>
+                <a href="#!" class="forgot-password-link">Olvidaste tu clave?</a>
+                <p class="login-card-footer-text">No tienes cuenta aun? <a href="#!" class="text-reset">Regístrate aquí</a></p>
+                <nav class="login-card-footer-nav">
+                  <a href="#!">Terminos de uso.</a>
+                  <a href="#!">Política de Privacidad</a>
+                </nav>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"></script>
+  <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js"></script>
+
+    <script>
+    $( "#login-form" ).submit(function( event ) {
+ 
+ 	  var auser = document.getElementById("user").value;
+ 	  var apassword = document.getElementById("password").value;
+
+		$.ajax({
+			type: 'POST',			
+			url : "access.php",	
+				
+			data: {user:auser, password:apassword},			
+			success: function (response) {
+				if(response=='1') {
+                 {
+            window.location.replace("menu.php");
+                }    
+				}
+        else
+        {
+            alert("Error en usuario o clave - Reingrese");
+				}
+
+			},
+        error : function(){
+           alert('error ajax');        }
+		});
+
+  event.preventDefault();
+});
+   </script>
+
+  <script src="assets/js/login_test.js"></script>
+</body>
+</html>
