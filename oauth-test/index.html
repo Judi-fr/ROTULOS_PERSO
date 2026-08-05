@@ -92,14 +92,165 @@
     </form>
   </section>
 
+  <!-- ── 3b. Restablecer contraseña (olvidé mi contraseña) ───────────── -->
+  <section>
+    <h2>3b. Restablecer contraseña por email</h2>
+    <p class="aviso">
+      Flujo en dos pasos. <strong>Paso 1:</strong> pedís el enlace con tu email
+      (POST <code>/api/v1/auth/password-reset/</code>) — la respuesta es siempre
+      genérica, exista o no la cuenta. En desarrollo el correo <strong>se imprime
+      en la consola del <code>runserver</code></strong>: copiá de ahí el
+      <code>uid</code> y el <code>token</code> del link.
+      <strong>Paso 2:</strong> los pegás acá abajo junto con la contraseña nueva
+      (POST <code>/api/v1/auth/password-reset/confirm/</code>). Al confirmar se
+      revocan todas las sesiones abiertas de esa cuenta.
+    </p>
+
+    <form id="reset-request-form">
+      <label for="reset-email">Paso 1 — Email de la cuenta</label>
+      <input id="reset-email" type="email" autocomplete="email" placeholder="ana@ejemplo.com" required>
+      <button type="submit">Enviar enlace de restablecimiento</button>
+    </form>
+
+    <hr style="margin:1.25rem 0; border:0; border-top:1px solid #eee;">
+
+    <form id="reset-confirm-form">
+      <label for="reset-uid">Paso 2 — uid (del link del correo)</label>
+      <input id="reset-uid" type="text" placeholder="p. ej. MTA" required>
+      <label for="reset-token">token (del link del correo)</label>
+      <input id="reset-token" type="text" placeholder="p. ej. dcsmu5-078f7bae..." required>
+      <label for="reset-new-password">Contraseña nueva</label>
+      <input id="reset-new-password" type="password" autocomplete="new-password" required
+             minlength="6" pattern="(?=.*[A-Z])(?=.*\d).{6,}"
+             title="Mínimo 6 caracteres, con al menos una mayúscula y un número.">
+      <small class="aviso">Mínimo 6 caracteres, una mayúscula y un número.</small>
+      <button type="submit">Confirmar contraseña nueva</button>
+    </form>
+  </section>
+
   <!-- ── 4. Renovar access token ─────────────────────────────────────── -->
   <section>
     <h2>4. Renovar access token</h2>
     <p class="aviso">
       Usa el <code>refresh</code> guardado del último login para pedir un
-      <code>access</code> nuevo (POST /api/v1/auth/refresh/).
+      <code>access</code> nuevo (POST /api/v1/auth/refresh/). Con la rotación
+      activada, además devuelve un <code>refresh</code> nuevo y revoca el
+      anterior: si volvés a apretar el botón sin renovar, el viejo ya no sirve.
     </p>
     <button id="refresh-btn" type="button">Renovar con el refresh guardado</button>
+  </section>
+
+  <!-- ── 5. Cerrar sesión (logout) ───────────────────────────────────── -->
+  <section>
+    <h2>5. Cerrar sesión (logout)</h2>
+    <p class="aviso">
+      Revoca el <code>refresh</code> guardado (POST /api/v1/auth/logout/).
+      Manda el <code>access</code> en el header <code>Authorization</code>
+      (requiere estar logueado) y el <code>refresh</code> en el body. Tras el
+      logout, ese refresh queda en la blacklist: probá el botón "Renovar" de
+      arriba y debería dar 401.
+    </p>
+    <button id="logout-btn" type="button">Cerrar sesión con el token guardado</button>
+  </section>
+
+  <!-- ── 6. Mi perfil (usuario autenticado) ──────────────────────────── -->
+  <section>
+    <h2>6. Mi perfil</h2>
+    <p class="aviso">
+      Pega contra <code>/api/v1/auth/me/</code> con el <code>access</code>
+      guardado del último login. <strong>GET</strong> muestra tu perfil (incluye
+      <code>has_usable_password</code>: si es <code>false</code>, entraste solo
+      por Google). <strong>PATCH</strong> edita solo nombre y apellido — el
+      email es tu identidad y no se cambia por acá.
+    </p>
+    <button id="profile-get-btn" type="button">Ver mi perfil</button>
+    <form id="profile-form" style="margin-top:0.75rem;">
+      <div class="fila">
+        <div>
+          <label for="profile-first">Nombre</label>
+          <input id="profile-first" type="text" autocomplete="given-name">
+        </div>
+        <div>
+          <label for="profile-last">Apellido</label>
+          <input id="profile-last" type="text" autocomplete="family-name">
+        </div>
+      </div>
+      <button type="submit">Guardar cambios</button>
+    </form>
+  </section>
+
+  <!-- ── 7. CRUD de usuarios (solo admin) ────────────────────────────── -->
+  <section>
+    <h2>7. CRUD de usuarios (solo admin)</h2>
+    <p class="aviso">
+      Pega contra <code>/api/v1/users/</code> usando el <code>access</code>
+      guardado del último login como <code>Authorization: Bearer</code>.
+      Requiere una cuenta con <code>is_staff = true</code>; si no, el backend
+      responde <strong>403</strong> (y <strong>401</strong> si no hay token).
+    </p>
+
+    <button id="users-list-btn" type="button">Listar usuarios</button>
+
+    <div id="users-table-wrap" hidden style="margin-top: 1rem; overflow-x: auto;">
+      <table style="width:100%; border-collapse: collapse; font-size: 0.85rem;">
+        <thead>
+          <tr>
+            <th style="text-align:left; border-bottom:1px solid #ddd; padding:0.35rem;">ID</th>
+            <th style="text-align:left; border-bottom:1px solid #ddd; padding:0.35rem;">Email</th>
+            <th style="text-align:left; border-bottom:1px solid #ddd; padding:0.35rem;">Nombre</th>
+            <th style="text-align:left; border-bottom:1px solid #ddd; padding:0.35rem;">Staff</th>
+            <th style="text-align:left; border-bottom:1px solid #ddd; padding:0.35rem;">Activo</th>
+            <th style="text-align:left; border-bottom:1px solid #ddd; padding:0.35rem;">Roles</th>
+            <th style="text-align:left; border-bottom:1px solid #ddd; padding:0.35rem;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="users-tbody"></tbody>
+      </table>
+    </div>
+
+    <hr style="margin:1.25rem 0; border:0; border-top:1px solid #eee;">
+
+    <h3 id="user-form-title" style="font-size:0.95rem;">Crear usuario</h3>
+    <form id="user-form">
+      <input type="hidden" id="user-id">
+      <label for="user-email">Email</label>
+      <input id="user-email" type="email" required placeholder="nuevo@ejemplo.com">
+      <label for="user-password">
+        Contraseña <span class="aviso" id="user-password-hint">(obligatoria al crear)</span>
+      </label>
+      <input id="user-password" type="password" autocomplete="new-password"
+             placeholder="Mín. 6, una mayúscula y un número">
+      <div class="fila">
+        <div>
+          <label for="user-first">Nombre</label>
+          <input id="user-first" type="text">
+        </div>
+        <div>
+          <label for="user-last">Apellido</label>
+          <input id="user-last" type="text">
+        </div>
+      </div>
+      <label style="margin-top:0.6rem;">
+        <input type="checkbox" id="user-staff" style="width:auto;"> is_staff (administrador)
+      </label>
+      <label>
+        <input type="checkbox" id="user-active" style="width:auto;" checked> is_active
+      </label>
+      <label style="margin-top:0.6rem;">Roles (groups)</label>
+      <label>
+        <input type="checkbox" class="user-role" value="administradores" style="width:auto;"> administradores
+      </label>
+      <label>
+        <input type="checkbox" class="user-role" value="diseñadores" style="width:auto;"> diseñadores
+      </label>
+      <label>
+        <input type="checkbox" class="user-role" value="operadores" style="width:auto;"> operadores
+      </label>
+      <div>
+        <button type="submit" id="user-submit-btn">Crear usuario</button>
+        <button type="button" id="user-cancel-btn" hidden style="background:#777;">Cancelar edición</button>
+      </div>
+    </form>
   </section>
 
   <!-- ── Resultado compartido ────────────────────────────────────────── -->
@@ -139,19 +290,32 @@
     }
 
     // POST genérico de JSON a un endpoint de auth, con manejo de errores de red.
-    async function postAuth(path, body) {
+    // opts.auth = true agrega el header Authorization con el access guardado
+    // (necesario para endpoints protegidos como logout).
+    // Devuelve la respuesta (o null si hubo error de red) para que quien llama
+    // pueda reaccionar (p. ej. limpiar tokens tras un logout exitoso).
+    async function postAuth(path, body, opts = {}) {
+      const headers = { "Content-Type": "application/json" };
+      if (opts.auth) {
+        const access = localStorage.getItem("access");
+        if (access) headers["Authorization"] = "Bearer " + access;
+      }
       try {
         const res = await fetch(API_BASE + path, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify(body),
         });
-        const data = await res.json();
+        // logout responde 205 sin cuerpo: no intentamos parsear JSON vacío.
+        const data = res.status === 205 ? { detail: "Sesión cerrada." }
+                                        : await res.json();
         mostrarResultado(res.status, data, res.ok);
+        return res;
       } catch (err) {
         mostrarResultado("(sin respuesta)",
           { detail: "Error de red: ¿está el backend en " + API_BASE + "?", error: String(err) },
           false);
+        return null;
       }
     }
 
@@ -180,6 +344,32 @@
       });
     });
 
+    // 3b. Reset de contraseña — paso 1: pedir el enlace por email.
+    // Endpoint público; la respuesta es genérica exista o no la cuenta. En dev
+    // el correo con el link (uid+token) se imprime en la consola del runserver.
+    document.getElementById("reset-request-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      postAuth("/api/v1/auth/password-reset/", {
+        email: document.getElementById("reset-email").value,
+      });
+    });
+
+    // 3b. Reset de contraseña — paso 2: confirmar con uid+token (del correo) y
+    // la contraseña nueva. Si sale bien, se limpian los campos del token.
+    document.getElementById("reset-confirm-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const res = await postAuth("/api/v1/auth/password-reset/confirm/", {
+        uid: document.getElementById("reset-uid").value.trim(),
+        token: document.getElementById("reset-token").value.trim(),
+        new_password: document.getElementById("reset-new-password").value,
+      });
+      if (res && res.ok) {
+        document.getElementById("reset-uid").value = "";
+        document.getElementById("reset-token").value = "";
+        document.getElementById("reset-new-password").value = "";
+      }
+    });
+
     // 4. Renovar access token con el refresh guardado
     document.getElementById("refresh-btn").addEventListener("click", () => {
       const refresh = localStorage.getItem("refresh");
@@ -191,6 +381,200 @@
       }
       postAuth("/api/v1/auth/refresh/", { refresh });
     });
+
+    // 5. Logout: revoca el refresh guardado. Manda el access en el header
+    // (endpoint protegido) y el refresh en el body. Si sale bien, borra los
+    // tokens locales como haría el frontend real.
+    document.getElementById("logout-btn").addEventListener("click", async () => {
+      const refresh = localStorage.getItem("refresh");
+      if (!refresh) {
+        mostrarResultado("(sin token)",
+          { detail: "No hay refresh guardado. Iniciá sesión primero." },
+          false);
+        return;
+      }
+      const res = await postAuth("/api/v1/auth/logout/", { refresh }, { auth: true });
+      if (res && res.ok) {
+        localStorage.removeItem("access");
+        localStorage.removeItem("refresh");
+      }
+    });
+
+    // ── 6. Mi perfil (usuario autenticado) ───────────────────────────
+    // GET /me/: trae el perfil del usuario del token y precarga el formulario
+    // de edición. Reutiliza apiRequest (manda el access en Authorization).
+    document.getElementById("profile-get-btn").addEventListener("click", async () => {
+      const data = await apiRequest("GET", "/api/v1/auth/me/");
+      if (data) {
+        document.getElementById("profile-first").value = data.first_name || "";
+        document.getElementById("profile-last").value = data.last_name || "";
+      }
+    });
+
+    // PATCH /me/: edita solo nombre y apellido del usuario autenticado.
+    // El backend ignora cualquier otro campo (email, is_staff son read-only).
+    document.getElementById("profile-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await apiRequest("PATCH", "/api/v1/auth/me/", {
+        first_name: document.getElementById("profile-first").value,
+        last_name: document.getElementById("profile-last").value,
+      });
+    });
+
+    // ── 7. CRUD de usuarios (solo admin) ─────────────────────────────
+    // Petición autenticada genérica: manda el access guardado en el header
+    // Authorization. A diferencia de los endpoints de auth (públicos), acá el
+    // backend exige usuario logueado y con is_staff. Devuelve el JSON parseado
+    // si salió bien, o null (y ya mostró el error en el panel) si falló.
+    async function apiRequest(method, path, body) {
+      const access = localStorage.getItem("access");
+      if (!access) {
+        mostrarResultado("(sin token)",
+          { detail: "No hay access guardado. Iniciá sesión con una cuenta admin primero." },
+          false);
+        return null;
+      }
+      try {
+        const opciones = {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + access,
+          },
+        };
+        if (body !== undefined) opciones.body = JSON.stringify(body);
+        const res = await fetch(API_BASE + path, opciones);
+        // DELETE responde 204 sin cuerpo: no intentamos parsear JSON vacío.
+        const data = res.status === 204 ? { detail: "Usuario eliminado." }
+                                        : await res.json();
+        mostrarResultado(res.status, data, res.ok);
+        return res.ok ? data : null;
+      } catch (err) {
+        mostrarResultado("(sin respuesta)",
+          { detail: "Error de red: ¿está el backend en " + API_BASE + "?", error: String(err) },
+          false);
+        return null;
+      }
+    }
+
+    // Refresca la tabla pidiendo la lista al backend.
+    async function recargarUsuarios() {
+      const data = await apiRequest("GET", "/api/v1/users/");
+      // La lista viene paginada ({count, results}); por robustez aceptamos
+      // también un array plano.
+      if (data) renderUsers(data.results || data);
+    }
+
+    // Dibuja la tabla a partir de la lista de usuarios.
+    function renderUsers(usuarios) {
+      const tbody = document.getElementById("users-tbody");
+      const celda = "padding:0.35rem; border-bottom:1px solid #f0f0f0;";
+      tbody.innerHTML = "";
+      usuarios.forEach((u) => {
+        const nombre = ((u.first_name || "") + " " + (u.last_name || "")).trim() || "—";
+        const roles = (u.groups || []).join(", ") || "—";
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td style='" + celda + "'>" + u.id + "</td>" +
+          "<td style='" + celda + "'>" + u.email + "</td>" +
+          "<td style='" + celda + "'>" + nombre + "</td>" +
+          "<td style='" + celda + "'>" + (u.is_staff ? "sí" : "no") + "</td>" +
+          "<td style='" + celda + "'>" + (u.is_active ? "sí" : "no") + "</td>" +
+          "<td style='" + celda + "'>" + roles + "</td>";
+
+        const acciones = document.createElement("td");
+        acciones.style.cssText = celda;
+
+        const btnEdit = document.createElement("button");
+        btnEdit.textContent = "Editar";
+        btnEdit.style.cssText = "margin:0; padding:0.25rem 0.6rem; font-size:0.8rem;";
+        btnEdit.addEventListener("click", () => cargarEnFormulario(u));
+
+        const btnDel = document.createElement("button");
+        btnDel.textContent = "Eliminar";
+        btnDel.style.cssText = "margin:0 0 0 0.4rem; padding:0.25rem 0.6rem; font-size:0.8rem; background:#c62828;";
+        btnDel.addEventListener("click", () => eliminarUsuario(u.id));
+
+        acciones.appendChild(btnEdit);
+        acciones.appendChild(btnDel);
+        tr.appendChild(acciones);
+        tbody.appendChild(tr);
+      });
+      document.getElementById("users-table-wrap").hidden = false;
+    }
+
+    // Listar
+    document.getElementById("users-list-btn").addEventListener("click", recargarUsuarios);
+
+    // Carga los datos de un usuario en el formulario y pasa a modo "editar".
+    function cargarEnFormulario(u) {
+      document.getElementById("user-id").value = u.id;
+      document.getElementById("user-email").value = u.email;
+      document.getElementById("user-password").value = "";
+      document.getElementById("user-first").value = u.first_name || "";
+      document.getElementById("user-last").value = u.last_name || "";
+      document.getElementById("user-staff").checked = u.is_staff;
+      document.getElementById("user-active").checked = u.is_active;
+      // Marca los checkboxes de rol según los groups del usuario.
+      const rolesUsuario = u.groups || [];
+      document.querySelectorAll(".user-role").forEach((c) => {
+        c.checked = rolesUsuario.includes(c.value);
+      });
+      document.getElementById("user-form-title").textContent = "Editar usuario #" + u.id;
+      document.getElementById("user-submit-btn").textContent = "Guardar cambios";
+      document.getElementById("user-cancel-btn").hidden = false;
+      document.getElementById("user-password-hint").textContent = "(dejar vacío para no cambiarla)";
+    }
+
+    // Vuelve al modo "crear" y limpia el formulario.
+    function resetFormulario() {
+      document.getElementById("user-form").reset();
+      document.getElementById("user-id").value = "";
+      document.getElementById("user-active").checked = true;
+      document.getElementById("user-form-title").textContent = "Crear usuario";
+      document.getElementById("user-submit-btn").textContent = "Crear usuario";
+      document.getElementById("user-cancel-btn").hidden = true;
+      document.getElementById("user-password-hint").textContent = "(obligatoria al crear)";
+    }
+    document.getElementById("user-cancel-btn").addEventListener("click", resetFormulario);
+
+    // Crear (POST) o editar (PATCH) según haya o no un id cargado en el form.
+    document.getElementById("user-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("user-id").value;
+      const password = document.getElementById("user-password").value;
+      // Roles marcados -> lista de nombres de group (["diseñadores", ...]).
+      // Siempre se manda (aunque vacía): así destildar un rol lo quita.
+      const roles = Array.from(document.querySelectorAll(".user-role:checked"))
+        .map((c) => c.value);
+      const cuerpo = {
+        email: document.getElementById("user-email").value,
+        first_name: document.getElementById("user-first").value,
+        last_name: document.getElementById("user-last").value,
+        is_staff: document.getElementById("user-staff").checked,
+        is_active: document.getElementById("user-active").checked,
+        groups: roles,
+      };
+      // La contraseña solo se envía si se cargó: obligatoria al crear,
+      // opcional al editar (vacío = no se cambia).
+      if (password) cuerpo.password = password;
+
+      const data = id
+        ? await apiRequest("PATCH", "/api/v1/users/" + id + "/", cuerpo)
+        : await apiRequest("POST", "/api/v1/users/", cuerpo);
+
+      if (data) {
+        resetFormulario();
+        recargarUsuarios();  // refresca la tabla para ver el cambio
+      }
+    });
+
+    // Eliminar (DELETE) con confirmación.
+    async function eliminarUsuario(id) {
+      if (!confirm("¿Eliminar el usuario #" + id + "?")) return;
+      const data = await apiRequest("DELETE", "/api/v1/users/" + id + "/");
+      if (data) recargarUsuarios();
+    }
   </script>
 
   <!-- Se carga después de definir onGoogleCredential (ver comentario arriba) -->
