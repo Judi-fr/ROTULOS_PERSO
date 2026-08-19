@@ -18,3 +18,12 @@ REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] = [  # noqa: F405
     "rest_framework.renderers.JSONRenderer",
     "rest_framework.renderers.BrowsableAPIRenderer",
 ]
+
+# En desarrollo, por defecto los correos (p. ej. el link de reset de contraseña)
+# se imprimen en la consola del runserver en vez de enviarse: así se prueba el
+# flujo sin configurar un servidor SMTP.
+# Si en el .env se define EMAIL_BACKEND (p. ej. el backend SMTP), ese gana: así
+# se puede enviar correo real desde dev sin tocar código.
+EMAIL_BACKEND = env(  # noqa: F405
+    "EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend"
+)

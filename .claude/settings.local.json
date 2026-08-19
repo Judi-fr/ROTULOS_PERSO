@@ -21,7 +21,12 @@
       "Bash(curl -s http://localhost:3000/)",
       "PowerShell(Get-ChildItem C:\\\\Users\\\\ezeri\\\\Documents\\\\ROTULOS_PERSO | Select-Object Name; \"--- backend ---\"; Get-ChildItem C:\\\\Users\\\\ezeri\\\\Documents\\\\ROTULOS_PERSO\\\\backend | Select-Object Name; \"--- .env ---\"; Test-Path C:\\\\Users\\\\ezeri\\\\Documents\\\\ROTULOS_PERSO\\\\backend\\\\.env; Test-Path C:\\\\Users\\\\ezeri\\\\Documents\\\\ROTULOS_PERSO\\\\.env; \"--- venv ---\"; Get-ChildItem C:\\\\Users\\\\ezeri\\\\Documents\\\\ROTULOS_PERSO -Directory -Recurse -Depth 1 | Where-Object { $_.Name -in '.venv','venv','env' } | Select-Object FullName)",
       "PowerShell($py = Get-Command python -ErrorAction SilentlyContinue; if \\($py\\) { \"python: \" + $py.Source; python --version } else { \"python no encontrado\" }; $py3 = Get-Command py -ErrorAction SilentlyContinue; if \\($py3\\) { \"py launcher: \" + $py3.Source })",
-      "PowerShell(\"--- package.json? ---\")"
+      "PowerShell(\"--- package.json? ---\")",
+      "Bash(DJANGO_SETTINGS_MODULE=config.settings.dev .venv/Scripts/python.exe manage.py check)",
+      "Bash(DJANGO_SETTINGS_MODULE=config.settings.dev .venv/Scripts/python.exe manage.py migrate)",
+      "Bash(.venv/Scripts/python.exe manage.py migrate accounts)",
+      "Bash(.venv/Scripts/python.exe -c \"import django, os; os.environ.setdefault\\('DJANGO_SETTINGS_MODULE','config.settings.dev'\\); django.setup\\(\\); from django.contrib.auth.models import Group; print\\('Roles:', [g.name for g in Group.objects.all\\(\\).order_by\\('name'\\)]\\)\")",
+      "Bash(.venv/Scripts/python.exe manage.py test apps.accounts.tests.RolesTests -v2)"
     ]
   }
 }

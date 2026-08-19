@@ -7,27 +7,32 @@ por entorno se leen desde variables de entorno / archivo .env.
 
 from datetime import timedelta
 from pathlib import Path
-import os
+
+import environ
 
 # BASE_DIR apunta a la raíz del repo (dos niveles arriba de config/settings/)
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# Lee variables de entorno desde archivo .env si existe
-ENV_FILE = BASE_DIR / ".env"
-if ENV_FILE.exists():
-    with open(ENV_FILE) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, _, value = line.partition("=")
-                os.environ.setdefault(key.strip(), value.strip())
+env = environ.Env(
+    DEBUG=(bool, False),
+    ALLOWED_HOSTS=(list, []),
+    CORS_ALLOWED_ORIGINS=(list, []),
+)
 
-# Variables de entorno con valores por defecto
-SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-dev-key-do-not-use")
-DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:8001")
-ADMIN_CREATED_USER_PASSWORD = os.environ.get("ADMIN_CREATED_USER_PASSWORD", "TempPass123")
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1,192.168.1.34,100.105.137.61").split(",")
+# Lee el archivo .env de la raíz si existe (en producción se usan
+# variables de entorno reales y este archivo no está presente)
+environ.Env.read_env(BASE_DIR / ".env")
+
+SECRET_KEY = env("SECRET_KEY")
+DEBUG = env("DEBUG")
+
+# Se lee desde la variable de entorno ALLOWED_HOSTS (lista separada por comas).
+# En dev.py se sobreescribe con ["*"]; en prod DEBE venir del .env con los
+# dominios/IPs reales. El default cubre el desarrollo local sin .env.
+ALLOWED_HOSTS = env(
+    "ALLOWED_HOSTS",
+    default=["localhost", "127.0.0.1", "192.168.1.34", "100.105.137.61"],
+)
 
 # ---------------------------------------------------------------------------
 # Aplicaciones
@@ -44,8 +49,8 @@ DJANGO_APPS = [
 
 THIRD_PARTY_APPS = [
     "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",  # revocación de refresh tokens
     "corsheaders",
-    "rest_framework_simplejwt.token_blacklist",
 ]
 
 LOCAL_APPS = [
@@ -95,10 +100,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {
     # DATABASE_URL permite cambiar de motor sin tocar código,
     # p. ej. postgres://user:pass@host:5432/rotulos
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": str(BASE_DIR / "db.sqlite3"),
-    },
+    "default": env.db("DATABASE_URL", default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
 }
 
 # ---------------------------------------------------------------------------
@@ -124,16 +126,33 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
+    # Cerrado por defecto: cada endpoint exige usuario autenticado salvo que
+    # declare `permission_classes = [AllowAny]` explícitamente (login, registro,
+    # Google, health). Así un endpoint nuevo nunca queda público por descuido.
     "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.AllowAny",
+        "rest_framework.permissions.IsAuthenticated",
     ],
+    # Rate limiting. El scope "login" se aplica a mano en las vistas de auth
+    # (ver LoginRateThrottle); "anon"/"user" son los límites generales.
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "60/min",
+        "user": "1000/min",
+        "login": "5/min",
+        # Pedir/confirmar reset de contraseña: frena el email bombing a una
+        # víctima y la fuerza bruta sobre el token del link.
+        "password_reset": "5/min",
+    },
 }
 
 # ---------------------------------------------------------------------------
 # CORS
 # ---------------------------------------------------------------------------
 
-CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
+CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
 
 # ---------------------------------------------------------------------------
 # Google OAuth / Sign-In
@@ -142,23 +161,45 @@ CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
 # client_id / client_secret creados en Google Cloud Console (ver .env).
 # El client_id se usa como "audience" al verificar el ID token en el Flujo A.
 # El client_secret solo hace falta si se implementa el Flujo B (redirect/code).
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
-GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "")
+GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID", default="")
+GOOGLE_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET", default="")
+GOOGLE_REDIRECT_URI = env("GOOGLE_REDIRECT_URI", default="")
 
 # ---------------------------------------------------------------------------
 # Email
 # ---------------------------------------------------------------------------
 
-# En desarrollo, el backend por defecto imprime el correo en la consola.
-# Para mandar mail real, se puede configurar SMTP desde .env.
-EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
-EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.human-log.com")
-EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
-EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True").lower() == "true"
-EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "acruzgarcia@human-log.com")
-EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "Agus?01!")
-DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "acruzgarcia@human-log.com")
+# Por defecto SMTP (producción). En dev.py se sobreescribe con el backend de
+# consola para no necesitar un servidor de correo real. Los datos del SMTP se
+# leen del .env; con EMAIL_BACKEND se puede forzar otro backend sin tocar código.
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend"
+)
+EMAIL_HOST = env("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+
+# Remitente de los correos transaccionales (reset de contraseña, etc.).
+DEFAULT_FROM_EMAIL = env(
+    "DEFAULT_FROM_EMAIL", default="ROTULOS <no-reply@rotulos.local>"
+)
+
+# Base del frontend (SPA) para armar links que van en los correos, p. ej. el
+# de reset apunta a {FRONTEND_URL}/reset-password?uid=...&token=...
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173")
+
+# URL de la página que resuelve el reset (a la que apunta el enlace del correo).
+# Por defecto es {FRONTEND_URL}/reset-password (la ruta de la SPA), pero se puede
+# sobreescribir desde el .env; p. ej. mientras no exista el frontend, apuntarla a
+# la página de prueba de oauth-test (http://localhost:3000/reset-password.html).
+PASSWORD_RESET_URL = env(
+    "PASSWORD_RESET_URL", default=f"{FRONTEND_URL}/reset-password"
+)
+
+# Validez del token de reset de contraseña (default de Django: 3 días).
+PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT", default=60 * 60 * 24)
 
 # ---------------------------------------------------------------------------
 # JWT (djangorestframework-simplejwt)
@@ -168,9 +209,15 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "acruzgarcia@human-log
 # el frontend usa el refresh (vida larga) para obtener uno nuevo sin volver
 # a pedir credenciales. La firma se hace con SECRET_KEY.
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    # Rotación: cada uso del endpoint de refresh emite un refresh NUEVO y
+    # manda el anterior a la blacklist. Si un refresh robado se reutiliza
+    # después de haber sido rotado, la petición falla (401) y el robo queda
+    # en evidencia. Requiere la app token_blacklist y correr las migraciones.
+    "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
 }
 
 # ---------------------------------------------------------------------------

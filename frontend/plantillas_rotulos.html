@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Plantillas Rotulos</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.materialdesignicons.com/4.8.95/css/materialdesignicons.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
+    />
+    <link rel="stylesheet" href="assets/css/gestionrotulos.css" />
+    <!-- Enlace al archivo CSS -->
+  </head>
+  <body>
+    <script src="assets/html/aside.js"></script>
+    <app-sidebar active="rotulos"></app-sidebar>
+
+    <main>
+      <div class="topbar">
+        <div>
+          <h1>Rótulos generados</h1>
+          <p class="subtitle">
+            Creá, editá y gestioná las plantillas de rótulos de tus clientes.
+          </p>
+        </div>
+        <a href="/frontend/pedidos/diseñorotulos.html" class="btn primary"
+          >+ Nuevo rótulo</a
+        >
+      </div>
+
+      <div class="controls">
+        <input
+          type="text"
+          id="search"
+          class="search"
+          placeholder="Buscar por nombre o cliente..."
+        />
+      </div>
+
+      <div id="content">
+        <div class="loading">Cargando rótulos...</div>
+      </div>
+    </main>
+
+    <!-- Modal de vista previa -->
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal">
+        <img id="modalImg" alt="Vista previa del rótulo" />
+        <h3 id="modalNombre"></h3>
+        <dl>
+          <dt>Cliente / Destinatario</dt>
+          <dd id="modalCliente"></dd>
+          <dt>Fecha</dt>
+          <dd id="modalFecha"></dd>
+        </dl>
+        <div class="modal-close">
+          <button class="btn" id="modalCloseBtn">Cerrar</button>
+        </div>
+      </div>
+    </div>
+    <script src="assets/js/dashboard_rotulos.js"></script>
+  </body>
+</html>
