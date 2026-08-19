@@ -32,7 +32,8 @@ class Migration(migrations.Migration):
     # El modelo Group se crea en auth.0001_initial; con esa dependencia basta
     # para que la tabla exista cuando corra esta migración.
     dependencies = [
-        ("auth", "0001_initial"),
+        ("accounts", "0001_initial"),
+	("auth", "0012_alter_user_first_name_max_length")
     ]
 
     operations = [
