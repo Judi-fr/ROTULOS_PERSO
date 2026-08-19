@@ -7,25 +7,27 @@ por entorno se leen desde variables de entorno / archivo .env.
 
 from datetime import timedelta
 from pathlib import Path
-
-import environ
+import os
 
 # BASE_DIR apunta a la raíz del repo (dos niveles arriba de config/settings/)
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-env = environ.Env(
-    DEBUG=(bool, False),
-    ALLOWED_HOSTS=(list, []),
-    CORS_ALLOWED_ORIGINS=(list, []),
-)
+# Lee variables de entorno desde archivo .env si existe
+ENV_FILE = BASE_DIR / ".env"
+if ENV_FILE.exists():
+    with open(ENV_FILE) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, value = line.partition("=")
+                os.environ.setdefault(key.strip(), value.strip())
 
-# Lee el archivo .env de la raíz si existe (en producción se usan
-# variables de entorno reales y este archivo no está presente)
-environ.Env.read_env(BASE_DIR / ".env")
-
-SECRET_KEY = env("SECRET_KEY")
-DEBUG = env("DEBUG")
-ALLOWED_HOSTS = ["localhost", "127.0.0.1", "192.168.1.34", "100.105.137.61"]
+# Variables de entorno con valores por defecto
+SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-dev-key-do-not-use")
+DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:8001")
+ADMIN_CREATED_USER_PASSWORD = os.environ.get("ADMIN_CREATED_USER_PASSWORD", "TempPass123")
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1,192.168.1.34,100.105.137.61").split(",")
 
 # ---------------------------------------------------------------------------
 # Aplicaciones
@@ -43,6 +45,7 @@ DJANGO_APPS = [
 THIRD_PARTY_APPS = [
     "rest_framework",
     "corsheaders",
+    "rest_framework_simplejwt.token_blacklist",
 ]
 
 LOCAL_APPS = [
@@ -92,7 +95,10 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {
     # DATABASE_URL permite cambiar de motor sin tocar código,
     # p. ej. postgres://user:pass@host:5432/rotulos
-    "default": env.db("DATABASE_URL", default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": str(BASE_DIR / "db.sqlite3"),
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -127,7 +133,7 @@ REST_FRAMEWORK = {
 # CORS
 # ---------------------------------------------------------------------------
 
-CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
+CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
 
 # ---------------------------------------------------------------------------
 # Google OAuth / Sign-In
@@ -136,9 +142,23 @@ CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
 # client_id / client_secret creados en Google Cloud Console (ver .env).
 # El client_id se usa como "audience" al verificar el ID token en el Flujo A.
 # El client_secret solo hace falta si se implementa el Flujo B (redirect/code).
-GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID", default="")
-GOOGLE_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET", default="")
-GOOGLE_REDIRECT_URI = env("GOOGLE_REDIRECT_URI", default="")
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "")
+
+# ---------------------------------------------------------------------------
+# Email
+# ---------------------------------------------------------------------------
+
+# En desarrollo, el backend por defecto imprime el correo en la consola.
+# Para mandar mail real, se puede configurar SMTP desde .env.
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.human-log.com")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True").lower() == "true"
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "acruzgarcia@human-log.com")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "Agus?01!")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "acruzgarcia@human-log.com")
 
 # ---------------------------------------------------------------------------
 # JWT (djangorestframework-simplejwt)
@@ -148,8 +168,9 @@ GOOGLE_REDIRECT_URI = env("GOOGLE_REDIRECT_URI", default="")
 # el frontend usa el refresh (vida larga) para obtener uno nuevo sin volver
 # a pedir credenciales. La firma se hace con SECRET_KEY.
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "BLACKLIST_AFTER_ROTATION": True,
 }
 
 # ---------------------------------------------------------------------------
