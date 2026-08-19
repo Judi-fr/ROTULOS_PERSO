@@ -203,6 +203,17 @@
   }
   .table-toolbar .search-box{ flex:1; min-width:240px; max-width:420px; }
   .toolbar-right{ display:flex; gap:10px; align-items:center; }
+  .filters-control{ position:relative; }
+  .filter-panel{
+    position:absolute;
+    top:calc(100% + 8px); right:0;
+    width:190px; padding:12px;
+    background:#fff; border:1px solid var(--border); border-radius:10px;
+    box-shadow:0 10px 30px rgba(15,23,42,.12); z-index:30;
+  }
+  .filter-panel label{ display:block; margin:0 0 5px; font-size:12px; font-weight:600; color:var(--text-muted); }
+  .filter-panel select{ width:100%; margin:0 0 10px; padding:7px 8px; border:1px solid var(--border); border-radius:7px; }
+  .filter-panel select:last-child{ margin-bottom:0; }
  
   table{ width:100%; border-collapse:collapse; }
   thead tr{ border-top:1px solid var(--border); border-bottom:1px solid var(--border); background:#fafbfd; }
@@ -287,6 +298,7 @@
   }
   .pagination-bar .showing{ font-size:13.5px; color:var(--text-muted); }
   .pager{ display:flex; align-items:center; gap:6px; }
+  #pageNumbers{ display:inline-flex; align-items:center; gap:6px; }
   .pager button{
     min-width:32px; height:32px;
     border:1px solid var(--border);

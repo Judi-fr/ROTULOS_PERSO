@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Logout</title>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" />
+  <style>
+    body {
+      background: #f5f7fb;
+      font-family: Arial, sans-serif;
+    }
+    .logout-box {
+      max-width: 520px;
+      margin: 120px auto;
+      background: #fff;
+      border-radius: 16px;
+      padding: 32px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.08);
+    }
+    .user-card {
+      background: #eef4ff;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .avatar {
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #d9e7ff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      color: #234;
+      margin-right: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="logout-box">
+    <h2 class="mb-3">Panel de sesión</h2>
+    <div id="user-card" class="user-card d-flex align-items-center" style="display:none;">
+      <div id="avatar" class="avatar">U</div>
+      <div>
+        <strong id="user-name">Usuario</strong><br>
+        <small id="user-email">correo@dominio.com</small>
+      </div>
+    </div>
+
+    <p class="text-muted">¿Quieres cerrar la sesión actual?</p>
+    <button id="logout-btn" class="btn btn-danger btn-block w-100">Cerrar sesión</button>
+    <div id="status" class="mt-3 small text-muted"></div>
+  </div>
+
+  <script>
+    function getStoredAuth() {
+      return {
+        access: localStorage.getItem("access"),
+        refresh: localStorage.getItem("refresh"),
+        user: JSON.parse(localStorage.getItem("user") || "null")
+      };
+    }
+
+    function clearAuthStorage() {
+      localStorage.removeItem("access");
+      localStorage.removeItem("refresh");
+      localStorage.removeItem("user");
+    }
+
+    function renderUser() {
+      const auth = getStoredAuth();
+      const card = document.getElementById("user-card");
+      const nameEl = document.getElementById("user-name");
+      const emailEl = document.getElementById("user-email");
+      const avatarEl = document.getElementById("avatar");
+
+      if (!auth.user) {
+        window.location.replace("index.html");
+        return;
+      }
+
+      card.style.display = "flex";
+      const name = auth.user.display_name || "Usuario";
+      const email = auth.user.email || "sin-email";
+
+      nameEl.textContent = name;
+      emailEl.textContent = email;
+      avatarEl.textContent = auth.user.initial || "U";
+    }
+
+    async function logout() {
+      const auth = getStoredAuth();
+      const statusEl = document.getElementById("status");
+
+      if (!auth.access || !auth.refresh) {
+        clearAuthStorage();
+        window.location.replace("index.html");
+        return;
+      }
+
+      statusEl.textContent = "Cerrando sesión...";
+
+      const headers = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${auth.access}`
+      };
+
+      try {
+        const response = await fetch("http://127.0.0.1:8000/api/v1/auth/logout/", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ refresh: auth.refresh })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.warn("Logout backend respondio con error:", errorData);
+        }
+      } catch (error) {
+        console.warn("No se pudo contactar al backend; se limpia el frontend igual:", error);
+      } finally {
+        clearAuthStorage();
+        statusEl.textContent = "Sesión cerrada.";
+        window.location.replace("index.html");
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+      renderUser();
+      document.getElementById("logout-btn").addEventListener("click", logout);
+    });
+  </script>
+</body>
+</html>

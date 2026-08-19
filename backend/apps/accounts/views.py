@@ -9,15 +9,77 @@ haya autenticado el usuario:
 """
 
 import re
+from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
+from django.core.mail import send_mail
+from django.utils import timezone
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
+
+from .models import EmailVerification
+from .serializers import UserProfileSerializer, get_user_role, set_user_role, ROLE_LABELS
+
+
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        refresh_token = request.data.get("refresh")
+
+        if not refresh_token:
+            return Response(
+                {"detail": "Refresh token requerido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            RefreshToken(refresh_token).blacklist()
+
+            return Response(
+                {"detail": "Sesión cerrada correctamente."},
+                status=status.HTTP_200_OK,
+            )
+
+        except TokenError:
+            return Response(
+                {"detail": "Refresh token inválido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+class MeView(APIView):
+    """GET/PATCH /api/v1/auth/me/
+
+    Perfil del usuario autenticado. Siempre opera sobre ``request.user``.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        serializer = UserProfileSerializer(request.user)
+        return Response(serializer.data)
+
+    def patch(self, request):
+        serializer = UserProfileSerializer(
+            request.user, data=request.data, partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def put(self, request):
+        # Mismo comportamiento que PATCH: solo actualiza campos enviados.
+        return self.patch(request)
+
 
 User = get_user_model()
 
@@ -42,18 +104,64 @@ def user_payload(user, picture=""):
     ``picture`` solo lo aporta Google (viene en el ID token y no se
     persiste); en el login con email/contraseña queda vacío.
     """
+    display_name = " ".join(
+        part for part in (user.first_name, user.last_name) if part
+    ).strip() or "Usuario"
+    role_key = get_user_role(user)
     return {
         "id": user.id,
         "email": user.email,
         "first_name": user.first_name,
         "last_name": user.last_name,
+        "is_staff": bool(user.is_staff),
+        "is_active": bool(user.is_active),
         "picture": picture,
+        "display_name": display_name,
+        "initial": display_name[0].upper(),
+        "can_manage_users": bool(user.is_staff),
+        "role_key": role_key,
+        "role_label": ROLE_LABELS[role_key],
     }
 
 
+
 def auth_response(user, picture=""):
-    """Respuesta estándar de login: tokens JWT + objeto user."""
-    return Response({**tokens_for_user(user), "user": user_payload(user, picture)})
+    """Respuesta estándar de login: tokens JWT + objeto user.
+
+    Tanto admin como usuario normal autenticado entran a gestionuser.html;
+    la página muestra la interfaz según el rol detectado desde ``user``.
+    """
+    return Response(
+        {
+            **tokens_for_user(user),
+            "user": user_payload(user, picture),
+            "redirect_to": "gestionuser.html",
+        }
+    )
+
+
+def ensure_email_verification(user):
+    """Crea o actualiza la verificación de email del usuario y devuelve la instancia."""
+    verification, _ = EmailVerification.objects.get_or_create(user=user)
+    verification.refresh_token()
+
+    verification_url = (
+        f"{settings.FRONTEND_URL}/verify-email.html?token={verification.token}"
+    )
+    send_mail(
+        subject="Verifica tu cuenta en ROTULOS PERSO",
+        message=(
+            f"Hola {user.first_name or user.email},\n\n"
+            "Gracias por registrarte en ROTULOS PERSO.\n"
+            "Para verificar tu email, haz clic en este enlace:\n\n"
+            f"{verification_url}\n\n"
+            "Si no solicitaste esta cuenta, puedes ignorar este mensaje."
+        ),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[user.email],
+        fail_silently=False,
+    )
+    return verification
 
 
 # Formato de email: algo@algo.dominio (sin espacios ni un segundo @).
@@ -126,7 +234,7 @@ class GoogleAuthView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        user, _created = User.objects.get_or_create(
+        user, created = User.objects.get_or_create(
             username=email,
             defaults={
                 "email": email,
@@ -134,6 +242,16 @@ class GoogleAuthView(APIView):
                 "last_name": claims.get("family_name", ""),
             },
         )
+        if created:
+            set_user_role(user, "subscriber")
+
+        verification, _ = EmailVerification.objects.get_or_create(user=user)
+
+        verification.is_verified = True
+        verification.verified_at = timezone.now()
+        verification.expires_at = timezone.now() + timedelta(days=30)
+        verification.token = "google-oauth"
+        verification.save(update_fields=["is_verified", "verified_at", "expires_at", "token", "updated_at"])
 
         # URL pública del avatar en el CDN de Google. No se persiste:
         # Google puede rotarla, así que se refresca en cada login.
@@ -232,12 +350,63 @@ class RegisterView(APIView):
             first_name=first_name,
             last_name=last_name,
         )
+        set_user_role(user, "subscriber")
+
+        verification = ensure_email_verification(user)
+
 
         return Response(
             {
-                "detail": "Cuenta creada con éxito.",
-                **tokens_for_user(user),
+                "detail": (
+                    "Cuenta creada con éxito. Revisá tu email para verificar tu cuenta."
+                ),
+                "verification_token": verification.token,
                 "user": user_payload(user),
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+class VerifyEmailView(APIView):
+    """GET/POST /api/v1/auth/verify-email/
+
+    Valida un token enviado por email para activar la cuenta del usuario.
+    """
+
+    def get(self, request):
+        return self._verify(request)
+
+    def post(self, request):
+        return self._verify(request)
+
+    def _verify(self, request):
+        token = (request.query_params.get("token") or request.data.get("token") or "").strip()
+        if not token:
+            return Response(
+                {"detail": "Falta el parámetro 'token' de verificación."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            verification = EmailVerification.objects.get(token=token)
+        except EmailVerification.DoesNotExist:
+            return Response(
+                {"detail": "El token de verificación no existe o ya fue usado."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if verification.is_expired():
+            return Response(
+                {"detail": "El enlace de verificación expiró. Pedí uno nuevo."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        verification.is_verified = True
+        verification.verified_at = timezone.now()
+        verification.expires_at = timezone.now() + timedelta(days=30)
+        verification.save(update_fields=["is_verified", "verified_at", "expires_at", "updated_at"])
+
+        return Response(
+            {"detail": "Email verificado correctamente.", "email": verification.user.email},
+            status=status.HTTP_200_OK,
         )

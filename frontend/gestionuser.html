@@ -43,7 +43,7 @@
               <path d="M16 3.13a4 4 0 0 1 0 7.75" />
             </svg>
           </span>
-          Admintradores
+          Administradores
         </div>
         <ul class="nav">
           <li>
@@ -162,27 +162,18 @@
             >
           </li>
         </ul>
-        <div class="sidebar-footer">
+        <button class="sidebar-footer" id="profileBtn" type="button" title="Mi perfil">
           <img
             class="avatar-round"
+            id="profileAvatar"
             src="https://api.dicebear.com/7.x/avataaars/svg?seed=admin"
             alt=""
           />
           <div class="who">
-            <div class="name">Admin</div>
-            <div class="mail">admin@site.com</div>
+            <div class="name" id="profileName">Cargando...</div>
+            <div class="mail" id="profileEmail">—</div>
           </div>
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </div>
+        </button>
       </aside>
 
       <!-- MAIN -->
@@ -205,7 +196,7 @@
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
-              <input type="text" placeholder="Search users..." />
+              <input type="text" placeholder="Search users..." data-user-search />
             </div>
             <button class="btn btn-primary" id="openCreatePanel">
               <svg
@@ -221,6 +212,7 @@
               </svg>
               Create User
             </button>
+            <button class="btn btn-outline" id="logoutAdminBtn" type="button">Logout</button>
           </div>
         </div>
 
@@ -245,7 +237,7 @@
               </span>
               <div>
                 <div class="stat-label">Total Users</div>
-                <div class="stat-value">152</div>
+                <div class="stat-value" id="totalUsersCount">—</div>
               </div>
             </div>
             <div class="stat-sub">All registered users</div>
@@ -267,7 +259,7 @@
               </span>
               <div>
                 <div class="stat-label">Active Users</div>
-                <div class="stat-value">128</div>
+                <div class="stat-value" id="activeUsersCount">—</div>
               </div>
             </div>
             <div class="stat-sub">Currently active</div>
@@ -292,7 +284,7 @@
               </span>
               <div>
                 <div class="stat-label">Inactive Users</div>
-                <div class="stat-value">24</div>
+                <div class="stat-value" id="inactiveUsersCount">—</div>
               </div>
             </div>
             <div class="stat-sub">Not active</div>
@@ -316,10 +308,10 @@
               </span>
               <div>
                 <div class="stat-label">Locked Users</div>
-                <div class="stat-value">5</div>
+                <div class="stat-value">—</div>
               </div>
             </div>
-            <div class="stat-sub">Access locked</div>
+            <div class="stat-sub">Not tracked yet</div>
           </div>
         </div>
 
@@ -341,24 +333,43 @@
               <input
                 type="text"
                 placeholder="Search by name, email or role..."
+                data-user-search
               />
             </div>
             <div class="toolbar-right">
-              <button class="btn btn-outline">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <polygon
-                    points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"
-                  />
-                </svg>
-                Filters
-              </button>
+              <div class="filters-control">
+                <button class="btn btn-outline" id="openUserFilters">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <polygon
+                      points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"
+                    />
+                  </svg>
+                  Filters
+                </button>
+                <div class="filter-panel" id="userFilterPanel" style="display:none;">
+                  <label for="userStatusFilter">Status</label>
+                  <select id="userStatusFilter">
+                    <option value="all">All</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+<label for="userRoleFilter">Role</label>
+                  <select id="userRoleFilter">
+                    <option value="all">All</option>
+                    <option value="admin">Admin</option>
+                    <option value="designer">Designer</option>
+                    <option value="operator">Operator</option>
+                    <option value="subscriber">Subscriber</option>
+                  </select>
+                </div>
+              </div>
               <button class="btn btn-outline">
                 <svg
                   viewBox="0 0 24 24"
@@ -471,9 +482,9 @@
           </table>
 
           <div class="pagination-bar">
-            <div class="showing">Showing 1 to 8 of 152 users</div>
-            <div class="pager">
-              <button title="First">
+            <div class="showing" id="paginationInfo">Showing 0 users</div>
+            <div class="pager" id="paginationControls">
+              <button title="First" data-page="first">
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
@@ -484,7 +495,7 @@
                   <polyline points="18 17 13 12 18 7" />
                 </svg>
               </button>
-              <button title="Prev">
+              <button title="Prev" data-page="prev">
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
@@ -494,12 +505,8 @@
                   <polyline points="15 18 9 12 15 6" />
                 </svg>
               </button>
-              <button class="active">1</button>
-              <button>2</button>
-              <button>3</button>
-              <span class="dots">…</span>
-              <button>19</button>
-              <button title="Next">
+              <span id="pageNumbers"></span>
+              <button title="Next" data-page="next">
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
@@ -509,7 +516,7 @@
                   <polyline points="9 18 15 12 9 6" />
                 </svg>
               </button>
-              <button title="Last">
+              <button title="Last" data-page="last">
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
@@ -527,54 +534,73 @@
 
       <!-- CREATE USER PANEL -->
       <div class="create-panel" id="createPanel" style="display: none">
-        <div class="create-panel-head">
-          <h3>Create User</h3>
-          <button id="closeCreatePanel">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-        <div class="field">
-          <label>Full Name</label>
-          <input type="text" placeholder="Enter full name" />
-        </div>
-        <div class="field">
-          <label>Email</label>
-          <input type="email" placeholder="Enter email address" />
-        </div>
-        <div class="field">
-          <label>Role</label>
-          <select>
-            <option>Select role</option>
-            <option>Admin</option>
-            <option>Editor</option>
-            <option>Author</option>
-            <option>Subscriber</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Status</label>
-          <select>
-            <option>Select status</option>
-            <option>Active</option>
-            <option>Inactive</option>
-            <option>Locked</option>
-          </select>
-        </div>
-        <div class="create-panel-actions">
-          <button class="btn btn-cancel" id="cancelCreate">Cancel</button>
-          <button class="btn btn-primary" style="justify-content: center">
-            Create User
-          </button>
+        <form id="createUserForm">
+          <div class="create-panel-head">
+            <h3 id="userFormTitle">Create User</h3>
+            <button id="closeCreatePanel" type="button">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+          <div class="field">
+            <label>Full Name</label>
+            <input id="fullNameInput" type="text" placeholder="Enter full name" required />
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input id="emailInput" type="email" placeholder="Enter email address" required />
+          </div>
+          <div class="field">
+            <label>Role</label>
+<select id="roleSelect" required>
+              <option value="">Select role</option>
+              <option>Admin</option>
+              <option>Designer</option>
+              <option>Operator</option>
+              <option>Subscriber</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Status</label>
+<select id="statusSelect" required>
+              <option value="">Select status</option>
+              <option>Active</option>
+              <option>Inactive</option>
+            </select>
+          </div>
+          <div class="field" id="passwordField">
+            <label>Password</label>
+            <input id="passwordInput" type="password" placeholder="Enter password" autocomplete="new-password" required />
+          </div>
+          <div class="create-panel-actions">
+            <button class="btn btn-cancel" id="cancelCreate" type="button">Cancel</button>
+            <button class="btn btn-primary" id="userFormSubmit" type="submit" style="justify-content: center">
+              Create User
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- VIEW USER MODAL (solo lectura) -->
+      <div id="viewUserModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:100; align-items:center; justify-content:center;">
+        <div style="background:#fff; border-radius:14px; width:420px; max-width:90%; padding:24px; box-shadow:0 20px 45px rgba(15,23,42,.25);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+            <h3 style="margin:0; font-size:17px; font-weight:700;">User Details</h3>
+            <button id="closeViewModal" type="button" style="border:none; background:transparent; cursor:pointer; color:#64748b; font-size:20px; line-height:1;">&times;</button>
+          </div>
+          <div id="viewUserContent" style="display:flex; flex-direction:column; gap:12px;"></div>
+          <div style="display:flex; justify-content:flex-end; margin-top:20px;">
+            <button id="closeViewModalBtn" type="button" class="btn btn-outline">Close</button>
+          </div>
         </div>
       </div>
 

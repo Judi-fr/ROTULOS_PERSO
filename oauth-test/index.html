@@ -102,6 +102,16 @@
     <button id="refresh-btn" type="button">Renovar con el refresh guardado</button>
   </section>
 
+  <!-- ── 5. Cerrar sesión ────────────────────────────────────────────── -->
+  <section id="logout-section" hidden>
+    <h2>5. Cerrar sesión</h2>
+    <p class="aviso">
+      Este botón invalida el <code>refresh</code> en el backend y borra los datos
+      guardados del usuario en el navegador.
+    </p>
+    <button id="logout-btn" type="button">Cerrar sesión</button>
+  </section>
+
   <!-- ── Resultado compartido ────────────────────────────────────────── -->
   <h2 id="resultado-titulo" hidden>Respuesta del backend</h2>
   <pre id="resultado" hidden></pre>
@@ -135,6 +145,48 @@
       if (ok && data.user && data.user.picture) {
         avatar.src = data.user.picture;
         avatar.hidden = false;
+      }
+
+      actualizarEstadoLogout();
+    }
+
+    function actualizarEstadoLogout() {
+      const logoutSection = document.getElementById("logout-section");
+      const hasSession = !!(localStorage.getItem("access") || localStorage.getItem("refresh"));
+      logoutSection.hidden = !hasSession;
+    }
+
+    async function logout() {
+      const access = localStorage.getItem("access");
+      const refresh = localStorage.getItem("refresh");
+
+      if (!access || !refresh) {
+        mostrarResultado("(sin sesión)", { detail: "No hay sesión activa; no hay tokens para cerrar." }, false);
+        return;
+      }
+
+      try {
+        const res = await fetch(API_BASE + "/api/v1/auth/logout/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${access}`,
+          },
+          body: JSON.stringify({ refresh }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        mostrarResultado(res.status, data, res.ok);
+
+        if (res.ok) {
+          localStorage.removeItem("access");
+          localStorage.removeItem("refresh");
+          localStorage.removeItem("user");
+          document.getElementById("avatar").hidden = true;
+          actualizarEstadoLogout();
+        }
+      } catch (err) {
+        mostrarResultado("(sin respuesta)", { detail: "No se pudo cerrar la sesión", error: String(err) }, false);
       }
     }
 
@@ -191,6 +243,11 @@
       }
       postAuth("/api/v1/auth/refresh/", { refresh });
     });
+
+    // 5. Cerrar sesión
+    document.getElementById("logout-btn").addEventListener("click", logout);
+
+    actualizarEstadoLogout();
   </script>
 
   <!-- Se carga después de definir onGoogleCredential (ver comentario arriba) -->
