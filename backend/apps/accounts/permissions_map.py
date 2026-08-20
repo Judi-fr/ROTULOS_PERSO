@@ -24,6 +24,12 @@ comportamiento actual de las APIs.
 
 from django.contrib.auth import get_user_model
 
+try:
+    from .models import GroupRolePermission, RolePermission
+except Exception:  # pragma: no cover - import temprano durante migraciones
+    GroupRolePermission = None
+    RolePermission = None
+
 User = get_user_model()
 
 # Roles válidos del sistema (coinciden con ROLE_CHOICES del backend).
@@ -130,12 +136,31 @@ def user_has_permission(user, permission):
     """Indica si el usuario efectivamente posee el permiso atómico indicado.
 
     - Devuelve ``False`` para usuarios anónimos / no autenticados.
-    - Devuelve ``False`` para permisos desconocidos (no en ``PERMISSIONS``).
-    - El resto se decide a partir de ``ROLE_PERMISSIONS[get_effective_role(user)]``.
+    - Devuelve ``False`` si el permiso no está en el catálogo base
+      (``PERMISSIONS``, catálogo de compatibilidad temporal).
+    - Si la tabla ``GroupRolePermission`` está disponible, consulta la base
+      de datos (fuente de verdad). Si todavía no existe (p. ej. durante
+      migraciones tempranas), usa el mapa estático ``ROLE_PERMISSIONS`` como
+      fallback para no romper el comportamiento actual.
     """
     if not permission or permission not in PERMISSIONS:
         return False
     if not getattr(user, "is_authenticated", False):
         return False
+
+    # Fuente de verdad: base de datos (si el modelo ya existe).
+    if GroupRolePermission is not None:
+        role = get_effective_role(user)
+        group_names = set(user.groups.values_list("name", flat=True))
+        # El rol efectivo puede venir de is_staff (sin group). En ese caso
+        # resolvemos contra el group canónico de ese rol.
+        if not group_names:
+            return False
+        return GroupRolePermission.objects.filter(
+            group__name__in=group_names,
+            permission__key=permission,
+        ).exists()
+
+    # Fallback pre-migración: mapa estático (comportamiento anterior).
     role = get_effective_role(user)
     return permission in ROLE_PERMISSIONS.get(role, set())

@@ -72,6 +72,7 @@ def user_payload(user, picture=""):
         "first_name": user.first_name,
         "last_name": user.last_name,
         "picture": picture,
+        "is_staff": user.is_staff,
     }
 
 
@@ -106,6 +107,61 @@ def validate_password_strength(password):
     if faltantes:
         return "La contraseña debe tener " + ", ".join(faltantes) + "."
     return None
+
+
+class ChangePasswordView(APIView):
+    """POST /api/v1/auth/me/change-password/
+
+    Cambia la contraseña del usuario autenticado. Exige la contraseña
+    actual (``current_password``) antes de permitir el cambio y que la
+    nueva se confirme (``new_password`` == ``confirm_password``).
+
+    Body:      {"current_password": "...", "new_password": "...",
+                "confirm_password": "..."}
+    Respuesta: 200 {"detail": "Contraseña actualizada correctamente."}
+    """
+
+    # IsAuthenticated es el permiso por defecto del proyecto.
+
+    def post(self, request):
+        # Import local para evitar el import circular: serializers.py importa
+        # funciones de este módulo (views.py) a nivel de módulo.
+        from .serializers import ChangePasswordSerializer
+
+        serializer = ChangePasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        if not request.user.check_password(serializer.validated_data["current_password"]):
+            return Response(
+                {"current_password": "La contraseña actual es incorrecta."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        new_password = serializer.validated_data["new_password"]
+
+        # Mismas dos capas de validación que el registro y el reset por email:
+        # composición propia del proyecto + validators de Django.
+        password_error = validate_password_strength(new_password)
+        if password_error:
+            return Response(
+                {"new_password": password_error},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            validate_password(new_password, user=request.user)
+        except ValidationError as exc:
+            return Response(
+                {"new_password": " ".join(exc.messages)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        request.user.set_password(new_password)
+        request.user.save(update_fields=["password"])
+
+        # Cambiar la contraseña no cierra sesiones por diseño acá (el access
+        # JWT sigue válido hasta expirar). Solo se revocan los refresh en el
+        # flujo de reset por email (posible cuenta comprometida).
+        return Response({"detail": "Contraseña actualizada correctamente."})
 
 
 class GoogleAuthView(APIView):

@@ -7,7 +7,7 @@ navegable que agrega DefaultRouter.
 
 from rest_framework.routers import SimpleRouter
 
-from .management_views import UserAdminViewSet
+from .viewsets import UserAdminViewSet
 
 router = SimpleRouter()
 router.register(r"users", UserAdminViewSet, basename="user")

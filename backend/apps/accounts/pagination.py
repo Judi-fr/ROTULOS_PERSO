@@ -5,7 +5,7 @@ from rest_framework.response import Response
 class UserAdminPagination(PageNumberPagination):
     """Metadatos de paginación listos para mostrar en el panel administrativo."""
 
-    page_size = 20
+    page_size = 15
 
     def paginate_queryset(self, queryset, request, view=None):
         """Ajusta páginas fuera de rango tras borrar el último elemento."""

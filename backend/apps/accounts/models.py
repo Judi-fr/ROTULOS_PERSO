@@ -4,6 +4,7 @@ import secrets
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.db import models
 from django.utils import timezone
 
@@ -41,3 +42,60 @@ class EmailVerification(models.Model):
     def __str__(self):
         state = "verificado" if self.is_verified else "pendiente"
         return f"{self.user.email} ({state})"
+
+
+class RolePermission(models.Model):
+    """Permiso atómico administrable por rol (Django Group).
+
+    La fuente de verdad del ROL sigue siendo el ``Group`` de Django; esta
+    tabla solo cataloga los permisos y su asignación a cada Group (rol) vía
+    la tabla intermedia :class:`GroupRolePermission`.
+
+    La relación es ManyToMany lógica: cada permiso puede estar asignado a
+    varios Groups y cada Group puede tener varios permisos. La combinación
+    Group + Permission es única (ver ``GroupRolePermission.UniqueConstraint``).
+    """
+
+    key = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=150)
+    category = models.CharField(max_length=50)
+
+    class Meta:
+        verbose_name = "permiso de rol"
+        verbose_name_plural = "permisos de rol"
+        ordering = ["key"]
+
+    def __str__(self):
+        return f"{self.key} ({self.name})"
+
+
+class GroupRolePermission(models.Model):
+    """Asignación de un permiso a un rol (tabla intermedia).
+
+    Evita duplicar el Group: el Group sigue siendo la fuente de verdad del
+    rol; acá solo se guarda qué permisos tiene cada rol.
+    """
+
+    group = models.ForeignKey(
+        Group,
+        on_delete=models.CASCADE,
+        related_name="role_permission_links",
+    )
+    permission = models.ForeignKey(
+        RolePermission,
+        on_delete=models.CASCADE,
+        related_name="group_links",
+    )
+
+    class Meta:
+        verbose_name = "asignación de permiso a rol"
+        verbose_name_plural = "asignaciones de permiso a rol"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["group", "permission"],
+                name="uniq_group_role_permission",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.group.name} -> {self.permission.key}"

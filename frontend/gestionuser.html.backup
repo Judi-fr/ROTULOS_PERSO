@@ -79,7 +79,7 @@
             >
           </li>
           <li>
-            <a href="javascript:void(0)" id="navRoles"
+            <a href="#"
               ><svg
                 viewBox="0 0 24 24"
                 fill="none"
@@ -110,7 +110,7 @@
             >
           </li>
           <li>
-            <a href="javascript:void(0)" id="navSettings"
+            <a href="#"
               ><svg
                 viewBox="0 0 24 24"
                 fill="none"
@@ -530,107 +530,6 @@
             </div>
           </div>
         </div>
-
-        <!-- SETTINGS / PERFIL PROPIO -->
-        <div id="settingsSection" style="display:none;">
-          <div class="settings-header">
-            <h1>Settings</h1>
-            <p>Manage your account information and security.</p>
-          </div>
-
-          <div class="settings-body">
-
-            <!-- Tarjeta: datos personales -->
-            <div class="settings-card">
-              <div class="settings-card-title">Personal information</div>
-              <div class="settings-card-body">
-                <div class="field">
-                  <label>First name</label>
-                  <input type="text" id="settingsFirstName" placeholder="First name" autocomplete="given-name" />
-                </div>
-                <div class="field">
-                  <label>Last name</label>
-                  <input type="text" id="settingsLastName" placeholder="Last name" autocomplete="family-name" />
-                </div>
-                <div class="field">
-                  <label>Email <span class="field-badge">Read only</span></label>
-                  <input type="email" id="settingsEmail" disabled />
-                </div>
-                <div class="field">
-                  <label>Role <span class="field-badge">Read only</span></label>
-                  <input type="text" id="settingsRole" disabled />
-                </div>
-                <p id="settingsProfileMsg" style="display:none; font-size:0.85rem; margin:4px 0 0;"></p>
-                <div class="settings-card-actions">
-                  <button type="button" class="btn btn-primary" id="settingsSaveProfile">
-                    Save changes
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Tarjeta: cambio de contraseña -->
-            <div class="settings-card">
-              <div class="settings-card-title">Change password</div>
-              <div class="settings-card-body">
-                <div class="field">
-                  <label>Current password</label>
-                  <input type="password" id="settingsCurrentPassword"
-                         placeholder="Your current password"
-                         autocomplete="current-password" />
-                </div>
-                <div class="field">
-                  <label>New password</label>
-                  <input type="password" id="settingsNewPassword"
-                         placeholder="At least 8 characters"
-                         autocomplete="new-password" />
-                </div>
-                <div class="field">
-                  <label>Confirm new password</label>
-                  <input type="password" id="settingsConfirmPassword"
-                         placeholder="Repeat new password"
-                         autocomplete="new-password" />
-                </div>
-                <p id="settingsPasswordMsg" style="display:none; font-size:0.85rem; margin:4px 0 0;"></p>
-                <div class="settings-card-actions">
-                  <button type="button" class="btn btn-primary" id="settingsSavePassword">
-                    Change password
-                  </button>
-                </div>
-              </div>
-            </div>
-
-          </div><!-- /.settings-body -->
-        </div><!-- /#settingsSection -->
-
-        <!-- ROLES Y PERMISOS (solo administración) -->
-        <section id="rolesSection" style="display:none;" aria-labelledby="rolesTitle">
-          <div class="roles-header">
-            <h1 id="rolesTitle">Roles &amp; Permissions</h1>
-            <p>Administrá los permisos disponibles para cada rol del sistema.</p>
-          </div>
-
-          <p id="rolesMessage" class="roles-message" role="status" aria-live="polite" style="display:none;"></p>
-
-          <div class="roles-card">
-            <div class="roles-card-title">Roles del sistema</div>
-            <div id="rolesList" class="roles-list" aria-label="Seleccionar rol">
-              <p class="roles-loading">Loading roles...</p>
-            </div>
-          </div>
-
-          <div class="roles-card roles-permissions-card">
-            <div class="roles-card-title">Permisos asignados</div>
-            <div id="rolePermissionsContent" class="roles-card-body">
-              <p class="roles-loading">Loading permissions...</p>
-            </div>
-            <div class="roles-card-actions">
-              <button type="button" class="btn btn-primary" id="saveRolePermissions" disabled>
-                Save changes
-              </button>
-            </div>
-          </div>
-        </section><!-- /#rolesSection -->
       </main>
 
       <!-- CREATE USER PANEL -->

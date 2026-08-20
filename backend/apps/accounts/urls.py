@@ -4,7 +4,13 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from .profile_views import ProfileView
+from .role_permission_views import (
+    PermissionCatalogView,
+    RoleListView,
+    RolePermissionsView,
+)
 from .views import (
+    ChangePasswordView,
     GoogleAuthView,
     LoginView,
     LogoutView,
@@ -32,6 +38,12 @@ urlpatterns = [
     ),
     # Perfil del usuario autenticado: GET (ver) y PATCH (editar nombre/apellido).
     path("me/", ProfileView.as_view(), name="profile"),
+    # Cambio de contraseña del usuario autenticado (exige la actual).
+    path("me/change-password/", ChangePasswordView.as_view(), name="change-password"),
+    # Administración de roles y permisos (protegido por IsAdminUser).
+    path("roles/", RoleListView.as_view(), name="role-list"),
+    path("roles/<int:role_id>/permissions/", RolePermissionsView.as_view(), name="role-permissions"),
+    path("permissions/", PermissionCatalogView.as_view(), name="permission-catalog"),
     # Renueva el access token a partir de un refresh válido. Con la rotación
     # activada (ROTATE_REFRESH_TOKENS) devuelve también un refresh nuevo y
     # revoca el anterior.
