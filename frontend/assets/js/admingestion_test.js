@@ -42,6 +42,23 @@ function isAdminMode() {
   );
 }
 
+function getCurrentPermissions() {
+  const permissions = getCurrentUser().permissions;
+  return Array.isArray(permissions) ? new Set(permissions) : new Set();
+}
+
+function canUseUserPermission(permission) {
+  const currentUser = getCurrentUser();
+  const permissions = getCurrentPermissions();
+  // Compatibilidad de UI con sesiones antiguas: el backend continúa siendo
+  // la autoridad y siempre decide la respuesta final.
+  return permissions.has(permission) || (currentUser.is_staff && permissions.size === 0);
+}
+
+function canViewUsers() {
+  return canUseUserPermission("users.view");
+}
+
 // ---------------------------------------------------------------------------
 // apiFetch: wrapper centralizado de fetch.
 // - Agrega el header Authorization con el access token.
@@ -123,6 +140,9 @@ function renderUsers(users) {
   tbody.innerHTML = ""; // limpia el "Cargando..."
   const currentUser = getCurrentUser();
   const currentUserId = currentUser && Number(currentUser.id);
+  const canEditUsers = canUseUserPermission("users.edit");
+  const canDeactivateUsers = canUseUserPermission("users.deactivate");
+  const canReactivateUsers = canUseUserPermission("users.reactivate");
 
   users.forEach((u, i) => {
     const tr = document.createElement("tr");
@@ -132,7 +152,9 @@ function renderUsers(users) {
     const isSelf = Number(u.id) === currentUserId;
     // El admin NO puede desactivarse/eliminarse a sí mismo (protección doble:
     // backend devuelve 403 y el frontend no muestra siquiera la opción).
-    const deleteAction = isSelf
+    const deleteAction = !canDeactivateUsers
+      ? ""
+      : isSelf
       ? `<span class="self-protected" style="font-size:12px; color:#94a3b8;" title="No podés desactivar tu propia cuenta">No podés eliminarte</span>`
       : `<a href="#" class="danger delete-user" data-delete-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>Delete</a>`;
 
@@ -155,9 +177,9 @@ function renderUsers(users) {
           </button>
           <div class="dropdown" id="dd-${i}" style="display:none;">
             <a href="#" class="view-user" data-view-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>View</a>
-            <a href="#" class="edit-user" data-edit-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>Edit</a>
+            ${canEditUsers ? `<a href="#" class="edit-user" data-edit-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>Edit</a>` : ""}
             <div class="sep"></div>
-            ${u.can_reactivate ? `<a href="#" class="reactivate-user" data-reactivate-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>Reactivate</a>` : ""}
+            ${canReactivateUsers && u.can_reactivate ? `<a href="#" class="reactivate-user" data-reactivate-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>Reactivate</a>` : ""}
             ${deleteAction}
           </div>
         </div>
@@ -409,6 +431,56 @@ function openViewModal(userId) {
     });
 }
 
+// ---------------------------------------------------------------------------
+// ROLES DINÁMICOS: carga TODOS los Django Groups (básicos + personalizados)
+// en el <select> de crear/editar usuario y en el filtro de la tabla.
+// ---------------------------------------------------------------------------
+async function loadRoleOptions() {
+  const roleSelect = document.getElementById("roleSelect");
+  const roleFilter = document.getElementById("userRoleFilter");
+  if (!roleSelect && !roleFilter) return;
+
+  try {
+    const response = await apiFetch(ROLES_URL);
+    if (!response.ok) return;
+    const data = await response.json();
+    const roles = Array.isArray(data) ? data : data.results || data.roles || [];
+
+    const options = roles.map((role) => {
+      const key = String(role.key || role.name).toLowerCase();
+      const label = role.label || key.charAt(0).toUpperCase() + key.slice(1);
+      return { key, label };
+    });
+
+    if (roleSelect) {
+      const current = roleSelect.value;
+      roleSelect.innerHTML = '<option value="">Select role</option>';
+      options.forEach(({ key, label }) => {
+        const opt = document.createElement("option");
+        opt.value = key;
+        opt.textContent = label;
+        roleSelect.appendChild(opt);
+      });
+      if (current) roleSelect.value = current;
+    }
+
+    if (roleFilter) {
+      const current = roleFilter.value;
+      roleFilter.innerHTML = '<option value="all">All</option>';
+      options.forEach(({ key, label }) => {
+        const opt = document.createElement("option");
+        opt.value = key;
+        opt.textContent = label;
+        roleFilter.appendChild(opt);
+      });
+      if (current) roleFilter.value = current;
+    }
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    console.error("Error al cargar roles:", err);
+  }
+}
+
 function resetCreateForm() {
   editingUserId = null;
   const form = document.getElementById("createUserForm");
@@ -455,8 +527,9 @@ function openEditPanel(userId) {
   const statusKey = user.status_key || (user.is_active ? "active" : "inactive");
 
   if (roleSelect) {
-    const roleValue = roleKey.charAt(0).toUpperCase() + roleKey.slice(1);
-    roleSelect.value = roleValue;
+    // Los valores del <select> son los nombres de Group en minúsculas
+    // (cargados dinámicamente desde /api/v1/auth/roles/).
+    roleSelect.value = roleKey;
   }
   if (statusSelect) {
     const statusValue = statusKey.charAt(0).toUpperCase() + statusKey.slice(1);
@@ -741,16 +814,15 @@ function closeSettings() {
 
   const toShow = [".topbar", ".stats", ".table-card"];
 
-  // En modo USER las stats y table-card están ocultas igualmente;
-  // dejar que isAdminMode() / hideAdminUI() las controle.
-  if (isAdminMode()) {
+  // La tabla de usuarios se restaura si el usuario tiene el permiso
+  // efectivo users.view (no depende de ser admin). Si no lo tiene,
+  // solo se muestra el topbar reducido; la tabla y stats siguen ocultas.
+  if (canViewUsers()) {
     toShow.forEach((sel) => {
       const el = document.querySelector(sel);
       if (el) el.style.display = "";
     });
   } else {
-    // En modo USER solo mostrar el topbar reducido si existiera;
-    // la tabla y stats deben seguir ocultas.
     const topbar = document.querySelector(".topbar");
     if (topbar) topbar.style.display = "";
   }
@@ -901,6 +973,8 @@ async function loadMyProfile() {
       throw new Error(`Error HTTP: ${response.status}`);
     }
     const user = await response.json();
+    const stored = getCurrentUser();
+    localStorage.setItem("user", JSON.stringify({ ...stored, ...user }));
     renderProfilePanel(user);
   } catch (err) {
     if (err.isSessionExpired) return;
@@ -1215,6 +1289,10 @@ function renderRoles() {
 
   list.innerHTML = "";
   roles.forEach((role) => {
+    const isBasic = MANAGEABLE_ROLE_KEYS.has(role.key);
+    const row = document.createElement("div");
+    row.className = "role-selector-wrap";
+
     const button = document.createElement("button");
     button.type = "button";
     button.className = "role-selector";
@@ -1222,7 +1300,23 @@ function renderRoles() {
     button.dataset.roleId = getRoleId(role);
     button.classList.toggle("active", getRoleId(selectedRole) === getRoleId(role));
     button.addEventListener("click", () => loadRolePermissions(getRoleId(role)));
-    list.appendChild(button);
+    row.appendChild(button);
+
+    // Botón "Eliminar" solo para roles personalizados (no básicos).
+    if (!isBasic) {
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "role-delete-btn";
+      deleteBtn.textContent = "Eliminar";
+      deleteBtn.dataset.roleId = getRoleId(role);
+      deleteBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        deleteRole(getRoleId(role));
+      });
+      row.appendChild(deleteBtn);
+    }
+
+    list.appendChild(row);
   });
 }
 
@@ -1292,13 +1386,15 @@ async function loadRoles() {
   if (!response.ok) throw new Error(getErrorMessage(data, "No se pudieron cargar los roles."));
 
   const roleList = Array.isArray(data) ? data : data.results || data.roles || [];
-  roles = roleList
-    .filter((role) => MANAGEABLE_ROLE_KEYS.has(String(role.key || role.name || "").toLowerCase()))
-    .map((role) => ({
+  roles = roleList.map((role) => {
+    const key = String(role.key || role.name).toLowerCase();
+    const definition = ROLE_DEFINITIONS.find((d) => d.key === key);
+    return {
       ...role,
-      key: String(role.key || role.name).toLowerCase(),
-      label: ROLE_DEFINITIONS.find((definition) => definition.key === String(role.key || role.name).toLowerCase())?.label,
-    }));
+      key,
+      label: definition?.label || role.label || key.charAt(0).toUpperCase() + key.slice(1),
+    };
+  });
   rolesLoaded = true;
   renderRoles();
 }
@@ -1372,7 +1468,9 @@ async function openRoles() {
 function closeRoles() {
   const section = document.getElementById("rolesSection");
   if (section) section.style.display = "none";
-  if (isAdminMode()) {
+  // Restaurar la tabla de usuarios si el usuario tiene users.view,
+  // independientemente de si es admin o no.
+  if (canViewUsers()) {
     [".topbar", ".stats", ".table-card"].forEach((selector) => {
       const element = document.querySelector(selector);
       if (element) element.style.display = "";
@@ -1406,7 +1504,16 @@ async function saveRolePermissions() {
     roles = roles.map((role) => getRoleId(role) === getRoleId(selectedRole) ? selectedRole : role);
     renderRoles();
     renderRolePermissions(selectedRole.permissions);
-    showRolesMessage("Cambios guardados correctamente.", "success");
+    // El guardado no debe cambiar de vista ni volver a Users: conserva el rol
+    // seleccionado y reafirma la sección activa sin recargar la página.
+    document.getElementById("rolesSection").style.display = "";
+    [".topbar", ".stats", ".table-card"].forEach((selector) => {
+      const element = document.querySelector(selector);
+      if (element) element.style.display = "none";
+    });
+    document.querySelectorAll(".nav a").forEach((link) => link.classList.remove("active"));
+    document.getElementById("navRoles")?.classList.add("active");
+    showRolesMessage("Permisos guardados correctamente.", "success");
   } catch (err) {
     if (err.isSessionExpired) return;
     console.error("Error al guardar permisos del rol:", err);
@@ -1414,6 +1521,118 @@ async function saveRolePermissions() {
   } finally {
     button.disabled = false;
     button.textContent = originalText;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// CREAR ROL PERSONALIZADO
+// ---------------------------------------------------------------------------
+async function createRole() {
+  if (!isAdminMode()) return;
+  const input = document.getElementById("newRoleName");
+  const name = input?.value?.trim();
+  if (!name) {
+    showRolesMessage("Ingresá un nombre para el nuevo rol.");
+    return;
+  }
+
+  const button = document.getElementById("createRoleBtn");
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Creando...";
+  clearRolesMessage();
+
+  try {
+    const response = await apiFetch(ROLES_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 403) throw new Error("No tenés permisos para administrar roles.");
+    if (!response.ok) throw new Error(getErrorMessage(data, "No se pudo crear el rol."));
+
+    // Limpiar el input y recargar la lista de roles.
+    if (input) input.value = "";
+    rolesLoaded = false;
+    await loadRoles();
+    // Seleccionar el rol recién creado para poder asignarle permisos.
+    const created = roles.find((role) => String(getRoleId(role)) === String(getRoleId(data)));
+    if (created) {
+      await loadRolePermissions(getRoleId(created));
+    }
+    // Permanecer en Roles (no redirigir a Usuarios).
+    document.getElementById("rolesSection").style.display = "";
+    [".topbar", ".stats", ".table-card"].forEach((selector) => {
+      const element = document.querySelector(selector);
+      if (element) element.style.display = "none";
+    });
+    document.querySelectorAll(".nav a").forEach((link) => link.classList.remove("active"));
+    document.getElementById("navRoles")?.classList.add("active");
+    showRolesMessage(`Rol "${data.name || name}" creado correctamente.`, "success");
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    console.error("Error al crear rol:", err);
+    showRolesMessage(err.message || "No se pudo crear el rol.");
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ELIMINAR ROL PERSONALIZADO
+// ---------------------------------------------------------------------------
+async function deleteRole(roleId) {
+  if (!isAdminMode()) return;
+  const role = roles.find((item) => String(getRoleId(item)) === String(roleId));
+  if (!role) {
+    showRolesMessage("El rol solicitado no existe.");
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `¿Eliminar el rol "${role.label}"?\n\nLos usuarios que pertenecían a este rol pasarán a "Suscriptor". Esta acción no se puede deshacer.`
+  );
+  if (!confirmed) return;
+
+  try {
+    const response = await apiFetch(`${ROLES_URL}${roleId}/`, {
+      method: "DELETE",
+    });
+    if (response.status === 403) throw new Error("No tenés permisos para administrar roles.");
+    if (response.status === 404) throw new Error("El rol solicitado no existe.");
+    if (response.status === 400) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(getErrorMessage(data, "No se pudo eliminar el rol."));
+    }
+    if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
+
+    // Si el rol eliminado era el seleccionado, limpiar la selección.
+    if (selectedRole && String(getRoleId(selectedRole)) === String(roleId)) {
+      selectedRole = null;
+    }
+    // Recargar la lista de roles (permaneciendo en Roles).
+    rolesLoaded = false;
+    await loadRoles();
+    if (roles.length) {
+      await loadRolePermissions(getRoleId(roles[0]));
+    } else {
+      setPermissionsLoading("No hay roles disponibles.");
+    }
+    // Permanecer en Roles (no redirigir a Usuarios).
+    document.getElementById("rolesSection").style.display = "";
+    [".topbar", ".stats", ".table-card"].forEach((selector) => {
+      const element = document.querySelector(selector);
+      if (element) element.style.display = "none";
+    });
+    document.querySelectorAll(".nav a").forEach((link) => link.classList.remove("active"));
+    document.getElementById("navRoles")?.classList.add("active");
+    showRolesMessage(`Rol "${role.label}" eliminado correctamente.`, "success");
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    console.error("Error al eliminar rol:", err);
+    showRolesMessage(err.message || "No se pudo eliminar el rol.");
   }
 }
 
@@ -1426,7 +1645,17 @@ document.getElementById("navRoles")
     openRoles();
   });
 document.getElementById("saveRolePermissions")
-  ?.addEventListener("click", saveRolePermissions);
+  ?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    saveRolePermissions();
+  });
+document.getElementById("createRoleBtn")
+  ?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    createRole();
+  });
 document.getElementById("navSettings")
   ?.addEventListener("click", () => {
     closeRoles();
@@ -1458,14 +1687,17 @@ function bootstrap() {
   const user = getCurrentUser();
   const adminMode = isAdminMode();
 
-  if (adminMode) {
-    document.getElementById("openCreatePanel").style.display = "";
+  if (canViewUsers()) {
+    document.getElementById("openCreatePanel").style.display = canUseUserPermission("users.create") ? "" : "none";
+    if (!adminMode) document.getElementById("navRoles").style.display = "none";
     // El sidebar muestra el perfil del admin autenticado (no "Cargando...").
     // Primero se pinta con lo que haya en localStorage y luego se refresca
     // con los datos reales de /me/.
     renderProfilePanel(user);
     loadMyProfile();
     loadUsers();
+    // Cargar dinámicamente TODOS los roles (básicos + personalizados).
+    loadRoleOptions();
   } else {
     hideAdminUI();
     renderProfilePanel(user);

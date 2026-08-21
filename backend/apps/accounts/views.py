@@ -21,7 +21,7 @@ from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
@@ -66,6 +66,8 @@ def user_payload(user, picture=""):
     ``picture`` solo lo aporta Google (viene en el ID token y no se
     persiste); en el login con email/contraseña queda vacío.
     """
+    from .permissions_map import PERMISSIONS, get_effective_role, user_has_permission
+
     return {
         "id": user.id,
         "email": user.email,
@@ -73,6 +75,10 @@ def user_payload(user, picture=""):
         "last_name": user.last_name,
         "picture": picture,
         "is_staff": user.is_staff,
+        "role": get_effective_role(user),
+        "permissions": sorted(
+            permission for permission in PERMISSIONS if user_has_permission(user, permission)
+        ),
     }
 
 
@@ -121,7 +127,18 @@ class ChangePasswordView(APIView):
     Respuesta: 200 {"detail": "Contraseña actualizada correctamente."}
     """
 
-    # IsAuthenticated es el permiso por defecto del proyecto.
+    permission_classes = [IsAuthenticated]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        # Import local para mantener este módulo independiente de imports de
+        # serializers que ya dependen de views.py.
+        from .permissions_map import user_has_permission
+
+        if not user_has_permission(request.user, "users.me.change_password"):
+            from rest_framework.exceptions import PermissionDenied
+
+            raise PermissionDenied("No tenés permisos para realizar esta acción.")
 
     def post(self, request):
         # Import local para evitar el import circular: serializers.py importa

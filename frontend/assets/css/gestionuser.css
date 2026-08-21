@@ -431,6 +431,55 @@
   .roles-message { margin: 0 0 18px; font-size: .9rem; }
   .roles-message.success { color: var(--green); }
   .roles-message.error { color: var(--red); }
+  .roles-create {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .roles-create input {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    font: inherit;
+    font-size: .92rem;
+  }
+  .roles-create input:focus {
+    outline: none;
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px var(--blue-light);
+  }
+  .role-selector-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .role-selector-wrap .role-selector {
+    flex: 1;
+  }
+  .role-delete-btn {
+    border: 1px solid var(--red);
+    background: var(--red-light);
+    color: var(--red);
+    border-radius: 9px;
+    padding: 8px 10px;
+    font: inherit;
+    font-size: .8rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .role-delete-btn:hover {
+    background: var(--red);
+    color: #fff;
+  }
+  .role-delete-btn:disabled {
+    cursor: not-allowed;
+    opacity: .5;
+  }
+  @media (max-width: 800px) {
+    .roles-create { flex-direction: column; }
+  }
   .roles-card {
     background: var(--card);
     border: 1px solid var(--border);

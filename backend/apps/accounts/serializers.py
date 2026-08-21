@@ -31,10 +31,14 @@ ROLE_CHOICES = ("admin", "designer", "operator", "subscriber")
 # Alias (legacy y variantes en español) -> rol canónico.
 ROLE_ALIASES = {
     "administrador": "admin",
+    "administradores": "admin",
     "administrator": "admin",
     "diseñador": "designer",
+    "diseñadores": "designer",
     "disenador": "designer",
+    "disenadores": "designer",
     "operador": "operator",
+    "operadores": "operator",
 }
 
 # Rol canónico -> nombre de Group. El group canónico "admin" es distinto del
@@ -66,8 +70,9 @@ def get_user_role(user):
     """Rol efectivo del usuario (misma lógica que permissions_map.get_effective_role).
 
     1. Group cuyo nombre normaliza a un rol válido.
-    2. Fallback: ``is_staff`` -> ``admin``.
-    3. Fallback final: ``subscriber``.
+    2. Fallback: primer Group personalizado (rol personalizado).
+    3. Fallback: ``is_staff`` -> ``admin``.
+    4. Fallback final: ``subscriber``.
     """
     if user is None:
         return "subscriber"
@@ -75,6 +80,11 @@ def get_user_role(user):
     for role in ROLE_CHOICES:
         if role in names:
             return role
+    # Rol personalizado: devolver el nombre del primer Group no canónico.
+    for g in user.groups.all():
+        name = normalize_role_name(g.name)
+        if name not in ROLE_CHOICES:
+            return name
     return "admin" if getattr(user, "is_staff", False) else "subscriber"
 
 
@@ -199,7 +209,12 @@ class UserAdminSerializer(serializers.ModelSerializer):
             return None
         canonical = normalize_role_name(role)
         mapped = ROLE_GROUP_MAP.get(canonical)
-        return [mapped] if mapped else []
+        if mapped:
+            return [mapped]
+        # Rol personalizado: el nombre del rol ES el nombre del Group.
+        if Group.objects.filter(name=canonical).exists():
+            return [canonical]
+        return []
 
     @classmethod
     def _status_to_is_active(cls, status):
@@ -238,13 +253,16 @@ class UserAdminSerializer(serializers.ModelSerializer):
         return value
 
     def validate_role(self, value):
-        """Valida que el rol (alias del panel) sea uno de los conocidos."""
+        """Valida que el rol (alias del panel) sea uno de los conocidos o un
+        Group personalizado existente."""
         if value is None or str(value).strip() == "":
             return value
-        canonical = normalize_role_name(value)
-        if canonical not in ROLE_CHOICES:
-            raise serializers.ValidationError(f"Rol inválido: {value!r}.")
-        return canonical
+        role = str(value).strip().lower()
+        if role in ROLE_CHOICES:
+            return role
+        if Group.objects.filter(name=role).exists():
+            return role
+        raise serializers.ValidationError(f"Rol inválido: {value!r}.")
 
     def _run_django_password_validators(self, password, user):
         try:
@@ -411,6 +429,8 @@ class ProfileSerializer(serializers.ModelSerializer):
     groups = serializers.SlugRelatedField(slug_field="name", many=True, read_only=True)
     has_usable_password = serializers.SerializerMethodField()
     display_name = serializers.SerializerMethodField()
+    role = serializers.SerializerMethodField()
+    permissions = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -424,6 +444,8 @@ class ProfileSerializer(serializers.ModelSerializer):
             "date_joined",
             "has_usable_password",
             "display_name",
+            "role",
+            "permissions",
         ]
         read_only_fields = [
             "id",
@@ -433,6 +455,8 @@ class ProfileSerializer(serializers.ModelSerializer):
             "date_joined",
             "has_usable_password",
             "display_name",
+            "role",
+            "permissions",
         ]
 
     def get_has_usable_password(self, obj):
@@ -441,3 +465,11 @@ class ProfileSerializer(serializers.ModelSerializer):
     def get_display_name(self, obj):
         full = " ".join(filter(None, [obj.first_name, obj.last_name])).strip()
         return full or obj.email or f"Usuario {obj.pk}"
+
+    def get_role(self, obj):
+        return get_user_role(obj)
+
+    def get_permissions(self, obj):
+        from .permissions_map import PERMISSIONS, user_has_permission
+
+        return sorted(permission for permission in PERMISSIONS if user_has_permission(obj, permission))

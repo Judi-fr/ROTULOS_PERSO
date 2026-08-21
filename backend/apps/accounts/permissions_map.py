@@ -40,6 +40,15 @@ DEFAULT_ROLE = "subscriber"
 # "user" era el rol genérico antiguo y ahora equivale a subscriber.
 LEGACY_ROLE_ALIASES = {
     "user": DEFAULT_ROLE,
+    "administrador": "admin",
+    "administradores": "admin",
+    "administrator": "admin",
+    "diseñador": "designer",
+    "diseñadores": "designer",
+    "disenador": "designer",
+    "disenadores": "designer",
+    "operador": "operator",
+    "operadores": "operator",
 }
 
 
@@ -107,9 +116,11 @@ def get_effective_role(user):
 
     1. Si el usuario pertenece a un Group cuyo nombre coincide con un rol
        válido (recorriendo el orden de ``VALID_ROLES``), devuelve ese rol.
-    2. Si el usuario es ``is_staff`` (sin group explícito), devuelve
+    2. Si el usuario pertenece a un Group personalizado (no canónico),
+       devuelve el nombre de ese Group (rol personalizado).
+    3. Si el usuario es ``is_staff`` (sin group explícito), devuelve
        ``admin`` (compatibilidad con usuarios staff creados sin group).
-    3. En caso contrario, devuelve ``DEFAULT_ROLE`` (``subscriber``).
+    4. En caso contrario, devuelve ``DEFAULT_ROLE`` (``subscriber``).
 
     El rol legado ``"user"`` no es un valor posible de retorno de esta
     función (nunca se devuelve ``"user"``); si un rol de entrada fuera
@@ -118,17 +129,28 @@ def get_effective_role(user):
     if user is None or not getattr(user, "is_authenticated", True):
         return DEFAULT_ROLE
 
-    # 1. Groups con nombre de rol válido (mismo orden que get_user_role).
-    user_groups = set(user.groups.values_list("name", flat=True))
+    # 1. Los Groups legacy se normalizan al rol canónico antes de evaluar.
+    # Esto conserva a Groups como origen del rol, sin exigir que usuarios
+    # históricos se reasignen manualmente antes de usar permisos configurables.
+    user_groups = {
+        normalize_role(group_name)
+        for group_name in user.groups.values_list("name", flat=True)
+    }
     for role in VALID_ROLES:
         if role in user_groups:
             return role
 
-    # 2. Compatibilidad: staff sin group -> admin.
+    # 2. Rol personalizado: devolver el nombre del primer Group no canónico.
+    for group_name in user.groups.values_list("name", flat=True):
+        normalized = normalize_role(group_name)
+        if normalized not in VALID_ROLES:
+            return normalized
+
+    # 3. Compatibilidad: staff sin group -> admin.
     if getattr(user, "is_staff", False):
         return "admin"
 
-    # 3. Fallback.
+    # 4. Fallback.
     return DEFAULT_ROLE
 
 
@@ -150,14 +172,12 @@ def user_has_permission(user, permission):
 
     # Fuente de verdad: base de datos (si el modelo ya existe).
     if GroupRolePermission is not None:
+        # Consultar el Group del rol efectivo mantiene a GroupRolePermission
+        # como fuente de verdad. También cubre usuarios legacy sin Group: su
+        # rol efectivo es admin (si son staff) o subscriber (fallback).
         role = get_effective_role(user)
-        group_names = set(user.groups.values_list("name", flat=True))
-        # El rol efectivo puede venir de is_staff (sin group). En ese caso
-        # resolvemos contra el group canónico de ese rol.
-        if not group_names:
-            return False
         return GroupRolePermission.objects.filter(
-            group__name__in=group_names,
+            group__name=role,
             permission__key=permission,
         ).exists()
 

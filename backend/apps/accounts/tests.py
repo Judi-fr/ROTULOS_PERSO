@@ -369,15 +369,22 @@ class PermissionsTests(AuthTestCase):
 
 
 class RolesTests(AuthTestCase):
-    """Los tres roles del proyecto se siembran vía migración de datos
-    (accounts.0001_seed_roles) y deben existir como Groups."""
+    """Los roles canónicos existen y los legacy fueron eliminados."""
 
-    def test_los_tres_roles_existen(self):
+    def test_los_cuatro_roles_canonicos_existen(self):
         from django.contrib.auth.models import Group
 
         nombres = set(Group.objects.values_list("name", flat=True))
         self.assertTrue(
-            {"administradores", "diseñadores", "operadores"}.issubset(nombres)
+            {"admin", "designer", "operator", "subscriber"}.issubset(nombres)
+        )
+
+    def test_los_groups_legacy_fueron_eliminados(self):
+        from django.contrib.auth.models import Group
+
+        nombres = set(Group.objects.values_list("name", flat=True))
+        self.assertFalse(
+            {"administradores", "diseñadores", "operadores"}.intersection(nombres)
         )
 
 
@@ -521,9 +528,14 @@ class RolePermissionSystemTests(AuthTestCase):
         self.client.force_authenticate(user=self.admin_user)
         resp = self.client.get("/api/v1/auth/roles/")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(resp.data), 4)
         names = [r["name"] for r in resp.data]
-        self.assertEqual(names, [self.ADMIN, self.DESIGNER, self.OPERATOR, self.SUBSCRIBER])
+        # Los cuatro básicos aparecen primero y en orden canónico; pueden
+        # existir roles personalizados creados por otros tests después.
+        self.assertEqual(
+            names[:4],
+            [self.ADMIN, self.DESIGNER, self.OPERATOR, self.SUBSCRIBER],
+        )
+        self.assertGreaterEqual(len(names), 4)
 
     def test_get_permissions_admin(self):
         self.client.force_authenticate(user=self.admin_user)
@@ -644,6 +656,189 @@ class RolePermissionSystemTests(AuthTestCase):
         self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
         resp = self.client.get("/api/v1/auth/permissions/")
         self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    # --- Los permisos asignados gobiernan los endpoints --------------------
+
+    def _remove_permission(self, role_name, permission_key):
+        group = self.Group.objects.get(name=role_name)
+        self.GroupRolePermission.objects.filter(
+            group=group, permission__key=permission_key
+        ).delete()
+
+    def _restore_permission(self, role_name, permission_key):
+        self.GroupRolePermission.objects.get_or_create(
+            group=self.Group.objects.get(name=role_name),
+            permission=self.RolePermission.objects.get(key=permission_key),
+        )
+
+    def _grant_permission(self, role_name, permission_key):
+        self._restore_permission(role_name, permission_key)
+
+    def test_designer_users_view_otorgar_quitar_y_restaurar(self):
+        from .permissions_map import get_effective_role, user_has_permission
+
+        self.client.force_authenticate(user=self.designer_user)
+        self.assertEqual(get_effective_role(self.designer_user), self.DESIGNER)
+        self.assertFalse(user_has_permission(self.designer_user, "users.view"))
+        self.assertEqual(self.client.get("/api/v1/users/").status_code, status.HTTP_403_FORBIDDEN)
+
+        self._grant_permission(self.DESIGNER, "users.view")
+        self.assertTrue(user_has_permission(self.designer_user, "users.view"))
+        self.assertEqual(self.client.get("/api/v1/users/").status_code, status.HTTP_200_OK)
+
+        self._remove_permission(self.DESIGNER, "users.view")
+        self.assertFalse(user_has_permission(self.designer_user, "users.view"))
+        self.assertEqual(self.client.get("/api/v1/users/").status_code, status.HTTP_403_FORBIDDEN)
+
+        self._grant_permission(self.DESIGNER, "users.view")
+        self.assertTrue(user_has_permission(self.designer_user, "users.view"))
+        self.assertEqual(self.client.get("/api/v1/users/").status_code, status.HTTP_200_OK)
+
+    def test_designer_users_create_otorgar_quitar_y_restaurar(self):
+        self.client.force_authenticate(user=self.designer_user)
+        payload = {"email": "designer-create-1@example.com", "password": STRONG_PASSWORD}
+        self.assertEqual(self.client.post("/api/v1/users/", payload, format="json").status_code, status.HTTP_403_FORBIDDEN)
+
+        self._grant_permission(self.DESIGNER, "users.create")
+        self.assertEqual(self.client.post("/api/v1/users/", payload, format="json").status_code, status.HTTP_201_CREATED)
+
+        self._remove_permission(self.DESIGNER, "users.create")
+        denied = {"email": "designer-create-2@example.com", "password": STRONG_PASSWORD}
+        self.assertEqual(self.client.post("/api/v1/users/", denied, format="json").status_code, status.HTTP_403_FORBIDDEN)
+
+        self._grant_permission(self.DESIGNER, "users.create")
+        restored = {"email": "designer-create-3@example.com", "password": STRONG_PASSWORD}
+        self.assertEqual(self.client.post("/api/v1/users/", restored, format="json").status_code, status.HTTP_201_CREATED)
+
+    def test_designer_users_edit_otorgar_quitar_y_restaurar(self):
+        self.client.force_authenticate(user=self.designer_user)
+        url = f"/api/v1/users/{self.operator_user.id}/"
+        self.assertEqual(self.client.patch(url, {"first_name": "No"}, format="json").status_code, status.HTTP_403_FORBIDDEN)
+
+        self._grant_permission(self.DESIGNER, "users.edit")
+        self.assertEqual(self.client.patch(url, {"first_name": "Sí"}, format="json").status_code, status.HTTP_200_OK)
+
+        self._remove_permission(self.DESIGNER, "users.edit")
+        self.assertEqual(self.client.patch(url, {"last_name": "No"}, format="json").status_code, status.HTTP_403_FORBIDDEN)
+
+        self._grant_permission(self.DESIGNER, "users.edit")
+        self.assertEqual(self.client.patch(url, {"last_name": "Sí"}, format="json").status_code, status.HTTP_200_OK)
+
+    def test_designer_me_view_otorgar_quitar_y_restaurar(self):
+        self.client.force_authenticate(user=self.designer_user)
+        self._remove_permission(self.DESIGNER, "users.me.view")
+        self.assertEqual(self.client.get("/api/v1/auth/me/").status_code, status.HTTP_403_FORBIDDEN)
+        self._grant_permission(self.DESIGNER, "users.me.view")
+        self.assertEqual(self.client.get("/api/v1/auth/me/").status_code, status.HTTP_200_OK)
+
+    def test_designer_me_edit_otorgar_quitar_y_restaurar(self):
+        self.client.force_authenticate(user=self.designer_user)
+        self._remove_permission(self.DESIGNER, "users.me.edit")
+        self.assertEqual(self.client.patch("/api/v1/auth/me/", {"first_name": "No"}, format="json").status_code, status.HTTP_403_FORBIDDEN)
+        self._grant_permission(self.DESIGNER, "users.me.edit")
+        self.assertEqual(self.client.patch("/api/v1/auth/me/", {"first_name": "Sí"}, format="json").status_code, status.HTTP_200_OK)
+
+    def test_designer_me_change_password_otorgar_quitar_y_restaurar(self):
+        self.client.force_authenticate(user=self.designer_user)
+        payload = {
+            "current_password": STRONG_PASSWORD,
+            "new_password": "NuevaClave2026",
+            "confirm_password": "NuevaClave2026",
+        }
+        self._remove_permission(self.DESIGNER, "users.me.change_password")
+        self.assertEqual(self.client.post("/api/v1/auth/me/change-password/", payload, format="json").status_code, status.HTTP_403_FORBIDDEN)
+        self._grant_permission(self.DESIGNER, "users.me.change_password")
+        self.assertEqual(self.client.post("/api/v1/auth/me/change-password/", payload, format="json").status_code, status.HTTP_200_OK)
+
+
+    def test_quitar_users_view_impide_listar_y_reotorgar_restaura(self):
+        self.client.force_authenticate(user=self.admin_user)
+        self._remove_permission(self.ADMIN, "users.view")
+        self.assertEqual(
+            self.client.get("/api/v1/users/").status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self._restore_permission(self.ADMIN, "users.view")
+        self.assertEqual(
+            self.client.get("/api/v1/users/").status_code,
+            status.HTTP_200_OK,
+        )
+
+    def test_quitar_users_create_impide_crear_y_reotorgar_restaura(self):
+        self.client.force_authenticate(user=self.admin_user)
+        self._remove_permission(self.ADMIN, "users.create")
+        payload = {
+            "email": "permission-create@example.com",
+            "password": STRONG_PASSWORD,
+        }
+        self.assertEqual(
+            self.client.post("/api/v1/users/", payload, format="json").status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self._restore_permission(self.ADMIN, "users.create")
+        self.assertEqual(
+            self.client.post("/api/v1/users/", payload, format="json").status_code,
+            status.HTTP_201_CREATED,
+        )
+
+    def test_quitar_users_edit_impide_patch_y_reotorgar_restaura(self):
+        self.client.force_authenticate(user=self.admin_user)
+        self._remove_permission(self.ADMIN, "users.edit")
+        url = f"/api/v1/users/{self.designer_user.id}/"
+        self.assertEqual(
+            self.client.patch(url, {"first_name": "Sin permiso"}, format="json").status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self._restore_permission(self.ADMIN, "users.edit")
+        self.assertEqual(
+            self.client.patch(url, {"first_name": "Con permiso"}, format="json").status_code,
+            status.HTTP_200_OK,
+        )
+
+    def test_quitar_users_me_view_impide_perfil_y_reotorgar_restaura(self):
+        self.client.force_authenticate(user=self.designer_user)
+        self._remove_permission(self.DESIGNER, "users.me.view")
+        self.assertEqual(
+            self.client.get("/api/v1/auth/me/").status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self._restore_permission(self.DESIGNER, "users.me.view")
+        self.assertEqual(
+            self.client.get("/api/v1/auth/me/").status_code,
+            status.HTTP_200_OK,
+        )
+
+    def test_quitar_users_me_edit_impide_patch_y_reotorgar_restaura(self):
+        self.client.force_authenticate(user=self.designer_user)
+        self._remove_permission(self.DESIGNER, "users.me.edit")
+        payload = {"first_name": "Sin permiso"}
+        self.assertEqual(
+            self.client.patch("/api/v1/auth/me/", payload, format="json").status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self._restore_permission(self.DESIGNER, "users.me.edit")
+        self.assertEqual(
+            self.client.patch("/api/v1/auth/me/", payload, format="json").status_code,
+            status.HTTP_200_OK,
+        )
+
+    def test_quitar_cambio_password_impide_y_reotorgar_restaura(self):
+        self.client.force_authenticate(user=self.designer_user)
+        self._remove_permission(self.DESIGNER, "users.me.change_password")
+        payload = {
+            "current_password": STRONG_PASSWORD,
+            "new_password": "OtraClave2026",
+            "confirm_password": "OtraClave2026",
+        }
+        self.assertEqual(
+            self.client.post("/api/v1/auth/me/change-password/", payload, format="json").status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self._restore_permission(self.DESIGNER, "users.me.change_password")
+        self.assertEqual(
+            self.client.post("/api/v1/auth/me/change-password/", payload, format="json").status_code,
+            status.HTTP_200_OK,
+        )
 
     # --- user_has_permission consulta la base --------------------------------
 
@@ -831,31 +1026,31 @@ class UserAdminCrudTests(AuthTestCase):
         resp = self.client.post(
             self.URL,
             {"email": "conrol@example.com", "password": STRONG_PASSWORD,
-             "groups": ["diseñadores", "operadores"]},
+             "groups": ["designer", "operator"]},
             format="json",
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         creado = User.objects.get(email="conrol@example.com")
         self.assertEqual(
             set(creado.groups.values_list("name", flat=True)),
-            {"diseñadores", "operadores"},
+            {"designer", "operator"},
         )
         # La respuesta devuelve los roles por nombre.
-        self.assertEqual(set(resp.data["groups"]), {"diseñadores", "operadores"})
+        self.assertEqual(set(resp.data["groups"]), {"designer", "operator"})
 
     def test_admin_edita_roles(self):
         self.client.force_authenticate(user=self.admin)
-        self.normal.groups.add(Group.objects.get(name="operadores"))
+        self.normal.groups.add(Group.objects.get(name="operator"))
         # Reemplaza los roles por uno solo.
         resp = self.client.patch(
             f"{self.URL}{self.normal.id}/",
-            {"groups": ["administradores"]},
+            {"groups": ["admin"]},
             format="json",
         )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(
             set(self.normal.groups.values_list("name", flat=True)),
-            {"administradores"},
+            {"admin"},
         )
 
     def test_crear_rechaza_rol_inexistente(self):
@@ -886,3 +1081,370 @@ class UserAdminCrudTests(AuthTestCase):
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
         self.admin.refresh_from_db()
         self.assertTrue(self.admin.is_staff)
+
+
+class RoleCrudTests(AuthTestCase):
+    """Creación y eliminación de roles personalizados (Groups).
+
+    POST   /api/v1/auth/roles/
+    DELETE /api/v1/auth/roles/<role_id>/
+    """
+
+    ROLES_URL = "/api/v1/auth/roles/"
+    ADMIN = "admin"
+    DESIGNER = "designer"
+    OPERATOR = "operator"
+    SUBSCRIBER = "subscriber"
+    STRONG_PASSWORD = STRONG_PASSWORD
+
+    def setUp(self):
+        super().setUp()
+        from django.contrib.auth.models import Group
+
+        from .models import GroupRolePermission, RolePermission
+
+        self.Group = Group
+        self.GroupRolePermission = GroupRolePermission
+        self.RolePermission = RolePermission
+
+        for name in (self.ADMIN, self.DESIGNER, self.OPERATOR, self.SUBSCRIBER):
+            Group.objects.get_or_create(name=name)
+
+        self.admin_user = User.objects.create_user(
+            username="crud_admin@example.com",
+            email="crud_admin@example.com",
+            password=STRONG_PASSWORD,
+            is_staff=True,
+        )
+        self.admin_user.groups.add(Group.objects.get(name=self.ADMIN))
+
+        self.designer_user = User.objects.create_user(
+            username="crud_designer@example.com",
+            email="crud_designer@example.com",
+            password=STRONG_PASSWORD,
+        )
+        self.designer_user.groups.add(Group.objects.get(name=self.DESIGNER))
+
+    # --- Creación -----------------------------------------------------------
+
+    def test_admin_puede_crear_rol(self):
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.post(self.ROLES_URL, {"name": "mi_rol"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp.data["name"], "mi_rol")
+        self.assertTrue(self.Group.objects.filter(name="mi_rol").exists())
+
+    def test_no_admin_no_puede_crear_rol(self):
+        self.client.force_authenticate(user=self.designer_user)
+        resp = self.client.post(self.ROLES_URL, {"name": "mi_rol"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(self.Group.objects.filter(name="mi_rol").exists())
+
+    def test_no_se_puede_crear_rol_duplicado(self):
+        self.Group.objects.create(name="mi_rol")
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.post(self.ROLES_URL, {"name": "mi_rol"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_no_se_puede_crear_duplicado_por_mayusculas(self):
+        self.Group.objects.create(name="mi_rol")
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.post(self.ROLES_URL, {"name": "MI_Rol"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_nombre_obligatorio(self):
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.post(self.ROLES_URL, {"name": "   "}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_no_se_puede_crear_rol_protegido(self):
+        for name in (self.ADMIN, self.DESIGNER, self.OPERATOR, self.SUBSCRIBER):
+            self.client.force_authenticate(user=self.admin_user)
+            resp = self.client.post(self.ROLES_URL, {"name": name}, format="json")
+            self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_no_se_puede_crear_alias_legacy(self):
+        for name in ("administrador", "administradores", "administrator",
+                     "diseñador", "diseñadores", "disenador", "disenadores",
+                     "operador", "operadores", "user"):
+            self.client.force_authenticate(user=self.admin_user)
+            resp = self.client.post(self.ROLES_URL, {"name": name}, format="json")
+            self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_rol_nuevo_comienza_sin_permisos(self):
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.post(self.ROLES_URL, {"name": "sin_permisos"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        group = self.Group.objects.get(name="sin_permisos")
+        self.assertEqual(
+            self.GroupRolePermission.objects.filter(group=group).count(),
+            0,
+        )
+
+    def test_rol_nuevo_puede_recibir_permisos(self):
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.post(self.ROLES_URL, {"name": "con_permisos"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        group = self.Group.objects.get(name="con_permisos")
+        perm = self.RolePermission.objects.get(key="users.view")
+        self.GroupRolePermission.objects.create(group=group, permission=perm)
+        links = self.GroupRolePermission.objects.filter(group=group)
+        self.assertEqual(links.count(), 1)
+        self.assertEqual(links.first().permission.key, "users.view")
+
+    # --- Eliminación --------------------------------------------------------
+
+    def test_admin_puede_eliminar_rol_personalizado(self):
+        group = self.Group.objects.create(name="eliminable")
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.delete(f"{self.ROLES_URL}{group.id}/")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(self.Group.objects.filter(pk=group.pk).exists())
+
+    def test_no_admin_no_puede_eliminar_rol(self):
+        group = self.Group.objects.create(name="eliminable")
+        self.client.force_authenticate(user=self.designer_user)
+        resp = self.client.delete(f"{self.ROLES_URL}{group.id}/")
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(self.Group.objects.filter(pk=group.pk).exists())
+
+    def test_no_se_puede_eliminar_admin(self):
+        group = self.Group.objects.get(name=self.ADMIN)
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.delete(f"{self.ROLES_URL}{group.id}/")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(self.Group.objects.filter(pk=group.pk).exists())
+
+    def test_no_se_puede_eliminar_designer(self):
+        group = self.Group.objects.get(name=self.DESIGNER)
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.delete(f"{self.ROLES_URL}{group.id}/")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(self.Group.objects.filter(pk=group.pk).exists())
+
+    def test_no_se_puede_eliminar_operator(self):
+        group = self.Group.objects.get(name=self.OPERATOR)
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.delete(f"{self.ROLES_URL}{group.id}/")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(self.Group.objects.filter(pk=group.pk).exists())
+
+    def test_no_se_puede_eliminar_subscriber(self):
+        group = self.Group.objects.get(name=self.SUBSCRIBER)
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.delete(f"{self.ROLES_URL}{group.id}/")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(self.Group.objects.filter(pk=group.pk).exists())
+
+    def test_eliminar_rol_inexistente_devuelve_404(self):
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.delete(f"{self.ROLES_URL}999999/")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_eliminar_rol_mueve_usuarios_a_subscriber(self):
+        group = self.Group.objects.create(name="test_role")
+        subscriber = self.Group.objects.get(name=self.SUBSCRIBER)
+        user = User.objects.create_user(
+            username="roluser@example.com",
+            email="roluser@example.com",
+            password=STRONG_PASSWORD,
+        )
+        user.groups.add(group)
+
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.delete(f"{self.ROLES_URL}{group.id}/")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+        user.refresh_from_db()
+        self.assertTrue(User.objects.filter(pk=user.pk).exists())
+        self.assertFalse(user.groups.filter(pk=group.pk).exists())
+        self.assertTrue(user.groups.filter(pk=subscriber.pk).exists())
+
+        from .permissions_map import get_effective_role
+        self.assertEqual(get_effective_role(user), self.SUBSCRIBER)
+
+    def test_eliminar_rol_borra_group_role_permissions(self):
+        group = self.Group.objects.create(name="test_role")
+        perm = self.RolePermission.objects.get(key="users.view")
+        self.GroupRolePermission.objects.create(group=group, permission=perm)
+        self.assertEqual(self.GroupRolePermission.objects.filter(group=group).count(), 1)
+
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.delete(f"{self.ROLES_URL}{group.id}/")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(self.GroupRolePermission.objects.filter(group=group).count(), 0)
+
+    def test_eliminar_rol_no_borra_usuarios(self):
+        group = self.Group.objects.create(name="test_role")
+        user = User.objects.create_user(
+            username="keep@example.com",
+            email="keep@example.com",
+            password=STRONG_PASSWORD,
+        )
+        user.groups.add(group)
+
+        self.client.force_authenticate(user=self.admin_user)
+        self.client.delete(f"{self.ROLES_URL}{group.id}/")
+        self.assertTrue(User.objects.filter(pk=user.pk).exists())
+
+    def test_eliminar_rol_no_toca_otros_roles_ni_permisos(self):
+        group = self.Group.objects.create(name="test_role")
+        perm_view = self.RolePermission.objects.get(key="users.view")
+        perm_me = self.RolePermission.objects.get(key="users.me.view")
+        self.GroupRolePermission.objects.create(group=group, permission=perm_view)
+
+        admin_group = self.Group.objects.get(name=self.ADMIN)
+        designer_group = self.Group.objects.get(name=self.DESIGNER)
+        admin_before = set(
+            self.GroupRolePermission.objects.filter(group=admin_group)
+            .values_list("permission__key", flat=True)
+        )
+        designer_before = set(
+            self.GroupRolePermission.objects.filter(group=designer_group)
+            .values_list("permission__key", flat=True)
+        )
+
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.delete(f"{self.ROLES_URL}{group.id}/")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+        self.assertEqual(
+            set(self.GroupRolePermission.objects.filter(group=admin_group)
+                .values_list("permission__key", flat=True)),
+            admin_before,
+        )
+        self.assertEqual(
+            set(self.GroupRolePermission.objects.filter(group=designer_group)
+                .values_list("permission__key", flat=True)),
+            designer_before,
+        )
+        self.assertTrue(self.RolePermission.objects.filter(pk=perm_me.pk).exists())
+
+    def test_eliminar_rol_no_toca_is_staff_ni_is_superuser(self):
+        group = self.Group.objects.create(name="test_role")
+        user = User.objects.create_user(
+            username="staff2@example.com",
+            email="staff2@example.com",
+            password=STRONG_PASSWORD,
+            is_staff=True,
+            is_superuser=True,
+        )
+        user.groups.add(group)
+
+        self.client.force_authenticate(user=self.admin_user)
+        self.client.delete(f"{self.ROLES_URL}{group.id}/")
+        user.refresh_from_db()
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+
+    def test_eliminar_rol_de_usuario_con_otro_rol_conserva_el_otro(self):
+        group = self.Group.objects.create(name="test_role")
+        designer = self.Group.objects.get(name=self.DESIGNER)
+        user = User.objects.create_user(
+            username="multi@example.com",
+            email="multi@example.com",
+            password=STRONG_PASSWORD,
+        )
+        user.groups.add(group, designer)
+
+        self.client.force_authenticate(user=self.admin_user)
+        self.client.delete(f"{self.ROLES_URL}{group.id}/")
+        user.refresh_from_db()
+        self.assertFalse(user.groups.filter(pk=group.pk).exists())
+        self.assertTrue(user.groups.filter(pk=designer.pk).exists())
+
+        from .permissions_map import get_effective_role
+        self.assertEqual(get_effective_role(user), self.DESIGNER)
+
+    def test_caso_completo_eliminacion_rol_personalizado(self):
+        """Caso crítico: crear rol, asignar usuario, darle permisos, eliminar y
+        verificar que usuario sigue, queda subscriber y los demás roles
+        permanecen intactos."""
+        role = self.Group.objects.create(name="test_role")
+        user_a = User.objects.create_user(
+            username="casoa@example.com",
+            email="casoa@example.com",
+            password=STRONG_PASSWORD,
+        )
+        user_a.groups.add(role)
+
+        view_perm = self.RolePermission.objects.get(key="users.view")
+        self.GroupRolePermission.objects.create(group=role, permission=view_perm)
+
+        # Antes de eliminar, el usuario pertenece al group test_role.
+        from .permissions_map import get_effective_role
+        self.assertTrue(user_a.groups.filter(pk=role.pk).exists())
+
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.delete(f"{self.ROLES_URL}{role.id}/")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+        # - Usuario A sigue existiendo.
+        user_a.refresh_from_db()
+        self.assertTrue(User.objects.filter(pk=user_a.pk).exists())
+        # - Ya no pertenece a test_role.
+        self.assertFalse(user_a.groups.filter(pk=role.pk).exists())
+        # - Queda con rol efectivo subscriber.
+        self.assertEqual(get_effective_role(user_a), self.SUBSCRIBER)
+        # - El permiso de test_role ya no existe/asigna.
+        self.assertFalse(self.GroupRolePermission.objects.filter(group__name="test_role").exists())
+        # - El permiso en catálogo sigue existiendo (no se borra de la tabla RolePermission).
+        self.assertTrue(self.RolePermission.objects.filter(key="users.view").exists())
+        # - Los demás roles y permisos siguen intactos.
+        admin_group = self.Group.objects.get(name=self.ADMIN)
+        admin_perms = set(
+            self.GroupRolePermission.objects.filter(group=admin_group)
+            .values_list("permission__key", flat=True)
+        )
+        self.assertTrue({"users.view", "users.create", "users.me.view"}.issubset(admin_perms))
+
+    # --- Los endpoints existentes siguen funcionando -------------------------
+
+    def test_endpoints_permsisos_siguen_funcionando_tras_crud(self):
+        role = self.Group.objects.create(name="persistente")
+        perm = self.RolePermission.objects.get(key="users.view")
+        self.GroupRolePermission.objects.create(group=role, permission=perm)
+
+        self.client.force_authenticate(user=self.admin_user)
+        # Crear otro rol.
+        self.client.post(self.ROLES_URL, {"name": "otro_rol"}, format="json")
+        # GET roles lista incluye ambos personalizados.
+        resp = self.client.get(self.ROLES_URL)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        names = {r["name"] for r in resp.data}
+        self.assertIn("persistente", names)
+        self.assertIn("otro_rol", names)
+
+        # GET permisos del rol nuevo funciona.
+        otro = self.Group.objects.get(name="otro_rol")
+        resp = self.client.get(f"{self.ROLES_URL}{otro.id}/permissions/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["permissions"], [])
+
+        # PUT permisos del rol personalizado funciona (endpoint existente).
+        resp = self.client.put(
+            f"{self.ROLES_URL}{otro.id}/permissions/",
+            {"permissions": ["users.view"]},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual({p["key"] for p in resp.data["permissions"]}, {"users.view"})
+
+        # Eliminar el rol de prueba no rompe el catálogo.
+        self.client.delete(f"{self.ROLES_URL}{role.id}/")
+        resp = self.client.get("/api/v1/auth/permissions/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(resp.data), 8)
+
+    def test_get_roles_lista_incluye_personalizados(self):
+        self.Group.objects.create(name="auditor")
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.get(self.ROLES_URL)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        names = [r["name"] for r in resp.data]
+        # Los cuatro básicos primero (orden canónico).
+        self.assertEqual(
+            names[:4],
+            [self.ADMIN, self.DESIGNER, self.OPERATOR, self.SUBSCRIBER],
+        )
+        self.assertIn("auditor", names)

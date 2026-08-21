@@ -363,10 +363,6 @@
 <label for="userRoleFilter">Role</label>
                   <select id="userRoleFilter">
                     <option value="all">All</option>
-                    <option value="admin">Admin</option>
-                    <option value="designer">Designer</option>
-                    <option value="operator">Operator</option>
-                    <option value="subscriber">Subscriber</option>
                   </select>
                 </div>
               </div>
@@ -606,8 +602,20 @@
         <!-- ROLES Y PERMISOS (solo administración) -->
         <section id="rolesSection" style="display:none;" aria-labelledby="rolesTitle">
           <div class="roles-header">
-            <h1 id="rolesTitle">Roles &amp; Permissions</h1>
+            <h1 id="rolesTitle">Roles & Permissions</h1>
             <p>Administrá los permisos disponibles para cada rol del sistema.</p>
+          </div>
+
+          <div class="roles-create">
+            <input
+              type="text"
+              id="newRoleName"
+              placeholder="Nombre del nuevo rol"
+              autocomplete="off"
+            />
+            <button type="button" class="btn btn-primary" id="createRoleBtn">
+              Crear rol
+            </button>
           </div>
 
           <p id="rolesMessage" class="roles-message" role="status" aria-live="polite" style="display:none;"></p>
@@ -664,10 +672,6 @@
             <label>Role</label>
 <select id="roleSelect" required>
               <option value="">Select role</option>
-              <option>Admin</option>
-              <option>Designer</option>
-              <option>Operator</option>
-              <option>Subscriber</option>
             </select>
           </div>
           <div class="field">

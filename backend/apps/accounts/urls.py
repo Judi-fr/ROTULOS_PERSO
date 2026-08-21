@@ -6,6 +6,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .profile_views import ProfileView
 from .role_permission_views import (
     PermissionCatalogView,
+    RoleDetailView,
     RoleListView,
     RolePermissionsView,
 )
@@ -42,6 +43,7 @@ urlpatterns = [
     path("me/change-password/", ChangePasswordView.as_view(), name="change-password"),
     # Administración de roles y permisos (protegido por IsAdminUser).
     path("roles/", RoleListView.as_view(), name="role-list"),
+    path("roles/<int:role_id>/", RoleDetailView.as_view(), name="role-detail"),
     path("roles/<int:role_id>/permissions/", RolePermissionsView.as_view(), name="role-permissions"),
     path("permissions/", PermissionCatalogView.as_view(), name="permission-catalog"),
     # Renueva el access token a partir de un refresh válido. Con la rotación

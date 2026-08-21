@@ -10,7 +10,9 @@ de su alcance (ver ``ProfileSerializer``).
 """
 
 from rest_framework.generics import RetrieveUpdateAPIView
+from rest_framework.permissions import IsAuthenticated
 
+from .role_permissions import HasRolePermission
 from .serializers import ProfileSerializer
 
 
@@ -28,6 +30,15 @@ class ProfileView(RetrieveUpdateAPIView):
 
     serializer_class = ProfileSerializer
     http_method_names = ["get", "patch", "head", "options"]
+
+    def get_permissions(self):
+        if self.request.method in ("GET", "HEAD"):
+            permission = "users.me.view"
+        elif self.request.method == "PATCH":
+            permission = "users.me.edit"
+        else:
+            return [IsAuthenticated()]
+        return [IsAuthenticated(), HasRolePermission(permission)]
 
     def get_object(self):
         return self.request.user

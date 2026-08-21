@@ -2,9 +2,11 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.db.models import Q
 from rest_framework import permissions, status, viewsets
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from .pagination import UserAdminPagination
+from .permissions_map import user_has_permission
 from .serializers import ROLE_CHOICES, UserAdminSerializer, ensure_role_groups
 
 User = get_user_model()
@@ -14,7 +16,32 @@ class UserAdminViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by("id")
     serializer_class = UserAdminSerializer
     pagination_class = UserAdminPagination
-    permission_classes = [permissions.IsAdminUser]
+    # La autenticación continúa siendo obligatoria; el permiso atómico se
+    # verifica por acción para que la asignación en Roles tenga efecto real.
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _require_permission(self, permission):
+        if not user_has_permission(self.request.user, permission):
+            raise PermissionDenied("No tenés permisos para realizar esta acción.")
+
+    def _required_update_permissions(self, instance):
+        """Determina permisos para editar y para cambios de estado."""
+        required = set()
+        data = self.request.data
+        status_value = data.get("status", data.get("is_active"))
+        if status_value is not None:
+            is_active = (
+                str(status_value).strip().lower() == "active"
+                if isinstance(status_value, str)
+                else bool(status_value)
+            )
+            if is_active != instance.is_active:
+                required.add("users.reactivate" if is_active else "users.deactivate")
+
+        non_status_fields = set(data.keys()) - {"status", "is_active"}
+        if non_status_fields:
+            required.add("users.edit")
+        return required or {"users.edit"}
 
     def _get_status_filter(self):
         status_param = self.request.query_params.get("status", "").strip().lower()
@@ -124,6 +151,7 @@ class UserAdminViewSet(viewsets.ModelViewSet):
 
     def list(self, request, *args, **kwargs):
         """Lista usuarios con resumen global y metadatos de paginación."""
+        self._require_permission("users.view")
         response = super().list(request, *args, **kwargs)
         response.data["summary"] = {
             "total": User.objects.count(),
@@ -131,6 +159,14 @@ class UserAdminViewSet(viewsets.ModelViewSet):
             "inactive": User.objects.filter(is_active=False).count(),
         }
         return response
+
+    def retrieve(self, request, *args, **kwargs):
+        self._require_permission("users.view")
+        return super().retrieve(request, *args, **kwargs)
+
+    def create(self, request, *args, **kwargs):
+        self._require_permission("users.create")
+        return super().create(request, *args, **kwargs)
 
     def _is_self_target(self, instance):
         return self.request.user == instance
@@ -154,6 +190,7 @@ class UserAdminViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         """Desactiva por defecto; ?permanent=true elimina de forma irreversible."""
+        self._require_permission("users.deactivate")
         instance = self.get_object()
 
         if self._is_self_target(instance):
@@ -172,6 +209,8 @@ class UserAdminViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         """Actualiza un usuario. El admin no puede alterarse a sí mismo en rol/estado."""
         instance = self.get_object()
+        for permission in self._required_update_permissions(instance):
+            self._require_permission(permission)
         rejection = self._reject_self_admin_mutation(instance, request.data)
         if rejection is not None:
             return rejection
@@ -179,8 +218,9 @@ class UserAdminViewSet(viewsets.ModelViewSet):
 
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
+        for permission in self._required_update_permissions(instance):
+            self._require_permission(permission)
         rejection = self._reject_self_admin_mutation(instance, request.data)
         if rejection is not None:
             return rejection
         return super().partial_update(request, *args, **kwargs)
-
