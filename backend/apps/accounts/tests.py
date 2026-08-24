@@ -858,6 +858,239 @@ class RolePermissionSystemTests(AuthTestCase):
         self.assertFalse(user_has_permission(self.admin_user, "no.existe"))
 
 
+class CustomRolePermissionTests(AuthTestCase):
+    """Roles PERSONALIZADOS (Groups fuera de admin/designer/operator/subscriber).
+
+    Regresión del bug donde ``permissions_map.normalize_role`` colapsaba
+    cualquier Group no reconocido a ``DEFAULT_ROLE`` ("subscriber"): un rol
+    personalizado podía autenticarse (el login/rol no depende de esta
+    función) pero ``user_has_permission``/``get_effective_role`` consultaban
+    ``GroupRolePermission`` para el Group "subscriber" en lugar del Group
+    real, así que sus permisos asignados nunca se aplicaban.
+
+    Estos tests crean el rol vía el endpoint público (POST /roles/), igual
+    que lo haría el frontend, para cubrir el flujo de punta a punta.
+    """
+
+    USERS_URL = "/api/v1/users/"
+    ME_URL = "/api/v1/auth/me/"
+    CHANGE_PASSWORD_URL = "/api/v1/auth/me/change-password/"
+    ROLES_URL = "/api/v1/auth/roles/"
+
+    def setUp(self):
+        super().setUp()
+        from django.contrib.auth.models import Group
+
+        from .models import GroupRolePermission, RolePermission
+
+        self.Group = Group
+        self.GroupRolePermission = GroupRolePermission
+        self.RolePermission = RolePermission
+
+        for name in ("admin", "designer", "operator", "subscriber"):
+            Group.objects.get_or_create(name=name)
+
+        self.admin_user = User.objects.create_user(
+            username="custom_admin@example.com",
+            email="custom_admin@example.com",
+            password=STRONG_PASSWORD,
+            is_staff=True,
+        )
+        self.admin_user.groups.add(Group.objects.get(name="admin"))
+
+    def _create_custom_role(self, name, permission_keys):
+        """Crea el rol vía API (como el frontend) y le asigna permisos."""
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.post(self.ROLES_URL, {"name": name}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.data)
+        role_id = resp.data["id"]
+        resp = self.client.put(
+            f"{self.ROLES_URL}{role_id}/permissions/",
+            {"permissions": list(permission_keys)},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        self.client.force_authenticate(user=None)
+        return self.Group.objects.get(pk=role_id)
+
+    def _create_user_with_group(self, email, group):
+        user = User.objects.create_user(
+            username=email, email=email, password=STRONG_PASSWORD
+        )
+        user.groups.add(group)
+        return user
+
+    # --- Caso A: solo users.view ---------------------------------------------
+
+    def test_caso_a_rol_personalizado_solo_users_view(self):
+        group = self._create_custom_role("supervisor_de_usuarios", ["users.view"])
+        user = self._create_user_with_group("caso_a@example.com", group)
+
+        from .permissions_map import get_effective_role, user_has_permission
+
+        # El rol efectivo es el Group personalizado, no "subscriber".
+        self.assertEqual(get_effective_role(user), "supervisor_de_usuarios")
+        self.assertTrue(user_has_permission(user, "users.view"))
+
+        # Login OK.
+        resp = self.client.post(
+            "/api/v1/auth/login/",
+            {"email": "caso_a@example.com", "password": STRONG_PASSWORD},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["user"]["role"], "supervisor_de_usuarios")
+        self.assertIn("users.view", resp.data["user"]["permissions"])
+        self.assertNotIn("users.create", resp.data["user"]["permissions"])
+
+        self.client.force_authenticate(user=user)
+        self.assertEqual(self.client.get(self.USERS_URL).status_code, status.HTTP_200_OK)
+
+        other = User.objects.create_user(
+            username="target_a@example.com", email="target_a@example.com", password=STRONG_PASSWORD
+        )
+        self.assertEqual(
+            self.client.patch(f"{self.USERS_URL}{other.id}/", {"first_name": "X"}, format="json").status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self.assertEqual(
+            self.client.post(
+                self.USERS_URL,
+                {"email": "nuevo_a@example.com", "full_name": "N", "role": "subscriber", "status": "active", "password": STRONG_PASSWORD},
+                format="json",
+            ).status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self.assertEqual(self.client.delete(f"{self.USERS_URL}{other.id}/").status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            self.client.patch(f"{self.USERS_URL}{other.id}/", {"status": "active"}, format="json").status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+    # --- Caso B: users.view + users.edit --------------------------------------
+
+    def test_caso_b_rol_personalizado_view_y_edit(self):
+        group = self._create_custom_role("diseñador_avanzado", ["users.view", "users.edit"])
+        user = self._create_user_with_group("caso_b@example.com", group)
+        other = User.objects.create_user(
+            username="target_b@example.com", email="target_b@example.com", password=STRONG_PASSWORD
+        )
+
+        self.client.force_authenticate(user=user)
+        self.assertEqual(self.client.get(self.USERS_URL).status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            self.client.patch(f"{self.USERS_URL}{other.id}/", {"first_name": "Editado"}, format="json").status_code,
+            status.HTTP_200_OK,
+        )
+        # Sin users.deactivate/reactivate/create: siguen prohibidas.
+        self.assertEqual(
+            self.client.patch(f"{self.USERS_URL}{other.id}/", {"status": "inactive"}, format="json").status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self.assertEqual(self.client.delete(f"{self.USERS_URL}{other.id}/").status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            self.client.post(
+                self.USERS_URL,
+                {"email": "nuevo_b@example.com", "full_name": "N", "role": "subscriber", "status": "active", "password": STRONG_PASSWORD},
+                format="json",
+            ).status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+    # --- Caso C: rol sin permisos administrativos -----------------------------
+
+    def test_caso_c_rol_personalizado_sin_permisos_administrativos(self):
+        group = self._create_custom_role("solo_perfil", ["users.me.view", "users.me.edit"])
+        user = self._create_user_with_group("caso_c@example.com", group)
+
+        self.client.force_authenticate(user=user)
+        self.assertEqual(self.client.get(self.USERS_URL).status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            self.client.post(
+                self.USERS_URL,
+                {"email": "nuevo_c@example.com", "full_name": "N", "role": "subscriber", "status": "active", "password": STRONG_PASSWORD},
+                format="json",
+            ).status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        # Su propio perfil sigue accesible.
+        self.assertEqual(self.client.get(self.ME_URL).status_code, status.HTTP_200_OK)
+
+    # --- Caso D: cambiar permisos en DB cambia el comportamiento sin deploy --
+
+    def test_caso_d_cambiar_permisos_en_db_cambia_comportamiento_en_caliente(self):
+        group = self._create_custom_role("rol_dinamico", ["users.view"])
+        user = self._create_user_with_group("caso_d@example.com", group)
+
+        self.client.force_authenticate(user=user)
+        self.assertEqual(self.client.get(self.USERS_URL).status_code, status.HTTP_200_OK)
+
+        create_perm = self.RolePermission.objects.get(key="users.create")
+        self.GroupRolePermission.objects.create(group=group, permission=create_perm)
+
+        resp = self.client.post(
+            self.USERS_URL,
+            {"email": "nuevo_d@example.com", "full_name": "N", "role": "subscriber", "status": "active", "password": STRONG_PASSWORD},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+        self.GroupRolePermission.objects.filter(group=group, permission__key="users.view").delete()
+        self.assertEqual(self.client.get(self.USERS_URL).status_code, status.HTTP_403_FORBIDDEN)
+
+    # --- Caso E: pertenecer a un Group no lo vuelve admin ---------------------
+
+    def test_caso_e_rol_personalizado_no_es_tratado_como_admin(self):
+        group = self._create_custom_role("rol_no_admin", ["users.view", "users.edit"])
+        user = self._create_user_with_group("caso_e@example.com", group)
+
+        self.assertFalse(user.is_staff)
+        self.assertFalse(user.is_superuser)
+
+        self.client.force_authenticate(user=user)
+        # No tiene users.deactivate/create -> prohibido pese a "tener un rol".
+        other = User.objects.create_user(
+            username="target_e@example.com", email="target_e@example.com", password=STRONG_PASSWORD
+        )
+        self.assertEqual(self.client.delete(f"{self.USERS_URL}{other.id}/").status_code, status.HTTP_403_FORBIDDEN)
+        # Los endpoints de administración de roles siguen exigiendo IsAdminUser.
+        self.assertEqual(self.client.get(self.ROLES_URL).status_code, status.HTTP_403_FORBIDDEN)
+
+    # --- Caso F: permisos users.me.* independientes de los administrativos ---
+
+    def test_caso_f_permisos_me_independientes_de_permisos_administrativos(self):
+        group = self._create_custom_role(
+            "rol_admin_sin_perfil",
+            ["users.view", "users.create", "users.edit", "users.deactivate", "users.reactivate"],
+        )
+        user = self._create_user_with_group("caso_f@example.com", group)
+
+        self.client.force_authenticate(user=user)
+        # Tiene permisos administrativos completos, pero NADA de users.me.*.
+        self.assertEqual(self.client.get(self.ME_URL).status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            self.client.patch(self.ME_URL, {"first_name": "X"}, format="json").status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self.assertEqual(
+            self.client.post(
+                self.CHANGE_PASSWORD_URL,
+                {"current_password": STRONG_PASSWORD, "new_password": "OtraClave2026", "confirm_password": "OtraClave2026"},
+                format="json",
+            ).status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+        # Al agregar solo users.me.view, únicamente esa acción se habilita.
+        me_view_perm = self.RolePermission.objects.get(key="users.me.view")
+        self.GroupRolePermission.objects.create(group=group, permission=me_view_perm)
+        self.assertEqual(self.client.get(self.ME_URL).status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            self.client.patch(self.ME_URL, {"first_name": "X"}, format="json").status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+
 class UserAdminCrudTests(AuthTestCase):
     """CRUD de usuarios reservado a administradores (/api/v1/users/)."""
 

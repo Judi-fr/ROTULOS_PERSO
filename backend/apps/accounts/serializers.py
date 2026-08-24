@@ -21,25 +21,20 @@ from django.contrib.auth.password_validation import validate_password as django_
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
+from .permissions_map import VALID_ROLES as ROLE_CHOICES
+from .permissions_map import get_effective_role as get_user_role
+from .permissions_map import normalize_role as normalize_role_name
 from .views import normalize_email, validate_email_format, validate_password_strength
 
 User = get_user_model()
 
-# Roles válidos del sistema (coincide con permissions_map.VALID_ROLES).
-ROLE_CHOICES = ("admin", "designer", "operator", "subscriber")
-
-# Alias (legacy y variantes en español) -> rol canónico.
-ROLE_ALIASES = {
-    "administrador": "admin",
-    "administradores": "admin",
-    "administrator": "admin",
-    "diseñador": "designer",
-    "diseñadores": "designer",
-    "disenador": "designer",
-    "disenadores": "designer",
-    "operador": "operator",
-    "operadores": "operator",
-}
+# ``ROLE_CHOICES``, ``normalize_role_name`` y ``get_user_role`` son alias de
+# ``permissions_map`` (única fuente de verdad para el rol efectivo y sus
+# alias). Antes este módulo mantenía una copia paralela de esa lógica que
+# terminó divergiendo: su fallback colapsaba cualquier rol personalizado no
+# reconocido a ``subscriber`` en vez de conservar el nombre del Group, lo que
+# rompía la asignación de permisos de roles personalizados. Ver
+# ``permissions_map.normalize_role`` para el detalle.
 
 # Rol canónico -> nombre de Group. El group canónico "admin" es distinto del
 # group "administradores" sembrado por 0001_seed_roles; asegurar ambos no borra
@@ -52,40 +47,12 @@ ROLE_GROUP_MAP = {
 }
 
 
-def normalize_role_name(name):
-    """Devuelve el rol canónico a partir de un nombre de rol/group (o el input tal cual)."""
-    key = (name or "").strip().lower()
-    return ROLE_ALIASES.get(key, key)
-
-
 def ensure_role_groups():
     """Crea los Groups de rol del sistema si no existen (idempotente)."""
     names = set(ROLE_GROUP_MAP.values())
     for name in names:
         Group.objects.get_or_create(name=name)
     return list(Group.objects.filter(name__in=names))
-
-
-def get_user_role(user):
-    """Rol efectivo del usuario (misma lógica que permissions_map.get_effective_role).
-
-    1. Group cuyo nombre normaliza a un rol válido.
-    2. Fallback: primer Group personalizado (rol personalizado).
-    3. Fallback: ``is_staff`` -> ``admin``.
-    4. Fallback final: ``subscriber``.
-    """
-    if user is None:
-        return "subscriber"
-    names = {normalize_role_name(g.name) for g in user.groups.all()}
-    for role in ROLE_CHOICES:
-        if role in names:
-            return role
-    # Rol personalizado: devolver el nombre del primer Group no canónico.
-    for g in user.groups.all():
-        name = normalize_role_name(g.name)
-        if name not in ROLE_CHOICES:
-            return name
-    return "admin" if getattr(user, "is_staff", False) else "subscriber"
 
 
 class UserAdminSerializer(serializers.ModelSerializer):

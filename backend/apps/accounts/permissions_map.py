@@ -55,18 +55,23 @@ LEGACY_ROLE_ALIASES = {
 def normalize_role(role):
     """Normaliza un rol recibido como entrada.
 
-    - Si es ``None`` o no reconocido, devuelve ``DEFAULT_ROLE``.
-    - Si es un alias legado (``"user"``), lo mapea a ``subscriber``.
+    - Si es ``None``, devuelve ``DEFAULT_ROLE``.
+    - Si es un alias legado (``"user"``, ``"administrador"``, ...), lo mapea
+      a su rol canónico equivalente.
     - Si es un rol válido, lo devuelve tal cual (minúscula).
+    - Si es un rol PERSONALIZADO (no reconocido), lo devuelve tal cual
+      (minúscula, sin espacios) en lugar de colapsarlo a ``DEFAULT_ROLE``.
+      Colapsarlo rompería la asignación de permisos de roles personalizados:
+      ``get_effective_role`` dejaría de ver el Group real y
+      ``user_has_permission`` consultaría ``GroupRolePermission`` para
+      "subscriber" en vez del rol efectivamente asignado al usuario.
     """
     if role is None:
         return DEFAULT_ROLE
     role = str(role).strip().lower()
     if role in LEGACY_ROLE_ALIASES:
         return LEGACY_ROLE_ALIASES[role]
-    if role in VALID_ROLES:
-        return role
-    return DEFAULT_ROLE
+    return role
 
 
 # Conjunto de permisos atómicos del sistema.
