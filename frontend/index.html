@@ -25,6 +25,9 @@
               </div>
               <p class="login-card-description">Ingresa con tu cuenta</p>
 
+              <div id="g_id_signin"></div>
+              <div class="login-divider text-center my-3">o</div>
+
               <form id="login-form">
                 <div class="form-group mb-3">
                   <label for="user" class="sr-only">Usuario</label>
@@ -38,7 +41,7 @@
               </form>
 
               <a href="#!" class="forgot-password-link">Olvidaste tu clave?</a>
-              <p class="login-card-footer-text">No tienes cuenta aun? <a href="#!" class="text-reset">Regístrate aquí</a></p>
+              <p class="login-card-footer-text">No tienes cuenta aun? <a href="register.html" class="text-reset">Regístrate aquí</a></p>
               <nav class="login-card-footer-nav">
                 <a href="#!">Terminos de uso.</a>
                 <a href="#!">Política de Privacidad</a>
@@ -50,7 +53,65 @@
     </div>
   </main>
 
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
+    // Client ID del OAuth client "Web application" (Google Cloud Console).
+    // Es un identificador público (va en el HTML servido al navegador), no un
+    // secreto: la verificación real del token ocurre en el backend contra
+    // GOOGLE_CLIENT_ID (backend/.env).
+    const GOOGLE_CLIENT_ID = '399413683717-ook49mdogo9oierje6dh2cnn6g9djcs0.apps.googleusercontent.com';
+
+    // Mismo shape de respuesta que login/register manual (auth_response del
+    // backend), así que el guardado en localStorage y la redirección por rol
+    // son idénticos a los del form de usuario/contraseña.
+    function handleAuthSuccess(data) {
+      localStorage.setItem('access', data.access || '');
+      localStorage.setItem('refresh', data.refresh || '');
+      localStorage.setItem('user', JSON.stringify(data.user || {}));
+      if (data.user && data.user.must_change_password) {
+        window.location.replace('cambiar-password.html');
+        return;
+      }
+      const role = String((data.user && data.user.role) || '').toLowerCase();
+      const isAdmin = Boolean((data.user && data.user.is_staff) || role === 'admin');
+      window.location.replace(isAdmin ? 'gestionuser.html' : 'dashboard.html');
+    }
+
+    // Callback de Google Identity Services: response.credential es el ID
+    // token (JWT) que el backend verifica en /api/v1/auth/google/.
+    async function handleGoogleCredential(response) {
+      try {
+        const apiResponse = await fetch('http://127.0.0.1:8000/api/v1/auth/google/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ credential: response.credential })
+        });
+
+        const data = await apiResponse.json().catch(() => ({}));
+
+        if (!apiResponse.ok) {
+          throw new Error(data.detail || 'No se pudo iniciar sesión con Google.');
+        }
+
+        handleAuthSuccess(data);
+      } catch (error) {
+        alert(error.message || 'No se pudo iniciar sesión con Google.');
+      }
+    }
+
+    window.onload = function () {
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleCredential
+      });
+      google.accounts.id.renderButton(
+        document.getElementById('g_id_signin'),
+        { theme: 'outline', size: 'large', width: '100%', text: 'continue_with' }
+      );
+    };
+
     document.getElementById('login-form').addEventListener('submit', async function (event) {
       event.preventDefault();
 
@@ -75,9 +136,22 @@
         localStorage.setItem('access', data.access || '');
         localStorage.setItem('refresh', data.refresh || '');
         localStorage.setItem('user', JSON.stringify(data.user || {}));
-        // Tanto admin como usuario autenticado válido entran a gestionuser.html.
-        // El backend es la autoridad real de permisos; el front solo adapta la UI.
-        window.location.replace('gestionuser.html');
+
+        // Cambio de contraseña obligatorio pendiente (admin creó la cuenta sin
+        // password, o la marcó manualmente): el backend lo hace cumplir en
+        // cualquier otro endpoint (403), pero acá se redirige de una para no
+        // esperar al primer llamado bloqueado.
+        if (data.user && data.user.must_change_password) {
+          window.location.replace('cambiar-password.html');
+          return;
+        }
+
+        // El backend es la autoridad real de permisos; el front solo elige la
+        // pantalla de aterrizaje. Admin (grupo admin o is_staff) entra directo
+        // a la gestión de usuarios; el resto va a su panel (dashboard.html).
+        const role = String((data.user && data.user.role) || '').toLowerCase();
+        const isAdmin = Boolean((data.user && data.user.is_staff) || role === 'admin');
+        window.location.replace(isAdmin ? 'gestionuser.html' : 'dashboard.html');
       } catch (error) {
         alert(error.message || 'Error en usuario o clave - Reingrese');
       }

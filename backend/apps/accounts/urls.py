@@ -3,7 +3,9 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 
+from .dashboard_views import DashboardView
 from .profile_views import ProfileView
+from .support_views import SupportMessageView
 from .role_permission_views import (
     PermissionCatalogView,
     RoleDetailView,
@@ -41,6 +43,11 @@ urlpatterns = [
     path("me/", ProfileView.as_view(), name="profile"),
     # Cambio de contraseña del usuario autenticado (exige la actual).
     path("me/change-password/", ChangePasswordView.as_view(), name="change-password"),
+    # Form de contacto del dashboard ("Ayuda/Soporte"): solo guarda el mensaje.
+    path("support/", SupportMessageView.as_view(), name="support-message"),
+    # Menú del dashboard (no-admin): arma la lista de ítems según el rol
+    # efectivo del usuario autenticado. Ver dashboard_views.py.
+    path("users/me/dashboard/", DashboardView.as_view(), name="user-dashboard"),
     # Administración de roles y permisos (protegido por IsAdminUser).
     path("roles/", RoleListView.as_view(), name="role-list"),
     path("roles/<int:role_id>/", RoleDetailView.as_view(), name="role-detail"),

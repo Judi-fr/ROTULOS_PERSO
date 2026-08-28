@@ -107,6 +107,10 @@ body {
     font-size: 13px;
     line-height: 15;
     font-weight: normal; }
+    .login-card .form-control:focus {
+      border-color: #f97316;
+      box-shadow: 0 0 0 3px #ffedd5;
+      outline: none; }
     .login-card .form-control::-webkit-input-placeholder {
       color: #919aa3; }
     .login-card .form-control::-moz-placeholder {
@@ -127,16 +131,16 @@ body {
     color: #fff;
     margin-bottom: 24px; }
     .login-card .login-btn:hover {
-      border: 1px solid #000;
-      background-color: transparent;
-      color: #000; }
+      border: 1px solid #f97316;
+      background-color: #f97316;
+      color: #fff; }
   .login-card .forgot-password-link {
     font-size: 14px;
     color: #919aa3;
     margin-bottom: 12px; }
   .login-card-footer-text {
     font-size: 16px;
-    color: #0d2366;
+    color: #c2410c;
     margin-bottom: 60px; }
     @media (max-width: 767px) {
       .login-card-footer-text {

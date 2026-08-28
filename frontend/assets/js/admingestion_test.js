@@ -1,13 +1,54 @@
 const statusLabel = {
-  active: "Active",
-  inactive: "Inactive",
+  active: "Activo",
+  inactive: "Inactivo",
 };
+// Clave de la clase CSS del badge de rol: SIEMPRE el texto original que
+// manda el backend (role_label, en inglés). No traducir estas claves —
+// solo se traduce el texto que se muestra (ver roleLabelEs / translateRole).
 const roleClass = {
   Admin: "admin",
   Designer: "designer",
   Operator: "operator",
   Subscriber: "subscriber",
 };
+const roleLabelEs = {
+  Admin: "Administrador",
+  Designer: "Diseñador",
+  Operator: "Operador",
+  Subscriber: "Suscriptor",
+  User: "Usuario",
+};
+function translateRole(role) {
+  return roleLabelEs[role] || role;
+}
+function formatLockoutRemaining(seconds) {
+  const totalMinutes = Math.ceil((seconds || 0) / 60);
+  if (totalMinutes <= 1) return "Locked - menos de 1 min restante";
+  return `Locked - ${totalMinutes} min restantes`;
+}
+function formatLastLogin(value) {
+  if (!value) return "Nunca";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Nunca";
+  return date.toLocaleString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+// Igual que formatLastLogin pero con el texto correcto para "sin pedidos".
+function formatLastOrderDate(value) {
+  if (!value) return "Sin pedidos";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Sin pedidos";
+  return date.toLocaleString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
 
 const tbody = document.getElementById("usersBody");
 
@@ -17,6 +58,8 @@ const ME_URL = "http://127.0.0.1:8000/api/v1/auth/me/";
 const CHANGE_PASSWORD_URL = "http://127.0.0.1:8000/api/v1/auth/me/change-password/";
 const ROLES_URL = "http://127.0.0.1:8000/api/v1/auth/roles/";
 const PERMISSIONS_URL = "http://127.0.0.1:8000/api/v1/auth/permissions/";
+const EXPORT_CSV_URL = "http://127.0.0.1:8000/api/v1/users/export/";
+const METRICS_URL = "http://127.0.0.1:8000/api/v1/users/metrics/";
 
 // ---------------------------------------------------------------------------
 // MODO DE INTERFAZ: se detecta desde el objeto user guardado en localStorage.
@@ -80,6 +123,20 @@ async function apiFetch(url, options = {}) {
     throw sessionError;
   }
 
+  // 403 estructurado del backend (JWTAuthenticationWithPasswordPolicy):
+  // la cuenta tiene un cambio de contraseña pendiente y no puede seguir
+  // usando la API hasta completarlo. Se clona la respuesta para poder
+  // leer el body acá sin consumirlo (el caller puede necesitar leerlo).
+  if (response.status === 403) {
+    const body = await response.clone().json().catch(() => ({}));
+    if (body && body.must_change_password) {
+      window.location.replace("cambiar-password.html");
+      const pendingError = new Error("Cambio de contraseña pendiente");
+      pendingError.isSessionExpired = true; // mismo tratamiento: no seguir procesando
+      throw pendingError;
+    }
+  }
+
   return response;
 }
 
@@ -88,27 +145,71 @@ let currentPage = 1;
 let currentSearch = "";
 let currentStatus = "all";
 let currentRole = "all";
+// Filtros avanzados (actividad / seguridad / origen / orden).
+let currentDateJoinedFrom = "";
+let currentDateJoinedTo = "";
+let currentLastLoginFrom = "";
+let currentLastLoginTo = "";
+let currentNeverLoggedIn = false;
+let currentInactiveDays = "";
+let currentLocked = "all";
+let currentFailedAttempts = "all";
+let currentAuthMethod = "all";
+let currentOrderingField = "id";
+let currentOrderingDir = "asc";
 let lastPage = 1;
 let lastUsers = [];
 let editingUserId = null;
+// IDs de usuarios seleccionados (checkboxes) en la vista/página actual.
+let selectedUserIds = new Set();
 
-function buildQueryString() {
+// baseUrl parametrizable para reusar los mismos filtros activos en la
+// exportación CSV (misma "lista actualmente filtrada/visible" que la tabla).
+function buildQueryString(baseUrl = API_URL, { includePage = true } = {}) {
   const params = new URLSearchParams();
   if (currentSearch) params.set("search", currentSearch);
   if (currentStatus && currentStatus !== "all") params.set("status", currentStatus);
   if (currentRole && currentRole !== "all") params.set("role", currentRole);
-  if (currentPage > 1) params.set("page", currentPage);
+
+  if (currentDateJoinedFrom) params.set("date_joined_from", currentDateJoinedFrom);
+  if (currentDateJoinedTo) params.set("date_joined_to", currentDateJoinedTo);
+  if (currentLastLoginFrom) params.set("last_login_from", currentLastLoginFrom);
+  if (currentLastLoginTo) params.set("last_login_to", currentLastLoginTo);
+  if (currentNeverLoggedIn) params.set("never_logged_in", "true");
+  if (currentInactiveDays) params.set("inactive_days", currentInactiveDays);
+  if (currentLocked && currentLocked !== "all") params.set("locked", currentLocked);
+  if (currentFailedAttempts && currentFailedAttempts !== "all") {
+    params.set("failed_attempts", currentFailedAttempts);
+  }
+  if (currentAuthMethod && currentAuthMethod !== "all") params.set("auth_method", currentAuthMethod);
+  if (currentOrderingField && currentOrderingField !== "id") {
+    const prefix = currentOrderingDir === "desc" ? "-" : "";
+    params.set("ordering", `${prefix}${currentOrderingField}`);
+  }
+
+  if (includePage && currentPage > 1) params.set("page", currentPage);
   const qs = params.toString();
-  return qs ? `${API_URL}?${qs}` : API_URL;
+  return qs ? `${baseUrl}?${qs}` : baseUrl;
 }
 
 async function loadUsers() {
-  tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px;">Cargando usuarios...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px;">Cargando usuarios...</td></tr>`;
 
   try {
     const response = await apiFetch(buildQueryString());
 
     if (!response.ok) {
+      // 400 = filtro inválido (fecha mal formada, rango invertido, etc.):
+      // el backend manda el detalle en el body.
+      if (response.status === 400) {
+        const errorBody = await response.json().catch(() => null);
+        const detail = errorBody && (errorBody.detail || Object.values(errorBody)[0]);
+        const filterError = new Error(
+          Array.isArray(detail) ? detail[0] : detail || "Filtro inválido."
+        );
+        filterError.isFilterValidationError = true;
+        throw filterError;
+      }
       throw new Error(`Error HTTP: ${response.status}`);
     }
 
@@ -120,7 +221,7 @@ async function loadUsers() {
     const pagination = raw.pagination || null;
 
     if (users.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px;">No hay usuarios para mostrar.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px;">No hay usuarios para mostrar.</td></tr>`;
     } else {
       renderUsers(users);
     }
@@ -130,56 +231,70 @@ async function loadUsers() {
   } catch (err) {
     if (err.isSessionExpired) return;
     console.error("Error al cargar usuarios:", err);
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:red;">
-      No se pudieron cargar los usuarios. Intentá de nuevo más tarde.
+    const message = err.isFilterValidationError
+      ? err.message
+      : "No se pudieron cargar los usuarios. Intentá de nuevo más tarde.";
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px; color:red;">
+      ${message}
     </td></tr>`;
   }
 }
 
 function renderUsers(users) {
   tbody.innerHTML = ""; // limpia el "Cargando..."
+  // Cada render (búsqueda, filtro, cambio de página) trae filas nuevas,
+  // así que la selección de checkboxes se reinicia junto con ellas.
+  selectedUserIds.clear();
   const currentUser = getCurrentUser();
   const currentUserId = currentUser && Number(currentUser.id);
   const canEditUsers = canUseUserPermission("users.edit");
   const canDeactivateUsers = canUseUserPermission("users.deactivate");
   const canReactivateUsers = canUseUserPermission("users.reactivate");
+  const canUnlockUsers = canUseUserPermission("users.unlock");
 
   users.forEach((u, i) => {
     const tr = document.createElement("tr");
     const role = u.role_label || "User";
+    const roleText = translateRole(role);
     const statusKey = u.status_key || (u.is_active ? "active" : "inactive");
-    const statusText = u.status_label || statusLabel[statusKey] || statusKey;
+    const statusText = statusLabel[statusKey] || u.status_label || statusKey;
     const isSelf = Number(u.id) === currentUserId;
+    const lockedLine = u.is_locked
+      ? `<div style="font-size:11px; color:#7c3aed; margin-top:2px;">${formatLockoutRemaining(u.lockout_remaining_seconds)}</div>`
+      : "";
     // El admin NO puede desactivarse/eliminarse a sí mismo (protección doble:
     // backend devuelve 403 y el frontend no muestra siquiera la opción).
     const deleteAction = !canDeactivateUsers
       ? ""
       : isSelf
       ? `<span class="self-protected" style="font-size:12px; color:#94a3b8;" title="No podés desactivar tu propia cuenta">No podés eliminarte</span>`
-      : `<a href="#" class="danger delete-user" data-delete-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>Delete</a>`;
+      : `<a href="#" class="danger delete-user" data-delete-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>Eliminar</a>`;
 
     tr.innerHTML = `
-      <td><input type="checkbox"></td>
+      <td><input type="checkbox" class="row-checkbox" data-user-id="${u.id}"></td>
       <td>
         <div class="user-cell">
           <img class="user-avatar" src="https://api.dicebear.com/7.x/avataaars/svg?seed=${u.email || u.id}" alt="">
-          <span class="user-name">${u.display_name || u.email}</span>
+          <span class="user-name" title="${u.display_name || u.email}">${u.display_name || u.email}</span>
         </div>
       </td>
-      <td class="cell-muted">${u.email}</td>
-      <td><span class="badge ${roleClass[role] || ""}">${role}</span></td>
-      <td><span class="status ${statusKey}"><span class="dot"></span>${statusText}</span></td>
+      <td class="cell-muted" title="${u.email || ""}">${u.email}</td>
+      <td><span class="badge ${roleClass[role] || ""}">${roleText}</span></td>
+      <td class="status-cell"><span class="status ${statusKey}"><span class="dot"></span>${statusText}</span>${lockedLine}</td>
       <td class="cell-muted">${u.created_date || "-"}</td>
+      <td class="cell-muted">${u.orders_count ?? 0}</td>
+      <td class="cell-muted">${formatLastOrderDate(u.last_order_at)}</td>
       <td class="actions-col">
         <div class="row-actions">
           <button class="more-btn" data-idx="${i}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
           </button>
           <div class="dropdown" id="dd-${i}" style="display:none;">
-            <a href="#" class="view-user" data-view-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>View</a>
-            ${canEditUsers ? `<a href="#" class="edit-user" data-edit-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>Edit</a>` : ""}
+            <a href="#" class="view-user" data-view-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Ver</a>
+            ${canEditUsers ? `<a href="#" class="edit-user" data-edit-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>Editar</a>` : ""}
             <div class="sep"></div>
-            ${canReactivateUsers && u.can_reactivate ? `<a href="#" class="reactivate-user" data-reactivate-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>Reactivate</a>` : ""}
+            ${canReactivateUsers && u.can_reactivate ? `<a href="#" class="reactivate-user" data-reactivate-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>Reactivar</a>` : ""}
+            ${canUnlockUsers && u.is_locked ? `<a href="#" class="unlock-user" data-unlock-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>Unlock</a>` : ""}
             ${deleteAction}
           </div>
         </div>
@@ -189,6 +304,201 @@ function renderUsers(users) {
   });
 
   attachDropdownListeners();
+  updateSelectAllCheckboxState();
+  updateBulkActionsBar();
+}
+
+// ---------------------------------------------------------------------------
+// SELECCIÓN DE USUARIOS: checkbox del header (seleccionar todos) + checkboxes
+// por fila. Se reinicia en cada renderUsers() porque las filas se recrean.
+// ---------------------------------------------------------------------------
+function updateSelectAllCheckboxState() {
+  const selectAllCheckbox = document.getElementById("selectAllUsers");
+  if (!selectAllCheckbox) return;
+  const rowCheckboxes = document.querySelectorAll(".row-checkbox");
+  const total = rowCheckboxes.length;
+  const checkedCount = document.querySelectorAll(".row-checkbox:checked").length;
+  selectAllCheckbox.checked = total > 0 && checkedCount === total;
+  selectAllCheckbox.indeterminate = checkedCount > 0 && checkedCount < total;
+}
+
+// ---------------------------------------------------------------------------
+// ACCIONES MASIVAS: barra que aparece cuando hay usuarios tildados. Reusa
+// selectedUserIds (ya mantenido por el listener de checkboxes de arriba).
+// ---------------------------------------------------------------------------
+function updateBulkActionsBar() {
+  const bar = document.getElementById("bulkActionsBar");
+  const countEl = document.getElementById("bulkActionsCount");
+  if (!bar) return;
+  const count = selectedUserIds.size;
+  bar.style.display = count > 0 ? "flex" : "none";
+  if (countEl) countEl.textContent = `${count} seleccionado${count === 1 ? "" : "s"}`;
+}
+
+async function runBulkAction(payload) {
+  if (selectedUserIds.size === 0) {
+    alert("Seleccioná al menos un usuario (tildá su casilla).");
+    return;
+  }
+  try {
+    const response = await apiFetch(`${API_URL}bulk-actions/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: Array.from(selectedUserIds), ...payload }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail = data && (data.detail || Object.values(data)[0]);
+      throw new Error(Array.isArray(detail) ? detail[0] : detail || `Error HTTP: ${response.status}`);
+    }
+
+    const skippedCount = (data.skipped || []).length;
+    let message = `Acción aplicada a ${data.updated.length} usuario(s).`;
+    if (skippedCount > 0) {
+      const reasons = data.skipped.map((s) => `#${s.id}: ${s.reason}`).join("\n");
+      message += `\n${skippedCount} se salteó(aron):\n${reasons}`;
+    }
+    alert(message);
+    loadUsers();
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    console.error("Error en la acción masiva:", err);
+    alert(err.message || "No se pudo completar la acción masiva.");
+  }
+}
+
+document.getElementById("bulkActivateBtn")?.addEventListener("click", () => {
+  runBulkAction({ action: "activate" });
+});
+document.getElementById("bulkDeactivateBtn")?.addEventListener("click", () => {
+  runBulkAction({ action: "deactivate" });
+});
+document.getElementById("bulkSetRoleBtn")?.addEventListener("click", () => {
+  const role = document.getElementById("bulkRoleSelect")?.value;
+  if (!role) {
+    alert("Elegí un rol para aplicar.");
+    return;
+  }
+  runBulkAction({ action: "set_role", role });
+});
+
+document.addEventListener("change", (e) => {
+  const rowCheckbox = e.target.closest(".row-checkbox");
+  if (rowCheckbox) {
+    const userId = parseInt(rowCheckbox.dataset.userId, 10);
+    if (rowCheckbox.checked) {
+      selectedUserIds.add(userId);
+    } else {
+      selectedUserIds.delete(userId);
+    }
+    const row = rowCheckbox.closest("tr");
+    if (row) row.classList.toggle("row-selected", rowCheckbox.checked);
+    updateSelectAllCheckboxState();
+    updateBulkActionsBar();
+    return;
+  }
+
+  const selectAllCheckbox = e.target.closest("#selectAllUsers");
+  if (selectAllCheckbox) {
+    const checked = selectAllCheckbox.checked;
+    document.querySelectorAll(".row-checkbox").forEach((cb) => {
+      cb.checked = checked;
+      const userId = parseInt(cb.dataset.userId, 10);
+      if (checked) {
+        selectedUserIds.add(userId);
+      } else {
+        selectedUserIds.delete(userId);
+      }
+      const row = cb.closest("tr");
+      if (row) row.classList.toggle("row-selected", checked);
+    });
+    selectAllCheckbox.indeterminate = false;
+    updateBulkActionsBar();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// EXPORTAR A EXCEL: toma los usuarios tildados (selectedUserIds) de la
+// página/filtro actual y arma un .xlsx en el navegador con SheetJS (no pega
+// contra el backend: los datos ya están en lastUsers, cargados por loadUsers).
+// ---------------------------------------------------------------------------
+const exportUsersBtn = document.getElementById("exportUsersBtn");
+if (exportUsersBtn) {
+  exportUsersBtn.addEventListener("click", () => {
+    if (selectedUserIds.size === 0) {
+      alert("Seleccioná al menos un usuario (tildá su casilla) para exportar.");
+      return;
+    }
+
+    if (typeof XLSX === "undefined") {
+      alert("No se pudo cargar la librería de Excel. Revisá tu conexión e intentá de nuevo.");
+      return;
+    }
+
+    const selectedUsers = lastUsers.filter((u) => selectedUserIds.has(Number(u.id)));
+    const rows = selectedUsers.map((u) => ({
+      ID: u.id,
+      Nombre: u.display_name || "",
+      Email: u.email || "",
+      Rol: translateRole(u.role_label || "User"),
+      Estado: statusLabel[u.status_key] || u.status_label || (u.is_active ? "Activo" : "Inactivo"),
+      "Fecha de creación": u.created_date || "",
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    worksheet["!cols"] = [
+      { wch: 6 },
+      { wch: 28 },
+      { wch: 32 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 16 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Usuarios");
+
+    const today = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(workbook, `usuarios-${today}.xlsx`);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// EXPORTAR A CSV: generado en el BACKEND (a diferencia del .xlsx de arriba,
+// que arma el navegador). Si hay selección, exporta solo esos IDs; si no,
+// exporta el resultado de los filtros actualmente activos (sin límite de
+// página: toda la lista filtrada, no solo la página visible).
+// ---------------------------------------------------------------------------
+const exportUsersCsvBtn = document.getElementById("exportUsersCsvBtn");
+if (exportUsersCsvBtn) {
+  exportUsersCsvBtn.addEventListener("click", async () => {
+    let url = buildQueryString(EXPORT_CSV_URL, { includePage: false });
+    if (selectedUserIds.size > 0) {
+      const separator = url.includes("?") ? "&" : "?";
+      url += `${separator}ids=${Array.from(selectedUserIds).join(",")}`;
+    }
+
+    try {
+      const response = await apiFetch(url);
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.detail || `Error HTTP: ${response.status}`);
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = `usuarios-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      if (err.isSessionExpired) return;
+      console.error("Error al exportar CSV:", err);
+      alert(err.message || "No se pudo exportar el CSV.");
+    }
+  });
 }
 
 function renderPagination(pagination) {
@@ -197,7 +507,7 @@ function renderPagination(pagination) {
   const controlsEl = document.getElementById("paginationControls");
 
   if (!pagination) {
-    if (infoEl) infoEl.textContent = "Showing 0 users";
+    if (infoEl) infoEl.textContent = "Mostrando 0 usuarios";
     if (numbersEl) numbersEl.innerHTML = "";
     return;
   }
@@ -207,8 +517,8 @@ function renderPagination(pagination) {
 
   if (infoEl) {
     infoEl.textContent = count > 0
-      ? `Showing ${from} to ${to} of ${count} users`
-      : "Showing 0 users";
+      ? `Mostrando ${from} a ${to} de ${count} usuarios`
+      : "Mostrando 0 usuarios";
   }
 
   // Botones prev/next/first/last
@@ -244,9 +554,11 @@ function renderSummary(summary) {
   const totalEl = document.getElementById("totalUsersCount");
   const activeEl = document.getElementById("activeUsersCount");
   const inactiveEl = document.getElementById("inactiveUsersCount");
+  const lockedEl = document.getElementById("lockedUsersCount");
   if (totalEl) totalEl.textContent = summary.total ?? "—";
   if (activeEl) activeEl.textContent = summary.active ?? "—";
   if (inactiveEl) inactiveEl.textContent = summary.inactive ?? "—";
+  if (lockedEl) lockedEl.textContent = summary.locked ?? "—";
 }
 
 function attachDropdownListeners() {
@@ -295,6 +607,14 @@ document.addEventListener("click", (e) => {
     e.preventDefault();
     const userId = parseInt(reactivateLink.dataset.reactivateId, 10);
     if (userId) reactivateUser(userId);
+    return;
+  }
+
+  const unlockLink = e.target.closest(".unlock-user");
+  if (unlockLink) {
+    e.preventDefault();
+    const userId = parseInt(unlockLink.dataset.unlockId, 10);
+    if (userId) unlockUser(userId);
   }
 });
 
@@ -334,6 +654,40 @@ function reactivateUser(userId) {
       if (err.isSessionExpired) return;
       console.error("Error al reactivar usuario:", err);
       alert(err.message || "No se pudo reactivar el usuario. Intentá de nuevo.");
+    });
+}
+
+function unlockUser(userId) {
+  const user = lastUsers.find((u) => Number(u.id) === userId);
+  const userName = user ? user.display_name || user.email : `#${userId}`;
+
+  const confirmed = window.confirm(
+    `¿Desbloquear al usuario "${userName}"?\n\nSe reseteará el bloqueo y el contador de intentos fallidos.`
+  );
+  if (!confirmed) return;
+
+  apiFetch(`${API_URL}${userId}/unlock/`, {
+    method: "POST",
+  })
+    .then(async (response) => {
+      if (response.status === 403) {
+        throw new Error("No tenés permisos para desbloquear usuarios.");
+      }
+      if (response.status === 404) {
+        throw new Error("El usuario no existe.");
+      }
+      if (!response.ok) {
+        throw new Error(`Error HTTP: ${response.status}`);
+      }
+    })
+    .then(() => {
+      alert(`El usuario "${userName}" fue desbloqueado correctamente.`);
+      loadUsers();
+    })
+    .catch((err) => {
+      if (err.isSessionExpired) return;
+      console.error("Error al desbloquear usuario:", err);
+      alert(err.message || "No se pudo desbloquear el usuario. Intentá de nuevo.");
     });
 }
 
@@ -400,25 +754,34 @@ function openViewModal(userId) {
       return response.json();
     })
     .then((user) => {
-      const role = user.role_label || "User";
+      const role = translateRole(user.role_label || "User");
       const statusKey = user.status_key || (user.is_active ? "active" : "inactive");
-      const statusText = user.status_label || statusLabel[statusKey] || statusKey;
+      const statusText = statusLabel[statusKey] || user.status_label || statusKey;
+
+      const lockText = user.is_locked
+        ? formatLockoutRemaining(user.lockout_remaining_seconds)
+        : "No";
 
       const rows = [
         ["ID", user.id ?? "-"],
-        ["Name", user.display_name || "-"],
+        ["Nombre", user.display_name || "-"],
         ["Email", user.email || "-"],
-        ["Role", role],
-        ["Status", statusText],
-        ["Created", user.created_date || "-"],
+        ["Rol", role],
+        ["Estado", statusText],
+        ["Bloqueo", lockText],
+        ["Creado", user.created_date || "-"],
+        ["Último acceso", formatLastLogin(user.last_login)],
+        ["Pedidos totales", user.orders_count ?? 0],
+        ["Último pedido", formatLastOrderDate(user.last_order_at)],
+        ["Cambio de contraseña pendiente", user.must_change_password ? "Sí" : "No"],
       ];
 
       content.innerHTML = rows
         .map(
           ([label, value]) => `
-            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #e7eaf1;">
-              <span style="font-size:13px; font-weight:600; color:#64748b;">${label}</span>
-              <span style="font-size:14px; color:#0f172a; text-align:right;">${value}</span>
+            <div style="display:flex; justify-content:space-between; align-items:baseline; gap:16px; padding:9px 0; border-bottom:1px solid #e7eaf1;">
+              <span style="flex:0 0 auto; max-width:55%; font-size:12.5px; font-weight:600; color:#64748b; line-height:1.35;">${label}</span>
+              <span style="flex:1; font-size:14px; color:#0f172a; text-align:right; word-break:break-word;">${value}</span>
             </div>
           `
         )
@@ -438,7 +801,8 @@ function openViewModal(userId) {
 async function loadRoleOptions() {
   const roleSelect = document.getElementById("roleSelect");
   const roleFilter = document.getElementById("userRoleFilter");
-  if (!roleSelect && !roleFilter) return;
+  const bulkRoleSelect = document.getElementById("bulkRoleSelect");
+  if (!roleSelect && !roleFilter && !bulkRoleSelect) return;
 
   try {
     const response = await apiFetch(ROLES_URL);
@@ -454,7 +818,7 @@ async function loadRoleOptions() {
 
     if (roleSelect) {
       const current = roleSelect.value;
-      roleSelect.innerHTML = '<option value="">Select role</option>';
+      roleSelect.innerHTML = '<option value="">Seleccioná un rol</option>';
       options.forEach(({ key, label }) => {
         const opt = document.createElement("option");
         opt.value = key;
@@ -466,7 +830,7 @@ async function loadRoleOptions() {
 
     if (roleFilter) {
       const current = roleFilter.value;
-      roleFilter.innerHTML = '<option value="all">All</option>';
+      roleFilter.innerHTML = '<option value="all">Todos</option>';
       options.forEach(({ key, label }) => {
         const opt = document.createElement("option");
         opt.value = key;
@@ -474,6 +838,16 @@ async function loadRoleOptions() {
         roleFilter.appendChild(opt);
       });
       if (current) roleFilter.value = current;
+    }
+
+    if (bulkRoleSelect) {
+      bulkRoleSelect.innerHTML = '<option value="">Cambiar rol a...</option>';
+      options.forEach(({ key, label }) => {
+        const opt = document.createElement("option");
+        opt.value = key;
+        opt.textContent = label;
+        bulkRoleSelect.appendChild(opt);
+      });
     }
   } catch (err) {
     if (err.isSessionExpired) return;
@@ -487,19 +861,21 @@ function resetCreateForm() {
   if (form) form.reset();
   const title = document.getElementById("userFormTitle");
   const submitBtn = document.getElementById("userFormSubmit");
-  if (title) title.textContent = "Create User";
-  if (submitBtn) submitBtn.textContent = "Create User";
+  if (title) title.textContent = "Crear usuario";
+  if (submitBtn) submitBtn.textContent = "Crear usuario";
 
-  // En modo creación el campo Password está visible y es obligatorio.
+  // En modo creación el campo Password está visible; es opcional: si se deja
+  // vacío, el backend usa una contraseña temporal (ADMIN_CREATED_USER_PASSWORD)
+  // y marca la cuenta para cambiarla en el próximo login.
   const passwordField = document.getElementById("passwordField");
   const passwordInput = document.getElementById("passwordInput");
   if (passwordField) passwordField.style.display = "block";
   if (passwordInput) {
     passwordInput.value = "";
-    passwordInput.required = true;
+    passwordInput.required = false;
   }
-  // La sección de cambio de contraseña es solo del perfil propio (modo USER).
-  hidePasswordSection();
+  const forceChangeInput = document.getElementById("forcePasswordChangeInput");
+  if (forceChangeInput) forceChangeInput.checked = false;
 }
 
 function openEditPanel(userId) {
@@ -520,9 +896,9 @@ function openEditPanel(userId) {
   if (fullNameInput) fullNameInput.value = user.display_name || "";
   if (emailInput) emailInput.value = user.email || "";
 
-  // El backend devuelve role_key / status_key en minúsculas.
-  // El <select> usa valores con mayúscula inicial ("Admin", "Active"),
-  // así que mapeamos la primera letra a mayúscula para matchear la option.
+  // El backend devuelve role_key / status_key en minúsculas, y los <option>
+  // de rol y estado usan esas mismas claves en minúscula como value="...",
+  // así que no hace falta transformar nada para matchear la option.
   const roleKey = user.role_key || "subscriber";
   const statusKey = user.status_key || (user.is_active ? "active" : "inactive");
 
@@ -532,15 +908,16 @@ function openEditPanel(userId) {
     roleSelect.value = roleKey;
   }
   if (statusSelect) {
-    const statusValue = statusKey.charAt(0).toUpperCase() + statusKey.slice(1);
-    statusSelect.value = statusValue;
+    // Los <option> de status ahora tienen value="active"/"inactive" explícito
+    // (ya no dependen del texto visible), así que matchea directo con la key.
+    statusSelect.value = statusKey;
   }
 
   // Cambios visuales mínimos para indicar modo edición
   const title = document.getElementById("userFormTitle");
   const submitBtn = document.getElementById("userFormSubmit");
-  if (title) title.textContent = "Edit User";
-  if (submitBtn) submitBtn.textContent = "Save Changes";
+  if (title) title.textContent = "Editar usuario";
+  if (submitBtn) submitBtn.textContent = "Guardar cambios";
 
   // En modo edición NUNCA se muestra ni se precarga la contraseña existente.
   const passwordField = document.getElementById("passwordField");
@@ -550,8 +927,10 @@ function openEditPanel(userId) {
     passwordInput.value = "";
     passwordInput.required = false;
   }
-  // La sección de cambio de contraseña es solo del perfil propio (modo USER).
-  hidePasswordSection();
+
+  // Precargar el estado actual del flag "forzar cambio de contraseña".
+  const forceChangeInput = document.getElementById("forcePasswordChangeInput");
+  if (forceChangeInput) forceChangeInput.checked = Boolean(user.must_change_password);
 
   panel.style.display = "block";
 }
@@ -602,6 +981,75 @@ if (statusFilter) {
 if (roleFilter) {
   roleFilter.addEventListener("change", () => {
     currentRole = roleFilter.value;
+    currentPage = 1;
+    loadUsers();
+  });
+}
+
+// Filtros avanzados: actividad (fechas / inactividad), seguridad (locked /
+// intentos fallidos), origen (auth_method) y orden — mismo mecanismo que
+// status/role: cada control actualiza su variable current* y recarga en la
+// página 1. Todos los query params los procesa el backend (ver viewsets.py).
+const dateJoinedFromFilter = document.getElementById("userDateJoinedFrom");
+const dateJoinedToFilter = document.getElementById("userDateJoinedTo");
+const lastLoginFromFilter = document.getElementById("userLastLoginFrom");
+const lastLoginToFilter = document.getElementById("userLastLoginTo");
+const neverLoggedInFilter = document.getElementById("userNeverLoggedIn");
+const inactiveDaysFilter = document.getElementById("userInactiveDays");
+const lockedFilter = document.getElementById("userLockedFilter");
+const failedAttemptsFilter = document.getElementById("userFailedAttemptsFilter");
+const authMethodFilter = document.getElementById("userAuthMethodFilter");
+const orderingFieldFilter = document.getElementById("userOrderingField");
+const orderingDirFilter = document.getElementById("userOrderingDir");
+const clearUserFiltersBtn = document.getElementById("clearUserFiltersBtn");
+
+function bindAdvancedFilter(el, apply) {
+  if (!el) return;
+  el.addEventListener("change", () => {
+    apply();
+    currentPage = 1;
+    loadUsers();
+  });
+}
+
+bindAdvancedFilter(dateJoinedFromFilter, () => (currentDateJoinedFrom = dateJoinedFromFilter.value));
+bindAdvancedFilter(dateJoinedToFilter, () => (currentDateJoinedTo = dateJoinedToFilter.value));
+bindAdvancedFilter(lastLoginFromFilter, () => (currentLastLoginFrom = lastLoginFromFilter.value));
+bindAdvancedFilter(lastLoginToFilter, () => (currentLastLoginTo = lastLoginToFilter.value));
+bindAdvancedFilter(neverLoggedInFilter, () => (currentNeverLoggedIn = neverLoggedInFilter.checked));
+bindAdvancedFilter(inactiveDaysFilter, () => (currentInactiveDays = inactiveDaysFilter.value.trim()));
+bindAdvancedFilter(lockedFilter, () => (currentLocked = lockedFilter.value));
+bindAdvancedFilter(failedAttemptsFilter, () => (currentFailedAttempts = failedAttemptsFilter.value));
+bindAdvancedFilter(authMethodFilter, () => (currentAuthMethod = authMethodFilter.value));
+bindAdvancedFilter(orderingFieldFilter, () => (currentOrderingField = orderingFieldFilter.value));
+bindAdvancedFilter(orderingDirFilter, () => (currentOrderingDir = orderingDirFilter.value));
+
+if (clearUserFiltersBtn) {
+  clearUserFiltersBtn.addEventListener("click", () => {
+    currentDateJoinedFrom = "";
+    currentDateJoinedTo = "";
+    currentLastLoginFrom = "";
+    currentLastLoginTo = "";
+    currentNeverLoggedIn = false;
+    currentInactiveDays = "";
+    currentLocked = "all";
+    currentFailedAttempts = "all";
+    currentAuthMethod = "all";
+    currentOrderingField = "id";
+    currentOrderingDir = "asc";
+
+    if (dateJoinedFromFilter) dateJoinedFromFilter.value = "";
+    if (dateJoinedToFilter) dateJoinedToFilter.value = "";
+    if (lastLoginFromFilter) lastLoginFromFilter.value = "";
+    if (lastLoginToFilter) lastLoginToFilter.value = "";
+    if (neverLoggedInFilter) neverLoggedInFilter.checked = false;
+    if (inactiveDaysFilter) inactiveDaysFilter.value = "";
+    if (lockedFilter) lockedFilter.value = "all";
+    if (failedAttemptsFilter) failedAttemptsFilter.value = "all";
+    if (authMethodFilter) authMethodFilter.value = "all";
+    if (orderingFieldFilter) orderingFieldFilter.value = "id";
+    if (orderingDirFilter) orderingDirFilter.value = "asc";
+
     currentPage = 1;
     loadUsers();
   });
@@ -661,8 +1109,7 @@ document
     panel.style.display = "none";
   });
 
-// Crear/Editar usuario / Perfil propio: el submit se maneja de forma
-// unificada más abajo (handleAdminSubmit / saveMyProfile según el modo).
+// Crear/Editar usuario: el submit se maneja más abajo (handleAdminSubmit).
 const createUserForm = document.getElementById("createUserForm");
 
 // 🚀 Logout: invalida el refresh token en el backend, limpia tokens y redirige.
@@ -692,56 +1139,10 @@ if (logoutBtn) {
     localStorage.removeItem("refresh");
     localStorage.removeItem("user");
 
-    // 3. Redirigir a la pantalla de logout del proyecto.
-    window.location.replace("logoutpage.html");
+    // 3. El logout ya se hizo acá mismo (token invalidado + storage limpio);
+    //    redirigir directo al login en vez de pasar por logoutpage.html.
+    window.location.replace("index.html");
   });
-}
-
-// ---------------------------------------------------------------------------
-// PERFIL PROPIO: panel de usuario (reutiliza el mismo form visual del admin)
-// ---------------------------------------------------------------------------
-let profileMode = false; // true = editando perfil propio (/me/), false = admin edit/{id}
-
-function hideAdminUI() {
-  const adminSelectors = [
-    "#openCreatePanel",
-    "#navRoles",
-    ".table-toolbar",
-    "table",
-    ".pagination-bar",
-    ".stats",
-  ];
-  adminSelectors.forEach((sel) => {
-    const el = document.querySelector(sel);
-    if (el) el.style.display = "none";
-  });
-  const topbarTitle = document.querySelector(".topbar h1");
-  const topbarSub = document.querySelector(".topbar p");
-  if (topbarTitle) topbarTitle.textContent = "Mi Perfil";
-  if (topbarSub) topbarSub.textContent = "Consulta y edita tus datos personales.";
-}
-
-function renderProfilePanel(user) {
-  const nameEl = document.getElementById("profileName");
-  const emailEl = document.getElementById("profileEmail");
-  const avatarEl = document.getElementById("profileAvatar");
-  if (nameEl) nameEl.textContent = user.display_name || user.email || "Usuario";
-  if (emailEl) emailEl.textContent = user.email || "—";
-  if (avatarEl) {
-    avatarEl.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.email || user.id || "user")}`;
-  }
-
-  // Activar el botón de perfil (click abre la vista Settings).
-  // Se usa onclick (no addEventListener) para no acumular listeners cuando
-  // renderProfilePanel se llama varias veces (bootstrap + loadMyProfile).
-  const profileBtn = document.getElementById("profileBtn");
-  if (profileBtn) {
-    profileBtn.onclick = () => openSettings();
-  }
-}
-
-function openProfilePanel(user) {
-  openSettings(); // Redirigir al nuevo panel Settings
 }
 
 // ---------------------------------------------------------------------------
@@ -757,6 +1158,7 @@ function handleSessionExpired() {
 
 async function openSettings() {
   closeRoles();
+  closeReports();
   // Marcar nav item activo
   document.querySelectorAll(".nav a").forEach((a) => a.classList.remove("active"));
   const navSettings = document.getElementById("navSettings");
@@ -923,49 +1325,6 @@ async function settingsSavePassword() {
   }
 }
 
-// Crea (una sola vez) la sección de cambio de contraseña dentro del panel de
-// perfil. Se inserta después de los campos de datos y antes de las acciones.
-function ensurePasswordSection() {
-  if (document.getElementById("profilePasswordSection")) return;
-
-  const panelEl = document.getElementById("createPanel");
-  const actions = panelEl && panelEl.querySelector(".create-panel-actions");
-  if (!panelEl || !actions) return;
-
-  const div = document.createElement("div");
-  div.id = "profilePasswordSection";
-  div.style.cssText = "margin-bottom: 4px;";
-  div.innerHTML = `
-    <hr style="margin: 16px 0; border-color: var(--border, #e0e0e0);">
-    <h4 style="margin: 0 0 12px; font-size: 0.9rem; color: var(--text-secondary, #666);">
-      Cambiar contraseña
-    </h4>
-    <div class="form-group">
-      <label>Contraseña actual</label>
-      <input type="password" id="currentPassword" placeholder="Tu contraseña actual" autocomplete="current-password">
-    </div>
-    <div class="form-group">
-      <label>Nueva contraseña</label>
-      <input type="password" id="newPassword" placeholder="Mínimo 8 caracteres" autocomplete="new-password">
-    </div>
-    <div class="form-group">
-      <label>Confirmar nueva contraseña</label>
-      <input type="password" id="confirmPassword" placeholder="Repetir nueva contraseña" autocomplete="new-password">
-    </div>
-    <p id="passwordMsg" style="display:none; font-size: 0.85rem; margin: 4px 0 0;"></p>
-    <button type="button" onclick="saveMyPassword()" class="btn btn-outline"
-            style="margin-top: 8px;">
-      Cambiar contraseña
-    </button>
-  `;
-  actions.before(div);
-}
-
-function hidePasswordSection() {
-  const section = document.getElementById("profilePasswordSection");
-  if (section) section.style.display = "none";
-}
-
 async function loadMyProfile() {
   try {
     const response = await apiFetch(ME_URL);
@@ -975,169 +1334,14 @@ async function loadMyProfile() {
     const user = await response.json();
     const stored = getCurrentUser();
     localStorage.setItem("user", JSON.stringify({ ...stored, ...user }));
-    renderProfilePanel(user);
   } catch (err) {
     if (err.isSessionExpired) return;
     console.error("Error al cargar perfil:", err);
   }
 }
 
-function resetProfileFields() {
-  const roleSelect = document.getElementById("roleSelect");
-  const statusSelect = document.getElementById("statusSelect");
-  const passwordField = document.getElementById("passwordField");
-  const passwordInput = document.getElementById("passwordInput");
-  const fullNameInput = document.getElementById("fullNameInput");
-  const emailInput = document.getElementById("emailInput");
-
-  if (roleSelect) roleSelect.disabled = false;
-  if (statusSelect) statusSelect.disabled = false;
-  if (passwordField) passwordField.style.display = "none";
-  if (passwordField) passwordField.querySelector("label").textContent = "Password";
-  if (passwordInput) {
-    passwordInput.required = false;
-    passwordInput.placeholder = "Enter password";
-    passwordInput.type = "password";
-  }
-  if (fullNameInput) fullNameInput.value = "";
-  if (emailInput) emailInput.value = "";
-  profileMode = false;
-  hidePasswordSection();
-}
-
-// Hook del submit del form para perfil propio (sobrescribe al de admin cuando aplica)
-const originalSubmitListener = createUserForm ? createUserForm.onSubmit : null;
 if (createUserForm) {
-  createUserForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (profileMode) {
-      await saveMyProfile();
-    } else {
-      // Delegar al handler existente (admin) ya registrado abajo
-      const evt = new Event("submit", { cancelable: true });
-      // Invoke the admin handler via the original listener chain
-      await handleAdminSubmit(e);
-    }
-  });
-}
-
-async function saveMyProfile() {
-  const email = document.getElementById("emailInput").value.trim();
-  const fullName = document.getElementById("fullNameInput").value.trim();
-
-  if (!email || !fullName) {
-    alert("Completá tu nombre y email.");
-    return;
-  }
-
-  // El endpoint /me/ solo acepta first_name/last_name (el email es read-only).
-  const parts = fullName.split(/\s+/);
-  const payload = {
-    first_name: parts[0] || "",
-    last_name: parts.slice(1).join(" ") || "",
-  };
-
-  const submitBtn = document.getElementById("userFormSubmit");
-  const originalText = submitBtn.textContent;
-  submitBtn.disabled = true;
-  submitBtn.textContent = "Guardando...";
-
-  try {
-    const response = await apiFetch(ME_URL, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const messages = [];
-      if (data && typeof data === "object") {
-        for (const [field, errors] of Object.entries(data)) {
-          if (Array.isArray(errors)) messages.push(`${field}: ${errors.join(", ")}`);
-          else if (typeof errors === "string") messages.push(`${field}: ${errors}`);
-        }
-      }
-      throw new Error(messages.length ? messages.join("\n") : `Error HTTP: ${response.status}`);
-    }
-
-    alert("Perfil actualizado correctamente.");
-    panel.style.display = "none";
-    resetProfileFields();
-    // Actualizar sidebar y localStorage con los datos nuevos del backend.
-    const stored = getCurrentUser();
-    const updated = {
-      ...stored,
-      email: data.email || stored.email,
-      first_name: data.first_name || stored.first_name || "",
-      last_name: data.last_name || stored.last_name || "",
-      display_name: data.display_name || fullName,
-    };
-    localStorage.setItem("user", JSON.stringify(updated));
-    loadMyProfile();
-  } catch (err) {
-    if (err.isSessionExpired) return;
-    alert(err.message || "No se pudo actualizar tu perfil.");
-  } finally {
-    submitBtn.disabled = false;
-    submitBtn.textContent = originalText;
-  }
-}
-
-async function saveMyPassword() {
-  const current = document.getElementById("currentPassword")?.value?.trim();
-  const nuevo   = document.getElementById("newPassword")?.value?.trim();
-  const confirm = document.getElementById("confirmPassword")?.value?.trim();
-  const msg     = document.getElementById("passwordMsg");
-
-  const showMsg = (text, ok) => {
-    if (!msg) return;
-    msg.textContent = text;
-    msg.style.color   = ok ? "green" : "red";
-    msg.style.display = "block";
-  };
-
-  if (!current || !nuevo || !confirm) {
-    showMsg("Completá los tres campos para cambiar la contraseña.", false);
-    return;
-  }
-
-  const token = localStorage.getItem("access");
-  try {
-    const res = await fetch(CHANGE_PASSWORD_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        current_password: current,
-        new_password:     nuevo,
-        confirm_password: confirm
-      })
-    });
-
-    const data = await res.json().catch(() => ({}));
-
-    if (res.ok) {
-      showMsg("Contraseña actualizada correctamente.", true);
-      document.getElementById("currentPassword").value = "";
-      document.getElementById("newPassword").value     = "";
-      document.getElementById("confirmPassword").value = "";
-    } else if (res.status === 401) {
-      showMsg("Sesión expirada. Volvé a iniciar sesión.", false);
-    } else {
-      const err =
-        data?.current_password?.[0] ||
-        data?.confirm_password?.[0] ||
-        data?.new_password?.[0] ||
-        data?.detail ||
-        "Error al cambiar la contraseña.";
-      showMsg(err, false);
-    }
-  } catch {
-    showMsg("Error de red. Verificá tu conexión.", false);
-  }
+  createUserForm.addEventListener("submit", handleAdminSubmit);
 }
 
 // Handler central del submit para ADMIN (preserva la lógica existente)
@@ -1154,11 +1358,12 @@ async function handleAdminSubmit(e) {
   }
 
   const isEditing = editingUserId !== null;
+  // Password opcional al crear: si se deja vacío, el backend usa una
+  // temporal (ADMIN_CREATED_USER_PASSWORD) y fuerza su cambio. No se manda
+  // la clave "password" en el body si está vacía (un CharField vacío
+  // explícito sería inválido para DRF; omitirla activa el fallback).
   const password = isEditing ? "" : document.getElementById("passwordInput").value.trim();
-  if (!isEditing && !password) {
-    alert("Ingresá una contraseña para el nuevo usuario.");
-    return;
-  }
+  const forcePasswordChange = document.getElementById("forcePasswordChangeInput")?.checked || false;
 
   const submitBtn = document.getElementById("userFormSubmit");
   const originalText = submitBtn.textContent;
@@ -1168,11 +1373,14 @@ async function handleAdminSubmit(e) {
   const url = isEditing ? `${API_URL}${editingUserId}/` : API_URL;
   const method = isEditing ? "PATCH" : "POST";
 
+  const body = { email, full_name: fullName, role, status, force_password_change: forcePasswordChange };
+  if (!isEditing && password) body.password = password;
+
   try {
     const response = await apiFetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(isEditing ? { email, full_name: fullName, role, status } : { email, full_name: fullName, role, status, password }),
+      body: JSON.stringify(body),
     });
 
     const data = await response.json().catch(() => ({}));
@@ -1364,7 +1572,7 @@ function renderRolePermissions(permissionCodes = []) {
 }
 
 async function loadPermissionCatalog() {
-  setPermissionsLoading("Loading permissions...");
+  setPermissionsLoading("Cargando permisos...");
   const response = await apiFetch(PERMISSIONS_URL);
   const data = await response.json().catch(() => ({}));
   if (response.status === 403) throw new Error("No tenés permisos para administrar roles.");
@@ -1379,7 +1587,7 @@ async function loadPermissionCatalog() {
 }
 
 async function loadRoles() {
-  setRolesLoading("Loading roles...");
+  setRolesLoading("Cargando roles...");
   const response = await apiFetch(ROLES_URL);
   const data = await response.json().catch(() => ({}));
   if (response.status === 403) throw new Error("No tenés permisos para administrar roles.");
@@ -1409,7 +1617,7 @@ async function loadRolePermissions(roleId) {
 
   selectedRole = role;
   renderRoles();
-  setPermissionsLoading("Loading permissions...");
+  setPermissionsLoading("Cargando permisos...");
   clearRolesMessage();
   try {
     const response = await apiFetch(`${ROLES_URL}${getRoleId(role)}/permissions/`);
@@ -1437,6 +1645,7 @@ async function openRoles() {
   }
 
   closeSettings();
+  closeReports();
   document.querySelectorAll(".nav a").forEach((link) => link.classList.remove("active"));
   document.getElementById("navRoles")?.classList.add("active");
   [".topbar", ".stats", ".table-card"].forEach((selector) => {
@@ -1478,6 +1687,102 @@ function closeRoles() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// REPORTES / MÉTRICAS: mismo patrón de toggle de sección que Roles/Ajustes.
+// ---------------------------------------------------------------------------
+function renderMetricsBars(containerId, items, { labelKey, countKey, labelFormatter }) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (!items || items.length === 0) {
+    container.innerHTML = `<p class="roles-loading">Sin datos para mostrar.</p>`;
+    return;
+  }
+  const max = Math.max(...items.map((item) => item[countKey]), 1);
+  container.innerHTML = items
+    .map((item) => {
+      const label = labelFormatter ? labelFormatter(item[labelKey]) : item[labelKey];
+      const pct = Math.round((item[countKey] / max) * 100);
+      return `
+        <div class="metrics-bar-row">
+          <span class="metrics-bar-label" title="${label}">${label}</span>
+          <span class="metrics-bar-track"><span class="metrics-bar-fill" style="width:${pct}%"></span></span>
+          <span class="metrics-bar-count">${item[countKey]}</span>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderAuthMethodStats(authMethod) {
+  const container = document.getElementById("metricsAuthMethod");
+  if (!container) return;
+  const local = authMethod?.local ?? 0;
+  const google = authMethod?.google ?? 0;
+  container.innerHTML = `
+    <div class="metrics-stat">
+      <span class="metrics-stat-value">${local}</span>
+      <span class="metrics-stat-label">Local (email/password)</span>
+    </div>
+    <div class="metrics-stat">
+      <span class="metrics-stat-value">${google}</span>
+      <span class="metrics-stat-label">Google</span>
+    </div>
+  `;
+}
+
+async function loadMetrics() {
+  ["metricsRoleDistribution", "metricsSignupsByMonth", "metricsAuthMethod"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = `<p class="roles-loading">Cargando métricas...</p>`;
+  });
+
+  try {
+    const response = await apiFetch(METRICS_URL);
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 403) throw new Error("No tenés permisos para ver las métricas.");
+    if (!response.ok) throw new Error(data.detail || "No se pudieron cargar las métricas.");
+
+    renderMetricsBars("metricsRoleDistribution", data.role_distribution, {
+      labelKey: "label", countKey: "count",
+    });
+    renderMetricsBars("metricsSignupsByMonth", data.signups_by_month, {
+      labelKey: "month", countKey: "count",
+    });
+    renderAuthMethodStats(data.auth_method);
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    console.error("Error al cargar métricas:", err);
+    ["metricsRoleDistribution", "metricsSignupsByMonth", "metricsAuthMethod"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = `<p class="roles-loading">${err.message || "No se pudieron cargar las métricas."}</p>`;
+    });
+  }
+}
+
+function openReports() {
+  closeSettings();
+  closeRoles();
+  document.querySelectorAll(".nav a").forEach((link) => link.classList.remove("active"));
+  document.getElementById("navReports")?.classList.add("active");
+  [".topbar", ".stats", ".table-card"].forEach((selector) => {
+    const element = document.querySelector(selector);
+    if (element) element.style.display = "none";
+  });
+  document.getElementById("reportsSection").style.display = "";
+  loadMetrics();
+}
+
+function closeReports() {
+  const section = document.getElementById("reportsSection");
+  if (section) section.style.display = "none";
+  if (canViewUsers()) {
+    [".topbar", ".stats", ".table-card"].forEach((selector) => {
+      const element = document.querySelector(selector);
+      if (element) element.style.display = "";
+    });
+  }
+}
+
 async function saveRolePermissions() {
   if (!isAdminMode() || !selectedRole) return;
   const button = document.getElementById("saveRolePermissions");
@@ -1486,7 +1791,7 @@ async function saveRolePermissions() {
   ).map((checkbox) => checkbox.value);
   const originalText = button.textContent;
   button.disabled = true;
-  button.textContent = "Saving...";
+  button.textContent = "Guardando...";
   clearRolesMessage();
 
   try {
@@ -1659,12 +1964,14 @@ document.getElementById("createRoleBtn")
 document.getElementById("navSettings")
   ?.addEventListener("click", () => {
     closeRoles();
+    closeReports();
     openSettings();
   });
-
-// profileBtn (sidebar footer) → también abre Settings
-document.getElementById("profileBtn")
-  ?.addEventListener("click", () => openSettings());
+document.getElementById("navReports")
+  ?.addEventListener("click", (event) => {
+    event.preventDefault();
+    openReports();
+  });
 
 // Botones dentro de Settings
 document.getElementById("settingsSaveProfile")
@@ -1673,36 +1980,32 @@ document.getElementById("settingsSavePassword")
   ?.addEventListener("click", settingsSavePassword);
 
 // Los demás ítems cierran las vistas mutuamente excluyentes.
-document.querySelectorAll(".nav a:not(#navSettings):not(#navRoles)").forEach((a) => {
+document.querySelectorAll(".nav a:not(#navSettings):not(#navRoles):not(#navReports)").forEach((a) => {
   a.addEventListener("click", () => {
     closeSettings();
     closeRoles();
+    closeReports();
   });
 });
 
 // ---------------------------------------------------------------------------
-// 🚀 INICIO: decide modo ADMIN o modo USUARIO
+// 🚀 INICIO: esta pantalla es exclusiva de quien puede gestionar usuarios.
+// Sin el permiso users.view, se redirige al dashboard (el perfil propio
+// vive en perfil.html).
 // ---------------------------------------------------------------------------
 function bootstrap() {
-  const user = getCurrentUser();
-  const adminMode = isAdminMode();
-
-  if (canViewUsers()) {
-    document.getElementById("openCreatePanel").style.display = canUseUserPermission("users.create") ? "" : "none";
-    if (!adminMode) document.getElementById("navRoles").style.display = "none";
-    // El sidebar muestra el perfil del admin autenticado (no "Cargando...").
-    // Primero se pinta con lo que haya en localStorage y luego se refresca
-    // con los datos reales de /me/.
-    renderProfilePanel(user);
-    loadMyProfile();
-    loadUsers();
-    // Cargar dinámicamente TODOS los roles (básicos + personalizados).
-    loadRoleOptions();
-  } else {
-    hideAdminUI();
-    renderProfilePanel(user);
-    loadMyProfile();
+  if (!canViewUsers()) {
+    window.location.replace("dashboard.html");
+    return;
   }
+
+  const adminMode = isAdminMode();
+  document.getElementById("openCreatePanel").style.display = canUseUserPermission("users.create") ? "" : "none";
+  if (!adminMode) document.getElementById("navRoles").style.display = "none";
+  loadMyProfile();
+  loadUsers();
+  // Cargar dinámicamente TODOS los roles (básicos + personalizados).
+  loadRoleOptions();
 }
 
 bootstrap();

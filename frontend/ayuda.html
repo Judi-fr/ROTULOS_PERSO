@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Ayuda / Soporte</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Reusa el mismo estilo de tarjeta que perfil.html (.profile-card). -->
+    <link rel="stylesheet" href="assets/css/perfil.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar">
+        <div class="topbar-user">
+          <img
+            class="avatar"
+            id="userAvatar"
+            src="https://api.dicebear.com/7.x/avataaars/svg?seed=user"
+            alt=""
+          />
+          <div class="topbar-user-info">
+            <span class="topbar-user-name" id="userName">—</span>
+            <span class="topbar-user-email" id="userEmail">—</span>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <a class="btn btn-outline" href="dashboard.html">Volver al panel</a>
+          <button class="btn btn-outline" id="logoutBtn" type="button">
+            Cerrar sesión
+          </button>
+        </div>
+      </header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Ayuda / Soporte</h1>
+          <p>¿Tenés un problema o una consulta? Escribinos y te respondemos a la brevedad.</p>
+        </div>
+
+        <section class="profile-card">
+          <div class="profile-card-title">Nuevo mensaje</div>
+          <div class="profile-card-body">
+            <div class="field">
+              <label for="subjectInput">Asunto</label>
+              <input type="text" id="subjectInput" placeholder="Ej: Problema con mi pedido" />
+            </div>
+            <div class="field">
+              <label for="messageInput">Mensaje</label>
+              <textarea id="messageInput" rows="6" placeholder="Contanos qué necesitás..." style="width:100%; padding:10px 12px; border:1px solid #e2e8f0; border-radius:8px; font-family:inherit; font-size:14px; resize:vertical;"></textarea>
+            </div>
+            <p id="supportMsg" class="form-message" style="display:none;"></p>
+            <div class="profile-card-actions">
+              <button type="button" class="btn btn-primary" id="sendSupportBtn">
+                Enviar mensaje
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/ayuda.js"></script>
+  </body>
+</html>

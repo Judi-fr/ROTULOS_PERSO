@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Mi Panel</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.materialdesignicons.com/4.8.95/css/materialdesignicons.min.css"
+    />
+
+    <link rel="stylesheet" href="assets/css/dashboard.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar">
+        <div class="topbar-user">
+          <img
+            class="avatar"
+            id="userAvatar"
+            src="https://api.dicebear.com/7.x/avataaars/svg?seed=user"
+            alt=""
+          />
+          <div class="topbar-user-info">
+            <span class="topbar-user-name" id="userName">—</span>
+            <span class="topbar-user-email" id="userEmail">—</span>
+          </div>
+        </div>
+        <button class="btn btn-outline" id="logoutBtn" type="button">
+          Cerrar sesión
+        </button>
+      </header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Mi panel</h1>
+          <p>Elegí una sección para continuar.</p>
+        </div>
+
+        <p id="dashboardMessage" class="dashboard-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <div class="summary-grid" id="summaryGrid" style="display:none;"></div>
+
+        <div id="menuGroups">
+          <p class="menu-loading">Cargando...</p>
+        </div>
+      </main>
+    </div>
+
+    <script src="assets/js/dashboard.js"></script>
+  </body>
+</html>

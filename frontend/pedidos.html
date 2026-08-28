@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Mis Pedidos</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/pedidos.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar">
+        <div class="topbar-user">
+          <img
+            class="avatar"
+            id="userAvatar"
+            src="https://api.dicebear.com/7.x/avataaars/svg?seed=user"
+            alt=""
+          />
+          <div class="topbar-user-info">
+            <span class="topbar-user-name" id="userName">—</span>
+            <span class="topbar-user-email" id="userEmail">—</span>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <a class="btn btn-outline" href="dashboard.html">Volver al panel</a>
+          <button class="btn btn-outline" id="logoutBtn" type="button">
+            Cerrar sesión
+          </button>
+        </div>
+      </header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Mis pedidos</h1>
+          <p>Gestioná tus direcciones de envío y seguí el estado de tus pedidos.</p>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <!-- Direcciones -->
+        <section class="profile-card" id="addressesSection">
+          <div class="profile-card-title">
+            <span>Mis direcciones</span>
+            <button type="button" class="btn btn-outline btn-small" id="toggleAddressFormBtn">
+              + Nueva dirección
+            </button>
+          </div>
+          <div class="profile-card-body">
+            <div id="addressList" class="address-list">
+              <p class="empty-state">Cargando direcciones...</p>
+            </div>
+
+            <form id="addressForm" style="display:none;">
+              <div class="field-row">
+                <div class="field">
+                  <label for="addrLabel">Nombre (ej. Casa, Trabajo)</label>
+                  <input type="text" id="addrLabel" placeholder="Casa" />
+                </div>
+                <div class="field">
+                  <label for="addrStreet">Calle</label>
+                  <input type="text" id="addrStreet" placeholder="Av. Siempre Viva" />
+                </div>
+              </div>
+              <div class="field-row">
+                <div class="field">
+                  <label for="addrNumber">Número</label>
+                  <input type="text" id="addrNumber" placeholder="742" />
+                </div>
+                <div class="field">
+                  <label for="addrCity">Ciudad</label>
+                  <input type="text" id="addrCity" placeholder="CABA" />
+                </div>
+              </div>
+              <div class="field-row">
+                <div class="field">
+                  <label for="addrState">Provincia</label>
+                  <input type="text" id="addrState" placeholder="Buenos Aires" />
+                </div>
+                <div class="field">
+                  <label for="addrPostalCode">Código postal</label>
+                  <input type="text" id="addrPostalCode" placeholder="1000" />
+                </div>
+              </div>
+              <div class="field">
+                <label for="addrReference">Referencia (opcional)</label>
+                <input type="text" id="addrReference" placeholder="Timbre azul, portón negro..." />
+              </div>
+              <div class="field-checkbox">
+                <input type="checkbox" id="addrIsDefault" />
+                <label for="addrIsDefault" style="margin:0;">Marcar como predeterminada</label>
+              </div>
+              <p id="addressMsg" class="form-message" style="display:none;"></p>
+              <div class="form-actions">
+                <button type="button" class="btn btn-outline" id="cancelAddressFormBtn">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="saveAddressBtn">Guardar dirección</button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <!-- Nuevo pedido -->
+        <section class="profile-card">
+          <div class="profile-card-title">Nuevo pedido</div>
+          <div class="profile-card-body">
+            <div id="noAddressMsg" class="empty-state" style="display:none;">
+              Todavía no tenés ninguna dirección guardada. Agregá una arriba para poder crear un pedido.
+            </div>
+            <div id="newOrderForm">
+              <div class="field">
+                <label for="orderAddressSelect">Dirección de envío</label>
+                <select id="orderAddressSelect"></select>
+              </div>
+              <div class="field">
+                <label for="orderDescription">Descripción (opcional)</label>
+                <input type="text" id="orderDescription" placeholder="Ej. Caja mediana con rótulos" />
+              </div>
+              <p id="orderFormMsg" class="form-message" style="display:none;"></p>
+              <div class="form-actions">
+                <button type="button" class="btn btn-primary" id="createOrderBtn">Crear pedido</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Pedidos -->
+        <section class="profile-card">
+          <div class="profile-card-title">Historial de pedidos</div>
+          <div class="profile-card-body">
+            <div id="orderList" class="order-list">
+              <p class="empty-state">Cargando pedidos...</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/pedidos.js"></script>
+  </body>
+</html>

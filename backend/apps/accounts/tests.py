@@ -132,6 +132,78 @@ class LoginTests(AuthTestCase):
         self.assertEqual(codes[-1], status.HTTP_429_TOO_MANY_REQUESTS)
 
 
+class LoginLockoutTests(AuthTestCase):
+    """Bloqueo de cuenta tras 3 intentos fallidos consecutivos (LoginLockout)."""
+
+    def setUp(self):
+        super().setUp()
+        self.user = User.objects.create_user(
+            username="lockout@example.com",
+            email="lockout@example.com",
+            password=STRONG_PASSWORD,
+        )
+
+    def _login(self, password):
+        return self.client.post(
+            "/api/v1/auth/login/",
+            {"email": "lockout@example.com", "password": password},
+            format="json",
+        )
+
+    def test_tercer_intento_fallido_bloquea_la_cuenta(self):
+        from .models import LoginLockout
+
+        for _ in range(3):
+            resp = self._login("mal")
+            self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        lockout = LoginLockout.objects.get(user=self.user)
+        self.assertEqual(lockout.failed_attempts, 3)
+        self.assertIsNotNone(lockout.locked_until)
+        self.assertTrue(lockout.is_locked())
+
+    def test_login_rechazado_mientras_esta_locked_aunque_la_password_sea_correcta(self):
+        for _ in range(3):
+            self._login("mal")
+
+        resp = self._login(STRONG_PASSWORD)
+        self.assertEqual(resp.status_code, status.HTTP_423_LOCKED)
+        self.assertIn("bloqueada", resp.data["detail"].lower())
+
+    def test_login_exitoso_resetea_el_contador(self):
+        from .models import LoginLockout
+
+        self._login("mal")
+        self._login("mal")
+        resp = self._login(STRONG_PASSWORD)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        lockout = LoginLockout.objects.get(user=self.user)
+        self.assertEqual(lockout.failed_attempts, 0)
+        self.assertIsNone(lockout.locked_until)
+
+    def test_bloqueo_expira_automaticamente_pasada_la_hora(self):
+        from django.utils import timezone
+
+        from .models import LoginLockout
+
+        for _ in range(3):
+            self._login("mal")
+
+        # Simula que ya pasó la hora de bloqueo (sin cron: se resuelve al
+        # comparar contra locked_until en el próximo intento de login).
+        lockout = LoginLockout.objects.get(user=self.user)
+        lockout.locked_until = timezone.now() - timezone.timedelta(minutes=1)
+        lockout.save(update_fields=["locked_until"])
+
+        resp = self._login(STRONG_PASSWORD)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        lockout.refresh_from_db()
+        self.assertEqual(lockout.failed_attempts, 0)
+        self.assertIsNone(lockout.locked_until)
+
+
 class RefreshRotationTests(AuthTestCase):
     def setUp(self):
         super().setUp()
@@ -280,6 +352,51 @@ class ProfileTests(AuthTestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertFalse(resp.data["has_usable_password"])
 
+    def test_patch_no_cambia_role_ni_is_staff(self):
+        # "role" es un SerializerMethodField (solo lectura) e "is_staff" está
+        # en read_only_fields: mandarlos en el PATCH no debe alterarlos, aunque
+        # el usuario los mande a mano.
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.patch(
+            self.URL,
+            {"role": "admin", "is_staff": True, "first_name": "Sigue"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_staff)
+        self.assertFalse(self.user.groups.filter(name="admin").exists())
+        self.assertEqual(resp.data["role"], "subscriber")
+        self.assertEqual(self.user.first_name, "Sigue")
+
+    def test_patch_con_id_ajeno_modifica_al_usuario_del_token(self):
+        # La identidad sale siempre de request.user: un id ajeno en el body
+        # no debe redirigir la edición hacia otra cuenta.
+        otro = User.objects.create_user(
+            username="otro@example.com",
+            email="otro@example.com",
+            password=STRONG_PASSWORD,
+            first_name="Intacto",
+        )
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.patch(
+            self.URL,
+            {"id": otro.id, "first_name": "Cambiado"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        self.user.refresh_from_db()
+        otro.refresh_from_db()
+        self.assertEqual(self.user.first_name, "Cambiado")
+        self.assertEqual(self.user.id, resp.data["id"])
+        # La otra cuenta no se tocó.
+        self.assertEqual(otro.first_name, "Intacto")
+
+    def test_patch_anonimo_recibe_401(self):
+        resp = self.client.patch(self.URL, {"first_name": "X"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
 
 class ChangePasswordTests(AuthTestCase):
     """Cambio de contraseña del usuario autenticado (/api/v1/auth/me/change-password/)."""
@@ -406,15 +523,29 @@ class RolePermissionSystemTests(AuthTestCase):
         "users.edit",
         "users.deactivate",
         "users.reactivate",
+        "users.unlock",
         "users.me.view",
         "users.me.edit",
         "users.me.change_password",
+        "addresses.manage",
+        "orders.view",
+        "orders.create",
+        "orders.cancel",
+        "support.create",
     }
 
+    # Self-service: perfil propio + direcciones/pedidos propios + soporte.
+    # Es lo que tienen designer/operator/subscriber (ver
+    # 0007_seed_order_permissions y 0012_seed_support_permission).
     ME_VIEW_PERMISSIONS = {
         "users.me.view",
         "users.me.edit",
         "users.me.change_password",
+        "addresses.manage",
+        "orders.view",
+        "orders.create",
+        "orders.cancel",
+        "support.create",
     }
 
     def setUp(self):
@@ -515,11 +646,12 @@ class RolePermissionSystemTests(AuthTestCase):
                 group=link.group, permission=link.permission
             )
 
-        self.assertEqual(self.RolePermission.objects.count(), 8)
+        self.assertEqual(self.RolePermission.objects.count(), 14)
         self.assertEqual(
             self.GroupRolePermission.objects.count(),
-            # admin tiene 8 + 3 roles con 3 cada uno = 8 + 9 = 17
-            8 + 3 * 3,
+            # admin tiene 14 (incluye users.unlock, solo admin) + 3 roles con
+            # 8 cada uno (self-service, incluye support.create) = 14 + 24 = 38
+            14 + 3 * 8,
         )
 
     # --- Endpoints autenticados (admin) --------------------------------------
@@ -541,7 +673,7 @@ class RolePermissionSystemTests(AuthTestCase):
         self.client.force_authenticate(user=self.admin_user)
         resp = self.client.get("/api/v1/auth/permissions/")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(resp.data), 8)
+        self.assertEqual(len(resp.data), 14)
         keys = {p["key"] for p in resp.data}
         self.assertEqual(keys, self.ALL_PERMISSIONS)
 
@@ -1316,6 +1448,453 @@ class UserAdminCrudTests(AuthTestCase):
         self.assertTrue(self.admin.is_staff)
 
 
+class UserUnlockActionTests(AuthTestCase):
+    """POST /api/v1/users/<id>/unlock/ — desbloqueo manual (solo admin)."""
+
+    URL = "/api/v1/users/"
+
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_user(
+            username="admin_unlock@example.com",
+            email="admin_unlock@example.com",
+            password=STRONG_PASSWORD,
+            is_staff=True,
+        )
+        self.normal = User.objects.create_user(
+            username="locked_user@example.com",
+            email="locked_user@example.com",
+            password=STRONG_PASSWORD,
+        )
+
+    def _lock_normal_user(self):
+        from django.utils import timezone
+
+        from .models import LoginLockout
+
+        lockout, _ = LoginLockout.objects.get_or_create(user=self.normal)
+        lockout.failed_attempts = 3
+        lockout.locked_until = timezone.now() + timezone.timedelta(hours=1)
+        lockout.save(update_fields=["failed_attempts", "locked_until"])
+        return lockout
+
+    def test_admin_desbloquea_usuario(self):
+        from .models import LoginLockout
+
+        self._lock_normal_user()
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.post(f"{self.URL}{self.normal.id}/unlock/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertFalse(resp.data["is_locked"])
+
+        lockout = LoginLockout.objects.get(user=self.normal)
+        self.assertEqual(lockout.failed_attempts, 0)
+        self.assertIsNone(lockout.locked_until)
+
+    def test_unlock_permite_loguear_antes_de_que_pase_la_hora(self):
+        self._lock_normal_user()
+        self.client.force_authenticate(user=self.admin)
+        self.client.post(f"{self.URL}{self.normal.id}/unlock/")
+        self.client.force_authenticate(user=None)
+
+        resp = self.client.post(
+            "/api/v1/auth/login/",
+            {"email": "locked_user@example.com", "password": STRONG_PASSWORD},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+    def test_unlock_requiere_permisos_admin(self):
+        self._lock_normal_user()
+        otro_normal = User.objects.create_user(
+            username="otro_normal@example.com",
+            email="otro_normal@example.com",
+            password=STRONG_PASSWORD,
+        )
+        self.client.force_authenticate(user=otro_normal)
+        resp = self.client.post(f"{self.URL}{self.normal.id}/unlock/")
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_unlock_anonimo_recibe_401(self):
+        self._lock_normal_user()
+        resp = self.client.post(f"{self.URL}{self.normal.id}/unlock/")
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_summary_incluye_locked(self):
+        self._lock_normal_user()
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(self.URL)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["summary"]["locked"], 1)
+
+
+class UserBulkActionsTests(AuthTestCase):
+    """POST /api/v1/users/bulk-actions/ — acciones masivas sobre una lista de IDs."""
+
+    URL = "/api/v1/users/bulk-actions/"
+
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_user(
+            username="admin_bulk@example.com",
+            email="admin_bulk@example.com",
+            password=STRONG_PASSWORD,
+            is_staff=True,
+        )
+        self.user_a = User.objects.create_user(
+            username="bulk_a@example.com", email="bulk_a@example.com", password=STRONG_PASSWORD,
+        )
+        self.user_b = User.objects.create_user(
+            username="bulk_b@example.com", email="bulk_b@example.com", password=STRONG_PASSWORD,
+        )
+
+    def test_bulk_deactivate_desactiva_multiples_usuarios(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.post(
+            self.URL,
+            {"ids": [self.user_a.id, self.user_b.id], "action": "deactivate"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertCountEqual(resp.data["updated"], [self.user_a.id, self.user_b.id])
+        self.assertEqual(resp.data["skipped"], [])
+        self.user_a.refresh_from_db()
+        self.user_b.refresh_from_db()
+        self.assertFalse(self.user_a.is_active)
+        self.assertFalse(self.user_b.is_active)
+
+    def test_bulk_activate_reactiva_multiples_usuarios(self):
+        self.user_a.is_active = False
+        self.user_a.save(update_fields=["is_active"])
+        self.user_b.is_active = False
+        self.user_b.save(update_fields=["is_active"])
+
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.post(
+            self.URL,
+            {"ids": [self.user_a.id, self.user_b.id], "action": "activate"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertCountEqual(resp.data["updated"], [self.user_a.id, self.user_b.id])
+        self.user_a.refresh_from_db()
+        self.user_b.refresh_from_db()
+        self.assertTrue(self.user_a.is_active)
+        self.assertTrue(self.user_b.is_active)
+
+    def test_bulk_set_role_cambia_rol_de_multiples_usuarios(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.post(
+            self.URL,
+            {"ids": [self.user_a.id, self.user_b.id], "action": "set_role", "role": "designer"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertCountEqual(resp.data["updated"], [self.user_a.id, self.user_b.id])
+        self.assertTrue(self.user_a.groups.filter(name="designer").exists())
+        self.assertTrue(self.user_b.groups.filter(name="designer").exists())
+
+    def test_bulk_set_role_admin_marca_is_staff(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.post(
+            self.URL,
+            {"ids": [self.user_a.id], "action": "set_role", "role": "admin"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.user_a.refresh_from_db()
+        self.assertTrue(self.user_a.is_staff)
+
+    def test_bulk_set_role_sin_role_devuelve_400(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.post(
+            self.URL, {"ids": [self.user_a.id], "action": "set_role"}, format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_bulk_actions_accion_invalida_devuelve_400(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.post(
+            self.URL, {"ids": [self.user_a.id], "action": "delete_forever"}, format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_bulk_actions_sin_ids_devuelve_400(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.post(self.URL, {"ids": [], "action": "deactivate"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_bulk_actions_reporta_id_inexistente_como_skipped(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.post(
+            self.URL, {"ids": [self.user_a.id, 999999], "action": "deactivate"}, format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["updated"], [self.user_a.id])
+        self.assertEqual(len(resp.data["skipped"]), 1)
+        self.assertEqual(resp.data["skipped"][0]["id"], 999999)
+
+    def test_bulk_actions_salta_al_propio_admin(self):
+        # El admin no puede aplicarse la acción masiva a sí mismo, igual que
+        # en la edición individual (auto-protección).
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.post(
+            self.URL,
+            {"ids": [self.admin.id, self.user_a.id], "action": "deactivate"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["updated"], [self.user_a.id])
+        self.assertEqual(resp.data["skipped"][0]["id"], self.admin.id)
+        self.admin.refresh_from_db()
+        self.assertTrue(self.admin.is_active)
+
+    def test_bulk_actions_requiere_permisos_admin(self):
+        self.client.force_authenticate(user=self.user_a)
+        resp = self.client.post(
+            self.URL, {"ids": [self.user_b.id], "action": "deactivate"}, format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_bulk_actions_anonimo_recibe_401(self):
+        resp = self.client.post(
+            self.URL, {"ids": [self.user_a.id], "action": "deactivate"}, format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class UserAdminAdvancedFilterTests(AuthTestCase):
+    """Filtrado avanzado de /api/v1/users/: actividad, seguridad y origen."""
+
+    URL = "/api/v1/users/"
+
+    def setUp(self):
+        super().setUp()
+        from django.utils import timezone
+
+        from .models import LoginLockout
+
+        self.admin = User.objects.create_user(
+            username="admin_filters@example.com",
+            email="admin_filters@example.com",
+            password=STRONG_PASSWORD,
+            is_staff=True,
+        )
+
+        now = timezone.now()
+
+        # Nunca inició sesión, se registró hoy.
+        self.never_logged_in = User.objects.create_user(
+            username="never_login@example.com",
+            email="never_login@example.com",
+            password=STRONG_PASSWORD,
+        )
+
+        # Se registró hace 100 días, no loguea hace 50 (inactivo).
+        self.inactive_user = User.objects.create_user(
+            username="inactivo@example.com",
+            email="inactivo@example.com",
+            password=STRONG_PASSWORD,
+        )
+        User.objects.filter(pk=self.inactive_user.pk).update(
+            date_joined=now - timezone.timedelta(days=100),
+            last_login=now - timezone.timedelta(days=50),
+        )
+        self.inactive_user.refresh_from_db()
+
+        # Logueó ayer: activo recientemente.
+        self.active_recent_user = User.objects.create_user(
+            username="activo_reciente@example.com",
+            email="activo_reciente@example.com",
+            password=STRONG_PASSWORD,
+        )
+        User.objects.filter(pk=self.active_recent_user.pk).update(
+            date_joined=now - timezone.timedelta(days=60),
+            last_login=now - timezone.timedelta(days=1),
+        )
+        self.active_recent_user.refresh_from_db()
+
+        # Cuenta Google: password unusable.
+        self.google_user = User.objects.create_user(
+            username="google_user@example.com",
+            email="google_user@example.com",
+        )
+        self.google_user.set_unusable_password()
+        self.google_user.save(update_fields=["password"])
+
+        # Bloqueado ahora mismo.
+        self.locked_user = User.objects.create_user(
+            username="locked_user_f@example.com",
+            email="locked_user_f@example.com",
+            password=STRONG_PASSWORD,
+        )
+        lockout = LoginLockout.objects.create(
+            user=self.locked_user,
+            failed_attempts=3,
+            locked_until=now + timezone.timedelta(hours=1),
+        )
+
+        # A un intento fallido de bloquearse (cerca_de_bloquearse).
+        self.almost_locked_user = User.objects.create_user(
+            username="casi_bloqueado@example.com",
+            email="casi_bloqueado@example.com",
+            password=STRONG_PASSWORD,
+        )
+        LoginLockout.objects.create(user=self.almost_locked_user, failed_attempts=2)
+
+        # Un solo intento fallido (bucket "1-2").
+        self.one_failed_user = User.objects.create_user(
+            username="un_fallo@example.com",
+            email="un_fallo@example.com",
+            password=STRONG_PASSWORD,
+        )
+        LoginLockout.objects.create(user=self.one_failed_user, failed_attempts=1)
+
+        self.client.force_authenticate(user=self.admin)
+
+    def _ids(self, resp):
+        return {u["id"] for u in resp.data["results"]}
+
+    # --- Actividad ------------------------------------------------------
+
+    def test_filtra_never_logged_in(self):
+        resp = self.client.get(self.URL, {"never_logged_in": "true"})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        ids = self._ids(resp)
+        self.assertIn(self.never_logged_in.id, ids)
+        self.assertNotIn(self.active_recent_user.id, ids)
+
+    def test_filtra_inactive_days(self):
+        # Inactivo hace más de 30 días: el inactive_user (50 días) entra,
+        # el que logueó ayer no, y el que nunca logueó también entra.
+        resp = self.client.get(self.URL, {"inactive_days": "30"})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        ids = self._ids(resp)
+        self.assertIn(self.inactive_user.id, ids)
+        self.assertIn(self.never_logged_in.id, ids)
+        self.assertNotIn(self.active_recent_user.id, ids)
+
+    def test_filtra_date_joined_range(self):
+        from django.utils import timezone
+
+        # inactive_user se registró hace 100 días: el rango [110, 90] días
+        # atrás lo contiene.
+        desde = (timezone.now() - timezone.timedelta(days=110)).strftime("%Y-%m-%d")
+        hasta = (timezone.now() - timezone.timedelta(days=90)).strftime("%Y-%m-%d")
+
+        # Rango invertido -> 400.
+        resp = self.client.get(
+            self.URL, {"date_joined_from": hasta, "date_joined_to": desde}
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+        resp = self.client.get(
+            self.URL, {"date_joined_from": desde, "date_joined_to": hasta}
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn(self.inactive_user.id, self._ids(resp))
+
+    def test_fecha_con_formato_invalido_devuelve_400(self):
+        resp = self.client.get(self.URL, {"date_joined_from": "no-es-una-fecha"})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_inactive_days_no_numerico_devuelve_400(self):
+        resp = self.client.get(self.URL, {"inactive_days": "mucho"})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # --- Seguridad --------------------------------------------------------
+
+    def test_filtra_locked_independiente_de_status(self):
+        # locked=true encuentra al bloqueado aunque is_active siga en True.
+        resp = self.client.get(self.URL, {"locked": "true"})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        ids = self._ids(resp)
+        self.assertIn(self.locked_user.id, ids)
+        self.assertNotIn(self.almost_locked_user.id, ids)
+
+        resp = self.client.get(self.URL, {"locked": "false"})
+        ids = self._ids(resp)
+        self.assertNotIn(self.locked_user.id, ids)
+        self.assertIn(self.almost_locked_user.id, ids)
+
+    def test_filtra_failed_attempts_buckets(self):
+        resp = self.client.get(self.URL, {"failed_attempts": "cerca_de_bloquearse"})
+        ids = self._ids(resp)
+        self.assertIn(self.almost_locked_user.id, ids)
+        self.assertNotIn(self.one_failed_user.id, ids)
+        self.assertNotIn(self.locked_user.id, ids)
+
+        resp = self.client.get(self.URL, {"failed_attempts": "1-2"})
+        ids = self._ids(resp)
+        self.assertIn(self.one_failed_user.id, ids)
+        self.assertIn(self.almost_locked_user.id, ids)
+
+        resp = self.client.get(self.URL, {"failed_attempts": "0"})
+        ids = self._ids(resp)
+        self.assertIn(self.never_logged_in.id, ids)  # sin fila de lockout
+        self.assertNotIn(self.one_failed_user.id, ids)
+
+    # --- Origen -------------------------------------------------------------
+
+    def test_filtra_auth_method(self):
+        resp = self.client.get(self.URL, {"auth_method": "google"})
+        ids = self._ids(resp)
+        self.assertIn(self.google_user.id, ids)
+        self.assertNotIn(self.never_logged_in.id, ids)
+
+        resp = self.client.get(self.URL, {"auth_method": "local"})
+        ids = self._ids(resp)
+        self.assertIn(self.never_logged_in.id, ids)
+        self.assertNotIn(self.google_user.id, ids)
+
+    # --- Ordenamiento ---------------------------------------------------
+
+    def test_ordering_por_last_login(self):
+        resp = self.client.get(self.URL, {"ordering": "-last_login"})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        emails = [u["email"] for u in resp.data["results"]]
+        # El que logueó más reciente (activo_reciente) va antes que el
+        # inactivo (logueó hace 50 días); ambos antes que los null (van al final en SQLite ASC/DESC).
+        self.assertLess(
+            emails.index("activo_reciente@example.com"),
+            emails.index("inactivo@example.com"),
+        )
+
+    # --- Combinaciones con filtros existentes (AND) --------------------
+
+    def test_combina_locked_con_status_active(self):
+        resp = self.client.get(self.URL, {"locked": "true", "status": "active"})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn(self.locked_user.id, self._ids(resp))
+
+        # Desactivar al usuario bloqueado: locked=true & status=active ya no debe verlo.
+        self.locked_user.is_active = False
+        self.locked_user.save(update_fields=["is_active"])
+        resp = self.client.get(self.URL, {"locked": "true", "status": "active"})
+        self.assertNotIn(self.locked_user.id, self._ids(resp))
+
+    def test_combina_auth_method_con_search(self):
+        resp = self.client.get(
+            self.URL, {"auth_method": "google", "search": "google_user"}
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn(self.google_user.id, self._ids(resp))
+
+        resp = self.client.get(
+            self.URL, {"auth_method": "local", "search": "google_user"}
+        )
+        self.assertNotIn(self.google_user.id, self._ids(resp))
+
+    def test_combina_inactive_days_con_never_logged_in(self):
+        resp = self.client.get(
+            self.URL, {"inactive_days": "30", "never_logged_in": "true"}
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        ids = self._ids(resp)
+        self.assertIn(self.never_logged_in.id, ids)
+        self.assertNotIn(self.inactive_user.id, ids)  # sí logueó, aunque hace 50 días
+
+
 class RoleCrudTests(AuthTestCase):
     """Creación y eliminación de roles personalizados (Groups).
 
@@ -1667,7 +2246,7 @@ class RoleCrudTests(AuthTestCase):
         self.client.delete(f"{self.ROLES_URL}{role.id}/")
         resp = self.client.get("/api/v1/auth/permissions/")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(resp.data), 8)
+        self.assertEqual(len(resp.data), 14)
 
     def test_get_roles_lista_incluye_personalizados(self):
         self.Group.objects.create(name="auditor")
@@ -1681,3 +2260,544 @@ class RoleCrudTests(AuthTestCase):
             [self.ADMIN, self.DESIGNER, self.OPERATOR, self.SUBSCRIBER],
         )
         self.assertIn("auditor", names)
+
+
+class DashboardTests(AuthTestCase):
+    """Menú del dashboard (/api/v1/auth/users/me/dashboard/)."""
+
+    URL = "/api/v1/auth/users/me/dashboard/"
+
+    def setUp(self):
+        super().setUp()
+        self.subscriber = User.objects.create_user(
+            username="subscriber@example.com",
+            email="subscriber@example.com",
+            password=STRONG_PASSWORD,
+        )
+        admin_group, _ = Group.objects.get_or_create(name="admin")
+        self.admin = User.objects.create_user(
+            username="admin@example.com",
+            email="admin@example.com",
+            password=STRONG_PASSWORD,
+            is_staff=True,
+        )
+        self.admin.groups.add(admin_group)
+
+    def test_subscriber_no_recibe_item_users(self):
+        self.client.force_authenticate(user=self.subscriber)
+        resp = self.client.get(self.URL)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["user"]["role"], "subscriber")
+        self.assertFalse(resp.data["user"]["is_admin"])
+        keys = [item["key"] for item in resp.data["menu"]]
+        self.assertNotIn("users", keys)
+
+    def test_admin_recibe_item_users(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(self.URL)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["user"]["role"], "admin")
+        self.assertTrue(resp.data["user"]["is_admin"])
+        keys = [item["key"] for item in resp.data["menu"]]
+        self.assertIn("users", keys)
+
+    def test_anonimo_recibe_401(self):
+        resp = self.client.get(self.URL)
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_subscriber_recibe_direcciones_y_soporte_habilitados(self):
+        self.client.force_authenticate(user=self.subscriber)
+        resp = self.client.get(self.URL)
+        by_key = {item["key"]: item for item in resp.data["menu"]}
+        self.assertTrue(by_key["addresses"]["enabled"])
+        self.assertEqual(by_key["addresses"]["url"], "pedidos.html#addressesSection")
+        self.assertTrue(by_key["support"]["enabled"])
+        self.assertEqual(by_key["support"]["url"], "ayuda.html")
+
+    def test_labels_sigue_deshabilitado(self):
+        # No hay backend de generación de rótulos todavía: el tile se lista
+        # deshabilitado en vez de apuntar a una pantalla inexistente.
+        self.client.force_authenticate(user=self.subscriber)
+        resp = self.client.get(self.URL)
+        by_key = {item["key"]: item for item in resp.data["menu"]}
+        self.assertFalse(by_key["labels"]["enabled"])
+
+
+class SupportMessageTests(AuthTestCase):
+    """POST /api/v1/auth/support/ — form de contacto del dashboard."""
+
+    URL = "/api/v1/auth/support/"
+
+    def setUp(self):
+        super().setUp()
+        self.user = User.objects.create_user(
+            username="support_user@example.com",
+            email="support_user@example.com",
+            password=STRONG_PASSWORD,
+        )
+
+    def test_usuario_autenticado_crea_mensaje(self):
+        from .models import SupportMessage
+
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.post(
+            self.URL,
+            {"subject": "No puedo cambiar mi contraseña", "message": "Me tira error 500."},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        mensaje = SupportMessage.objects.get(user=self.user)
+        self.assertEqual(mensaje.subject, "No puedo cambiar mi contraseña")
+        self.assertEqual(mensaje.message, "Me tira error 500.")
+
+    def test_mensaje_queda_asociado_al_usuario_autenticado_no_al_body(self):
+        # Identidad siempre desde request.user: mandar otro user_id en el
+        # body (si lo hubiera) no debería poder suplantar a otra cuenta.
+        from .models import SupportMessage
+
+        otro = User.objects.create_user(
+            username="otro_support@example.com", email="otro_support@example.com",
+            password=STRONG_PASSWORD,
+        )
+        self.client.force_authenticate(user=self.user)
+        self.client.post(
+            self.URL,
+            {"subject": "Asunto", "message": "Mensaje", "user": otro.id},
+            format="json",
+        )
+        mensaje = SupportMessage.objects.get(subject="Asunto")
+        self.assertEqual(mensaje.user, self.user)
+        self.assertNotEqual(mensaje.user, otro)
+
+    def test_asunto_vacio_devuelve_400(self):
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.post(self.URL, {"subject": "   ", "message": "Mensaje"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_mensaje_vacio_devuelve_400(self):
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.post(self.URL, {"subject": "Asunto", "message": ""}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_anonimo_recibe_401(self):
+        resp = self.client.post(self.URL, {"subject": "Asunto", "message": "Mensaje"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class ForcedPasswordChangeTests(AuthTestCase):
+    """PasswordChangeRequirement: activación (automática/manual), enforcement
+    en toda la API (JWTAuthenticationWithPasswordPolicy) y desactivación al
+    completar el cambio."""
+
+    USERS_URL = "/api/v1/users/"
+    DASHBOARD_URL = "/api/v1/auth/users/me/dashboard/"
+    CHANGE_PASSWORD_URL = "/api/v1/auth/me/change-password/"
+    ME_URL = "/api/v1/auth/me/"
+    LOGOUT_URL = "/api/v1/auth/logout/"
+
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_user(
+            username="admin_pwd@example.com",
+            email="admin_pwd@example.com",
+            password=STRONG_PASSWORD,
+            is_staff=True,
+        )
+
+    # --- Activación automática (crear sin password) -------------------------
+
+    def test_crear_sin_password_sin_setting_sigue_dando_400(self):
+        # Regresión: sin ADMIN_CREATED_USER_PASSWORD configurado, el
+        # comportamiento previo se mantiene intacto.
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.post(
+            self.USERS_URL,
+            {"email": "sin_pass@example.com", "full_name": "Sin Pass", "role": "subscriber", "status": "active"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_crear_sin_password_con_setting_usa_temporal_y_marca_flag(self):
+        from django.test import override_settings
+
+        from .models import PasswordChangeRequirement
+
+        with override_settings(ADMIN_CREATED_USER_PASSWORD="Temporal2026"):
+            self.client.force_authenticate(user=self.admin)
+            resp = self.client.post(
+                self.USERS_URL,
+                {"email": "temp_user@example.com", "full_name": "Temp User", "role": "subscriber", "status": "active"},
+                format="json",
+            )
+            self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+            self.assertTrue(resp.data["must_change_password"])
+
+            creado = User.objects.get(email="temp_user@example.com")
+            requirement = PasswordChangeRequirement.objects.get(user=creado)
+            self.assertTrue(requirement.must_change_password)
+
+            # Puede loguearse con la contraseña temporal.
+            self.client.force_authenticate(user=None)
+            login_resp = self.client.post(
+                "/api/v1/auth/login/",
+                {"email": "temp_user@example.com", "password": "Temporal2026"},
+                format="json",
+            )
+            self.assertEqual(login_resp.status_code, status.HTTP_200_OK)
+            self.assertTrue(login_resp.data["user"]["must_change_password"])
+
+    # --- Activación / desactivación manual -----------------------------------
+
+    def test_admin_activa_flag_manualmente_sobre_usuario_existente(self):
+        normal = User.objects.create_user(
+            username="normal_pwd@example.com", email="normal_pwd@example.com", password=STRONG_PASSWORD,
+        )
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.patch(
+            f"{self.USERS_URL}{normal.id}/", {"force_password_change": True}, format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertTrue(resp.data["must_change_password"])
+
+    def test_admin_desactiva_flag_manualmente(self):
+        from .models import PasswordChangeRequirement
+
+        normal = User.objects.create_user(
+            username="normal_pwd2@example.com", email="normal_pwd2@example.com", password=STRONG_PASSWORD,
+        )
+        PasswordChangeRequirement.objects.create(user=normal, must_change_password=True)
+
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.patch(
+            f"{self.USERS_URL}{normal.id}/", {"force_password_change": False}, format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertFalse(resp.data["must_change_password"])
+
+    # --- Enforcement (no se puede saltear) -----------------------------------
+    #
+    # ``force_authenticate`` fuerza request.user directo y NO pasa por las
+    # authentication classes (ahí vive el chequeo), así que estos tests
+    # arman un JWT real y lo mandan por header, igual que en producción.
+
+    def _crear_usuario_forzado(self):
+        from .models import PasswordChangeRequirement
+
+        user = User.objects.create_user(
+            username="forzado@example.com", email="forzado@example.com", password=STRONG_PASSWORD,
+        )
+        PasswordChangeRequirement.objects.create(user=user, must_change_password=True)
+        return user
+
+    def _authenticate_with_real_jwt(self, user):
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        access = str(RefreshToken.for_user(user).access_token)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+    def test_usuario_forzado_no_puede_usar_otros_endpoints(self):
+        user = self._crear_usuario_forzado()
+        self._authenticate_with_real_jwt(user)
+        resp = self.client.get(self.DASHBOARD_URL)
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(resp.data.get("must_change_password"))
+
+    def test_usuario_forzado_puede_ver_su_propio_perfil(self):
+        user = self._crear_usuario_forzado()
+        self._authenticate_with_real_jwt(user)
+        resp = self.client.get(self.ME_URL)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+    def test_usuario_forzado_puede_hacer_logout(self):
+        user = self._crear_usuario_forzado()
+        self._authenticate_with_real_jwt(user)
+        resp = self.client.post(self.LOGOUT_URL, {"refresh": ""}, format="json")
+        self.assertNotEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_usuario_forzado_puede_cambiar_password_y_flag_se_apaga(self):
+        from .models import PasswordChangeRequirement
+
+        user = self._crear_usuario_forzado()
+        self._authenticate_with_real_jwt(user)
+
+        resp = self.client.post(
+            self.CHANGE_PASSWORD_URL,
+            {
+                "current_password": STRONG_PASSWORD,
+                "new_password": "NuevaClave2026",
+                "confirm_password": "NuevaClave2026",
+            },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        requirement = PasswordChangeRequirement.objects.get(user=user)
+        self.assertFalse(requirement.must_change_password)
+
+        # Ahora sí puede usar otros endpoints.
+        resp2 = self.client.get(self.DASHBOARD_URL)
+        self.assertEqual(resp2.status_code, status.HTTP_200_OK)
+
+    def test_usuario_sin_flag_no_se_ve_afectado(self):
+        normal = User.objects.create_user(
+            username="libre@example.com", email="libre@example.com", password=STRONG_PASSWORD,
+        )
+        self._authenticate_with_real_jwt(normal)
+        resp = self.client.get(self.DASHBOARD_URL)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+
+class UserAdminOrdersIntegrationTests(AuthTestCase):
+    """El listado/detalle de /api/v1/users/ trae orders_count y last_order_at
+    (anotados vía Count/Max, sin N+1) desde apps.orders."""
+
+    URL = "/api/v1/users/"
+
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_user(
+            username="admin_orders@example.com",
+            email="admin_orders@example.com",
+            password=STRONG_PASSWORD,
+            is_staff=True,
+        )
+        self.buyer = User.objects.create_user(
+            username="buyer@example.com", email="buyer@example.com", password=STRONG_PASSWORD,
+        )
+        self.no_orders_user = User.objects.create_user(
+            username="no_orders@example.com", email="no_orders@example.com", password=STRONG_PASSWORD,
+        )
+
+    def _crear_pedido(self, user, **overrides):
+        from apps.orders.models import Address, Order
+
+        address = Address.objects.create(
+            user=user, street="Calle Falsa", number="123", city="Springfield",
+        )
+        return Order.objects.create(user=user, address=address, **overrides)
+
+    def test_usuario_sin_pedidos_devuelve_cero_y_null(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(self.URL)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        user_data = next(u for u in resp.data["results"] if u["id"] == self.no_orders_user.id)
+        self.assertEqual(user_data["orders_count"], 0)
+        self.assertIsNone(user_data["last_order_at"])
+
+    def test_orders_count_cuenta_todos_los_pedidos_del_usuario(self):
+        self._crear_pedido(self.buyer)
+        self._crear_pedido(self.buyer)
+        self._crear_pedido(self.buyer)
+
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(self.URL)
+        user_data = next(u for u in resp.data["results"] if u["id"] == self.buyer.id)
+        self.assertEqual(user_data["orders_count"], 3)
+        self.assertIsNotNone(user_data["last_order_at"])
+
+    def test_last_order_at_es_el_pedido_mas_reciente(self):
+        from django.utils import timezone
+
+        from apps.orders.models import Order
+
+        primero = self._crear_pedido(self.buyer)
+        Order.objects.filter(pk=primero.pk).update(
+            created_at=timezone.now() - timezone.timedelta(days=5)
+        )
+        ultimo = self._crear_pedido(self.buyer)
+
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(self.URL)
+        user_data = next(u for u in resp.data["results"] if u["id"] == self.buyer.id)
+
+        from django.utils.dateparse import parse_datetime
+
+        ultimo.refresh_from_db()
+        # Comparar el instante real (evita falsos negativos por cómo cada
+        # lado serializa el timezone), truncado al segundo.
+        devuelto = parse_datetime(user_data["last_order_at"])
+        self.assertEqual(devuelto.replace(microsecond=0), ultimo.created_at.replace(microsecond=0))
+
+    def test_detalle_de_usuario_tambien_incluye_orders_count(self):
+        self._crear_pedido(self.buyer)
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(f"{self.URL}{self.buyer.id}/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["orders_count"], 1)
+
+    def test_orders_count_no_se_infla_con_otros_filtros_join(self):
+        # Filtro que hace JOIN (role=admin usa groups) no debe multiplicar
+        # el conteo de pedidos (regresión del distinct=True en el annotate).
+        self._crear_pedido(self.buyer)
+        self._crear_pedido(self.buyer)
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(self.URL, {"search": "buyer"})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        user_data = next(u for u in resp.data["results"] if u["id"] == self.buyer.id)
+        self.assertEqual(user_data["orders_count"], 2)
+
+
+class UserExportCsvTests(AuthTestCase):
+    """GET /api/v1/users/export/ — exportación CSV generada en el backend."""
+
+    URL = "/api/v1/users/export/"
+
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_user(
+            username="admin_csv@example.com",
+            email="admin_csv@example.com",
+            password=STRONG_PASSWORD,
+            is_staff=True,
+        )
+        self.user_a = User.objects.create_user(
+            username="csv_a@example.com", email="csv_a@example.com",
+            password=STRONG_PASSWORD, first_name="Ana", last_name="Csv",
+        )
+        self.user_b = User.objects.create_user(
+            username="csv_b@example.com", email="csv_b@example.com", password=STRONG_PASSWORD,
+        )
+        # Cuenta "Google": password unusable, mismo heurístico que el resto del proyecto.
+        self.google_user = User.objects.create_user(
+            username="csv_google@example.com", email="csv_google@example.com",
+        )
+        self.google_user.set_unusable_password()
+        self.google_user.save(update_fields=["password"])
+
+    def _parse_csv(self, response):
+        import csv
+        import io
+
+        content = response.content.decode("utf-8")
+        return list(csv.reader(io.StringIO(content)))
+
+    def test_export_requiere_permisos_admin(self):
+        self.client.force_authenticate(user=self.user_a)
+        resp = self.client.get(self.URL)
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_export_anonimo_401(self):
+        resp = self.client.get(self.URL)
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_export_devuelve_csv_con_header_y_todas_las_filas(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(self.URL)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp["Content-Type"], "text/csv")
+        self.assertIn("attachment", resp["Content-Disposition"])
+
+        rows = self._parse_csv(resp)
+        header = rows[0]
+        self.assertEqual(
+            header,
+            ["id", "nombre", "email", "rol", "estado", "fecha_registro",
+             "ultimo_login", "metodo_autenticacion", "bloqueado",
+             "total_pedidos", "fecha_ultimo_pedido"],
+        )
+        # admin + user_a + user_b + google_user = 4 filas de datos.
+        self.assertEqual(len(rows) - 1, 4)
+
+    def test_export_columna_nombre_y_metodo_autenticacion(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(self.URL)
+        rows = self._parse_csv(resp)
+        by_email = {row[2]: row for row in rows[1:]}
+
+        fila_a = by_email["csv_a@example.com"]
+        self.assertEqual(fila_a[1], "Ana Csv")
+        self.assertEqual(fila_a[7], "Local")
+
+        fila_google = by_email["csv_google@example.com"]
+        self.assertEqual(fila_google[7], "Google")
+
+    def test_export_con_ids_filtra_solo_los_seleccionados(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(self.URL, {"ids": f"{self.user_a.id},{self.user_b.id}"})
+        rows = self._parse_csv(resp)
+        emails = {row[2] for row in rows[1:]}
+        self.assertEqual(emails, {"csv_a@example.com", "csv_b@example.com"})
+
+    def test_export_respeta_filtros_de_query_params(self):
+        self.user_b.is_active = False
+        self.user_b.save(update_fields=["is_active"])
+
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(self.URL, {"status": "inactive"})
+        rows = self._parse_csv(resp)
+        emails = {row[2] for row in rows[1:]}
+        self.assertEqual(emails, {"csv_b@example.com"})
+
+    def test_export_ids_invalidos_devuelve_400(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(self.URL, {"ids": "abc"})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class UserMetricsTests(AuthTestCase):
+    """GET /api/v1/users/metrics/ — distribución por rol, altas por mes y
+    método de autenticación."""
+
+    URL = "/api/v1/users/metrics/"
+
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_user(
+            username="admin_metrics@example.com",
+            email="admin_metrics@example.com",
+            password=STRONG_PASSWORD,
+            is_staff=True,
+        )
+        designer_group, _ = Group.objects.get_or_create(name="designer")
+        self.designer = User.objects.create_user(
+            username="designer_metrics@example.com",
+            email="designer_metrics@example.com",
+            password=STRONG_PASSWORD,
+        )
+        self.designer.groups.add(designer_group)
+
+        self.google_user = User.objects.create_user(
+            username="google_metrics@example.com", email="google_metrics@example.com",
+        )
+        self.google_user.set_unusable_password()
+        self.google_user.save(update_fields=["password"])
+
+    def test_requiere_permisos_admin(self):
+        self.client.force_authenticate(user=self.designer)
+        resp = self.client.get(self.URL)
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_anonimo_401(self):
+        resp = self.client.get(self.URL)
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_role_distribution_cuenta_por_rol_efectivo(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(self.URL)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        by_role = {row["role"]: row["count"] for row in resp.data["role_distribution"]}
+        self.assertEqual(by_role.get("admin"), 1)
+        self.assertEqual(by_role.get("designer"), 1)
+        # google_user no tiene group ni is_staff -> cae en el fallback subscriber.
+        self.assertEqual(by_role.get("subscriber"), 1)
+
+    def test_auth_method_distingue_local_de_google(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(self.URL)
+        self.assertEqual(resp.data["auth_method"]["google"], 1)
+        self.assertEqual(resp.data["auth_method"]["local"], 2)
+
+    def test_signups_by_month_incluye_altas_del_mes_actual(self):
+        from django.utils import timezone
+
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(self.URL)
+        current_month = timezone.now().strftime("%Y-%m")
+        months = {row["month"]: row["count"] for row in resp.data["signups_by_month"]}
+        self.assertIn(current_month, months)
+        self.assertGreaterEqual(months[current_month], 3)
+
+    def test_months_param_invalido_devuelve_400(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(self.URL, {"months": "abc"})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)

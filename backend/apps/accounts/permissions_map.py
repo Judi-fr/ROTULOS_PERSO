@@ -83,34 +83,44 @@ PERMISSIONS = frozenset(
         "users.edit",
         "users.deactivate",
         "users.reactivate",
+        "users.unlock",
         # Perfil propio
         "users.me.view",
         "users.me.edit",
         "users.me.change_password",
+        # Direcciones y pedidos propios (cliente final)
+        "addresses.manage",
+        "orders.view",
+        "orders.create",
+        "orders.cancel",
+        # Contacto/soporte desde el dashboard
+        "support.create",
     }
 )
+
+# Permisos de self-service: iguales para los tres roles no-admin (designer,
+# operator, subscriber). "subscriber" es hoy el rol de cliente final.
+_SELF_SERVICE_PERMISSIONS = {
+    "users.me.view",
+    "users.me.edit",
+    "users.me.change_password",
+    "addresses.manage",
+    "orders.view",
+    "orders.create",
+    "orders.cancel",
+    "support.create",
+}
 
 # Mapeo rol -> conjunto de permisos.
 # Reproduce EXACTAMENTE el comportamiento actual del backend:
 #   - admin: acceso completo (el CRUD admin está protegido por IsAdminUser).
-#   - designer / operator / subscriber: acceso únicamente a su propio perfil.
+#   - designer / operator / subscriber: acceso a su propio perfil, sus
+#     direcciones y sus pedidos.
 ROLE_PERMISSIONS = {
     "admin": set(PERMISSIONS),
-    "designer": {
-        "users.me.view",
-        "users.me.edit",
-        "users.me.change_password",
-    },
-    "operator": {
-        "users.me.view",
-        "users.me.edit",
-        "users.me.change_password",
-    },
-    "subscriber": {
-        "users.me.view",
-        "users.me.edit",
-        "users.me.change_password",
-    },
+    "designer": set(_SELF_SERVICE_PERMISSIONS),
+    "operator": set(_SELF_SERVICE_PERMISSIONS),
+    "subscriber": set(_SELF_SERVICE_PERMISSIONS),
 }
 
 

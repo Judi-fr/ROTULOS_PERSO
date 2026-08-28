@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Crear cuenta</title>
+  <link href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.materialdesignicons.com/4.8.95/css/materialdesignicons.min.css">
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css">
+  <link rel="stylesheet" href="assets/css/index.css">
+</head>
+<body>
+  <main class="d-flex align-items-center min-vh-100 py-3 py-md-0">
+    <div class="container">
+      <div class="card login-card">
+        <div class="row no-gutters">
+          <div class="col-md-5">
+            <img src="assets/images/LogoLogin.png" alt="registro" class="login-card-img">
+          </div>
+          <div class="col-md-7">
+            <div class="card-body">
+              <div class="brand-wrapper">
+                <img src="assets/images/HLLogoFinal.jpg" alt="logo" class="logo">
+              </div>
+              <p class="login-card-description">Creá tu cuenta</p>
+
+              <div id="g_id_signin"></div>
+              <div class="login-divider text-center my-3">o</div>
+
+              <form id="register-form">
+                <div class="form-group mb-3">
+                  <label for="fullName" class="sr-only">Nombre</label>
+                  <input type="text" name="fullName" id="fullName" class="form-control" placeholder="Nombre y apellido">
+                </div>
+                <div class="form-group mb-3">
+                  <label for="email" class="sr-only">Email</label>
+                  <input type="email" name="email" id="email" class="form-control" placeholder="email">
+                </div>
+                <div class="form-group mb-3">
+                  <label for="password" class="sr-only">Clave</label>
+                  <input type="password" name="password" id="password" class="form-control" placeholder="***********">
+                </div>
+                <div class="form-group mb-4">
+                  <label for="confirmPassword" class="sr-only">Confirmar clave</label>
+                  <input type="password" name="confirmPassword" id="confirmPassword" class="form-control" placeholder="repetí tu clave">
+                </div>
+                <button type="submit" class="btn btn-block login-btn mb-4">Crear cuenta</button>
+              </form>
+
+              <p class="login-card-footer-text">¿Ya tenés cuenta? <a href="index.html" class="text-reset">Iniciá sesión aquí</a></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script>
+    // Formato de email: mismo criterio (básico, de UX) que usa el backend
+    // como primera validación en views.py (EMAIL_REGEX).
+    const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+    // Client ID del OAuth client "Web application" (Google Cloud Console).
+    // Es un identificador público (va en el HTML servido al navegador), no un
+    // secreto: la verificación real del token ocurre en el backend contra
+    // GOOGLE_CLIENT_ID (backend/.env).
+    const GOOGLE_CLIENT_ID = '399413683717-ook49mdogo9oierje6dh2cnn6g9djcs0.apps.googleusercontent.com';
+
+    // Mismo shape de respuesta que login/register manual (auth_response del
+    // backend): el endpoint de Google hace get_or_create, así que este mismo
+    // callback sirve para "iniciar sesión" y para "crear cuenta" con Google.
+    function handleAuthSuccess(data) {
+      localStorage.setItem('access', data.access || '');
+      localStorage.setItem('refresh', data.refresh || '');
+      localStorage.setItem('user', JSON.stringify(data.user || {}));
+      if (data.user && data.user.must_change_password) {
+        window.location.replace('cambiar-password.html');
+        return;
+      }
+      const role = String((data.user && data.user.role) || '').toLowerCase();
+      const isAdmin = Boolean((data.user && data.user.is_staff) || role === 'admin');
+      window.location.replace(isAdmin ? 'gestionuser.html' : 'dashboard.html');
+    }
+
+    // Callback de Google Identity Services: response.credential es el ID
+    // token (JWT) que el backend verifica en /api/v1/auth/google/.
+    async function handleGoogleCredential(response) {
+      try {
+        const apiResponse = await fetch('http://127.0.0.1:8000/api/v1/auth/google/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ credential: response.credential })
+        });
+
+        const data = await apiResponse.json().catch(() => ({}));
+
+        if (!apiResponse.ok) {
+          throw new Error(data.detail || 'No se pudo crear la cuenta con Google.');
+        }
+
+        handleAuthSuccess(data);
+      } catch (error) {
+        alert(error.message || 'No se pudo crear la cuenta con Google.');
+      }
+    }
+
+    window.onload = function () {
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleCredential
+      });
+      google.accounts.id.renderButton(
+        document.getElementById('g_id_signin'),
+        { theme: 'outline', size: 'large', width: '100%', text: 'continue_with' }
+      );
+    };
+
+    document.getElementById('register-form').addEventListener('submit', async function (event) {
+      event.preventDefault();
+
+      const fullName = document.getElementById('fullName').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const confirmPassword = document.getElementById('confirmPassword').value;
+
+      // Validación básica de UX: campos vacíos, formato de email y que las
+      // claves coincidan. Todo lo demás (fortaleza de password, email ya
+      // registrado, etc.) lo valida el backend.
+      if (!email || !password) {
+        alert('Completá el email y la clave.');
+        return;
+      }
+      if (!EMAIL_REGEX.test(email)) {
+        alert('El email no tiene un formato válido.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        alert('Las claves no coinciden.');
+        return;
+      }
+
+      // Nombre -> first_name/last_name: se parte por el primer espacio
+      // (mismo criterio que admingestion_test.js / UserAdminSerializer con
+      // full_name). Sin espacio, last_name queda vacío; con varios espacios,
+      // todo lo que sigue al primer nombre va a last_name.
+      const spaceIndex = fullName.indexOf(' ');
+      const firstName = spaceIndex === -1 ? fullName : fullName.slice(0, spaceIndex);
+      const lastName = spaceIndex === -1 ? '' : fullName.slice(spaceIndex + 1).trim();
+
+      try {
+        const response = await fetch('http://127.0.0.1:8000/api/v1/auth/register/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            email,
+            password,
+            first_name: firstName,
+            last_name: lastName
+          })
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(data.detail || 'No se pudo crear la cuenta. Revisá los datos e intentá de nuevo.');
+        }
+
+        // Mismo patrón que index.html: el registro ya devuelve tokens + user
+        // (auto-login), así que se guarda y redirige igual que el login.
+        localStorage.setItem('access', data.access || '');
+        localStorage.setItem('refresh', data.refresh || '');
+        localStorage.setItem('user', JSON.stringify(data.user || {}));
+        if (data.user && data.user.must_change_password) {
+          window.location.replace('cambiar-password.html');
+          return;
+        }
+        const role = String((data.user && data.user.role) || '').toLowerCase();
+        const isAdmin = Boolean((data.user && data.user.is_staff) || role === 'admin');
+        window.location.replace(isAdmin ? 'gestionuser.html' : 'dashboard.html');
+      } catch (error) {
+        alert(error.message || 'No se pudo crear la cuenta. Revisá los datos e intentá de nuevo.');
+      }
+    });
+  </script>
+</body>
+</html>

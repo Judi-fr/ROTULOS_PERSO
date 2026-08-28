@@ -44,6 +44,135 @@ class EmailVerification(models.Model):
         return f"{self.user.email} ({state})"
 
 
+class LoginLockout(models.Model):
+    """Bloqueo temporal de login por intentos fallidos consecutivos.
+
+    Igual patrón que :class:`EmailVerification`: una tabla satélite en vez de
+    un campo en ``User``, porque el proyecto usa el modelo ``User`` default de
+    Django (no hay ``AUTH_USER_MODEL`` propio).
+
+    No hay job/cron para "desbloquear": la expiración se resuelve al vuelo,
+    la primera vez que algo pregunta ``is_locked()`` (típicamente el próximo
+    intento de login) comparando contra ``locked_until``.
+    """
+
+    THRESHOLD = 3
+    DURATION = timedelta(hours=1)
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="login_lockout")
+    failed_attempts = models.PositiveIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "bloqueo de login"
+        verbose_name_plural = "bloqueos de login"
+
+    def is_locked(self):
+        """¿Sigue bloqueado ahora mismo?
+
+        Si ``locked_until`` ya pasó, el bloqueo se limpia acá mismo (contador
+        incluido, para que el próximo ciclo de intentos arranque de cero) y
+        se devuelve ``False``. Es la "expiración automática" sin cron.
+        """
+        if self.locked_until is None:
+            return False
+        if timezone.now() >= self.locked_until:
+            self.failed_attempts = 0
+            self.locked_until = None
+            self.save(update_fields=["failed_attempts", "locked_until"])
+            return False
+        return True
+
+    def remaining_seconds(self):
+        if not self.is_locked():
+            return 0
+        return max(0, int((self.locked_until - timezone.now()).total_seconds()))
+
+    def register_failure(self):
+        """Suma un intento fallido; al llegar al umbral, bloquea 1 hora."""
+        self.failed_attempts += 1
+        if self.failed_attempts >= self.THRESHOLD:
+            self.locked_until = timezone.now() + self.DURATION
+        self.save(update_fields=["failed_attempts", "locked_until"])
+
+    def register_success(self):
+        """Login exitoso: resetea el contador de intentos fallidos."""
+        if self.failed_attempts or self.locked_until:
+            self.failed_attempts = 0
+            self.locked_until = None
+            self.save(update_fields=["failed_attempts", "locked_until"])
+
+    def unlock(self):
+        """Desbloqueo manual (admin): resetea contador y ``locked_until``."""
+        self.failed_attempts = 0
+        self.locked_until = None
+        self.save(update_fields=["failed_attempts", "locked_until"])
+
+    def __str__(self):
+        estado = "bloqueado" if self.is_locked() else "libre"
+        return f"{self.user.email} ({estado})"
+
+
+class PasswordChangeRequirement(models.Model):
+    """Obliga a un usuario a cambiar su contraseña antes de seguir usando la API.
+
+    Mismo patrón satélite que :class:`LoginLockout`: el proyecto usa el
+    ``User`` default de Django (sin ``AUTH_USER_MODEL`` propio), así que este
+    flag no puede vivir como campo directo del modelo User.
+
+    Se activa en dos casos (ver ``UserAdminSerializer``):
+    - Automáticamente, cuando un admin crea un usuario sin indicar
+      contraseña (se usa ``settings.ADMIN_CREATED_USER_PASSWORD`` como
+      temporal).
+    - Manualmente, cuando un admin lo tilda sobre un usuario existente.
+
+    Se desactiva al completar un cambio de contraseña exitoso vía
+    ``ChangePasswordView`` (``/api/v1/auth/me/change-password/``).
+
+    No se crea una fila para cada usuario (a diferencia de LoginLockout, que
+    se crea perezosamente en el primer intento de login): solo existe fila
+    cuando el flag estuvo o está en True, para no escribir en la base por
+    cada alta de usuario.
+    """
+
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="password_change_requirement"
+    )
+    must_change_password = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "requisito de cambio de contraseña"
+        verbose_name_plural = "requisitos de cambio de contraseña"
+
+    def __str__(self):
+        estado = "pendiente" if self.must_change_password else "cumplido"
+        return f"{self.user.email} ({estado})"
+
+
+class SupportMessage(models.Model):
+    """Mensaje de contacto enviado desde el panel del usuario ("Ayuda/Soporte").
+
+    Sin integración de email real todavía (ver dashboard.html): el mensaje
+    solo se persiste acá y lo lee un admin desde /admin/. Cuando exista el
+    canal real (email/ticketing), este modelo es el punto de partida.
+    """
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="support_messages")
+    subject = models.CharField(max_length=150)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "mensaje de soporte"
+        verbose_name_plural = "mensajes de soporte"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user.email}: {self.subject}"
+
+
 class RolePermission(models.Model):
     """Permiso atómico administrable por rol (Django Group).
 

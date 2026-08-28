@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="X-UA-Compatible" content="ie=edge" />
 
-    <title>Acceso a Plugin</title>
+    <title>Gestión de usuarios</title>
 
     <link
       href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
@@ -22,6 +22,8 @@
 
     <link rel="stylesheet" href="assets/css/gestionuser.css" />
     <!-- Enlace al archivo CSS -->
+    <!-- SheetJS: genera el .xlsx de "Export" en el navegador, sin backend -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   </head>
   <body>
     <div class="layout">
@@ -58,7 +60,7 @@
               >
                 <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
                 <polyline points="9 22 9 12 15 12 15 22" /></svg
-              >Dashboard</a
+              >Panel</a
             >
           </li>
           <li>
@@ -75,7 +77,7 @@
                 <circle cx="9" cy="7" r="4" />
                 <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
                 <path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg
-              >Users</a
+              >Usuarios</a
             >
           </li>
           <li>
@@ -106,7 +108,7 @@
               >
                 <rect x="3" y="11" width="18" height="11" rx="2" />
                 <path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg
-              >Permissions</a
+              >Permisos</a
             >
           </li>
           <li>
@@ -123,7 +125,7 @@
                 <path
                   d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 0 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"
                 /></svg
-              >Settings</a
+              >Ajustes</a
             >
           </li>
           <li>
@@ -142,11 +144,11 @@
                 <polyline points="14 2 14 8 20 8" />
                 <line x1="16" y1="13" x2="8" y2="13" />
                 <line x1="16" y1="17" x2="8" y2="17" /></svg
-              >Audit Logs</a
+              >Registros de auditoría</a
             >
           </li>
           <li>
-            <a href="#"
+            <a href="javascript:void(0)" id="navReports"
               ><svg
                 viewBox="0 0 24 24"
                 fill="none"
@@ -158,30 +160,18 @@
                 <line x1="18" y1="20" x2="18" y2="10" />
                 <line x1="12" y1="20" x2="12" y2="4" />
                 <line x1="6" y1="20" x2="6" y2="14" /></svg
-              >Reports</a
+              >Reportes</a
             >
           </li>
         </ul>
-        <button class="sidebar-footer" id="profileBtn" type="button" title="Mi perfil">
-          <img
-            class="avatar-round"
-            id="profileAvatar"
-            src="https://api.dicebear.com/7.x/avataaars/svg?seed=admin"
-            alt=""
-          />
-          <div class="who">
-            <div class="name" id="profileName">Cargando...</div>
-            <div class="mail" id="profileEmail">—</div>
-          </div>
-        </button>
       </aside>
 
       <!-- MAIN -->
       <main class="main">
         <div class="topbar">
           <div>
-            <h1>Users</h1>
-            <p>Manage website users and their access.</p>
+            <h1>Usuarios</h1>
+            <p>Administrá los usuarios del sitio y sus accesos.</p>
           </div>
           <div class="topbar-actions">
             <div class="search-box">
@@ -196,7 +186,7 @@
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
-              <input type="text" placeholder="Search users..." data-user-search />
+              <input type="text" placeholder="Buscar usuarios..." data-user-search />
             </div>
             <button class="btn btn-primary" id="openCreatePanel">
               <svg
@@ -210,9 +200,9 @@
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-              Create User
+              Crear usuario
             </button>
-            <button class="btn btn-outline" id="logoutAdminBtn" type="button">Logout</button>
+            <button class="btn btn-outline" id="logoutAdminBtn" type="button">Cerrar sesión</button>
           </div>
         </div>
 
@@ -236,11 +226,11 @@
                 </svg>
               </span>
               <div>
-                <div class="stat-label">Total Users</div>
+                <div class="stat-label">Total de usuarios</div>
                 <div class="stat-value" id="totalUsersCount">—</div>
               </div>
             </div>
-            <div class="stat-sub">All registered users</div>
+            <div class="stat-sub">Todos los usuarios registrados</div>
           </div>
           <div class="stat-card">
             <div class="stat-top">
@@ -258,11 +248,11 @@
                 </svg>
               </span>
               <div>
-                <div class="stat-label">Active Users</div>
+                <div class="stat-label">Usuarios activos</div>
                 <div class="stat-value" id="activeUsersCount">—</div>
               </div>
             </div>
-            <div class="stat-sub">Currently active</div>
+            <div class="stat-sub">Activos actualmente</div>
           </div>
           <div class="stat-card">
             <div class="stat-top">
@@ -283,11 +273,11 @@
                 </svg>
               </span>
               <div>
-                <div class="stat-label">Inactive Users</div>
+                <div class="stat-label">Usuarios inactivos</div>
                 <div class="stat-value" id="inactiveUsersCount">—</div>
               </div>
             </div>
-            <div class="stat-sub">Not active</div>
+            <div class="stat-sub">No activos</div>
           </div>
           <div class="stat-card">
             <div class="stat-top">
@@ -307,12 +297,23 @@
                 </svg>
               </span>
               <div>
-                <div class="stat-label">Locked Users</div>
-                <div class="stat-value">—</div>
+                <div class="stat-label">Usuarios bloqueados</div>
+                <div class="stat-value" id="lockedUsersCount">—</div>
               </div>
             </div>
-            <div class="stat-sub">Not tracked yet</div>
+            <div class="stat-sub">Bloqueados actualmente</div>
           </div>
+        </div>
+
+        <!-- BULK ACTIONS: aparece solo cuando hay usuarios seleccionados. -->
+        <div class="bulk-actions-bar" id="bulkActionsBar" style="display:none;">
+          <span id="bulkActionsCount">0 seleccionados</span>
+          <button type="button" class="btn btn-outline" id="bulkActivateBtn">Activar</button>
+          <button type="button" class="btn btn-outline" id="bulkDeactivateBtn">Desactivar</button>
+          <select id="bulkRoleSelect">
+            <option value="">Cambiar rol a...</option>
+          </select>
+          <button type="button" class="btn btn-primary" id="bulkSetRoleBtn">Aplicar rol</button>
         </div>
 
         <!-- TABLE -->
@@ -332,7 +333,7 @@
               </svg>
               <input
                 type="text"
-                placeholder="Search by name, email or role..."
+                placeholder="Buscar por nombre, email o rol..."
                 data-user-search
               />
             </div>
@@ -351,22 +352,80 @@
                       points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"
                     />
                   </svg>
-                  Filters
+                  Filtros
                 </button>
-                <div class="filter-panel" id="userFilterPanel" style="display:none;">
-                  <label for="userStatusFilter">Status</label>
+                <div class="filter-panel filter-panel-wide" id="userFilterPanel" style="display:none;">
+                  <label for="userStatusFilter">Estado</label>
                   <select id="userStatusFilter">
-                    <option value="all">All</option>
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
+                    <option value="all">Todos</option>
+                    <option value="active">Activo</option>
+                    <option value="inactive">Inactivo</option>
                   </select>
-<label for="userRoleFilter">Role</label>
+                  <label for="userRoleFilter">Rol</label>
                   <select id="userRoleFilter">
-                    <option value="all">All</option>
+                    <option value="all">Todos</option>
                   </select>
+
+                  <div class="filter-section-title">Actividad</div>
+                  <label for="userDateJoinedFrom">Registrado desde</label>
+                  <input type="date" id="userDateJoinedFrom" />
+                  <label for="userDateJoinedTo">Registrado hasta</label>
+                  <input type="date" id="userDateJoinedTo" />
+                  <label for="userLastLoginFrom">Último login desde</label>
+                  <input type="date" id="userLastLoginFrom" />
+                  <label for="userLastLoginTo">Último login hasta</label>
+                  <input type="date" id="userLastLoginTo" />
+                  <label class="filter-checkbox-label">
+                    <input type="checkbox" id="userNeverLoggedIn" />
+                    Nunca inició sesión
+                  </label>
+                  <label for="userInactiveDays">Inactivo hace más de (días)</label>
+                  <input type="number" id="userInactiveDays" min="0" placeholder="Ej: 30" />
+
+                  <div class="filter-section-title">Seguridad</div>
+                  <label for="userLockedFilter">Bloqueado</label>
+                  <select id="userLockedFilter">
+                    <option value="all">Todos</option>
+                    <option value="true">Bloqueado</option>
+                    <option value="false">No bloqueado</option>
+                  </select>
+                  <label for="userFailedAttemptsFilter">Intentos fallidos</label>
+                  <select id="userFailedAttemptsFilter">
+                    <option value="all">Todos</option>
+                    <option value="0">0 intentos</option>
+                    <option value="1-2">1-2 intentos</option>
+                    <option value="cerca_de_bloquearse">Cerca de bloquearse</option>
+                  </select>
+
+                  <div class="filter-section-title">Origen</div>
+                  <label for="userAuthMethodFilter">Método de autenticación</label>
+                  <select id="userAuthMethodFilter">
+                    <option value="all">Todos</option>
+                    <option value="local">Local (email/password)</option>
+                    <option value="google">Google</option>
+                  </select>
+
+                  <div class="filter-section-title">Orden</div>
+                  <label for="userOrderingField">Ordenar por</label>
+                  <select id="userOrderingField">
+                    <option value="id">Sin ordenar</option>
+                    <option value="first_name">Nombre</option>
+                    <option value="email">Email</option>
+                    <option value="date_joined">Fecha de registro</option>
+                    <option value="last_login">Último login</option>
+                  </select>
+                  <label for="userOrderingDir">Dirección</label>
+                  <select id="userOrderingDir">
+                    <option value="asc">Ascendente</option>
+                    <option value="desc">Descendente</option>
+                  </select>
+
+                  <button type="button" class="btn btn-outline filter-clear-btn" id="clearUserFiltersBtn">
+                    Limpiar filtros
+                  </button>
                 </div>
               </div>
-              <button class="btn btn-outline">
+              <button class="btn btn-outline" id="exportUsersBtn" title="Exportar los usuarios seleccionados a Excel">
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
@@ -379,9 +438,23 @@
                   <polyline points="7 10 12 15 17 10" />
                   <line x1="12" y1="15" x2="12" y2="3" />
                 </svg>
-                Export
+                Exportar
               </button>
-              <button class="icon-btn" title="Refresh">
+              <button class="btn btn-outline" id="exportUsersCsvBtn" title="Exportar a CSV (generado en el servidor): los seleccionados, o la lista filtrada actual si no hay selección">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                </svg>
+                Exportar CSV
+              </button>
+              <button class="icon-btn" title="Actualizar">
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
@@ -403,10 +476,10 @@
           <table>
             <thead>
               <tr>
-                <th style="width: 36px"><input type="checkbox" /></th>
-                <th>
+                <th style="width: 36px"><input type="checkbox" id="selectAllUsers" title="Seleccionar todos" /></th>
+                <th style="width: 21%">
                   <span class="th-sort"
-                    >User
+                    >Usuario
                     <svg
                       viewBox="0 0 24 24"
                       fill="none"
@@ -417,7 +490,7 @@
                       <polyline points="7 9 12 4 17 9" /></svg
                   ></span>
                 </th>
-                <th>
+                <th style="width: 21%">
                   <span class="th-sort"
                     >Email
                     <svg
@@ -430,9 +503,9 @@
                       <polyline points="7 9 12 4 17 9" /></svg
                   ></span>
                 </th>
-                <th>
+                <th style="width: 10%">
                   <span class="th-sort"
-                    >Role
+                    >Rol
                     <svg
                       viewBox="0 0 24 24"
                       fill="none"
@@ -443,9 +516,9 @@
                       <polyline points="7 9 12 4 17 9" /></svg
                   ></span>
                 </th>
-                <th>
+                <th style="width: 12%">
                   <span class="th-sort"
-                    >Status
+                    >Estado
                     <svg
                       viewBox="0 0 24 24"
                       fill="none"
@@ -456,9 +529,9 @@
                       <polyline points="7 9 12 4 17 9" /></svg
                   ></span>
                 </th>
-                <th>
+                <th style="width: 10%">
                   <span class="th-sort"
-                    >Created
+                    >Creado
                     <svg
                       viewBox="0 0 24 24"
                       fill="none"
@@ -469,7 +542,9 @@
                       <polyline points="7 9 12 4 17 9" /></svg
                   ></span>
                 </th>
-                <th class="actions-col">Actions</th>
+                <th style="width: 8%">Pedidos</th>
+                <th style="width: 12%">Último pedido</th>
+                <th class="actions-col" style="width: 90px">Acciones</th>
               </tr>
             </thead>
             <tbody id="usersBody">
@@ -478,9 +553,9 @@
           </table>
 
           <div class="pagination-bar">
-            <div class="showing" id="paginationInfo">Showing 0 users</div>
+            <div class="showing" id="paginationInfo">Mostrando 0 usuarios</div>
             <div class="pager" id="paginationControls">
-              <button title="First" data-page="first">
+              <button title="Primera" data-page="first">
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
@@ -491,7 +566,7 @@
                   <polyline points="18 17 13 12 18 7" />
                 </svg>
               </button>
-              <button title="Prev" data-page="prev">
+              <button title="Anterior" data-page="prev">
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
@@ -502,7 +577,7 @@
                 </svg>
               </button>
               <span id="pageNumbers"></span>
-              <button title="Next" data-page="next">
+              <button title="Siguiente" data-page="next">
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
@@ -512,7 +587,7 @@
                   <polyline points="9 18 15 12 9 6" />
                 </svg>
               </button>
-              <button title="Last" data-page="last">
+              <button title="Última" data-page="last">
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
@@ -530,36 +605,36 @@
         <!-- SETTINGS / PERFIL PROPIO -->
         <div id="settingsSection" style="display:none;">
           <div class="settings-header">
-            <h1>Settings</h1>
-            <p>Manage your account information and security.</p>
+            <h1>Ajustes</h1>
+            <p>Administrá la información de tu cuenta y tu seguridad.</p>
           </div>
 
           <div class="settings-body">
 
             <!-- Tarjeta: datos personales -->
             <div class="settings-card">
-              <div class="settings-card-title">Personal information</div>
+              <div class="settings-card-title">Datos personales</div>
               <div class="settings-card-body">
                 <div class="field">
-                  <label>First name</label>
-                  <input type="text" id="settingsFirstName" placeholder="First name" autocomplete="given-name" />
+                  <label>Nombre</label>
+                  <input type="text" id="settingsFirstName" placeholder="Nombre" autocomplete="given-name" />
                 </div>
                 <div class="field">
-                  <label>Last name</label>
-                  <input type="text" id="settingsLastName" placeholder="Last name" autocomplete="family-name" />
+                  <label>Apellido</label>
+                  <input type="text" id="settingsLastName" placeholder="Apellido" autocomplete="family-name" />
                 </div>
                 <div class="field">
-                  <label>Email <span class="field-badge">Read only</span></label>
+                  <label>Email <span class="field-badge">Solo lectura</span></label>
                   <input type="email" id="settingsEmail" disabled />
                 </div>
                 <div class="field">
-                  <label>Role <span class="field-badge">Read only</span></label>
+                  <label>Rol <span class="field-badge">Solo lectura</span></label>
                   <input type="text" id="settingsRole" disabled />
                 </div>
                 <p id="settingsProfileMsg" style="display:none; font-size:0.85rem; margin:4px 0 0;"></p>
                 <div class="settings-card-actions">
                   <button type="button" class="btn btn-primary" id="settingsSaveProfile">
-                    Save changes
+                    Guardar cambios
                   </button>
                 </div>
               </div>
@@ -567,30 +642,30 @@
 
             <!-- Tarjeta: cambio de contraseña -->
             <div class="settings-card">
-              <div class="settings-card-title">Change password</div>
+              <div class="settings-card-title">Cambiar contraseña</div>
               <div class="settings-card-body">
                 <div class="field">
-                  <label>Current password</label>
+                  <label>Contraseña actual</label>
                   <input type="password" id="settingsCurrentPassword"
-                         placeholder="Your current password"
+                         placeholder="Tu contraseña actual"
                          autocomplete="current-password" />
                 </div>
                 <div class="field">
-                  <label>New password</label>
+                  <label>Nueva contraseña</label>
                   <input type="password" id="settingsNewPassword"
-                         placeholder="At least 8 characters"
+                         placeholder="Al menos 8 caracteres"
                          autocomplete="new-password" />
                 </div>
                 <div class="field">
-                  <label>Confirm new password</label>
+                  <label>Confirmar nueva contraseña</label>
                   <input type="password" id="settingsConfirmPassword"
-                         placeholder="Repeat new password"
+                         placeholder="Repetí la nueva contraseña"
                          autocomplete="new-password" />
                 </div>
                 <p id="settingsPasswordMsg" style="display:none; font-size:0.85rem; margin:4px 0 0;"></p>
                 <div class="settings-card-actions">
                   <button type="button" class="btn btn-primary" id="settingsSavePassword">
-                    Change password
+                    Cambiar contraseña
                   </button>
                 </div>
               </div>
@@ -602,7 +677,7 @@
         <!-- ROLES Y PERMISOS (solo administración) -->
         <section id="rolesSection" style="display:none;" aria-labelledby="rolesTitle">
           <div class="roles-header">
-            <h1 id="rolesTitle">Roles & Permissions</h1>
+            <h1 id="rolesTitle">Roles y permisos</h1>
             <p>Administrá los permisos disponibles para cada rol del sistema.</p>
           </div>
 
@@ -623,29 +698,60 @@
           <div class="roles-card">
             <div class="roles-card-title">Roles del sistema</div>
             <div id="rolesList" class="roles-list" aria-label="Seleccionar rol">
-              <p class="roles-loading">Loading roles...</p>
+              <p class="roles-loading">Cargando roles...</p>
             </div>
           </div>
 
           <div class="roles-card roles-permissions-card">
             <div class="roles-card-title">Permisos asignados</div>
             <div id="rolePermissionsContent" class="roles-card-body">
-              <p class="roles-loading">Loading permissions...</p>
+              <p class="roles-loading">Cargando permisos...</p>
             </div>
             <div class="roles-card-actions">
               <button type="button" class="btn btn-primary" id="saveRolePermissions" disabled>
-                Save changes
+                Guardar cambios
               </button>
             </div>
           </div>
         </section><!-- /#rolesSection -->
+
+        <!-- REPORTES / MÉTRICAS -->
+        <section id="reportsSection" style="display:none;" aria-labelledby="reportsTitle">
+          <div class="roles-header">
+            <h1 id="reportsTitle">Reportes</h1>
+            <p>Métricas simples sobre los usuarios del sistema.</p>
+          </div>
+
+          <div class="reports-grid">
+            <div class="roles-card">
+              <div class="roles-card-title">Usuarios por rol</div>
+              <div id="metricsRoleDistribution" class="metrics-bars">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Altas por mes (últimos 6 meses)</div>
+              <div id="metricsSignupsByMonth" class="metrics-bars">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Método de autenticación</div>
+              <div id="metricsAuthMethod" class="metrics-stat-row">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+          </div>
+        </section><!-- /#reportsSection -->
       </main>
 
       <!-- CREATE USER PANEL -->
       <div class="create-panel" id="createPanel" style="display: none">
         <form id="createUserForm">
           <div class="create-panel-head">
-            <h3 id="userFormTitle">Create User</h3>
+            <h3 id="userFormTitle">Crear usuario</h3>
             <button id="closeCreatePanel" type="button">
               <svg
                 viewBox="0 0 24 24"
@@ -661,35 +767,42 @@
             </button>
           </div>
           <div class="field">
-            <label>Full Name</label>
-            <input id="fullNameInput" type="text" placeholder="Enter full name" required />
+            <label>Nombre completo</label>
+            <input id="fullNameInput" type="text" placeholder="Ingresá el nombre completo" required />
           </div>
           <div class="field">
             <label>Email</label>
-            <input id="emailInput" type="email" placeholder="Enter email address" required />
+            <input id="emailInput" type="email" placeholder="Ingresá el email" required />
           </div>
           <div class="field">
-            <label>Role</label>
+            <label>Rol</label>
 <select id="roleSelect" required>
-              <option value="">Select role</option>
+              <option value="">Seleccioná un rol</option>
             </select>
           </div>
           <div class="field">
-            <label>Status</label>
+            <label>Estado</label>
 <select id="statusSelect" required>
-              <option value="">Select status</option>
-              <option>Active</option>
-              <option>Inactive</option>
+              <option value="">Seleccioná un estado</option>
+              <option value="active">Activo</option>
+              <option value="inactive">Inactivo</option>
             </select>
           </div>
           <div class="field" id="passwordField">
-            <label>Password</label>
-            <input id="passwordInput" type="password" placeholder="Enter password" autocomplete="new-password" required />
+            <label>Contraseña</label>
+            <input id="passwordInput" type="password" placeholder="Ingresá la contraseña (opcional)" autocomplete="new-password" />
+            <p class="field-hint">Dejar vacío para usar una temporal (obliga a cambiarla).</p>
+          </div>
+          <div class="field field-checkbox">
+            <label class="filter-checkbox-label">
+              <input type="checkbox" id="forcePasswordChangeInput" />
+              <span>Forzar cambio de contraseña en el próximo login</span>
+            </label>
           </div>
           <div class="create-panel-actions">
-            <button class="btn btn-cancel" id="cancelCreate" type="button">Cancel</button>
+            <button class="btn btn-cancel" id="cancelCreate" type="button">Cancelar</button>
             <button class="btn btn-primary" id="userFormSubmit" type="submit" style="justify-content: center">
-              Create User
+              Crear usuario
             </button>
           </div>
         </form>
@@ -697,14 +810,14 @@
 
       <!-- VIEW USER MODAL (solo lectura) -->
       <div id="viewUserModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:100; align-items:center; justify-content:center;">
-        <div style="background:#fff; border-radius:14px; width:420px; max-width:90%; padding:24px; box-shadow:0 20px 45px rgba(15,23,42,.25);">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h3 style="margin:0; font-size:17px; font-weight:700;">User Details</h3>
+        <div style="background:#fff; border-radius:14px; width:460px; max-width:90%; max-height:85vh; padding:24px; box-shadow:0 20px 45px rgba(15,23,42,.25); display:flex; flex-direction:column;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-shrink:0;">
+            <h3 style="margin:0; font-size:17px; font-weight:700;">Detalles del usuario</h3>
             <button id="closeViewModal" type="button" style="border:none; background:transparent; cursor:pointer; color:#64748b; font-size:20px; line-height:1;">&times;</button>
           </div>
-          <div id="viewUserContent" style="display:flex; flex-direction:column; gap:12px;"></div>
-          <div style="display:flex; justify-content:flex-end; margin-top:20px;">
-            <button id="closeViewModalBtn" type="button" class="btn btn-outline">Close</button>
+          <div id="viewUserContent" style="display:flex; flex-direction:column; gap:10px; overflow-y:auto;"></div>
+          <div style="display:flex; justify-content:flex-end; margin-top:20px; flex-shrink:0;">
+            <button id="closeViewModalBtn" type="button" class="btn btn-outline">Cerrar</button>
           </div>
         </div>
       </div>

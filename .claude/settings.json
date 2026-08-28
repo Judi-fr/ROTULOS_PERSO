@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "Bash(git pull:*)",
+      "Bash(rm -rf:*)"
+    ],
+    "allow": [
+      "Bash(python manage.py test:*)",
+      "Bash(python manage.py check:*)",
+      "Bash(git status)",
+      "Bash(git diff:*)"
+    ]
+  }
+}

@@ -15,12 +15,14 @@ Además de mantener el payload clásico (``email``, ``first_name``/``last_name``
   ``viewsets.py`` (filtros por rol) y ``permissions_map.py``.
 """
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.contrib.auth.password_validation import validate_password as django_validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
+from .models import PasswordChangeRequirement
 from .permissions_map import VALID_ROLES as ROLE_CHOICES
 from .permissions_map import get_effective_role as get_user_role
 from .permissions_map import normalize_role as normalize_role_name
@@ -88,6 +90,10 @@ class UserAdminSerializer(serializers.ModelSerializer):
         required=False,
         choices=[("active", "active"), ("inactive", "inactive")],
     )
+    # El admin puede forzar (o levantar) manualmente el cambio de contraseña
+    # obligatorio de un usuario existente. Ver también: se activa solo al
+    # crear sin password (create()) si ADMIN_CREATED_USER_PASSWORD está seteado.
+    force_password_change = serializers.BooleanField(write_only=True, required=False)
 
     # Campos calculados de salida (frontend).
     display_name = serializers.SerializerMethodField()
@@ -97,6 +103,16 @@ class UserAdminSerializer(serializers.ModelSerializer):
     status_label = serializers.SerializerMethodField()
     created_date = serializers.SerializerMethodField()
     can_reactivate = serializers.SerializerMethodField()
+    is_locked = serializers.SerializerMethodField()
+    locked_until = serializers.SerializerMethodField()
+    lockout_remaining_seconds = serializers.SerializerMethodField()
+    must_change_password = serializers.SerializerMethodField()
+    # Anotados en UserAdminViewSet.get_queryset() (Count/Max sobre orders),
+    # no SerializerMethodField, para evitar N+1: default=None cubre el caso
+    # en que el serializer se use fuera de ese queryset (no debería pasar,
+    # pero evita un AttributeError si algún día se instancia a mano).
+    orders_count = serializers.IntegerField(read_only=True, default=None)
+    last_order_at = serializers.DateTimeField(read_only=True, default=None)
 
     class Meta:
         model = User
@@ -114,6 +130,7 @@ class UserAdminSerializer(serializers.ModelSerializer):
             "full_name",
             "role",
             "status",
+            "force_password_change",
             "display_name",
             "role_key",
             "role_label",
@@ -121,6 +138,12 @@ class UserAdminSerializer(serializers.ModelSerializer):
             "status_label",
             "created_date",
             "can_reactivate",
+            "is_locked",
+            "locked_until",
+            "lockout_remaining_seconds",
+            "must_change_password",
+            "orders_count",
+            "last_order_at",
         ]
         read_only_fields = [
             "id",
@@ -133,6 +156,12 @@ class UserAdminSerializer(serializers.ModelSerializer):
             "status_label",
             "created_date",
             "can_reactivate",
+            "is_locked",
+            "locked_until",
+            "lockout_remaining_seconds",
+            "must_change_password",
+            "orders_count",
+            "last_order_at",
         ]
 
     # --- Campos calculados de salida --------------------------------------
@@ -160,6 +189,24 @@ class UserAdminSerializer(serializers.ModelSerializer):
 
     def get_can_reactivate(self, obj):
         return not obj.is_active
+
+    def get_is_locked(self, obj):
+        lockout = getattr(obj, "login_lockout", None)
+        return bool(lockout and lockout.is_locked())
+
+    def get_locked_until(self, obj):
+        lockout = getattr(obj, "login_lockout", None)
+        if lockout and lockout.is_locked():
+            return lockout.locked_until
+        return None
+
+    def get_lockout_remaining_seconds(self, obj):
+        lockout = getattr(obj, "login_lockout", None)
+        return lockout.remaining_seconds() if lockout else 0
+
+    def get_must_change_password(self, obj):
+        requirement = getattr(obj, "password_change_requirement", None)
+        return bool(requirement and requirement.must_change_password)
 
     # --- Helpers -----------------------------------------------------------
 
@@ -245,11 +292,20 @@ class UserAdminSerializer(serializers.ModelSerializer):
         role = validated_data.pop("role", None)
         status = validated_data.pop("status", None)
         full_name = validated_data.pop("full_name", None)
+        force_password_change = validated_data.pop("force_password_change", None)
 
+        # Sin password: si hay una contraseña temporal configurada
+        # (ADMIN_CREATED_USER_PASSWORD), se usa esa y la cuenta queda
+        # marcada para cambiarla en el próximo login. Si no hay temporal
+        # configurada, se mantiene el comportamiento previo (obligatoria).
+        used_temporary_password = False
         if not password:
-            raise serializers.ValidationError(
-                {"password": "La contraseña es obligatoria al crear un usuario."}
-            )
+            if not settings.ADMIN_CREATED_USER_PASSWORD:
+                raise serializers.ValidationError(
+                    {"password": "La contraseña es obligatoria al crear un usuario."}
+                )
+            password = settings.ADMIN_CREATED_USER_PASSWORD
+            used_temporary_password = True
 
         email = validated_data["email"]
 
@@ -272,11 +328,15 @@ class UserAdminSerializer(serializers.ModelSerializer):
             validated_data["is_staff"] = True
 
         # Usuario temporal (sin persistir) para que los validators de Django
-        # puedan comparar la contraseña contra el email/nombre.
-        self._run_django_password_validators(
-            password,
-            User(username=email, email=email, first_name=first_name, last_name=last_name),
-        )
+        # puedan comparar la contraseña contra el email/nombre. La contraseña
+        # temporal del servidor (ADMIN_CREATED_USER_PASSWORD) no la elige el
+        # usuario ni queda vigente (se fuerza su cambio), así que no pasa por
+        # estas validaciones de composición.
+        if not used_temporary_password:
+            self._run_django_password_validators(
+                password,
+                User(username=email, email=email, first_name=first_name, last_name=last_name),
+            )
 
         # create_user hashea la contraseña. is_active/is_staff van como
         # extra_fields (por defecto True/False respectivamente).
@@ -301,6 +361,13 @@ class UserAdminSerializer(serializers.ModelSerializer):
 
         if target_groups is not None:
             user.groups.set(target_groups)
+
+        # Cambio de password obligatorio: automático si se usó la temporal,
+        # o manual si el admin lo tildó explícitamente en el panel.
+        if used_temporary_password or force_password_change:
+            PasswordChangeRequirement.objects.update_or_create(
+                user=user, defaults={"must_change_password": True}
+            )
         return user
 
     def update(self, instance, validated_data):
@@ -309,6 +376,7 @@ class UserAdminSerializer(serializers.ModelSerializer):
         role = validated_data.pop("role", None)
         status = validated_data.pop("status", None)
         full_name = validated_data.pop("full_name", None)
+        force_password_change = validated_data.pop("force_password_change", None)
 
         # El email es el username: si cambia, se actualizan ambos en conjunto.
         email = validated_data.get("email")
@@ -351,6 +419,13 @@ class UserAdminSerializer(serializers.ModelSerializer):
 
         if target_groups is not None:
             instance.groups.set(target_groups)
+
+        # El admin puede activar O levantar el flag manualmente (no solo
+        # activarlo): si vino explícito en el payload, se respeta tal cual.
+        if force_password_change is not None:
+            PasswordChangeRequirement.objects.update_or_create(
+                user=instance, defaults={"must_change_password": force_password_change}
+            )
         return instance
 
     @staticmethod
@@ -406,6 +481,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "email",
             "first_name",
             "last_name",
+            "is_active",
             "is_staff",
             "groups",
             "date_joined",
@@ -417,6 +493,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "email",
+            "is_active",
             "is_staff",
             "groups",
             "date_joined",

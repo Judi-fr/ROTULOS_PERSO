@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Mi Perfil</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/perfil.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar">
+        <div class="topbar-user">
+          <img
+            class="avatar"
+            id="userAvatar"
+            src="https://api.dicebear.com/7.x/avataaars/svg?seed=user"
+            alt=""
+          />
+          <div class="topbar-user-info">
+            <span class="topbar-user-name" id="userName">—</span>
+            <span class="topbar-user-email" id="userEmail">—</span>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <a class="btn btn-outline" href="dashboard.html">Volver al panel</a>
+          <button class="btn btn-outline" id="logoutBtn" type="button">
+            Cerrar sesión
+          </button>
+        </div>
+      </header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Mi perfil</h1>
+          <p>Consultá y editá tus datos personales.</p>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <!-- Datos personales -->
+        <section class="profile-card">
+          <div class="profile-card-title">Datos personales</div>
+          <div class="profile-card-body">
+            <div class="field">
+              <label for="firstNameInput">Nombre</label>
+              <input type="text" id="firstNameInput" placeholder="Nombre" autocomplete="given-name" />
+            </div>
+            <div class="field">
+              <label for="lastNameInput">Apellido</label>
+              <input type="text" id="lastNameInput" placeholder="Apellido" autocomplete="family-name" />
+            </div>
+            <div class="field">
+              <label>Email</label>
+              <p class="field-static" id="emailValue">—</p>
+            </div>
+            <div class="field">
+              <label>Rol</label>
+              <p class="field-static" id="roleValue">—</p>
+            </div>
+            <div class="field">
+              <label>Estado</label>
+              <p class="field-static" id="statusValue">—</p>
+            </div>
+            <p id="profileMsg" class="form-message" style="display:none;"></p>
+            <div class="profile-card-actions">
+              <button type="button" class="btn btn-primary" id="saveProfileBtn">
+                Guardar cambios
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Cambio de contraseña -->
+        <section class="profile-card">
+          <div class="profile-card-title">Cambiar contraseña</div>
+          <div class="profile-card-body">
+            <div class="field">
+              <label for="currentPasswordInput">Contraseña actual</label>
+              <input type="password" id="currentPasswordInput" placeholder="Tu contraseña actual" autocomplete="current-password" />
+            </div>
+            <div class="field">
+              <label for="newPasswordInput">Nueva contraseña</label>
+              <input type="password" id="newPasswordInput" placeholder="Mínimo 6 caracteres, una mayúscula y un número" autocomplete="new-password" />
+            </div>
+            <div class="field">
+              <label for="confirmPasswordInput">Confirmar nueva contraseña</label>
+              <input type="password" id="confirmPasswordInput" placeholder="Repetir nueva contraseña" autocomplete="new-password" />
+            </div>
+            <p id="passwordMsg" class="form-message" style="display:none;"></p>
+            <div class="profile-card-actions">
+              <button type="button" class="btn btn-primary" id="savePasswordBtn">
+                Cambiar contraseña
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/perfil.js"></script>
+  </body>
+</html>

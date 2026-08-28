@@ -9,6 +9,7 @@ haya autenticado el usuario:
 """
 
 import re
+from math import ceil
 
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
@@ -31,6 +32,8 @@ from rest_framework_simplejwt.token_blacklist.models import (
     OutstandingToken,
 )
 from rest_framework_simplejwt.tokens import RefreshToken
+
+from .models import LoginLockout
 
 User = get_user_model()
 
@@ -66,6 +69,7 @@ def user_payload(user, picture=""):
     ``picture`` solo lo aporta Google (viene en el ID token y no se
     persiste); en el login con email/contraseña queda vacío.
     """
+    from .authentication import user_must_change_password
     from .permissions_map import PERMISSIONS, get_effective_role, user_has_permission
 
     return {
@@ -79,6 +83,10 @@ def user_payload(user, picture=""):
         "permissions": sorted(
             permission for permission in PERMISSIONS if user_has_permission(user, permission)
         ),
+        # Le dice al frontend que redirija a cambiar-password.html apenas
+        # loguea, sin esperar al primer 403 (ver authentication.py, que es
+        # quien realmente lo hace cumplir del lado del servidor).
+        "must_change_password": user_must_change_password(user),
     }
 
 
@@ -174,6 +182,14 @@ class ChangePasswordView(APIView):
 
         request.user.set_password(new_password)
         request.user.save(update_fields=["password"])
+
+        # Si el usuario tenía pendiente un cambio de contraseña forzado
+        # (admin sin password / flag manual), completar el cambio lo apaga.
+        from .models import PasswordChangeRequirement
+
+        PasswordChangeRequirement.objects.filter(user=request.user).update(
+            must_change_password=False
+        )
 
         # Cambiar la contraseña no cierra sesiones por diseño acá (el access
         # JWT sigue válido hasta expirar). Solo se revocan los refresh en el
@@ -280,14 +296,40 @@ class LoginView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Se busca el usuario ANTES de autenticar para poder chequear/contar
+        # el bloqueo por intentos fallidos aunque la contraseña esté mal.
+        # Si el email no corresponde a ninguna cuenta, no se crea lockout
+        # (nada que trackear) y el flujo sigue igual que antes.
+        user_obj = User.objects.filter(username__iexact=email).first()
+        lockout = None
+        if user_obj is not None:
+            lockout, _ = LoginLockout.objects.get_or_create(user=user_obj)
+            if lockout.is_locked():
+                minutos_restantes = max(1, ceil(lockout.remaining_seconds() / 60))
+                return Response(
+                    {
+                        "detail": (
+                            "Cuenta bloqueada por demasiados intentos fallidos. "
+                            f"Probá de nuevo en aproximadamente {minutos_restantes} "
+                            "minuto(s)."
+                        )
+                    },
+                    status=status.HTTP_423_LOCKED,
+                )
+
         # El proyecto usa el email como username (ver GoogleAuthView).
         # authenticate() valida la contraseña y respeta is_active.
         user = authenticate(request, username=email, password=password)
         if user is None:
+            if lockout is not None:
+                lockout.register_failure()
             return Response(
                 {"detail": "Email o contraseña incorrectos."},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
+
+        if lockout is not None:
+            lockout.register_success()
 
         return auth_response(user)
 

@@ -58,6 +58,7 @@ LOCAL_APPS = [
     "apps.documents",   # carga y gestión de archivos (imágenes / PDF)
     "apps.processing",  # agente embebido: convierte el documento a formato código
     "apps.labels",      # rótulos generados, plantillas e impresión
+    "apps.orders",      # direcciones y pedidos del cliente final
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -114,7 +115,12 @@ REST_FRAMEWORK = {
     # Tanto el login con Google como el de email/contraseña emiten JWT,
     # así el frontend maneja un único tipo de token sin importar el método.
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        # Subclase de JWTAuthentication (ver apps.accounts.authentication):
+        # además de validar el token, bloquea con 403 estructurado a los
+        # usuarios con must_change_password=True fuera de la allowlist
+        # (cambiar-password / ver el propio perfil / logout). Es el único
+        # choke point que cubre TODA la API sin tener que tocar cada vista.
+        "apps.accounts.authentication.JWTAuthenticationWithPasswordPolicy",
     ],
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
@@ -200,6 +206,13 @@ PASSWORD_RESET_URL = env(
 
 # Validez del token de reset de contraseña (default de Django: 3 días).
 PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT", default=60 * 60 * 24)
+
+# Contraseña temporal usada cuando un admin crea un usuario sin especificar
+# password (panel de gestión de usuarios). Esa cuenta queda marcada con
+# must_change_password=True (ver apps.accounts.models.PasswordChangeRequirement
+# y UserAdminSerializer.create). Si no está configurada, el admin sigue
+# obligado a indicar una contraseña al crear (comportamiento previo).
+ADMIN_CREATED_USER_PASSWORD = env("ADMIN_CREATED_USER_PASSWORD", default="")
 
 # ---------------------------------------------------------------------------
 # JWT (djangorestframework-simplejwt)
