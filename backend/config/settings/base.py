@@ -145,6 +145,10 @@ REST_FRAMEWORK = {
         # Pedir/confirmar reset de contraseña: frena el email bombing a una
         # víctima y la fuerza bruta sobre el token del link.
         "password_reset": "5/min",
+        # Leer un rótulo con el modelo se paga por token. El límite general de
+        # 1000/min no sirve acá: un bucle en el frontend gastaría bastante
+        # dinero antes de que nadie lo note.
+        "importacion_rotulo": "20/hour",
     },
 }
 
@@ -250,5 +254,24 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # Los documentos subidos (imágenes / PDF) se guardan acá
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+# ---------------------------------------------------------------------------
+# Claude (lectura de rótulos desde una foto)
+# ---------------------------------------------------------------------------
+
+# Clave de la API de Anthropic (console.anthropic.com -> API Keys). Sin ella,
+# la app processing devuelve un error explicando que falta configurarla, en vez
+# de fallar de forma críptica al momento de importar.
+ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+
+# Modelo que interpreta los rótulos. Leer un rótulo de una foto es una tarea
+# visual con criterio —hay que distinguir el rótulo de un campo de su valor—,
+# así que se usa el modelo más capaz.
+ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", default="claude-opus-5")
+
+# Segundos de espera antes de dar por perdida la llamada. Una lectura normal
+# tarda entre 10 y 60; el default del SDK son 600, demasiado para dejar a un
+# usuario esperando frente a una pantalla.
+ANTHROPIC_TIMEOUT = env.float("ANTHROPIC_TIMEOUT", default=120.0)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
