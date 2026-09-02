@@ -18,6 +18,8 @@ const MENU_ICONS = {
   processing: "mdi mdi-cog-outline",
   profile: "mdi mdi-account-circle-outline",
   support: "mdi mdi-lifebuoy",
+  audit: "mdi mdi-shield-search-outline",
+  support_inbox: "mdi mdi-email-alert-outline",
 };
 
 // Agrupación puramente visual (el backend decide qué ítems existen y si
@@ -33,8 +35,10 @@ const MENU_GROUPS = {
   users: "Cuenta",
   profile: "Cuenta",
   support: "Ayuda",
+  audit: "Administración",
+  support_inbox: "Administración",
 };
-const GROUP_ORDER = ["Mis cosas", "Cuenta", "Ayuda", "Otros"];
+const GROUP_ORDER = ["Mis cosas", "Cuenta", "Ayuda", "Administración", "Otros"];
 
 function getAccessToken() {
   return localStorage.getItem("access") || "";
@@ -103,6 +107,14 @@ function showMessage(text, type = "error") {
   el.style.display = "block";
 }
 
+// El dato ya viene resuelto por el backend (DashboardView): no se decide acá
+// por rol/permissions locales, solo se muestra u oculta según is_admin.
+function renderBackToAdminLink(user) {
+  const link = document.getElementById("backToAdminLink");
+  if (!link) return;
+  link.style.display = user && user.is_admin ? "" : "none";
+}
+
 function renderUser(user) {
   const nameEl = document.getElementById("userName");
   const emailEl = document.getElementById("userEmail");
@@ -114,7 +126,10 @@ function renderUser(user) {
   if (nameEl) nameEl.textContent = name;
   if (emailEl) emailEl.textContent = email;
   if (avatarEl) {
-    avatarEl.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`;
+    const picture = getCurrentUser().picture;
+    avatarEl.src = picture
+      ? picture
+      : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`;
   }
 }
 
@@ -269,6 +284,7 @@ async function loadDashboard() {
     }
     const data = await response.json();
     renderUser(data.user || {});
+    renderBackToAdminLink(data.user || {});
     renderMenu(data.menu || []);
     loadOrderSummary();
   } catch (err) {

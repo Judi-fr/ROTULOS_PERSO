@@ -118,7 +118,24 @@ class Order(models.Model):
         # (cancelar) o un cambio manual desde el admin.
         if is_new or self.status != self._previous_status:
             self.status_events.create(status=self.status)
+            # Auditoría de cambios de estado hechos desde el admin de Django
+            # o a mano (sin request, así que sin actor). Las vistas que ya
+            # tienen actor (crear, cancelar) registran su propia entrada más
+            # específica y marcan ``_skip_status_audit`` para no duplicarla.
+            if not is_new and not getattr(self, "_skip_status_audit", False):
+                from apps.audit.services import record
+
+                record(
+                    None,
+                    category="orders",
+                    action="order.status_change",
+                    target=self,
+                    target_type="order",
+                    target_repr=str(self),
+                    changes={"status": {"from": self._previous_status, "to": self.status}},
+                )
         self._previous_status = self.status
+        self._skip_status_audit = False
 
 
 class OrderStatusEvent(models.Model):

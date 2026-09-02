@@ -84,3 +84,47 @@ class OrderSerializer(serializers.ModelSerializer):
         if request is not None and request.user and request.user.is_authenticated:
             # Un usuario solo puede asignar a un pedido una dirección PROPIA.
             self.fields["address_id"].queryset = Address.objects.filter(user=request.user)
+
+
+class AdminOrderSerializer(serializers.ModelSerializer):
+    """Lectura de pedidos de TODOS los usuarios para el panel admin
+    (``orders.view_all``). Solo lectura: el admin no crea ni cancela
+    pedidos ajenos desde acá (ver ``AdminOrderListView``)."""
+
+    user_email = serializers.EmailField(source="user.email", read_only=True)
+    address = AddressSerializer(read_only=True)
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+    last_event = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Order
+        fields = [
+            "id",
+            "user",
+            "user_email",
+            "address",
+            "description",
+            "status",
+            "status_label",
+            "carrier",
+            "tracking_number",
+            "tracking_url",
+            "last_event",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_last_event(self, obj):
+        # ``status_events`` viene prefetched y ordenado ascendente (Meta.ordering
+        # de OrderStatusEvent): el último elemento es el evento más reciente,
+        # sin disparar una query extra por pedido.
+        events = list(obj.status_events.all())
+        if not events:
+            return None
+        last = events[-1]
+        return {
+            "status": last.status,
+            "status_label": last.get_status_display(),
+            "created_at": last.created_at,
+        }

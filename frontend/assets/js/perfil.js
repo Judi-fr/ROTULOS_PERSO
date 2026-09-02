@@ -6,6 +6,7 @@
 const API_BASE = "http://127.0.0.1:8000/api/v1/auth";
 const ME_URL = `${API_BASE}/me/`;
 const CHANGE_PASSWORD_URL = `${API_BASE}/me/change-password/`;
+const VERIFY_EMAIL_RESEND_URL = `${API_BASE}/verify-email/resend/`;
 const LOGOUT_URL = `${API_BASE}/logout/`;
 
 function getAccessToken() {
@@ -94,6 +95,14 @@ function roleLabel(role) {
   return ROLE_LABELS[role] || (role.charAt(0).toUpperCase() + role.slice(1));
 }
 
+function getCurrentUser() {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "{}");
+  } catch {
+    return {};
+  }
+}
+
 function renderTopbar(user) {
   const nameEl = document.getElementById("userName");
   const emailEl = document.getElementById("userEmail");
@@ -105,8 +114,20 @@ function renderTopbar(user) {
   if (nameEl) nameEl.textContent = name;
   if (emailEl) emailEl.textContent = email;
   if (avatarEl) {
-    avatarEl.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`;
+    const picture = getCurrentUser().picture;
+    avatarEl.src = picture
+      ? picture
+      : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`;
   }
+}
+
+// Aviso de verificación suave: solo se muestra cuando el backend informa
+// email_verified === false (ver EMAIL_VERIFICATION_URL / RegisterView en
+// backend). No hay badge de "verificado" — si está todo bien, no se avisa nada.
+function renderVerificationNotice(user) {
+  const notice = document.getElementById("emailVerificationNotice");
+  if (!notice) return;
+  notice.style.display = user.email_verified === false ? "block" : "none";
 }
 
 function renderProfile(user) {
@@ -134,6 +155,7 @@ async function loadProfile() {
     const user = await response.json();
     renderTopbar(user);
     renderProfile(user);
+    renderVerificationNotice(user);
   } catch (err) {
     if (err.isSessionExpired) return;
     console.error("Error al cargar el perfil:", err);
@@ -161,6 +183,7 @@ async function saveProfile() {
     }
     renderTopbar(data);
     renderProfile(data);
+    renderVerificationNotice(data);
     showFieldMessage("profileMsg", "Perfil actualizado correctamente.", true);
   } catch (err) {
     if (err.isSessionExpired) return;
@@ -216,6 +239,28 @@ async function savePassword() {
 
 document.getElementById("saveProfileBtn")?.addEventListener("click", saveProfile);
 document.getElementById("savePasswordBtn")?.addEventListener("click", savePassword);
+
+document.getElementById("resendVerificationBtn")?.addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Enviando...";
+
+  try {
+    const response = await apiFetch(VERIFY_EMAIL_RESEND_URL, { method: "POST" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(getErrorMessage(data, "No se pudo reenviar el email de verificación."));
+    }
+    showMessage(data.detail || "Te reenviamos el email de verificación.", "success");
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    showMessage(err.message || "No se pudo reenviar el email de verificación.", "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Logout: misma lógica que dashboard.js / admingestion_test.js — invalida el

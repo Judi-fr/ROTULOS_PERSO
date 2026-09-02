@@ -14,6 +14,8 @@ from .role_permission_views import (
 )
 from .views import (
     ChangePasswordView,
+    EmailVerificationConfirmView,
+    EmailVerificationResendView,
     GoogleAuthView,
     LoginView,
     LogoutView,
@@ -38,6 +40,18 @@ urlpatterns = [
         "password-reset/confirm/",
         PasswordResetConfirmView.as_view(),
         name="password-reset-confirm",
+    ),
+    # Verificación suave de email (solo cuentas email/contraseña, ver
+    # RegisterView): confirma el token del correo y permite reenviarlo.
+    path(
+        "verify-email/confirm/",
+        EmailVerificationConfirmView.as_view(),
+        name="verify-email-confirm",
+    ),
+    path(
+        "verify-email/resend/",
+        EmailVerificationResendView.as_view(),
+        name="verify-email-resend",
     ),
     # Perfil del usuario autenticado: GET (ver) y PATCH (editar nombre/apellido).
     path("me/", ProfileView.as_view(), name="profile"),

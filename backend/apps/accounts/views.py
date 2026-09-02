@@ -17,6 +17,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
+from django.utils import timezone
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from google.auth.transport import requests as google_requests
@@ -33,7 +34,9 @@ from rest_framework_simplejwt.token_blacklist.models import (
 )
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import LoginLockout
+from apps.audit.services import record
+
+from .models import EmailVerification, LoginLockout, user_email_verified
 
 User = get_user_model()
 
@@ -83,6 +86,7 @@ def user_payload(user, picture=""):
         "permissions": sorted(
             permission for permission in PERMISSIONS if user_has_permission(user, permission)
         ),
+        "email_verified": user_email_verified(user),
         # Le dice al frontend que redirija a cambiar-password.html apenas
         # loguea, sin esperar al primer 403 (ver authentication.py, que es
         # quien realmente lo hace cumplir del lado del servidor).
@@ -191,6 +195,15 @@ class ChangePasswordView(APIView):
             must_change_password=False
         )
 
+        record(
+            request,
+            category="auth",
+            action="auth.password_change",
+            target=request.user,
+            target_type="user",
+            target_repr=request.user.email,
+        )
+
         # Cambiar la contraseña no cierra sesiones por diseño acá (el access
         # JWT sigue válido hasta expirar). Solo se revocan los refresh en el
         # flujo de reset por email (posible cuenta comprometida).
@@ -259,6 +272,17 @@ class GoogleAuthView(APIView):
             user.set_unusable_password()
             user.save(update_fields=["password"])
 
+        record(
+            request,
+            actor=user,
+            category="auth",
+            action="auth.login_success",
+            target=user,
+            target_type="user",
+            target_repr=user.email,
+            actor_email=user.email,
+        )
+
         # URL pública del avatar en el CDN de Google. No se persiste:
         # Google puede rotarla, así que se refresca en cada login.
         return auth_response(user, picture=claims.get("picture", ""))
@@ -323,6 +347,24 @@ class LoginView(APIView):
         if user is None:
             if lockout is not None:
                 lockout.register_failure()
+                if lockout.is_locked():
+                    record(
+                        request,
+                        category="auth",
+                        action="auth.lockout",
+                        target=user_obj,
+                        target_type="user",
+                        target_repr=user_obj.email,
+                        actor_email=email,
+                    )
+            record(
+                request,
+                category="auth",
+                action="auth.login_failed",
+                target_type="user",
+                target_repr=email,
+                actor_email=email,
+            )
             return Response(
                 {"detail": "Email o contraseña incorrectos."},
                 status=status.HTTP_401_UNAUTHORIZED,
@@ -331,7 +373,45 @@ class LoginView(APIView):
         if lockout is not None:
             lockout.register_success()
 
+        record(
+            request,
+            actor=user,
+            category="auth",
+            action="auth.login_success",
+            target=user,
+            target_type="user",
+            target_repr=user.email,
+            actor_email=user.email,
+        )
+
         return auth_response(user)
+
+
+def _send_verification_email(user, token):
+    """Arma el link al frontend y envía el correo de verificación de email.
+
+    A diferencia de ``PasswordResetRequestView._send_reset_email``, un fallo
+    de SMTP acá NO debe cortar el registro: la cuenta ya se creó y el usuario
+    tiene que poder loguearse igual (verificación suave, no bloqueante), así
+    que el envío queda envuelto en try/except.
+    """
+    verification_url = f"{settings.EMAIL_VERIFICATION_URL}?token={token}"
+    try:
+        send_mail(
+            subject="Confirmá tu email — ROTULOS",
+            message=(
+                f"Hola,\n\n"
+                f"Gracias por registrarte. Para confirmar tu cuenta, entrá en "
+                f"este enlace:\n\n"
+                f"{verification_url}\n\n"
+                f"Si no fuiste vos, podés ignorar este correo.\n"
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+    except Exception as exc:  # noqa: BLE001 - no bloquear el registro por un fallo de SMTP
+        print(f"No se pudo enviar el email de verificación a {user.email}: {exc}")
 
 
 class RegisterView(APIView):
@@ -406,6 +486,12 @@ class RegisterView(APIView):
             last_name=last_name,
         )
 
+        # Verificación suave de email (solo cuentas email/contraseña; Google ya
+        # confirma el email antes de llegar acá, ver GoogleAuthView).
+        verification, _ = EmailVerification.objects.get_or_create(user=user)
+        verification.refresh_token()
+        _send_verification_email(user, verification.token)
+
         return Response(
             {
                 "detail": "Cuenta creada con éxito.",
@@ -445,6 +531,14 @@ class LogoutView(APIView):
             # Token inválido, expirado o ya revocado: el objetivo (que no
             # sirva) ya está cumplido, así que se responde igual como éxito.
             pass
+        record(
+            request,
+            category="auth",
+            action="auth.logout",
+            target=request.user,
+            target_type="user",
+            target_repr=request.user.email,
+        )
         return Response(status=status.HTTP_205_RESET_CONTENT)
 
 
@@ -596,6 +690,16 @@ class PasswordResetConfirmView(APIView):
         # revocan los refresh vigentes por si la cuenta estaba comprometida.
         blacklist_all_refresh_tokens(user)
 
+        record(
+            request,
+            category="auth",
+            action="auth.password_reset",
+            target=user,
+            target_type="user",
+            target_repr=user.email,
+            actor_email=user.email,
+        )
+
         return Response(
             {"detail": "Tu contraseña se actualizó. Ya podés iniciar sesión."}
         )
@@ -607,3 +711,69 @@ class PasswordResetConfirmView(APIView):
             return User.objects.get(pk=pk)
         except (TypeError, ValueError, OverflowError, User.DoesNotExist):
             return None
+
+
+class EmailVerificationConfirmView(APIView):
+    """POST /api/v1/auth/verify-email/confirm/
+
+    Confirma la verificación de email a partir del token que llega en el
+    link del correo (ver ``_send_verification_email``). Verificación SUAVE:
+    esta vista solo actualiza el estado, no bloquea nada por sí sola.
+
+    Body:      {"token": "..."}
+    Respuesta: 200 con un mensaje de éxito, o 400 si el token es inválido o expiró.
+    """
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        token = request.data.get("token") or ""
+        if not token:
+            return Response(
+                {"detail": "Falta el campo 'token'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        verification = EmailVerification.objects.filter(token=token).first()
+        if verification is None:
+            return Response(
+                {"detail": "El enlace de verificación no es válido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if verification.is_expired():
+            return Response(
+                {"detail": "El enlace de verificación expiró. Pedí uno nuevo desde tu perfil."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not verification.is_verified:
+            verification.is_verified = True
+            verification.verified_at = timezone.now()
+            verification.save(update_fields=["is_verified", "verified_at", "updated_at"])
+
+        return Response({"detail": "Tu email quedó confirmado."})
+
+
+class EmailVerificationResendView(APIView):
+    """POST /api/v1/auth/verify-email/resend/
+
+    Reenvía el correo de verificación al usuario autenticado. Si ya está
+    verificado, no reenvía nada (200 informativo igual, no es un error).
+
+    Respuesta: 200 con un mensaje de éxito o informativo.
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "email_verification"
+
+    def post(self, request):
+        if user_email_verified(request.user):
+            return Response({"detail": "Tu email ya está verificado."})
+
+        verification, _ = EmailVerification.objects.get_or_create(user=request.user)
+        verification.refresh_token()
+        _send_verification_email(request.user, verification.token)
+
+        return Response({"detail": "Te reenviamos el email de verificación."})

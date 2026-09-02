@@ -43,6 +43,12 @@ body {
   gap: 12px;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .avatar {
   width: 42px;
   height: 42px;

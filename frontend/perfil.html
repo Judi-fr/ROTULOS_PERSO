@@ -45,6 +45,15 @@
 
         <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
 
+        <!-- Aviso de email sin verificar (ver perfil.js): solo se muestra si
+             email_verified es false; verificación suave, no bloquea nada. -->
+        <p id="emailVerificationNotice" class="page-message" role="status" aria-live="polite" style="display:none;">
+          Todavía no confirmaste tu email.
+          <button type="button" class="btn btn-outline" id="resendVerificationBtn">
+            Reenviar email de verificación
+          </button>
+        </p>
+
         <!-- Datos personales -->
         <section class="profile-card">
           <div class="profile-card-title">Datos personales</div>

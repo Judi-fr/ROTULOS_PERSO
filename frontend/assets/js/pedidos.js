@@ -114,6 +114,14 @@ function formatDate(iso) {
   }
 }
 
+function getCurrentUser() {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "{}");
+  } catch {
+    return {};
+  }
+}
+
 function renderTopbar(user) {
   const nameEl = document.getElementById("userName");
   const emailEl = document.getElementById("userEmail");
@@ -125,7 +133,10 @@ function renderTopbar(user) {
   if (nameEl) nameEl.textContent = name;
   if (emailEl) emailEl.textContent = email;
   if (avatarEl) {
-    avatarEl.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`;
+    const picture = getCurrentUser().picture;
+    avatarEl.src = picture
+      ? picture
+      : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`;
   }
 }
 

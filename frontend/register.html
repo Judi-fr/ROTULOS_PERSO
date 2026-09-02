@@ -176,6 +176,14 @@
         localStorage.setItem('access', data.access || '');
         localStorage.setItem('refresh', data.refresh || '');
         localStorage.setItem('user', JSON.stringify(data.user || {}));
+
+        // Aviso breve de verificación suave (ver EmailVerificationConfirmView
+        // en el backend): no bloquea el flujo, la redirección por rol sigue
+        // pasando igual que antes.
+        if (data.user && data.user.email_verified === false) {
+          alert('Te enviamos un correo para confirmar tu cuenta.');
+        }
+
         if (data.user && data.user.must_change_password) {
           window.location.replace('cambiar-password.html');
           return;

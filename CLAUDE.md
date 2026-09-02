@@ -5,8 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project overview
 
 ROTULOS_PERSO is a label/sign generation app split into a Django REST API (`backend/`) and a static
-multi-page frontend (`frontend/`, plain HTML/CSS/JS, no build step). Only the `accounts` app
-(authentication, user administration, roles/permissions) is implemented; `documents`, `processing`,
+multi-page frontend (`frontend/`, plain HTML/CSS/JS, no build step). `accounts` (authentication, user
+administration, roles/permissions, support inbox), `orders` (addresses/orders, self-service + admin
+"all orders" view) and `audit` (read-only audit trail) are implemented; `documents`, `processing`,
 and `labels` are scaffolded Django apps with empty models/views/urls, reserved for uploading
 files, converting them to a label format, and generating/printing the actual rótulos.
 
@@ -56,7 +57,10 @@ no env-based config, so keep the backend on that host/port for the existing fron
   console email backend by default; prod: HTTPS/HSTS/secure-cookie settings).
 - `config/urls.py` — all routes are versioned under `/api/v1/`. `apps.accounts.urls` mounts under
   `/api/v1/auth/`, `apps.accounts.management_urls` (the admin user CRUD) mounts at `/api/v1/` (so its
-  router path resolves to `/api/v1/users/`), and `documents`/`processing`/`labels` mount at their own
+  router path resolves to `/api/v1/users/`), `apps.accounts.admin_urls` (admin support inbox) also
+  mounts at `/api/v1/` (`/api/v1/support-messages/`), `apps.orders.urls` mounts at `/api/v1/`
+  (`/api/v1/addresses/`, `/api/v1/orders/`, `/api/v1/admin/orders/`), `apps.audit.urls` mounts at
+  `/api/v1/audit/` (`/logs/`, `/actions/`), and `documents`/`processing`/`labels` mount at their own
   `/api/v1/<app>/` prefixes but currently expose empty `urlpatterns`.
 - REST Framework is closed by default: `DEFAULT_PERMISSION_CLASSES = [IsAuthenticated]` project-wide, so
   any new endpoint needs `permission_classes = [AllowAny]` explicitly to be public. JWT auth only
@@ -102,6 +106,73 @@ There is **no `role` field on `User`** — the role is derived, never stored dir
 - When adding a new permission-gated action: add the permission key to `permissions_map.PERMISSIONS`,
   seed it via `RolePermission`, and gate the view/serializer field with `user_has_permission`. Don't add
   a new source of role truth (no new `role` field, no separate group lookup).
+- Admin-only permissions (assigned **only** to the `admin` group, not to the self-service roles):
+  `audit.view`, `orders.view_all`, `support.view_all`, `support.manage` — seeded by
+  `accounts/migrations/0014_seed_admin_only_permissions.py`.
+
+### Audit trail (`apps/audit`) and admin support inbox
+
+- `apps.audit.AuditLog` is the single audit model: `actor` (FK, `SET_NULL`) + `actor_email` snapshot,
+  `category`/`action` (`TextChoices`), plain `target_type`/`target_id`/`target_repr` (no
+  `GenericForeignKey`/contenttypes — simpler to query/test), a `changes` JSON diff
+  (`{"field": {"from": ..., "to": ...}}`, **never** passwords/hashes/tokens), IP/user-agent, and
+  `created_at`. It's immutable: `save()` refuses to update an existing row and `delete()` always
+  raises — there's no write/delete endpoint, only `GET /api/v1/audit/logs/` (filters: `search`,
+  `category`, `action`, `actor`, `target_type`, `date_from`/`date_to`, `ordering`; permission
+  `audit.view`) and `GET /api/v1/audit/actions/` (catalog for the frontend selects).
+- The only way to create a row is `apps.audit.services.record(request=None, *, actor=None, category,
+  action, target=None, ..., changes=None)`. It's called **explicitly** from the views that need it
+  (no signals): `accounts/views.py` (login success/failure/lockout, logout, password
+  change/reset), `accounts/viewsets.py` (`UserAdminViewSet` create/update/deactivate/reactivate/
+  unlock/role change — diff never includes `password`), `accounts/role_permission_views.py` (role
+  create/delete/permissions update), `accounts/support_views.py` (support create/status
+  change/reply), and `apps/orders` (order create/cancel from the view with a known actor;
+  `Order.save()` itself logs `order.status_change` with `actor=None` for edits with no request — e.g.
+  Django admin — using `instance._skip_status_audit = True` to avoid duplicating what the view already
+  logged). `record()` wraps the insert in `transaction.atomic()` and swallows/logs any exception —
+  a failed audit write must never break the calling request.
+- `SupportMessage` (in `apps.accounts.models`) grew `status` (`pending`/`in_progress`/`resolved`),
+  `response`, `responded_at`, `handled_by`, `updated_at`. `SupportMessageView`
+  (`/api/v1/auth/support/`) is now `ListCreateAPIView`: `GET` returns only the caller's own messages
+  (permission `support.create`), `POST` unchanged. The admin inbox is
+  `AdminSupportMessageViewSet` at `/api/v1/support-messages/` (list/retrieve need `support.view_all`,
+  `PATCH` — `status`/`response` only — needs `support.manage`); saving a non-empty `response` sets
+  `responded_at`/`handled_by` and auto-resolves a still-`pending` message unless `status` was sent
+  explicitly.
+- `GET /api/v1/admin/orders/` (`orders.view_all`, admin-only) lists every user's orders
+  (`AdminOrderListView`/`AdminOrderSerializer` in `apps/orders`); the self-service `OrderViewSet`
+  queryset is untouched.
+- `DashboardView` adds `audit` (`gestionuser.html#audit`) and `support_inbox`
+  (`gestionuser.html#support`) menu items only when the effective role is `admin`.
+
+### Reports metrics endpoints
+
+Four read-only, `?months=` (default 6, capped at 12) metrics endpoints back `reportsSection` in
+`gestionuser.html`. Each domain computes its own metrics next to its models/permission, instead of one
+endpoint doing everything:
+
+- `GET /api/v1/users/metrics/` (`UserAdminViewSet.metrics`, permission `users.view`) — the original
+  contract (`role_distribution`, `signups_by_month`, `auth_method`) is untouched, plus: Usuarios
+  (`active_vs_inactive_by_month`, `active_users`, `retention`, `lockouts_by_month`,
+  `top_failed_attempts`, `account_age`) and Seguridad (`email_verification`,
+  `pending_password_change`, `auth_method_email_verification`). `active_vs_inactive_by_month`
+  (deactivations) and `lockouts_by_month` read `apps.audit.AuditLog` (`user.deactivate` /
+  `auth.lockout`) because `User`/`LoginLockout` only hold *current* state, not history.
+- `GET /api/v1/orders/metrics/` (`apps.orders.views.OrderMetricsView`, permission `orders.view_all`) —
+  `orders_by_month`, `orders_by_status` (funnel + `cancelled` separately), `cancellation_rate` (rate +
+  prior-status breakdown, from the order's last `OrderStatusEvent` before cancelling),
+  `avg_time_between_statuses` (hours, from consecutive `OrderStatusEvent` pairs),
+  `top_users_by_orders`, `users_with_orders`, `orders_by_location` (`Address.city`/`state`).
+- `GET /api/v1/support-messages/metrics/` (`AdminSupportMessageViewSet.metrics`, permission
+  `support.view_all`) — `support_by_month`, `support_by_status`, `avg_response_time`.
+- `GET /api/v1/audit/metrics/` (`apps.audit.views.AuditMetricsView`, permission `audit.view`) —
+  `admin_activity` (`by_actor`/`by_action`), `login_events` (successful vs. failed logins by month).
+
+Frontend: `admingestion_test.js` groups these into four blocks (Usuarios, Seguridad, Pedidos, Soporte y
+actividad) with a shared period selector (3/6/12 months, `#reportsMonthsSelect` + `#reportsRefreshBtn`).
+Pedidos/Soporte y actividad are fetched only when the user has the corresponding permission
+(`canUseUserPermission`) and hide themselves (not an error) otherwise; every renderer treats
+empty/`null` as "Sin datos todavía", never a fabricated number.
 
 ### Frontend
 
@@ -110,14 +181,25 @@ Plain multi-page app, one HTML file per screen, no framework/bundler:
 - `index.html` — login/register (email+password and Google Sign-In). `assets/js/google.js` /
   `google_test.js` and `assets/apis/access.php` are leftover PHP-era prototypes for Google login that
   are **not** part of the current flow — the real Google auth goes through `GoogleAuthView` in Django.
-- `dashboard.html` + `assets/js/dashboard.js` — landing screen after login. The menu items and whether
-  the "users" section is enabled come entirely from the backend (`DashboardView` /
-  `/api/v1/auth/users/me/dashboard/`), based on the user's effective role — the frontend just renders
-  whatever it's given, it doesn't decide visibility by role itself.
+- `dashboard.html` + `assets/js/dashboard.js` — landing screen after login (admins can also land here
+  via the "Panel" sidebar link in `gestionuser.html`, or return to it after logging in from
+  `index.html`). The menu items and whether the "users" section is enabled come entirely from the
+  backend (`DashboardView` / `/api/v1/auth/users/me/dashboard/`), based on the user's effective role —
+  the frontend just renders whatever it's given, it doesn't decide visibility by role itself. When
+  `user.is_admin` is true, a "Volver al panel de administración" link (→ `gestionuser.html`) appears
+  in the topbar.
 - `gestionuser.html` + `assets/js/admingestion_test.js` — admin user CRUD + roles/permissions panel,
-  talks to `/api/v1/users/`, `/api/v1/auth/me/`, `/api/v1/auth/roles/`, `/api/v1/auth/permissions/`.
-  `isAdminMode()` / `canUseUserPermission()` there are UI-only gating — the backend is always the real
-  authority and re-checks every permission server-side.
+  plus (same show/hide-section pattern as Roles/Reportes, gated by `canUseUserPermission()`) an
+  auditoría section (`#auditSection`, `navAudit`: paginated `AuditLog` table with filters + a "changes"
+  detail modal, and — inside the same section — the admin "all orders" table) and a support inbox
+  section (`#supportSection`, `navSupport`: status counters, paginated list + a detail panel to change
+  `status`/write `response`). Talks to `/api/v1/users/`, `/api/v1/auth/me/`, `/api/v1/auth/roles/`,
+  `/api/v1/auth/permissions/`, `/api/v1/audit/logs/`, `/api/v1/audit/actions/`,
+  `/api/v1/admin/orders/`, `/api/v1/support-messages/`. `isAdminMode()` / `canUseUserPermission()`
+  there are UI-only gating — the backend is always the real authority and re-checks every permission
+  server-side.
+- `ayuda.html` + `assets/js/ayuda.js` — support contact form; below it, "Mis mensajes" lists the
+  user's own messages (`GET /api/v1/auth/support/`) with their status and the admin's response, if any.
 - Every page's fetch wrapper (`apiFetch`) attaches `Authorization: Bearer <access>` from
   `localStorage`, and on a 401 clears `access`/`refresh`/`user` from `localStorage` and redirects to
   `index.html`.

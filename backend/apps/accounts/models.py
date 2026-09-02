@@ -44,6 +44,22 @@ class EmailVerification(models.Model):
         return f"{self.user.email} ({state})"
 
 
+def user_email_verified(user):
+    """True si el usuario no tiene verificación pendiente.
+
+    Regla clave para no romper cuentas existentes: sin fila en
+    EmailVerification = verificado (cubre cuentas viejas, de Google y las
+    creadas por el admin). Solo cuenta como pendiente una fila explícita con
+    is_verified=False.
+    """
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    verification = EmailVerification.objects.filter(user=user).first()
+    if verification is None:
+        return True
+    return verification.is_verified
+
+
 class LoginLockout(models.Model):
     """Bloqueo temporal de login por intentos fallidos consecutivos.
 
@@ -154,15 +170,33 @@ class PasswordChangeRequirement(models.Model):
 class SupportMessage(models.Model):
     """Mensaje de contacto enviado desde el panel del usuario ("Ayuda/Soporte").
 
-    Sin integración de email real todavía (ver dashboard.html): el mensaje
-    solo se persiste acá y lo lee un admin desde /admin/. Cuando exista el
-    canal real (email/ticketing), este modelo es el punto de partida.
+    Además de crearse desde el dashboard del usuario, ahora tiene una
+    bandeja de administración (``/api/v1/support-messages/``, ver
+    ``support_views.AdminSupportMessageViewSet``): el admin puede leer,
+    cambiar el estado y responder. El usuario ve su propio estado/respuesta
+    desde ``SupportMessageView`` (GET).
     """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pendiente"
+        IN_PROGRESS = "in_progress", "En curso"
+        RESOLVED = "resolved", "Resuelto"
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="support_messages")
     subject = models.CharField(max_length=150)
     message = models.TextField()
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    response = models.TextField(blank=True, default="")
+    responded_at = models.DateTimeField(null=True, blank=True)
+    handled_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="handled_support_messages",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = "mensaje de soporte"

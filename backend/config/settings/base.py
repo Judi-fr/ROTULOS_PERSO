@@ -28,10 +28,12 @@ DEBUG = env("DEBUG")
 
 # Se lee desde la variable de entorno ALLOWED_HOSTS (lista separada por comas).
 # En dev.py se sobreescribe con ["*"]; en prod DEBE venir del .env con los
-# dominios/IPs reales. El default cubre el desarrollo local sin .env.
+# dominios/IPs reales. El default solo cubre localhost: no hardcodear acá IPs
+# personales de red (LAN/Tailscale) que terminarían siendo el fallback real
+# en producción si alguien se olvida de setear la variable en el .env.
 ALLOWED_HOSTS = env(
     "ALLOWED_HOSTS",
-    default=["localhost", "127.0.0.1", "192.168.1.34", "100.105.137.61"],
+    default=["localhost", "127.0.0.1"],
 )
 
 # ---------------------------------------------------------------------------
@@ -59,6 +61,7 @@ LOCAL_APPS = [
     "apps.processing",  # agente embebido: convierte el documento a formato código
     "apps.labels",      # rótulos generados, plantillas e impresión
     "apps.orders",      # direcciones y pedidos del cliente final
+    "apps.audit",       # registro de auditoría (solo lectura)
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -151,6 +154,8 @@ REST_FRAMEWORK = {
         # Pedir/confirmar reset de contraseña: frena el email bombing a una
         # víctima y la fuerza bruta sobre el token del link.
         "password_reset": "5/min",
+        # Reenvío del email de verificación: frena el reenvío masivo.
+        "email_verification": "5/min",
     },
 }
 
@@ -202,6 +207,13 @@ FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173")
 # la página de prueba de oauth-test (http://localhost:3000/reset-password.html).
 PASSWORD_RESET_URL = env(
     "PASSWORD_RESET_URL", default=f"{FRONTEND_URL}/reset-password"
+)
+
+# URL de la página que confirma la verificación de email (a la que apunta el
+# enlace del correo de verificación de RegisterView). Mismo criterio que
+# PASSWORD_RESET_URL: por defecto la ruta de la SPA, sobreescribible desde el .env.
+EMAIL_VERIFICATION_URL = env(
+    "EMAIL_VERIFICATION_URL", default=f"{FRONTEND_URL}/verify-email.html"
 )
 
 # Validez del token de reset de contraseña (default de Django: 3 días).

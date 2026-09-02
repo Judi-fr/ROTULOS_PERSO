@@ -13,6 +13,8 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
+from apps.audit.services import record
+
 from .models import LoginLockout
 from .pagination import UserAdminPagination
 from .permissions_map import get_effective_role, user_has_permission
@@ -307,9 +309,76 @@ class UserAdminViewSet(viewsets.ModelViewSet):
         self._require_permission("users.view")
         return super().retrieve(request, *args, **kwargs)
 
+    # Campos de User (fuera de contraseña/groups) que se comparan al editar
+    # para armar el diff de auditoría (user.update). La contraseña NUNCA
+    # entra acá: no se registra ni siquiera enmascarada.
+    _TRACKED_FIELDS = ("email", "first_name", "last_name", "is_active", "is_staff")
+
+    def _user_audit_snapshot(self, instance):
+        snapshot = {field: getattr(instance, field) for field in self._TRACKED_FIELDS}
+        snapshot["role"] = get_effective_role(instance)
+        return snapshot
+
+    def _log_user_update(self, request, instance, before, after):
+        changes = {
+            field: {"from": before[field], "to": after[field]}
+            for field in self._TRACKED_FIELDS
+            if before[field] != after[field]
+        }
+        if changes:
+            record(
+                request,
+                category="users",
+                action="user.update",
+                target=instance,
+                target_type="user",
+                target_repr=instance.email,
+                changes=changes,
+            )
+
+        if before["role"] != after["role"]:
+            record(
+                request,
+                category="users",
+                action="user.role_change",
+                target=instance,
+                target_type="user",
+                target_repr=instance.email,
+                changes={"role": {"from": before["role"], "to": after["role"]}},
+            )
+
+        if before["is_active"] != after["is_active"]:
+            action_key = "user.reactivate" if after["is_active"] else "user.deactivate"
+            record(
+                request,
+                category="users",
+                action=action_key,
+                target=instance,
+                target_type="user",
+                target_repr=instance.email,
+                changes={"is_active": {"from": before["is_active"], "to": after["is_active"]}},
+            )
+
     def create(self, request, *args, **kwargs):
         self._require_permission("users.create")
-        return super().create(request, *args, **kwargs)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        instance = serializer.instance
+        headers = self.get_success_headers(serializer.data)
+        record(
+            request,
+            category="users",
+            action="user.create",
+            target=instance,
+            target_type="user",
+            target_repr=instance.email,
+            changes={
+                "email": {"from": None, "to": instance.email},
+                "role": {"from": None, "to": get_effective_role(instance)},
+            },
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def _is_self_target(self, instance):
         return self.request.user == instance
@@ -343,10 +412,29 @@ class UserAdminViewSet(viewsets.ModelViewSet):
             )
 
         if request.query_params.get("permanent", "").lower() == "true":
+            email, pk = instance.email, instance.pk
             instance.delete()
+            record(
+                request,
+                category="users",
+                action="user.deactivate",
+                target_type="user",
+                target_id=str(pk),
+                target_repr=email,
+                changes={"deleted": {"from": False, "to": True}},
+            )
         else:
             instance.is_active = False
             instance.save(update_fields=["is_active"])
+            record(
+                request,
+                category="users",
+                action="user.deactivate",
+                target=instance,
+                target_type="user",
+                target_repr=instance.email,
+                changes={"is_active": {"from": True, "to": False}},
+            )
         return Response(status=204)
 
     def update(self, request, *args, **kwargs):
@@ -357,7 +445,11 @@ class UserAdminViewSet(viewsets.ModelViewSet):
         rejection = self._reject_self_admin_mutation(instance, request.data)
         if rejection is not None:
             return rejection
-        return super().update(request, *args, **kwargs)
+        before = self._user_audit_snapshot(instance)
+        response = super().update(request, *args, **kwargs)
+        instance.refresh_from_db()
+        self._log_user_update(request, instance, before, self._user_audit_snapshot(instance))
+        return response
 
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -366,7 +458,11 @@ class UserAdminViewSet(viewsets.ModelViewSet):
         rejection = self._reject_self_admin_mutation(instance, request.data)
         if rejection is not None:
             return rejection
-        return super().partial_update(request, *args, **kwargs)
+        before = self._user_audit_snapshot(instance)
+        response = super().partial_update(request, *args, **kwargs)
+        instance.refresh_from_db()
+        self._log_user_update(request, instance, before, self._user_audit_snapshot(instance))
+        return response
 
     @action(detail=False, methods=["post"], url_path="bulk-actions")
     def bulk_actions(self, request, *args, **kwargs):
@@ -431,17 +527,35 @@ class UserAdminViewSet(viewsets.ModelViewSet):
                 if not instance.is_active:
                     instance.is_active = True
                     instance.save(update_fields=["is_active"])
+                    record(
+                        request, category="users", action="user.reactivate", target=instance,
+                        target_type="user", target_repr=instance.email,
+                        changes={"is_active": {"from": False, "to": True}},
+                    )
                 updated.append(user_id)
             elif action_name == "deactivate":
                 if instance.is_active:
                     instance.is_active = False
                     instance.save(update_fields=["is_active"])
+                    record(
+                        request, category="users", action="user.deactivate", target=instance,
+                        target_type="user", target_repr=instance.email,
+                        changes={"is_active": {"from": True, "to": False}},
+                    )
                 updated.append(user_id)
             else:  # set_role
+                previous_role = get_effective_role(instance)
                 instance.groups.set(target_groups)
                 if role == "admin" and not instance.is_staff:
                     instance.is_staff = True
                     instance.save(update_fields=["is_staff"])
+                new_role = get_effective_role(instance)
+                if new_role != previous_role:
+                    record(
+                        request, category="users", action="user.role_change", target=instance,
+                        target_type="user", target_repr=instance.email,
+                        changes={"role": {"from": previous_role, "to": new_role}},
+                    )
                 updated.append(user_id)
 
         return Response({"action": action_name, "updated": updated, "skipped": skipped})
@@ -458,6 +572,14 @@ class UserAdminViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         lockout, _ = LoginLockout.objects.get_or_create(user=instance)
         lockout.unlock()
+        record(
+            request,
+            category="users",
+            action="user.unlock",
+            target=instance,
+            target_type="user",
+            target_repr=instance.email,
+        )
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
@@ -510,12 +632,191 @@ class UserAdminViewSet(viewsets.ModelViewSet):
             ])
         return response
 
+    def _month_range(self, cutoff):
+        """Lista continua de meses "YYYY-MM" entre ``cutoff`` (ya truncado al
+        día 1) y el mes actual, inclusive. Se usa donde importa ver la serie
+        completa aunque algún mes tenga 0 (p. ej. altas vs. bajas, para que
+        el neto no "salte" por meses faltantes)."""
+        months_list = []
+        cursor = cutoff
+        current_month = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        while cursor <= current_month:
+            months_list.append(cursor.strftime("%Y-%m"))
+            cursor = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+        return months_list
+
+    def _metrics_active_vs_inactive_by_month(self, cutoff):
+        # No hay timestamp de "cuándo se desactivó" en User (solo el booleano
+        # actual is_active): la única fuente con historial es AuditLog
+        # (user.deactivate), que ya registra cada baja con su fecha.
+        from apps.audit.models import AuditLog
+
+        signups = {
+            row["month"].strftime("%Y-%m"): row["count"]
+            for row in User.objects.filter(date_joined__gte=cutoff)
+            .annotate(month=TruncMonth("date_joined"))
+            .values("month")
+            .annotate(count=Count("id"))
+            if row["month"] is not None
+        }
+        deactivations = {
+            row["month"].strftime("%Y-%m"): row["count"]
+            for row in AuditLog.objects.filter(action="user.deactivate", created_at__gte=cutoff)
+            .annotate(month=TruncMonth("created_at"))
+            .values("month")
+            .annotate(count=Count("id"))
+            if row["month"] is not None
+        }
+        return [
+            {
+                "month": month,
+                "signups": signups.get(month, 0),
+                "deactivations": deactivations.get(month, 0),
+                "net": signups.get(month, 0) - deactivations.get(month, 0),
+            }
+            for month in self._month_range(cutoff)
+        ]
+
+    def _metrics_active_users(self):
+        now = timezone.now()
+        return {
+            "last_7_days": User.objects.filter(last_login__gte=now - timedelta(days=7)).count(),
+            "last_30_days": User.objects.filter(last_login__gte=now - timedelta(days=30)).count(),
+            "last_90_days": User.objects.filter(last_login__gte=now - timedelta(days=90)).count(),
+            "never_logged_in": User.objects.filter(last_login__isnull=True).count(),
+        }
+
+    def _metrics_retention(self, cutoff):
+        # "Volvió a loguearse" = tiene last_login: el registro (RegisterView)
+        # no lo setea (no llama authenticate()), así que un last_login no nulo
+        # solo puede venir de un login real posterior al alta.
+        cohorts_qs = (
+            User.objects.filter(date_joined__gte=cutoff)
+            .annotate(month=TruncMonth("date_joined"))
+            .values("month")
+            .annotate(
+                cohort_size=Count("id"),
+                returned=Count("id", filter=Q(last_login__isnull=False)),
+            )
+            .order_by("month")
+        )
+        return [
+            {
+                "month": row["month"].strftime("%Y-%m"),
+                "cohort_size": row["cohort_size"],
+                "returned": row["returned"],
+                "retention_rate": (
+                    round(row["returned"] * 100 / row["cohort_size"], 1) if row["cohort_size"] else 0.0
+                ),
+            }
+            for row in cohorts_qs
+            if row["month"] is not None
+        ]
+
+    def _metrics_lockouts_by_month(self, cutoff):
+        # Igual razón que las desactivaciones: LoginLockout solo guarda el
+        # estado ACTUAL (se resetea al desbloquear/expirar), el historial de
+        # cuándo se bloqueó cada cuenta vive en AuditLog (auth.lockout).
+        from apps.audit.models import AuditLog
+
+        qs = (
+            AuditLog.objects.filter(action="auth.lockout", created_at__gte=cutoff)
+            .annotate(month=TruncMonth("created_at"))
+            .values("month")
+            .annotate(count=Count("id"))
+            .order_by("month")
+        )
+        return [
+            {"month": row["month"].strftime("%Y-%m"), "count": row["count"]}
+            for row in qs
+            if row["month"] is not None
+        ]
+
+    def _metrics_top_failed_attempts(self):
+        now = timezone.now()
+        qs = (
+            LoginLockout.objects.select_related("user")
+            .filter(failed_attempts__gt=0)
+            .order_by("-failed_attempts")[:10]
+        )
+        return [
+            {
+                "email": lockout.user.email,
+                "failed_attempts": lockout.failed_attempts,
+                "is_locked": bool(lockout.locked_until and lockout.locked_until > now),
+            }
+            for lockout in qs
+        ]
+
+    def _metrics_account_age(self):
+        now = timezone.now()
+        users = list(User.objects.all().prefetch_related("groups"))
+        if not users:
+            return {"average_days": None, "by_role": []}
+
+        total_days = 0
+        role_totals = {}
+        for user in users:
+            age_days = (now - user.date_joined).days
+            total_days += age_days
+            bucket = role_totals.setdefault(get_effective_role(user), {"total_days": 0, "count": 0})
+            bucket["total_days"] += age_days
+            bucket["count"] += 1
+
+        return {
+            "average_days": round(total_days / len(users), 1),
+            "by_role": [
+                {"role": role, "average_days": round(data["total_days"] / data["count"], 1)}
+                for role, data in sorted(role_totals.items())
+            ],
+        }
+
+    def _metrics_email_verification(self):
+        from .models import EmailVerification
+
+        now = timezone.now()
+        total_users = User.objects.count()
+        unverified_qs = EmailVerification.objects.filter(is_verified=False)
+        unverified = unverified_qs.count()
+        expired = unverified_qs.filter(expires_at__lt=now).count()
+        return {
+            "verified": total_users - unverified,
+            "unverified": unverified,
+            "expired_token": expired,
+        }
+
+    def _metrics_pending_password_change(self):
+        from .models import PasswordChangeRequirement
+
+        return PasswordChangeRequirement.objects.filter(must_change_password=True).count()
+
+    def _metrics_auth_method_email_verification(self):
+        from .models import EmailVerification
+
+        unverified_ids = set(
+            EmailVerification.objects.filter(is_verified=False).values_list("user_id", flat=True)
+        )
+        is_google = is_google_account_q()
+        result = []
+        for key, qs in (
+            ("google", User.objects.filter(is_google)),
+            ("local", User.objects.exclude(is_google)),
+        ):
+            total = qs.count()
+            unverified = qs.filter(id__in=unverified_ids).count()
+            result.append({"auth_method": key, "verified": total - unverified, "unverified": unverified})
+        return result
+
     @action(detail=False, methods=["get"], url_path="metrics")
     def metrics(self, request, *args, **kwargs):
         """GET /api/v1/users/metrics/?months=6
 
-        Métricas simples para el panel: usuarios por rol, altas por mes
-        (últimos N meses, default 6, tope 12) y método de autenticación.
+        Métricas para el panel de reportes. Mantiene el contrato original
+        (``role_distribution``, ``signups_by_month``, ``auth_method``, ya
+        consumidos por el frontend) y agrega el resto de "Usuarios" y
+        "Seguridad de cuentas"; ver también ``orders/metrics/``
+        (``apps.orders``), ``support-messages/metrics/`` y ``audit/metrics/``
+        para pedidos/soporte/auditoría.
         """
         self._require_permission("users.view")
 
@@ -562,7 +863,19 @@ class UserAdminViewSet(viewsets.ModelViewSet):
         }
 
         return Response({
+            # Contrato original: no tocar sin coordinar con el frontend.
             "role_distribution": role_distribution,
             "signups_by_month": signups_by_month,
             "auth_method": auth_method,
+            # Usuarios.
+            "active_vs_inactive_by_month": self._metrics_active_vs_inactive_by_month(cutoff),
+            "active_users": self._metrics_active_users(),
+            "retention": self._metrics_retention(cutoff),
+            "lockouts_by_month": self._metrics_lockouts_by_month(cutoff),
+            "top_failed_attempts": self._metrics_top_failed_attempts(),
+            "account_age": self._metrics_account_age(),
+            # Seguridad de cuentas.
+            "email_verification": self._metrics_email_verification(),
+            "pending_password_change": self._metrics_pending_password_change(),
+            "auth_method_email_verification": self._metrics_auth_method_email_verification(),
         })

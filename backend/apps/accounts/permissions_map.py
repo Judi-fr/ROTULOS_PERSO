@@ -1,25 +1,21 @@
-"""Mapa de permisos basado en roles (ADITIVO).
+"""Mapa de permisos basado en roles.
 
-Esta capa es exclusivamente **aditiva**: NO reemplaza ni modifica la lógica
-de permisos que ya usan las vistas actuales (``IsAdminUser`` en
-``UserAdminViewSet``, ``IsAuthenticated`` en ``MeView``). Su propósito es
-consolidar, en un único sitio, los permisos atómicos y el mapeo
-rol -> permisos, reproduciendo **exactamente** la lógica de determinación
-de roles ya usada por el backend (ver ``apps.accounts.serializers.get_user_role``).
+Fuente única de verdad del rol efectivo y de los permisos atómicos por rol.
+``get_effective_role`` y ``user_has_permission`` (o su envoltorio DRF,
+``role_permissions.HasRolePermission``) son el mecanismo de permisos que
+efectivamente usan hoy los endpoints: ``viewsets.UserAdminViewSet``,
+``profile_views.ProfileView``, ``support_views.SupportMessageView`` y
+``apps.orders`` (direcciones/pedidos) llaman a este módulo por acción, así
+que sí gobierna el comportamiento real de la API.
 
 Detalles de la auditoría (ver Parte A) que justifican esta implementación:
 
 - El modelo ``User`` del proyecto **no posee un campo ``role``**. El rol se
   determina exclusivamente por **Django Groups** (nombrados como el rol) y
   el fallback ``is_staff``.
-- Rol determinado por ``IsAdminUser`` = ``request.user.is_staff``.
 - Roles válidos del sistema: admin, designer, operator, subscriber.
 - ``DEFAULT_ROLE`` (fallback) = subscriber.
 - El rol legado ``"user"`` se interpreta como ``subscriber``.
-
-Este módulo aún **no se aplica a ningún endpoint**: existe para ser consultado
-por componentes futuros (control de UI, filters, etc.) sin alterar el
-comportamiento actual de las APIs.
 """
 
 from django.contrib.auth import get_user_model
@@ -95,6 +91,12 @@ PERMISSIONS = frozenset(
         "orders.cancel",
         # Contacto/soporte desde el dashboard
         "support.create",
+        # Auditoría, pedidos de todos los usuarios y bandeja de soporte
+        # (panel del admin): exclusivamente admin, ver 0014_seed_admin_only_permissions.
+        "audit.view",
+        "orders.view_all",
+        "support.view_all",
+        "support.manage",
     }
 )
 

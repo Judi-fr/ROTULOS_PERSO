@@ -22,7 +22,7 @@ from django.contrib.auth.password_validation import validate_password as django_
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
-from .models import PasswordChangeRequirement
+from .models import PasswordChangeRequirement, user_email_verified
 from .permissions_map import VALID_ROLES as ROLE_CHOICES
 from .permissions_map import get_effective_role as get_user_role
 from .permissions_map import normalize_role as normalize_role_name
@@ -473,6 +473,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
     role = serializers.SerializerMethodField()
     permissions = serializers.SerializerMethodField()
+    email_verified = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -489,6 +490,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "display_name",
             "role",
             "permissions",
+            "email_verified",
         ]
         read_only_fields = [
             "id",
@@ -501,6 +503,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "display_name",
             "role",
             "permissions",
+            "email_verified",
         ]
 
     def get_has_usable_password(self, obj):
@@ -517,3 +520,6 @@ class ProfileSerializer(serializers.ModelSerializer):
         from .permissions_map import PERMISSIONS, user_has_permission
 
         return sorted(permission for permission in PERMISSIONS if user_has_permission(obj, permission))
+
+    def get_email_verified(self, obj):
+        return user_email_verified(obj)

@@ -60,6 +60,9 @@ const ROLES_URL = "http://127.0.0.1:8000/api/v1/auth/roles/";
 const PERMISSIONS_URL = "http://127.0.0.1:8000/api/v1/auth/permissions/";
 const EXPORT_CSV_URL = "http://127.0.0.1:8000/api/v1/users/export/";
 const METRICS_URL = "http://127.0.0.1:8000/api/v1/users/metrics/";
+const ORDERS_METRICS_URL = "http://127.0.0.1:8000/api/v1/orders/metrics/";
+const SUPPORT_METRICS_URL = "http://127.0.0.1:8000/api/v1/support-messages/metrics/";
+const AUDIT_METRICS_URL = "http://127.0.0.1:8000/api/v1/audit/metrics/";
 
 // ---------------------------------------------------------------------------
 // MODO DE INTERFAZ: se detecta desde el objeto user guardado en localStorage.
@@ -1159,6 +1162,8 @@ function handleSessionExpired() {
 async function openSettings() {
   closeRoles();
   closeReports();
+  closeAudit();
+  closeSupport();
   // Marcar nav item activo
   document.querySelectorAll(".nav a").forEach((a) => a.classList.remove("active"));
   const navSettings = document.getElementById("navSettings");
@@ -1646,6 +1651,8 @@ async function openRoles() {
 
   closeSettings();
   closeReports();
+  closeAudit();
+  closeSupport();
   document.querySelectorAll(".nav a").forEach((link) => link.classList.remove("active"));
   document.getElementById("navRoles")?.classList.add("active");
   [".topbar", ".stats", ".table-card"].forEach((selector) => {
@@ -1730,38 +1737,401 @@ function renderAuthMethodStats(authMethod) {
   `;
 }
 
-async function loadMetrics() {
-  ["metricsRoleDistribution", "metricsSignupsByMonth", "metricsAuthMethod"].forEach((id) => {
+// ---------------------------------------------------------------------------
+// Helpers genéricos de reportes: el cálculo viene hecho del backend, acá
+// solo se pinta (tablas simples y filas de números grandes, reusando
+// metrics-bars / metrics-stat-row / stat-value — sin librerías de gráficos).
+// ---------------------------------------------------------------------------
+function setMetricsLoading(ids) {
+  ids.forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.innerHTML = `<p class="roles-loading">Cargando métricas...</p>`;
   });
+}
+
+function renderMetricsEmpty(containerId, text = "Sin datos todavía.") {
+  const container = document.getElementById(containerId);
+  if (container) container.innerHTML = `<p class="roles-loading">${text}</p>`;
+}
+
+// "YYYY-MM" -> "ene 2026". Los meses sin datos ya vienen resueltos por el
+// backend (0 en vez de omitir el mes en las series que lo necesitan).
+function formatMonthLabel(month) {
+  const [year, monthNum] = String(month || "").split("-");
+  const date = new Date(Number(year), Number(monthNum) - 1, 1);
+  if (Number.isNaN(date.getTime())) return month;
+  return date.toLocaleDateString("es-AR", { month: "short", year: "numeric" });
+}
+
+// Nunca un "—" sin explicación: null/undefined siempre cae en el mismo texto.
+function formatPercent(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "Sin datos todavía";
+  return `${Number(value).toFixed(1)}%`;
+}
+
+function formatHours(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "Sin datos todavía";
+  return `${Number(value).toFixed(1)} h`;
+}
+
+function renderMetricsTable(containerId, columns, rows, emptyText = "Sin datos todavía.") {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (!rows || rows.length === 0) {
+    container.innerHTML = `<p class="roles-loading">${emptyText}</p>`;
+    return;
+  }
+  const head = columns.map((col) => `<th>${col.label}</th>`).join("");
+  const body = rows
+    .map(
+      (row) =>
+        `<tr>${columns
+          .map((col) => `<td>${col.render ? col.render(row) : row[col.key] ?? "-"}</td>`)
+          .join("")}</tr>`
+    )
+    .join("");
+  container.innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function renderStatRow(containerId, stats, emptyText = "Sin datos todavía.") {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (!stats || stats.length === 0) {
+    container.innerHTML = `<p class="roles-loading">${emptyText}</p>`;
+    return;
+  }
+  container.innerHTML = stats
+    .map(
+      (stat) => `
+        <div class="metrics-stat">
+          <span class="metrics-stat-value">${stat.value}</span>
+          <span class="metrics-stat-label">${stat.label}</span>
+        </div>
+      `
+    )
+    .join("");
+}
+
+// --- Bloque "Usuarios" (incluye el contrato original: role_distribution,
+// signups_by_month, auth_method) + "Seguridad" -----------------------------
+
+const REPORTS_USER_IDS = [
+  "metricsRoleDistribution", "metricsSignupsByMonth", "metricsAuthMethod",
+  "metricsActiveVsInactive", "metricsActiveUsers", "metricsRetention",
+  "metricsLockoutsByMonth", "metricsTopFailedAttempts", "metricsAccountAge",
+  "metricsEmailVerification", "metricsPendingPasswordChange", "metricsAuthVerificationCross",
+];
+
+function renderUsersMetrics(data) {
+  renderMetricsBars("metricsRoleDistribution", data.role_distribution, {
+    labelKey: "label", countKey: "count",
+  });
+  renderMetricsBars("metricsSignupsByMonth", data.signups_by_month, {
+    labelKey: "month", countKey: "count", labelFormatter: formatMonthLabel,
+  });
+  renderAuthMethodStats(data.auth_method);
+
+  renderMetricsTable(
+    "metricsActiveVsInactive",
+    [
+      { label: "Mes", render: (r) => formatMonthLabel(r.month) },
+      { label: "Altas", key: "signups" },
+      { label: "Bajas", key: "deactivations" },
+      { label: "Neto", render: (r) => (r.net > 0 ? `+${r.net}` : r.net) },
+    ],
+    data.active_vs_inactive_by_month
+  );
+
+  const activeUsers = data.active_users || {};
+  renderStatRow("metricsActiveUsers", [
+    { value: activeUsers.last_7_days ?? 0, label: "Activos (7 días)" },
+    { value: activeUsers.last_30_days ?? 0, label: "Activos (30 días)" },
+    { value: activeUsers.last_90_days ?? 0, label: "Activos (90 días)" },
+    { value: activeUsers.never_logged_in ?? 0, label: "Nunca inició sesión" },
+  ]);
+
+  renderMetricsTable(
+    "metricsRetention",
+    [
+      { label: "Mes de registro", render: (r) => formatMonthLabel(r.month) },
+      { label: "Cohorte", key: "cohort_size" },
+      { label: "Volvieron", key: "returned" },
+      { label: "% Retención", render: (r) => formatPercent(r.retention_rate) },
+    ],
+    data.retention
+  );
+
+  renderMetricsBars("metricsLockoutsByMonth", data.lockouts_by_month, {
+    labelKey: "month", countKey: "count", labelFormatter: formatMonthLabel,
+  });
+
+  renderMetricsTable(
+    "metricsTopFailedAttempts",
+    [
+      { label: "Email", key: "email" },
+      { label: "Intentos", key: "failed_attempts" },
+      { label: "Bloqueada ahora", render: (r) => (r.is_locked ? "Sí" : "No") },
+    ],
+    data.top_failed_attempts
+  );
+
+  const accountAge = data.account_age || {};
+  const ageStats = [
+    {
+      value: accountAge.average_days != null ? `${Math.round(accountAge.average_days)} días` : "Sin datos todavía",
+      label: "Antigüedad promedio",
+    },
+    ...(accountAge.by_role || []).map((row) => ({
+      value: `${Math.round(row.average_days)} días`,
+      label: translateRole(row.role.charAt(0).toUpperCase() + row.role.slice(1)),
+    })),
+  ];
+  renderStatRow("metricsAccountAge", ageStats);
+}
+
+function renderSecurityMetrics(data) {
+  const verification = data.email_verification || {};
+  renderStatRow("metricsEmailVerification", [
+    { value: verification.verified ?? 0, label: "Verificados" },
+    { value: verification.unverified ?? 0, label: "Sin verificar" },
+    { value: verification.expired_token ?? 0, label: "Con token vencido" },
+  ]);
+
+  renderStatRow("metricsPendingPasswordChange", [
+    { value: data.pending_password_change ?? 0, label: "Cambio de contraseña pendiente" },
+  ]);
+
+  renderMetricsTable(
+    "metricsAuthVerificationCross",
+    [
+      { label: "Método", render: (r) => (r.auth_method === "google" ? "Google" : "Local") },
+      { label: "Verificados", key: "verified" },
+      { label: "Sin verificar", key: "unverified" },
+    ],
+    data.auth_method_email_verification
+  );
+}
+
+// --- Bloque "Pedidos" (apps.orders, orders.view_all) -----------------------
+
+const REPORTS_ORDERS_IDS = [
+  "metricsOrdersByMonth", "metricsOrdersByStatus", "metricsCancellationRate",
+  "metricsAvgTimeBetweenStatuses", "metricsTopUsersByOrders", "metricsUsersWithOrders",
+  "metricsOrdersByCity", "metricsOrdersByState",
+];
+
+function renderOrdersMetrics(data) {
+  renderMetricsBars("metricsOrdersByMonth", data.orders_by_month, {
+    labelKey: "month", countKey: "count", labelFormatter: formatMonthLabel,
+  });
+
+  const statusData = data.orders_by_status || {};
+  renderMetricsBars("metricsOrdersByStatus", statusData.funnel, { labelKey: "label", countKey: "count" });
+
+  const cancellation = data.cancellation_rate || {};
+  const cancelRows = [
+    { label: "Total de pedidos", value: cancellation.total_orders ?? 0 },
+    { label: "Cancelados", value: cancellation.cancelled_count ?? 0 },
+    { label: "Tasa de cancelación", value: formatPercent(cancellation.rate) },
+    ...(cancellation.prior_status_breakdown || []).map((row) => ({
+      label: `Cancelado desde "${row.label}"`,
+      value: row.count,
+    })),
+  ];
+  renderMetricsTable(
+    "metricsCancellationRate",
+    [{ label: "Métrica", key: "label" }, { label: "Valor", key: "value" }],
+    cancelRows
+  );
+
+  renderMetricsTable(
+    "metricsAvgTimeBetweenStatuses",
+    [
+      { label: "Transición", key: "transition" },
+      { label: "Horas promedio", render: (r) => formatHours(r.average_hours) },
+      { label: "Muestras", key: "sample_size" },
+    ],
+    data.avg_time_between_statuses
+  );
+
+  renderMetricsTable(
+    "metricsTopUsersByOrders",
+    [
+      { label: "Email", key: "email" },
+      { label: "Pedidos", key: "count" },
+      { label: "Último pedido", render: (r) => formatDateTime(r.last_order_at) },
+    ],
+    data.top_users_by_orders
+  );
+
+  const usersWithOrders = data.users_with_orders || {};
+  renderStatRow("metricsUsersWithOrders", [
+    { value: usersWithOrders.count ?? 0, label: "Usuarios con pedidos" },
+    {
+      value: formatPercent(usersWithOrders.percentage),
+      label: `del total (${usersWithOrders.total_users ?? 0} usuarios)`,
+    },
+  ]);
+
+  const location = data.orders_by_location || {};
+  renderMetricsBars("metricsOrdersByCity", location.by_city, { labelKey: "city", countKey: "count" });
+  renderMetricsBars("metricsOrdersByState", location.by_state, { labelKey: "state", countKey: "count" });
+}
+
+// --- Bloque "Soporte y actividad" (apps.accounts soporte + apps.audit) ----
+
+const REPORTS_SUPPORT_ACTIVITY_IDS = [
+  "metricsSupportByMonth", "metricsSupportByStatus", "metricsAvgResponseTime",
+  "metricsAdminActivityByActor", "metricsAdminActivityByAction", "metricsLoginEvents",
+];
+
+function renderSupportActivityMetrics(supportData, auditData) {
+  renderMetricsBars("metricsSupportByMonth", supportData.support_by_month, {
+    labelKey: "month", countKey: "count", labelFormatter: formatMonthLabel,
+  });
+  renderMetricsBars("metricsSupportByStatus", supportData.support_by_status, {
+    labelKey: "label", countKey: "count",
+  });
+
+  const avgResponse = supportData.avg_response_time || {};
+  renderStatRow("metricsAvgResponseTime", [
+    {
+      value: formatHours(avgResponse.average_hours),
+      label: `Tiempo promedio de respuesta (${avgResponse.sample_size ?? 0} muestras)`,
+    },
+  ]);
+
+  const adminActivity = auditData.admin_activity || {};
+  renderMetricsTable(
+    "metricsAdminActivityByActor",
+    [{ label: "Administrador", key: "actor_email" }, { label: "Acciones", key: "count" }],
+    adminActivity.by_actor
+  );
+  renderMetricsTable(
+    "metricsAdminActivityByAction",
+    [{ label: "Acción", render: (r) => actionLabel(r.action) }, { label: "Cantidad", key: "count" }],
+    adminActivity.by_action
+  );
+
+  renderMetricsTable(
+    "metricsLoginEvents",
+    [
+      { label: "Mes", render: (r) => formatMonthLabel(r.month) },
+      { label: "Exitosos", key: "success" },
+      { label: "Fallidos", key: "failed" },
+    ],
+    auditData.login_events
+  );
+}
+
+function getReportsMonths() {
+  return document.getElementById("reportsMonthsSelect")?.value || "6";
+}
+
+async function fetchMetricsJsonOrEmpty(url) {
+  const response = await apiFetch(url);
+  if (!response.ok) return {};
+  return response.json().catch(() => ({}));
+}
+
+async function loadOrdersMetrics(months) {
+  const grid = document.getElementById("ordersMetricsGrid");
+  const empty = document.getElementById("ordersMetricsEmpty");
+  if (!canUseUserPermission("orders.view_all")) {
+    if (grid) grid.style.display = "none";
+    if (empty) {
+      empty.style.display = "";
+      empty.textContent = "No tenés permisos para ver las métricas de pedidos.";
+    }
+    return;
+  }
+  setMetricsLoading(REPORTS_ORDERS_IDS);
+  try {
+    const response = await apiFetch(`${ORDERS_METRICS_URL}?months=${months}`);
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 403) throw new Error("No tenés permisos para ver las métricas de pedidos.");
+    if (!response.ok) throw new Error(getErrorMessage(data, "No se pudieron cargar las métricas de pedidos."));
+    if (grid) grid.style.display = "";
+    if (empty) empty.style.display = "none";
+    renderOrdersMetrics(data);
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    console.error("Error al cargar métricas de pedidos:", err);
+    if (grid) grid.style.display = "none";
+    if (empty) {
+      empty.style.display = "";
+      empty.textContent = err.message || "No se pudieron cargar las métricas de pedidos.";
+    }
+  }
+}
+
+async function loadSupportActivityMetrics(months) {
+  const title = document.getElementById("supportActivityTitle");
+  const grid = document.getElementById("supportActivityGrid");
+  const canSupport = canUseUserPermission("support.view_all");
+  const canAudit = canUseUserPermission("audit.view");
+
+  // Bloque entero opcional: si ninguna de las dos partes está disponible
+  // (permiso o backend no implementado), ni se muestra el subtítulo.
+  if (!canSupport && !canAudit) {
+    if (title) title.style.display = "none";
+    if (grid) grid.style.display = "none";
+    return;
+  }
+  if (title) title.style.display = "";
+  if (grid) grid.style.display = "";
+  setMetricsLoading(REPORTS_SUPPORT_ACTIVITY_IDS);
+
+  if (!auditActionsCatalog.length) await loadAuditActionsCatalog();
 
   try {
-    const response = await apiFetch(METRICS_URL);
+    const [supportData, auditData] = await Promise.all([
+      canSupport ? fetchMetricsJsonOrEmpty(`${SUPPORT_METRICS_URL}?months=${months}`) : Promise.resolve({}),
+      canAudit ? fetchMetricsJsonOrEmpty(`${AUDIT_METRICS_URL}?months=${months}`) : Promise.resolve({}),
+    ]);
+    renderSupportActivityMetrics(supportData, auditData);
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    console.error("Error al cargar métricas de soporte/actividad:", err);
+    REPORTS_SUPPORT_ACTIVITY_IDS.forEach((id) =>
+      renderMetricsEmpty(id, "No se pudieron cargar las métricas.")
+    );
+  }
+}
+
+async function loadMetrics() {
+  const months = getReportsMonths();
+  const titleEl = document.getElementById("metricsSignupsByMonthTitle");
+  if (titleEl) titleEl.textContent = `Altas por mes (últimos ${months} meses)`;
+
+  setMetricsLoading(REPORTS_USER_IDS);
+  try {
+    const response = await apiFetch(`${METRICS_URL}?months=${months}`);
     const data = await response.json().catch(() => ({}));
     if (response.status === 403) throw new Error("No tenés permisos para ver las métricas.");
     if (!response.ok) throw new Error(data.detail || "No se pudieron cargar las métricas.");
-
-    renderMetricsBars("metricsRoleDistribution", data.role_distribution, {
-      labelKey: "label", countKey: "count",
-    });
-    renderMetricsBars("metricsSignupsByMonth", data.signups_by_month, {
-      labelKey: "month", countKey: "count",
-    });
-    renderAuthMethodStats(data.auth_method);
+    renderUsersMetrics(data);
+    renderSecurityMetrics(data);
   } catch (err) {
     if (err.isSessionExpired) return;
     console.error("Error al cargar métricas:", err);
-    ["metricsRoleDistribution", "metricsSignupsByMonth", "metricsAuthMethod"].forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) el.innerHTML = `<p class="roles-loading">${err.message || "No se pudieron cargar las métricas."}</p>`;
-    });
+    REPORTS_USER_IDS.forEach((id) =>
+      renderMetricsEmpty(id, err.message || "No se pudieron cargar las métricas.")
+    );
   }
+
+  await loadOrdersMetrics(months);
+  await loadSupportActivityMetrics(months);
 }
+
+document.getElementById("reportsRefreshBtn")?.addEventListener("click", () => loadMetrics());
+document.getElementById("reportsMonthsSelect")?.addEventListener("change", () => loadMetrics());
 
 function openReports() {
   closeSettings();
   closeRoles();
+  closeAudit();
+  closeSupport();
   document.querySelectorAll(".nav a").forEach((link) => link.classList.remove("active"));
   document.getElementById("navReports")?.classList.add("active");
   [".topbar", ".stats", ".table-card"].forEach((selector) => {
@@ -1989,6 +2359,548 @@ document.querySelectorAll(".nav a:not(#navSettings):not(#navRoles):not(#navRepor
 });
 
 // ---------------------------------------------------------------------------
+// REGISTROS DE AUDITORÍA (solo audit.view) + PEDIDOS DE TODOS LOS USUARIOS
+// (solo orders.view_all), mismo patrón de sección que Roles/Reportes.
+// ---------------------------------------------------------------------------
+const AUDIT_LOGS_URL = "http://127.0.0.1:8000/api/v1/audit/logs/";
+const AUDIT_ACTIONS_URL = "http://127.0.0.1:8000/api/v1/audit/actions/";
+const ADMIN_ORDERS_URL = "http://127.0.0.1:8000/api/v1/admin/orders/";
+const SUPPORT_MESSAGES_URL = "http://127.0.0.1:8000/api/v1/support-messages/";
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("es-AR", {
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
+
+// Pager simple (Anterior/Siguiente + "Página X de Y"), reusa la clase .pager
+// para que se vea consistente con la tabla de usuarios sin duplicar el
+// paginador numerado completo (que está atado a currentPage/loadUsers).
+function renderSimplePager(containerId, infoId, pagination, noun, onPageChange) {
+  const container = document.getElementById(containerId);
+  const info = document.getElementById(infoId);
+  if (!pagination) {
+    if (container) container.innerHTML = "";
+    if (info) info.textContent = `Mostrando 0 ${noun}`;
+    return;
+  }
+  if (info) {
+    info.textContent = pagination.count
+      ? `Mostrando ${pagination.from}-${pagination.to} de ${pagination.count} ${noun}`
+      : `Mostrando 0 ${noun}`;
+  }
+  if (!container) return;
+  container.innerHTML = "";
+  const prevBtn = document.createElement("button");
+  prevBtn.type = "button";
+  prevBtn.textContent = "Anterior";
+  prevBtn.disabled = !pagination.has_previous;
+  prevBtn.addEventListener("click", () => onPageChange(pagination.previous_page));
+  const info2 = document.createElement("span");
+  info2.className = "dots";
+  info2.textContent = `Página ${pagination.page} de ${pagination.total_pages || 1}`;
+  const nextBtn = document.createElement("button");
+  nextBtn.type = "button";
+  nextBtn.textContent = "Siguiente";
+  nextBtn.disabled = !pagination.has_next;
+  nextBtn.addEventListener("click", () => onPageChange(pagination.next_page));
+  container.append(prevBtn, info2, nextBtn);
+}
+
+// --- Auditoría --------------------------------------------------------
+
+let auditPage = 1;
+let auditActionsCatalog = [];
+
+function auditQueryString() {
+  const params = new URLSearchParams();
+  const search = document.getElementById("auditSearchInput")?.value.trim();
+  const category = document.getElementById("auditCategoryFilter")?.value;
+  const action = document.getElementById("auditActionFilter")?.value;
+  const actor = document.getElementById("auditActorFilter")?.value.trim();
+  const dateFrom = document.getElementById("auditDateFrom")?.value;
+  const dateTo = document.getElementById("auditDateTo")?.value;
+  if (search) params.set("search", search);
+  if (category) params.set("category", category);
+  if (action) params.set("action", action);
+  if (actor) params.set("actor", actor);
+  if (dateFrom) params.set("date_from", dateFrom);
+  if (dateTo) params.set("date_to", dateTo);
+  if (auditPage > 1) params.set("page", auditPage);
+  const qs = params.toString();
+  return qs ? `${AUDIT_LOGS_URL}?${qs}` : AUDIT_LOGS_URL;
+}
+
+async function loadAuditActionsCatalog() {
+  const categorySelect = document.getElementById("auditCategoryFilter");
+  const actionSelect = document.getElementById("auditActionFilter");
+  if (!categorySelect || !actionSelect) return;
+  try {
+    const response = await apiFetch(AUDIT_ACTIONS_URL);
+    if (!response.ok) return;
+    const data = await response.json();
+    auditActionsCatalog = Array.isArray(data.actions) ? data.actions : [];
+    (data.categories || []).forEach((cat) => {
+      const opt = document.createElement("option");
+      opt.value = cat.key;
+      opt.textContent = cat.label;
+      categorySelect.appendChild(opt);
+    });
+    auditActionsCatalog.forEach((action) => {
+      const opt = document.createElement("option");
+      opt.value = action.key;
+      opt.textContent = action.label;
+      actionSelect.appendChild(opt);
+    });
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    console.error("Error al cargar el catálogo de auditoría:", err);
+  }
+}
+
+function actionLabel(key) {
+  return auditActionsCatalog.find((a) => a.key === key)?.label || key;
+}
+
+function renderAuditRows(logs) {
+  const body = document.getElementById("auditBody");
+  if (!body) return;
+  if (!logs.length) {
+    body.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px;">No hay registros para mostrar.</td></tr>`;
+    return;
+  }
+  body.innerHTML = "";
+  logs.forEach((log) => {
+    const tr = document.createElement("tr");
+    const hasChanges = log.changes && Object.keys(log.changes).length > 0;
+    tr.innerHTML = `
+      <td class="cell-muted">${formatDateTime(log.created_at)}</td>
+      <td title="${log.actor_email || ""}">${log.actor_email || "Sistema"}</td>
+      <td>${actionLabel(log.action)}</td>
+      <td class="cell-muted" title="${log.target_repr || ""}">${log.target_repr || "-"}</td>
+      <td><span class="badge">${log.category_label || log.category}</span></td>
+      <td>${hasChanges ? `<button type="button" class="link-btn" data-audit-changes='${JSON.stringify(log.changes).replace(/'/g, "&#39;")}'>Ver cambios</button>` : "-"}</td>
+    `;
+    body.appendChild(tr);
+  });
+}
+
+async function loadAuditLogs() {
+  const body = document.getElementById("auditBody");
+  if (body) body.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px;">Cargando...</td></tr>`;
+  try {
+    const response = await apiFetch(auditQueryString());
+    if (response.status === 403) throw new Error("No tenés permisos para ver la auditoría.");
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(getErrorMessage(data, "No se pudieron cargar los registros."));
+    renderAuditRows(data.results || []);
+    renderSimplePager("auditPaginationControls", "auditPaginationInfo", data.pagination, "registros", (page) => {
+      auditPage = page;
+      loadAuditLogs();
+    });
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    console.error("Error al cargar auditoría:", err);
+    if (body) body.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:red;">${err.message}</td></tr>`;
+  }
+}
+
+function openAuditChangesModal(changes) {
+  const modal = document.getElementById("auditChangesModal");
+  const content = document.getElementById("auditChangesContent");
+  if (!modal || !content) return;
+  const rows = Object.entries(changes || {}).map(([field, diff]) => {
+    if (diff && typeof diff === "object" && ("from" in diff || "to" in diff)) {
+      return `<div><strong>${field}:</strong> ${JSON.stringify(diff.from)} → ${JSON.stringify(diff.to)}</div>`;
+    }
+    return `<div><strong>${field}:</strong> ${JSON.stringify(diff)}</div>`;
+  });
+  content.innerHTML = rows.join("") || "<p>Sin detalle.</p>";
+  modal.style.display = "flex";
+}
+
+function closeAuditChangesModal() {
+  const modal = document.getElementById("auditChangesModal");
+  if (modal) modal.style.display = "none";
+}
+
+document.getElementById("auditBody")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-audit-changes]");
+  if (!button) return;
+  try {
+    openAuditChangesModal(JSON.parse(button.getAttribute("data-audit-changes")));
+  } catch {
+    openAuditChangesModal({});
+  }
+});
+document.getElementById("closeAuditChangesModal")?.addEventListener("click", closeAuditChangesModal);
+document.getElementById("closeAuditChangesModalBtn")?.addEventListener("click", closeAuditChangesModal);
+
+// --- Pedidos de todos los usuarios (dentro de la sección de auditoría) ---
+
+let adminOrdersPage = 1;
+const ORDER_STATUS_LABELS = {
+  created: "Creado", preparing: "En preparación", dispatched: "Despachado",
+  in_transit: "En tránsito", delivered: "Entregado", cancelled: "Cancelado",
+};
+
+function adminOrdersQueryString() {
+  const params = new URLSearchParams();
+  const search = document.getElementById("adminOrdersSearchInput")?.value.trim();
+  const statusFilter = document.getElementById("adminOrdersStatusFilter")?.value;
+  const dateFrom = document.getElementById("adminOrdersDateFrom")?.value;
+  const dateTo = document.getElementById("adminOrdersDateTo")?.value;
+  if (search) params.set("search", search);
+  if (statusFilter) params.set("status", statusFilter);
+  if (dateFrom) params.set("date_from", dateFrom);
+  if (dateTo) params.set("date_to", dateTo);
+  if (adminOrdersPage > 1) params.set("page", adminOrdersPage);
+  const qs = params.toString();
+  return qs ? `${ADMIN_ORDERS_URL}?${qs}` : ADMIN_ORDERS_URL;
+}
+
+function populateOrderStatusOptions() {
+  const select = document.getElementById("adminOrdersStatusFilter");
+  if (!select || select.dataset.populated) return;
+  select.dataset.populated = "true";
+  Object.entries(ORDER_STATUS_LABELS).forEach(([key, label]) => {
+    const opt = document.createElement("option");
+    opt.value = key;
+    opt.textContent = label;
+    select.appendChild(opt);
+  });
+}
+
+function renderAdminOrdersRows(orders) {
+  const body = document.getElementById("adminOrdersBody");
+  if (!body) return;
+  if (!orders.length) {
+    body.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px;">No hay pedidos para mostrar.</td></tr>`;
+    return;
+  }
+  body.innerHTML = "";
+  orders.forEach((order) => {
+    const tr = document.createElement("tr");
+    const lastEvent = order.last_event
+      ? `${order.last_event.status_label} (${formatDateTime(order.last_event.created_at)})`
+      : "-";
+    tr.innerHTML = `
+      <td title="${order.user_email || ""}">${order.user_email || "-"}</td>
+      <td class="cell-muted">${order.description || `Pedido #${order.id}`}</td>
+      <td>${order.status_label || order.status}</td>
+      <td class="cell-muted">${lastEvent}</td>
+      <td class="cell-muted">${formatDateTime(order.created_at)}</td>
+    `;
+    body.appendChild(tr);
+  });
+}
+
+async function loadAdminOrders() {
+  const body = document.getElementById("adminOrdersBody");
+  if (body) body.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px;">Cargando...</td></tr>`;
+  try {
+    const response = await apiFetch(adminOrdersQueryString());
+    if (response.status === 403) throw new Error("No tenés permisos para ver los pedidos.");
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(getErrorMessage(data, "No se pudieron cargar los pedidos."));
+    renderAdminOrdersRows(data.results || []);
+    renderSimplePager("adminOrdersPaginationControls", "adminOrdersPaginationInfo", data.pagination, "pedidos", (page) => {
+      adminOrdersPage = page;
+      loadAdminOrders();
+    });
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    console.error("Error al cargar pedidos:", err);
+    if (body) body.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px; color:red;">${err.message}</td></tr>`;
+  }
+}
+
+function openAudit() {
+  if (!canUseUserPermission("audit.view")) return;
+  closeSettings();
+  closeRoles();
+  closeReports();
+  closeSupport();
+  document.querySelectorAll(".nav a").forEach((link) => link.classList.remove("active"));
+  document.getElementById("navAudit")?.classList.add("active");
+  [".topbar", ".stats", ".table-card"].forEach((selector) => {
+    const element = document.querySelector(selector);
+    if (element) element.style.display = "none";
+  });
+  document.getElementById("auditSection").style.display = "";
+  populateOrderStatusOptions();
+  if (!auditActionsCatalog.length) loadAuditActionsCatalog();
+  auditPage = 1;
+  loadAuditLogs();
+  adminOrdersPage = 1;
+  if (canUseUserPermission("orders.view_all")) loadAdminOrders();
+}
+
+function closeAudit() {
+  const section = document.getElementById("auditSection");
+  if (section) section.style.display = "none";
+  if (canViewUsers()) {
+    [".topbar", ".stats", ".table-card"].forEach((selector) => {
+      const element = document.querySelector(selector);
+      if (element) element.style.display = "";
+    });
+  }
+}
+
+document.getElementById("navAudit")?.addEventListener("click", (event) => {
+  event.preventDefault();
+  openAudit();
+});
+document.getElementById("applyAuditFiltersBtn")?.addEventListener("click", () => {
+  auditPage = 1;
+  loadAuditLogs();
+});
+document.getElementById("clearAuditFiltersBtn")?.addEventListener("click", () => {
+  ["auditSearchInput", "auditCategoryFilter", "auditActionFilter", "auditActorFilter", "auditDateFrom", "auditDateTo"]
+    .forEach((id) => { const el = document.getElementById(id); if (el) el.value = ""; });
+  auditPage = 1;
+  loadAuditLogs();
+});
+document.getElementById("applyAdminOrdersFiltersBtn")?.addEventListener("click", () => {
+  adminOrdersPage = 1;
+  loadAdminOrders();
+});
+document.getElementById("clearAdminOrdersFiltersBtn")?.addEventListener("click", () => {
+  ["adminOrdersSearchInput", "adminOrdersStatusFilter", "adminOrdersDateFrom", "adminOrdersDateTo"]
+    .forEach((id) => { const el = document.getElementById(id); if (el) el.value = ""; });
+  adminOrdersPage = 1;
+  loadAdminOrders();
+});
+
+// ---------------------------------------------------------------------------
+// BANDEJA DE SOPORTE (solo support.view_all / support.manage)
+// ---------------------------------------------------------------------------
+
+let supportPage = 1;
+let supportMessages = [];
+let selectedSupportMessageId = null;
+
+function supportQueryString() {
+  const params = new URLSearchParams();
+  const search = document.getElementById("supportSearchInput")?.value.trim();
+  const statusFilter = document.getElementById("supportStatusFilter")?.value;
+  const dateFrom = document.getElementById("supportDateFrom")?.value;
+  const dateTo = document.getElementById("supportDateTo")?.value;
+  if (search) params.set("search", search);
+  if (statusFilter) params.set("status", statusFilter);
+  if (dateFrom) params.set("date_from", dateFrom);
+  if (dateTo) params.set("date_to", dateTo);
+  if (supportPage > 1) params.set("page", supportPage);
+  const qs = params.toString();
+  return qs ? `${SUPPORT_MESSAGES_URL}?${qs}` : SUPPORT_MESSAGES_URL;
+}
+
+const SUPPORT_STATUS_LABELS = { pending: "Pendiente", in_progress: "En curso", resolved: "Resuelto" };
+
+function renderSupportCounts(counts) {
+  if (!counts) return;
+  const pendingEl = document.getElementById("supportPendingCount");
+  const inProgressEl = document.getElementById("supportInProgressCount");
+  const resolvedEl = document.getElementById("supportResolvedCount");
+  if (pendingEl) pendingEl.textContent = counts.pending ?? 0;
+  if (inProgressEl) inProgressEl.textContent = counts.in_progress ?? 0;
+  if (resolvedEl) resolvedEl.textContent = counts.resolved ?? 0;
+}
+
+function renderSupportRows(messages) {
+  const body = document.getElementById("supportBody");
+  if (!body) return;
+  if (!messages.length) {
+    body.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px;">No hay mensajes para mostrar.</td></tr>`;
+    return;
+  }
+  body.innerHTML = "";
+  messages.forEach((message) => {
+    const tr = document.createElement("tr");
+    tr.dataset.supportId = message.id;
+    if (Number(message.id) === Number(selectedSupportMessageId)) tr.classList.add("active");
+    tr.innerHTML = `
+      <td title="${message.user_email || ""}">${message.user_email || "-"}</td>
+      <td class="cell-muted">${message.subject}</td>
+      <td><span class="support-status ${message.status}">${message.status_label || SUPPORT_STATUS_LABELS[message.status] || message.status}</span></td>
+      <td class="cell-muted">${formatDateTime(message.created_at)}</td>
+    `;
+    body.appendChild(tr);
+  });
+}
+
+async function loadSupportMessages() {
+  const body = document.getElementById("supportBody");
+  if (body) body.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px;">Cargando...</td></tr>`;
+  try {
+    const response = await apiFetch(supportQueryString());
+    if (response.status === 403) throw new Error("No tenés permisos para ver la bandeja de soporte.");
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(getErrorMessage(data, "No se pudieron cargar los mensajes."));
+    supportMessages = data.results || [];
+    renderSupportRows(supportMessages);
+    renderSupportCounts(data.counts);
+    renderSimplePager("supportPaginationControls", "supportPaginationInfo", data.pagination, "mensajes", (page) => {
+      supportPage = page;
+      loadSupportMessages();
+    });
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    console.error("Error al cargar la bandeja de soporte:", err);
+    if (body) body.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:red;">${err.message}</td></tr>`;
+  }
+}
+
+function showSupportDetailMsg(text, ok) {
+  const el = document.getElementById("supportDetailMsg");
+  if (!el) return;
+  el.textContent = text;
+  el.className = `roles-message ${ok ? "success" : "error"}`;
+  el.style.display = "block";
+}
+
+function renderSupportDetail(message) {
+  const empty = document.getElementById("supportDetailEmpty");
+  const content = document.getElementById("supportDetailContent");
+  if (!message) {
+    if (empty) empty.style.display = "";
+    if (content) content.style.display = "none";
+    return;
+  }
+  if (empty) empty.style.display = "none";
+  if (content) content.style.display = "";
+
+  document.getElementById("supportDetailUser").textContent = message.user_email || "";
+  document.getElementById("supportDetailSubject").textContent = message.subject || "";
+  document.getElementById("supportDetailMessage").textContent = message.message || "";
+  document.getElementById("supportDetailStatus").value = message.status;
+  document.getElementById("supportDetailResponse").value = message.response || "";
+
+  const handledEl = document.getElementById("supportDetailHandled");
+  if (handledEl) {
+    if (message.responded_at) {
+      handledEl.style.display = "";
+      handledEl.textContent = `Respondido el ${formatDateTime(message.responded_at)} por ${message.handled_by_email || "-"}`;
+    } else {
+      handledEl.style.display = "none";
+    }
+  }
+
+  const canManage = canUseUserPermission("support.manage");
+  document.getElementById("supportDetailStatus").disabled = !canManage;
+  document.getElementById("supportDetailResponse").disabled = !canManage;
+  document.getElementById("saveSupportDetailBtn").style.display = canManage ? "" : "none";
+
+  const msg = document.getElementById("supportDetailMsg");
+  if (msg) msg.style.display = "none";
+}
+
+function selectSupportMessage(id) {
+  selectedSupportMessageId = id;
+  renderSupportRows(supportMessages);
+  const message = supportMessages.find((m) => Number(m.id) === Number(id));
+  renderSupportDetail(message);
+}
+
+document.getElementById("supportBody")?.addEventListener("click", (event) => {
+  const row = event.target.closest("tr[data-support-id]");
+  if (!row) return;
+  selectSupportMessage(row.dataset.supportId);
+});
+
+document.getElementById("saveSupportDetailBtn")?.addEventListener("click", async () => {
+  if (!selectedSupportMessageId) return;
+  const button = document.getElementById("saveSupportDetailBtn");
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Guardando...";
+  try {
+    const payload = {
+      status: document.getElementById("supportDetailStatus").value,
+      response: document.getElementById("supportDetailResponse").value,
+    };
+    const response = await apiFetch(`${SUPPORT_MESSAGES_URL}${selectedSupportMessageId}/`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(getErrorMessage(data, "No se pudo guardar el mensaje."));
+
+    supportMessages = supportMessages.map((m) => (Number(m.id) === Number(selectedSupportMessageId) ? data : m));
+    renderSupportRows(supportMessages);
+    renderSupportDetail(data);
+    showSupportDetailMsg("Guardado correctamente.", true);
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    console.error("Error al guardar el mensaje de soporte:", err);
+    showSupportDetailMsg(err.message || "No se pudo guardar el mensaje.", false);
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+});
+
+function openSupport() {
+  if (!canUseUserPermission("support.view_all")) return;
+  closeSettings();
+  closeRoles();
+  closeReports();
+  closeAudit();
+  document.querySelectorAll(".nav a").forEach((link) => link.classList.remove("active"));
+  document.getElementById("navSupport")?.classList.add("active");
+  [".topbar", ".stats", ".table-card"].forEach((selector) => {
+    const element = document.querySelector(selector);
+    if (element) element.style.display = "none";
+  });
+  document.getElementById("supportSection").style.display = "";
+  selectedSupportMessageId = null;
+  renderSupportDetail(null);
+  supportPage = 1;
+  loadSupportMessages();
+}
+
+function closeSupport() {
+  const section = document.getElementById("supportSection");
+  if (section) section.style.display = "none";
+  if (canViewUsers()) {
+    [".topbar", ".stats", ".table-card"].forEach((selector) => {
+      const element = document.querySelector(selector);
+      if (element) element.style.display = "";
+    });
+  }
+}
+
+document.getElementById("navSupport")?.addEventListener("click", (event) => {
+  event.preventDefault();
+  openSupport();
+});
+document.getElementById("applySupportFiltersBtn")?.addEventListener("click", () => {
+  supportPage = 1;
+  loadSupportMessages();
+});
+document.getElementById("clearSupportFiltersBtn")?.addEventListener("click", () => {
+  ["supportSearchInput", "supportStatusFilter", "supportDateFrom", "supportDateTo"]
+    .forEach((id) => { const el = document.getElementById(id); if (el) el.value = ""; });
+  supportPage = 1;
+  loadSupportMessages();
+});
+
+// Los ítems que no son secciones "propias" (Users) cierran auditoría/soporte
+// también, igual que ya hacen con Settings/Roles/Reportes.
+document
+  .querySelectorAll(".nav a:not(#navSettings):not(#navRoles):not(#navReports):not(#navAudit):not(#navSupport)")
+  .forEach((a) => {
+    a.addEventListener("click", () => {
+      closeAudit();
+      closeSupport();
+    });
+  });
+
+// ---------------------------------------------------------------------------
 // 🚀 INICIO: esta pantalla es exclusiva de quien puede gestionar usuarios.
 // Sin el permiso users.view, se redirige al dashboard (el perfil propio
 // vive en perfil.html).
@@ -2002,6 +2914,8 @@ function bootstrap() {
   const adminMode = isAdminMode();
   document.getElementById("openCreatePanel").style.display = canUseUserPermission("users.create") ? "" : "none";
   if (!adminMode) document.getElementById("navRoles").style.display = "none";
+  if (!canUseUserPermission("audit.view")) document.getElementById("navAudit").style.display = "none";
+  if (!canUseUserPermission("support.view_all")) document.getElementById("navSupport").style.display = "none";
   loadMyProfile();
   loadUsers();
   // Cargar dinámicamente TODOS los roles (básicos + personalizados).

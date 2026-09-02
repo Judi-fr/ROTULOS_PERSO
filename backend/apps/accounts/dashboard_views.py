@@ -48,6 +48,22 @@ class DashboardView(APIView):
                     "enabled": True,
                 }
             )
+            menu.append(
+                {
+                    "key": "audit",
+                    "label": "Registros de auditoría",
+                    "url": "gestionuser.html#audit",
+                    "enabled": True,
+                }
+            )
+            menu.append(
+                {
+                    "key": "support_inbox",
+                    "label": "Mensajes de soporte",
+                    "url": "gestionuser.html#support",
+                    "enabled": True,
+                }
+            )
 
         # Direcciones y pedidos: self-service, disponible para los cuatro
         # roles (ver apps.orders y los permisos orders.*/addresses.manage).

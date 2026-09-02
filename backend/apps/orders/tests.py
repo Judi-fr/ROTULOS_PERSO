@@ -176,3 +176,82 @@ class OrdersSelfServiceTests(APITestCase):
     def test_orders_require_authentication(self):
         response = self.client.get("/api/v1/orders/")
         self.assertEqual(response.status_code, 401)
+
+
+class AdminOrdersTests(APITestCase):
+    """Pedidos de todos los usuarios (panel admin, orders.view_all) y el
+    rastro de auditoría que deja crear/cancelar un pedido."""
+
+    def setUp(self):
+        subscriber_group, _ = Group.objects.get_or_create(name="subscriber")
+        admin_group, _ = Group.objects.get_or_create(name="admin")
+
+        self.admin_user = User.objects.create_user(
+            username="admin_orders@example.com",
+            email="admin_orders@example.com",
+            password="Clave123!",
+            is_staff=True,
+        )
+        self.admin_user.groups.add(admin_group)
+
+        self.user = User.objects.create_user(
+            username="cliente_orders@example.com",
+            email="cliente_orders@example.com",
+            password="Clave123!",
+        )
+        self.user.groups.add(subscriber_group)
+
+        self.address = Address.objects.create(
+            user=self.user, street="Calle 1", city="CABA", is_default=True
+        )
+        self.order = Order.objects.create(user=self.user, address=self.address)
+
+    def test_no_admin_recibe_403(self):
+        response = self.client.get("/api/v1/admin/orders/", **auth_headers_for(self.user))
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_recibe_200_con_pedidos_de_todos(self):
+        response = self.client.get("/api/v1/admin/orders/", **auth_headers_for(self.admin_user))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["pagination"]["count"], 1)
+        self.assertEqual(response.data["results"][0]["user_email"], self.user.email)
+
+    def test_crear_pedido_deja_auditlog_order_create(self):
+        from apps.audit.models import AuditLog
+
+        response = self.client.post(
+            "/api/v1/orders/",
+            {"address_id": self.address.pk, "description": "Otro"},
+            **auth_headers_for(self.user),
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        log = AuditLog.objects.filter(action="order.create").latest("created_at")
+        self.assertEqual(log.actor_id, self.user.id)
+
+    def test_cancelar_pedido_deja_un_solo_auditlog_de_cancelacion(self):
+        from apps.audit.models import AuditLog
+
+        response = self.client.post(
+            f"/api/v1/orders/{self.order.pk}/cancel/", **auth_headers_for(self.user)
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+
+        cancel_logs = AuditLog.objects.filter(action="order.cancel", target_id=str(self.order.pk))
+        self.assertEqual(cancel_logs.count(), 1)
+        self.assertEqual(cancel_logs.first().actor_id, self.user.id)
+        # El _skip_status_audit del modelo evita duplicar con order.status_change.
+        self.assertFalse(
+            AuditLog.objects.filter(
+                action="order.status_change", target_id=str(self.order.pk)
+            ).exists()
+        )
+
+    def test_edicion_manual_de_estado_deja_order_status_change_sin_actor(self):
+        from apps.audit.models import AuditLog
+
+        self.order.status = Order.Status.PREPARING
+        self.order.save(update_fields=["status", "updated_at"])
+
+        log = AuditLog.objects.filter(action="order.status_change").latest("created_at")
+        self.assertIsNone(log.actor_id)
+        self.assertEqual(log.changes["status"], {"from": Order.Status.CREATED, "to": Order.Status.PREPARING})

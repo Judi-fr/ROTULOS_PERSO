@@ -21,6 +21,8 @@ from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.audit.services import record
+
 from .models import GroupRolePermission, RolePermission
 
 User = get_user_model()
@@ -158,6 +160,15 @@ class RoleListView(APIView):
             )
 
         group = Group.objects.create(name=normalized)
+        record(
+            request,
+            category="roles",
+            action="role.create",
+            target=group,
+            target_type="role",
+            target_repr=group.name,
+            changes={"name": {"from": None, "to": group.name}},
+        )
         return Response(
             RoleSerializer(group).data,
             status=status.HTTP_201_CREATED,
@@ -245,11 +256,30 @@ class RolePermissionsView(APIView):
             )
 
         # Reemplazo atómico de la asignación.
+        previous_keys = set(
+            GroupRolePermission.objects.filter(group=group).values_list(
+                "permission__key", flat=True
+            )
+        )
         GroupRolePermission.objects.filter(group=group).delete()
         permissions = list(RolePermission.objects.filter(key__in=keys))
         GroupRolePermission.objects.bulk_create(
             [GroupRolePermission(group=group, permission=p) for p in permissions],
             ignore_conflicts=True,
+        )
+
+        new_keys = set(keys)
+        record(
+            request,
+            category="roles",
+            action="role.permissions_update",
+            target=group,
+            target_type="role",
+            target_repr=group.name,
+            changes={
+                "added": sorted(new_keys - previous_keys),
+                "removed": sorted(previous_keys - new_keys),
+            },
         )
 
         links = GroupRolePermission.objects.filter(group=group).select_related("permission")
@@ -311,6 +341,16 @@ class RoleDetailView(APIView):
         # 2. Eliminar asignaciones de permisos del rol (cascade implícito al
         #    borrar el Group, pero lo hacemos explícito para claridad).
         GroupRolePermission.objects.filter(group=group).delete()
+
+        role_name, role_id = group.name, group.pk
+        record(
+            request,
+            category="roles",
+            action="role.delete",
+            target_type="role",
+            target_id=str(role_id),
+            target_repr=role_name,
+        )
 
         # 3. Eliminar el Group (los usuarios NO se borran).
         group.delete()

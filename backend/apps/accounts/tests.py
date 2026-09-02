@@ -532,6 +532,11 @@ class RolePermissionSystemTests(AuthTestCase):
         "orders.create",
         "orders.cancel",
         "support.create",
+        # Exclusivos del admin (ver 0014_seed_admin_only_permissions).
+        "audit.view",
+        "orders.view_all",
+        "support.view_all",
+        "support.manage",
     }
 
     # Self-service: perfil propio + direcciones/pedidos propios + soporte.
@@ -646,12 +651,13 @@ class RolePermissionSystemTests(AuthTestCase):
                 group=link.group, permission=link.permission
             )
 
-        self.assertEqual(self.RolePermission.objects.count(), 14)
+        self.assertEqual(self.RolePermission.objects.count(), 18)
         self.assertEqual(
             self.GroupRolePermission.objects.count(),
-            # admin tiene 14 (incluye users.unlock, solo admin) + 3 roles con
-            # 8 cada uno (self-service, incluye support.create) = 14 + 24 = 38
-            14 + 3 * 8,
+            # admin tiene 18 (incluye users.unlock + audit.view/orders.view_all/
+            # support.view_all/support.manage, todos solo-admin) + 3 roles con
+            # 8 cada uno (self-service, incluye support.create) = 18 + 24 = 42
+            18 + 3 * 8,
         )
 
     # --- Endpoints autenticados (admin) --------------------------------------
@@ -673,7 +679,7 @@ class RolePermissionSystemTests(AuthTestCase):
         self.client.force_authenticate(user=self.admin_user)
         resp = self.client.get("/api/v1/auth/permissions/")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(resp.data), 14)
+        self.assertEqual(len(resp.data), 18)
         keys = {p["key"] for p in resp.data}
         self.assertEqual(keys, self.ALL_PERMISSIONS)
 
@@ -2246,7 +2252,7 @@ class RoleCrudTests(AuthTestCase):
         self.client.delete(f"{self.ROLES_URL}{role.id}/")
         resp = self.client.get("/api/v1/auth/permissions/")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(resp.data), 14)
+        self.assertEqual(len(resp.data), 18)
 
     def test_get_roles_lista_incluye_personalizados(self):
         self.Group.objects.create(name="auditor")
@@ -2801,3 +2807,476 @@ class UserMetricsTests(AuthTestCase):
         self.client.force_authenticate(user=self.admin)
         resp = self.client.get(self.URL, {"months": "abc"})
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class UserEmailVerifiedFunctionTests(AuthTestCase):
+    """models.user_email_verified(): regla "sin fila = verificado"."""
+
+    def test_sin_fila_de_verificacion_es_verificado(self):
+        # Cubre cuentas viejas (previas a este flujo) y cuentas de Google, que
+        # nunca crean una fila EmailVerification.
+        from .models import user_email_verified
+
+        user = User.objects.create_user(
+            username="sinfila@example.com", email="sinfila@example.com",
+        )
+        self.assertTrue(user_email_verified(user))
+
+    def test_con_fila_is_verified_true_es_verificado(self):
+        from .models import EmailVerification, user_email_verified
+
+        user = User.objects.create_user(
+            username="verificado@example.com", email="verificado@example.com",
+        )
+        EmailVerification.objects.create(user=user, is_verified=True)
+        self.assertTrue(user_email_verified(user))
+
+    def test_con_fila_is_verified_false_es_pendiente(self):
+        from .models import EmailVerification, user_email_verified
+
+        user = User.objects.create_user(
+            username="pendiente@example.com", email="pendiente@example.com",
+        )
+        EmailVerification.objects.create(user=user, is_verified=False)
+        self.assertFalse(user_email_verified(user))
+
+
+class RegisterEmailVerificationTests(AuthTestCase):
+    """RegisterView dispara la verificación suave de email."""
+
+    def test_register_crea_verificacion_pendiente_y_envia_correo(self):
+        from django.core import mail
+
+        from .models import EmailVerification
+
+        resp = self.client.post(
+            "/api/v1/auth/register/",
+            {"email": "verify@example.com", "password": STRONG_PASSWORD},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+        user = User.objects.get(email="verify@example.com")
+        verification = EmailVerification.objects.get(user=user)
+        self.assertFalse(verification.is_verified)
+        self.assertTrue(verification.token)
+
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn(verification.token, mail.outbox[0].body)
+        self.assertEqual(mail.outbox[0].to, ["verify@example.com"])
+
+    def test_register_devuelve_email_verified_false_en_el_payload(self):
+        resp = self.client.post(
+            "/api/v1/auth/register/",
+            {"email": "verify2@example.com", "password": STRONG_PASSWORD},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(resp.data["user"]["email_verified"])
+
+
+class EmailVerificationConfirmTests(AuthTestCase):
+    """POST /api/v1/auth/verify-email/confirm/"""
+
+    URL = "/api/v1/auth/verify-email/confirm/"
+
+    def setUp(self):
+        super().setUp()
+        self.user = User.objects.create_user(
+            username="confirm@example.com",
+            email="confirm@example.com",
+            password=STRONG_PASSWORD,
+        )
+        from .models import EmailVerification
+
+        self.verification, _ = EmailVerification.objects.get_or_create(user=self.user)
+        self.verification.refresh_token()
+
+    def test_token_valido_verifica_la_cuenta(self):
+        resp = self.client.post(self.URL, {"token": self.verification.token}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        self.verification.refresh_from_db()
+        self.assertTrue(self.verification.is_verified)
+        self.assertIsNotNone(self.verification.verified_at)
+
+    def test_token_inexistente_devuelve_400(self):
+        resp = self.client.post(self.URL, {"token": "no-existe"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_token_expirado_devuelve_400(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        self.verification.expires_at = timezone.now() - timedelta(days=1)
+        self.verification.save(update_fields=["expires_at"])
+
+        resp = self.client.post(self.URL, {"token": self.verification.token}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.verification.refresh_from_db()
+        self.assertFalse(self.verification.is_verified)
+
+    def test_sin_token_devuelve_400(self):
+        resp = self.client.post(self.URL, {}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class EmailVerificationResendTests(AuthTestCase):
+    """POST /api/v1/auth/verify-email/resend/"""
+
+    URL = "/api/v1/auth/verify-email/resend/"
+
+    def setUp(self):
+        super().setUp()
+        self.user = User.objects.create_user(
+            username="resend@example.com",
+            email="resend@example.com",
+            password=STRONG_PASSWORD,
+        )
+
+    def test_requiere_autenticacion(self):
+        resp = self.client.post(self.URL, {}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_genera_un_token_nuevo_distinto_del_anterior(self):
+        from django.core import mail
+
+        from .models import EmailVerification
+
+        verification, _ = EmailVerification.objects.get_or_create(user=self.user)
+        token_anterior = verification.refresh_token()
+
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.post(self.URL, {}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        verification.refresh_from_db()
+        self.assertNotEqual(verification.token, token_anterior)
+        self.assertFalse(verification.is_verified)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_usuario_ya_verificado_no_reenvia(self):
+        from django.core import mail
+
+        from .models import EmailVerification
+
+        EmailVerification.objects.create(user=self.user, is_verified=True)
+
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.post(self.URL, {}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 0)
+
+
+class EmailVerifiedInPayloadTests(AuthTestCase):
+    """email_verified en el login (auth_response) y en GET /api/v1/auth/me/,
+    en los tres casos de la regla "sin fila = verificado"."""
+
+    def _login(self, email):
+        resp = self.client.post(
+            "/api/v1/auth/login/",
+            {"email": email, "password": STRONG_PASSWORD},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        return resp
+
+    def test_sin_fila_devuelve_email_verified_true(self):
+        user = User.objects.create_user(
+            username="payload_sinfila@example.com",
+            email="payload_sinfila@example.com",
+            password=STRONG_PASSWORD,
+        )
+        resp = self._login(user.email)
+        self.assertTrue(resp.data["user"]["email_verified"])
+
+        self.client.force_authenticate(user=user)
+        me_resp = self.client.get("/api/v1/auth/me/")
+        self.assertTrue(me_resp.data["email_verified"])
+
+    def test_verificado_devuelve_email_verified_true(self):
+        from .models import EmailVerification
+
+        user = User.objects.create_user(
+            username="payload_verificado@example.com",
+            email="payload_verificado@example.com",
+            password=STRONG_PASSWORD,
+        )
+        EmailVerification.objects.create(user=user, is_verified=True)
+
+        resp = self._login(user.email)
+        self.assertTrue(resp.data["user"]["email_verified"])
+
+        self.client.force_authenticate(user=user)
+        me_resp = self.client.get("/api/v1/auth/me/")
+        self.assertTrue(me_resp.data["email_verified"])
+
+    def test_pendiente_devuelve_email_verified_false(self):
+        from .models import EmailVerification
+
+        user = User.objects.create_user(
+            username="payload_pendiente@example.com",
+            email="payload_pendiente@example.com",
+            password=STRONG_PASSWORD,
+        )
+        EmailVerification.objects.create(user=user, is_verified=False)
+
+        resp = self._login(user.email)
+        self.assertFalse(resp.data["user"]["email_verified"])
+
+        self.client.force_authenticate(user=user)
+        me_resp = self.client.get("/api/v1/auth/me/")
+        self.assertFalse(me_resp.data["email_verified"])
+
+
+class AuditTrailTests(AuthTestCase):
+    """Auditoría (apps.audit): login exitoso/fallido/lockout y CRUD de
+    usuarios dejan su AuditLog con la acción correcta."""
+
+    def setUp(self):
+        super().setUp()
+        from django.contrib.auth.models import Group
+
+        from .models import GroupRolePermission, RolePermission
+
+        for name in ("admin", "designer", "operator", "subscriber"):
+            Group.objects.get_or_create(name=name)
+
+        self.admin_user = User.objects.create_user(
+            username="audit_crud_admin@example.com",
+            email="audit_crud_admin@example.com",
+            password=STRONG_PASSWORD,
+            is_staff=True,
+        )
+        self.admin_user.groups.add(Group.objects.get(name="admin"))
+
+        self.target_user = User.objects.create_user(
+            username="audit_target@example.com",
+            email="audit_target@example.com",
+            password=STRONG_PASSWORD,
+        )
+        self.target_user.groups.add(Group.objects.get(name="subscriber"))
+
+    def _login(self, email, password):
+        return self.client.post(
+            "/api/v1/auth/login/", {"email": email, "password": password}, format="json"
+        )
+
+    def test_login_exitoso_deja_auditlog(self):
+        from apps.audit.models import AuditLog
+
+        resp = self._login(self.target_user.email, STRONG_PASSWORD)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        log = AuditLog.objects.filter(action="auth.login_success").latest("created_at")
+        self.assertEqual(log.actor_id, self.target_user.id)
+        self.assertEqual(log.category, "auth")
+
+    def test_login_fallido_deja_auditlog(self):
+        from apps.audit.models import AuditLog
+
+        resp = self._login(self.target_user.email, "mal")
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        log = AuditLog.objects.filter(action="auth.login_failed").latest("created_at")
+        self.assertIsNone(log.actor_id)
+        self.assertEqual(log.actor_email, self.target_user.email)
+
+    def test_lockout_deja_auditlog(self):
+        from apps.audit.models import AuditLog
+
+        for _ in range(3):
+            self._login(self.target_user.email, "mal")
+
+        log = AuditLog.objects.filter(action="auth.lockout").latest("created_at")
+        self.assertEqual(log.target_repr, self.target_user.email)
+
+    def test_crear_usuario_deja_auditlog_sin_password(self):
+        from apps.audit.models import AuditLog
+
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.post(
+            "/api/v1/users/",
+            {
+                "full_name": "Nuevo Usuario",
+                "email": "nuevo_crud@example.com",
+                "role": "subscriber",
+                "status": "active",
+                "password": "Rotulos2026",
+            },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+        log = AuditLog.objects.filter(action="user.create").latest("created_at")
+        self.assertEqual(log.target_repr, "nuevo_crud@example.com")
+        self.assertNotIn("password", log.changes)
+        self.assertNotIn("Rotulos2026", str(log.changes))
+
+    def test_editar_usuario_deja_auditlog_con_diff_sin_password(self):
+        from apps.audit.models import AuditLog
+
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.patch(
+            f"/api/v1/users/{self.target_user.id}/",
+            {"full_name": "Nombre Editado", "password": "OtraPass2026"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        log = AuditLog.objects.filter(action="user.update").latest("created_at")
+        self.assertIn("first_name", log.changes)
+        self.assertNotIn("password", log.changes)
+        self.assertNotIn("OtraPass2026", str(log.changes))
+
+    def test_desactivar_usuario_deja_auditlog(self):
+        from apps.audit.models import AuditLog
+
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.patch(
+            f"/api/v1/users/{self.target_user.id}/", {"status": "inactive"}, format="json"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        log = AuditLog.objects.filter(action="user.deactivate").latest("created_at")
+        self.assertEqual(log.changes["is_active"], {"from": True, "to": False})
+
+    def test_cambiar_rol_deja_auditlog_role_change(self):
+        from apps.audit.models import AuditLog
+
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.patch(
+            f"/api/v1/users/{self.target_user.id}/", {"role": "designer"}, format="json"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        log = AuditLog.objects.filter(action="user.role_change").latest("created_at")
+        self.assertEqual(log.changes["role"], {"from": "subscriber", "to": "designer"})
+
+
+class SupportInboxTests(AuthTestCase):
+    """Bandeja de soporte del admin: permisos, visibilidad propia vs. admin
+    y el efecto de responder (status/response/handled_by + auditoría)."""
+
+    def setUp(self):
+        super().setUp()
+        from django.contrib.auth.models import Group
+
+        for name in ("admin", "designer", "operator", "subscriber"):
+            Group.objects.get_or_create(name=name)
+
+        self.admin_user = User.objects.create_user(
+            username="support_admin@example.com",
+            email="support_admin@example.com",
+            password=STRONG_PASSWORD,
+            is_staff=True,
+        )
+        self.admin_user.groups.add(Group.objects.get(name="admin"))
+
+        self.user_a = User.objects.create_user(
+            username="support_user_a@example.com",
+            email="support_user_a@example.com",
+            password=STRONG_PASSWORD,
+        )
+        self.user_a.groups.add(Group.objects.get(name="subscriber"))
+
+        self.user_b = User.objects.create_user(
+            username="support_user_b@example.com",
+            email="support_user_b@example.com",
+            password=STRONG_PASSWORD,
+        )
+        self.user_b.groups.add(Group.objects.get(name="subscriber"))
+
+        from .models import SupportMessage
+
+        self.message_a = SupportMessage.objects.create(
+            user=self.user_a, subject="Ayuda A", message="Mensaje de A"
+        )
+        self.message_b = SupportMessage.objects.create(
+            user=self.user_b, subject="Ayuda B", message="Mensaje de B"
+        )
+
+    def test_no_admin_recibe_403_en_bandeja_admin(self):
+        self.client.force_authenticate(user=self.user_a)
+        resp = self.client.get("/api/v1/support-messages/")
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_recibe_200_en_bandeja_admin(self):
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.get("/api/v1/support-messages/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["pagination"]["count"], 2)
+        self.assertIn("counts", resp.data)
+
+    def test_usuario_ve_solo_sus_propios_mensajes(self):
+        self.client.force_authenticate(user=self.user_a)
+        resp = self.client.get("/api/v1/auth/support/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        results = resp.data["results"] if isinstance(resp.data, dict) else resp.data
+        subjects = {m["subject"] for m in results}
+        self.assertEqual(subjects, {"Ayuda A"})
+
+    def test_admin_responde_setea_responded_at_y_handled_by_y_audita(self):
+        from apps.audit.models import AuditLog
+
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.patch(
+            f"/api/v1/support-messages/{self.message_a.id}/",
+            {"response": "Ya lo resolvimos."},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(resp.data["responded_at"])
+        self.assertEqual(resp.data["handled_by"], self.admin_user.id)
+        self.assertEqual(resp.data["status"], "resolved")
+
+        self.assertTrue(
+            AuditLog.objects.filter(action="support.reply", target_id=str(self.message_a.id)).exists()
+        )
+        self.assertTrue(
+            AuditLog.objects.filter(
+                action="support.status_change", target_id=str(self.message_a.id)
+            ).exists()
+        )
+
+
+class DashboardAdminMenuTests(AuthTestCase):
+    """El menú del dashboard incluye audit/support_inbox solo para admin."""
+
+    def setUp(self):
+        super().setUp()
+        from django.contrib.auth.models import Group
+
+        for name in ("admin", "designer", "operator", "subscriber"):
+            Group.objects.get_or_create(name=name)
+
+        self.admin_user = User.objects.create_user(
+            username="dash_admin@example.com",
+            email="dash_admin@example.com",
+            password=STRONG_PASSWORD,
+            is_staff=True,
+        )
+        self.admin_user.groups.add(Group.objects.get(name="admin"))
+
+        self.subscriber_user = User.objects.create_user(
+            username="dash_subscriber@example.com",
+            email="dash_subscriber@example.com",
+            password=STRONG_PASSWORD,
+        )
+        self.subscriber_user.groups.add(Group.objects.get(name="subscriber"))
+
+    def test_admin_ve_audit_y_support_inbox(self):
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.get("/api/v1/auth/users/me/dashboard/")
+        keys = {item["key"] for item in resp.data["menu"]}
+        self.assertIn("audit", keys)
+        self.assertIn("support_inbox", keys)
+
+    def test_subscriber_no_ve_audit_ni_support_inbox(self):
+        self.client.force_authenticate(user=self.subscriber_user)
+        resp = self.client.get("/api/v1/auth/users/me/dashboard/")
+        keys = {item["key"] for item in resp.data["menu"]}
+        self.assertNotIn("audit", keys)
+        self.assertNotIn("support_inbox", keys)

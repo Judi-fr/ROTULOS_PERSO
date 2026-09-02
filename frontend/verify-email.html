@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Verificar email</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Reusa el mismo estilo de tarjeta que perfil.html/cambiar-password.html (.profile-card). -->
+    <link rel="stylesheet" href="assets/css/perfil.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- Sin sidebar ni topbar de usuario a propósito: esta página se abre
+           desde el link del correo, sin necesidad de estar logueado (el
+           token de verificación es la credencial). -->
+      <header class="topbar">
+        <div class="topbar-user">
+          <div class="topbar-user-info">
+            <span class="topbar-user-name">Verificación de email</span>
+          </div>
+        </div>
+      </header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Confirmar tu email</h1>
+          <p>Estamos verificando el enlace que abriste desde tu correo.</p>
+        </div>
+
+        <section class="profile-card">
+          <div class="profile-card-title">Estado</div>
+          <div class="profile-card-body">
+            <p id="verifyMsg" class="form-message" style="display:none;"></p>
+            <div class="profile-card-actions">
+              <a class="btn btn-primary" href="index.html">Ir al login</a>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const API_BASE = "http://127.0.0.1:8000/api/v1/auth";
+      const VERIFY_EMAIL_CONFIRM_URL = `${API_BASE}/verify-email/confirm/`;
+
+      const msg = document.getElementById("verifyMsg");
+      const showMsg = (text, ok) => {
+        if (!msg) return;
+        msg.textContent = text;
+        msg.style.color = ok ? "green" : "red";
+        msg.style.display = "block";
+      };
+
+      const token = new URLSearchParams(window.location.search).get("token") || "";
+
+      if (!token) {
+        showMsg("Falta el token de verificación en el enlace.", false);
+      } else {
+        fetch(VERIFY_EMAIL_CONFIRM_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        })
+          .then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              throw new Error(data?.detail || "El enlace de verificación no es válido.");
+            }
+            showMsg(data.detail || "Tu email quedó confirmado.", true);
+          })
+          .catch((err) => {
+            showMsg(err.message || "Error de red. Revisá tu conexión.", false);
+          });
+      }
+    </script>
+  </body>
+</html>

@@ -49,7 +49,7 @@
         </div>
         <ul class="nav">
           <li>
-            <a href="#"
+            <a href="dashboard.html"
               ><svg
                 viewBox="0 0 24 24"
                 fill="none"
@@ -129,7 +129,7 @@
             >
           </li>
           <li>
-            <a href="#"
+            <a href="javascript:void(0)" id="navAudit"
               ><svg
                 viewBox="0 0 24 24"
                 fill="none"
@@ -145,6 +145,22 @@
                 <line x1="16" y1="13" x2="8" y2="13" />
                 <line x1="16" y1="17" x2="8" y2="17" /></svg
               >Registros de auditoría</a
+            >
+          </li>
+          <li>
+            <a href="javascript:void(0)" id="navSupport"
+              ><svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 16v-4" />
+                <path d="M12 8h.01" /></svg
+              >Mensajes de soporte</a
             >
           </li>
           <li>
@@ -719,9 +735,21 @@
         <section id="reportsSection" style="display:none;" aria-labelledby="reportsTitle">
           <div class="roles-header">
             <h1 id="reportsTitle">Reportes</h1>
-            <p>Métricas simples sobre los usuarios del sistema.</p>
+            <p>Métricas sobre usuarios, seguridad de cuentas, pedidos y soporte.</p>
           </div>
 
+          <div class="reports-toolbar">
+            <label for="reportsMonthsSelect">Período</label>
+            <select id="reportsMonthsSelect">
+              <option value="3">Últimos 3 meses</option>
+              <option value="6" selected>Últimos 6 meses</option>
+              <option value="12">Últimos 12 meses</option>
+            </select>
+            <button type="button" class="btn btn-outline" id="reportsRefreshBtn">Actualizar</button>
+          </div>
+
+          <!-- USUARIOS -->
+          <h2 class="reports-block-title">Usuarios</h2>
           <div class="reports-grid">
             <div class="roles-card">
               <div class="roles-card-title">Usuarios por rol</div>
@@ -731,7 +759,7 @@
             </div>
 
             <div class="roles-card">
-              <div class="roles-card-title">Altas por mes (últimos 6 meses)</div>
+              <div class="roles-card-title" id="metricsSignupsByMonthTitle">Altas por mes</div>
               <div id="metricsSignupsByMonth" class="metrics-bars">
                 <p class="roles-loading">Cargando métricas...</p>
               </div>
@@ -743,8 +771,372 @@
                 <p class="roles-loading">Cargando métricas...</p>
               </div>
             </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Altas vs. bajas por mes</div>
+              <div id="metricsActiveVsInactive" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Usuarios activos</div>
+              <div id="metricsActiveUsers" class="metrics-stat-row">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Retención por cohorte de registro</div>
+              <div id="metricsRetention" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Bloqueos por mes</div>
+              <div id="metricsLockoutsByMonth" class="metrics-bars">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Top 10 · intentos fallidos</div>
+              <div id="metricsTopFailedAttempts" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Antigüedad de cuentas</div>
+              <div id="metricsAccountAge" class="metrics-stat-row">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- SEGURIDAD -->
+          <h2 class="reports-block-title">Seguridad</h2>
+          <div class="reports-grid">
+            <div class="roles-card">
+              <div class="roles-card-title">Verificación de email</div>
+              <div id="metricsEmailVerification" class="metrics-stat-row">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Cambio de contraseña pendiente</div>
+              <div id="metricsPendingPasswordChange" class="metrics-stat-row">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Método de autenticación × verificación de email</div>
+              <div id="metricsAuthVerificationCross" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- PEDIDOS -->
+          <h2 class="reports-block-title">Pedidos</h2>
+          <div class="reports-grid" id="ordersMetricsGrid" style="display:none;">
+            <div class="roles-card">
+              <div class="roles-card-title">Pedidos por mes</div>
+              <div id="metricsOrdersByMonth" class="metrics-bars">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Embudo de estados</div>
+              <div id="metricsOrdersByStatus" class="metrics-bars">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Tasa de cancelación</div>
+              <div id="metricsCancellationRate" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Tiempo promedio entre estados</div>
+              <div id="metricsAvgTimeBetweenStatuses" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Top 10 · usuarios por pedidos</div>
+              <div id="metricsTopUsersByOrders" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Usuarios con pedidos</div>
+              <div id="metricsUsersWithOrders" class="metrics-stat-row">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Pedidos por ciudad</div>
+              <div id="metricsOrdersByCity" class="metrics-bars">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Pedidos por provincia</div>
+              <div id="metricsOrdersByState" class="metrics-bars">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+          </div>
+          <p id="ordersMetricsEmpty" class="roles-loading" style="display:none;">Sin datos todavía.</p>
+
+          <!-- SOPORTE Y ACTIVIDAD -->
+          <h2 class="reports-block-title" id="supportActivityTitle" style="display:none;">Soporte y actividad</h2>
+          <div class="reports-grid" id="supportActivityGrid" style="display:none;">
+            <div class="roles-card">
+              <div class="roles-card-title">Mensajes de soporte por mes</div>
+              <div id="metricsSupportByMonth" class="metrics-bars">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Mensajes por estado</div>
+              <div id="metricsSupportByStatus" class="metrics-bars">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Tiempo promedio de respuesta</div>
+              <div id="metricsAvgResponseTime" class="metrics-stat-row">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Actividad por administrador</div>
+              <div id="metricsAdminActivityByActor" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Actividad por tipo de acción</div>
+              <div id="metricsAdminActivityByAction" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Logins por mes</div>
+              <div id="metricsLoginEvents" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
           </div>
         </section><!-- /#reportsSection -->
+
+        <!-- REGISTROS DE AUDITORÍA (solo administración) -->
+        <section id="auditSection" style="display:none;" aria-labelledby="auditTitle">
+          <div class="roles-header">
+            <h1 id="auditTitle">Registros de auditoría</h1>
+            <p>Rastro de acciones sensibles: login, altas/bajas de usuarios, roles, pedidos y soporte.</p>
+          </div>
+
+          <div class="roles-card">
+            <div class="roles-card-title">Filtros</div>
+            <div class="filter-bar">
+              <input type="text" id="auditSearchInput" placeholder="Buscar por actor, objetivo o acción..." />
+              <select id="auditCategoryFilter">
+                <option value="">Todas las categorías</option>
+              </select>
+              <select id="auditActionFilter">
+                <option value="">Todas las acciones</option>
+              </select>
+              <input type="text" id="auditActorFilter" placeholder="Actor (id o email)" />
+              <label>Desde <input type="date" id="auditDateFrom" /></label>
+              <label>Hasta <input type="date" id="auditDateTo" /></label>
+              <button type="button" class="btn btn-outline" id="applyAuditFiltersBtn">Aplicar</button>
+              <button type="button" class="btn btn-outline" id="clearAuditFiltersBtn">Limpiar</button>
+            </div>
+          </div>
+
+          <div class="roles-card">
+            <div class="roles-card-title">Eventos</div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width: 15%">Fecha</th>
+                    <th style="width: 18%">Actor</th>
+                    <th style="width: 15%">Acción</th>
+                    <th style="width: 30%">Objetivo</th>
+                    <th style="width: 10%">Categoría</th>
+                    <th style="width: 12%">Detalle</th>
+                  </tr>
+                </thead>
+                <tbody id="auditBody">
+                  <tr><td colspan="6" style="text-align:center; padding:20px;">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pagination-bar">
+              <div class="showing" id="auditPaginationInfo">Mostrando 0 registros</div>
+              <div class="pager" id="auditPaginationControls"></div>
+            </div>
+          </div>
+
+          <div class="roles-card">
+            <div class="roles-card-title">Pedidos de todos los usuarios</div>
+            <div class="filter-bar">
+              <input type="text" id="adminOrdersSearchInput" placeholder="Buscar por email o descripción..." />
+              <select id="adminOrdersStatusFilter">
+                <option value="">Todos los estados</option>
+              </select>
+              <label>Desde <input type="date" id="adminOrdersDateFrom" /></label>
+              <label>Hasta <input type="date" id="adminOrdersDateTo" /></label>
+              <button type="button" class="btn btn-outline" id="applyAdminOrdersFiltersBtn">Aplicar</button>
+              <button type="button" class="btn btn-outline" id="clearAdminOrdersFiltersBtn">Limpiar</button>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width: 18%">Usuario</th>
+                    <th style="width: 30%">Descripción</th>
+                    <th style="width: 12%">Estado</th>
+                    <th style="width: 20%">Último evento</th>
+                    <th style="width: 20%">Creado</th>
+                  </tr>
+                </thead>
+                <tbody id="adminOrdersBody">
+                  <tr><td colspan="5" style="text-align:center; padding:20px;">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pagination-bar">
+              <div class="showing" id="adminOrdersPaginationInfo">Mostrando 0 pedidos</div>
+              <div class="pager" id="adminOrdersPaginationControls"></div>
+            </div>
+          </div>
+        </section><!-- /#auditSection -->
+
+        <!-- BANDEJA DE SOPORTE (solo administración) -->
+        <section id="supportSection" style="display:none;" aria-labelledby="supportTitle">
+          <div class="roles-header">
+            <h1 id="supportTitle">Mensajes de soporte</h1>
+            <p>Mensajes enviados desde "Ayuda / Soporte" por los usuarios.</p>
+          </div>
+
+          <div class="stats">
+            <div class="stat-card">
+              <div class="stat-top">
+                <div>
+                  <div class="stat-label">Pendientes</div>
+                  <div class="stat-value" id="supportPendingCount">—</div>
+                </div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-top">
+                <div>
+                  <div class="stat-label">En curso</div>
+                  <div class="stat-value" id="supportInProgressCount">—</div>
+                </div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-top">
+                <div>
+                  <div class="stat-label">Resueltos</div>
+                  <div class="stat-value" id="supportResolvedCount">—</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="roles-card">
+            <div class="roles-card-title">Filtros</div>
+            <div class="filter-bar">
+              <input type="text" id="supportSearchInput" placeholder="Buscar por email, asunto o mensaje..." />
+              <select id="supportStatusFilter">
+                <option value="">Todos los estados</option>
+                <option value="pending">Pendiente</option>
+                <option value="in_progress">En curso</option>
+                <option value="resolved">Resuelto</option>
+              </select>
+              <label>Desde <input type="date" id="supportDateFrom" /></label>
+              <label>Hasta <input type="date" id="supportDateTo" /></label>
+              <button type="button" class="btn btn-outline" id="applySupportFiltersBtn">Aplicar</button>
+              <button type="button" class="btn btn-outline" id="clearSupportFiltersBtn">Limpiar</button>
+            </div>
+          </div>
+
+          <div class="support-layout">
+            <div class="roles-card support-list-card">
+              <div class="roles-card-title">Mensajes</div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style="width: 26%">Usuario</th>
+                      <th style="width: 30%">Asunto</th>
+                      <th style="width: 18%">Estado</th>
+                      <th style="width: 26%">Recibido</th>
+                    </tr>
+                  </thead>
+                  <tbody id="supportBody">
+                    <tr><td colspan="4" style="text-align:center; padding:20px;">Cargando...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="pagination-bar">
+                <div class="showing" id="supportPaginationInfo">Mostrando 0 mensajes</div>
+                <div class="pager" id="supportPaginationControls"></div>
+              </div>
+            </div>
+
+            <div class="roles-card support-detail-card" id="supportDetailCard">
+              <div class="roles-card-title">Detalle</div>
+              <div id="supportDetailEmpty" class="roles-loading">Elegí un mensaje de la lista.</div>
+              <div id="supportDetailContent" style="display:none;">
+                <p><strong>Usuario:</strong> <span id="supportDetailUser"></span></p>
+                <p><strong>Asunto:</strong> <span id="supportDetailSubject"></span></p>
+                <p><strong>Mensaje:</strong></p>
+                <p id="supportDetailMessage" class="support-detail-message"></p>
+                <p id="supportDetailHandled" class="support-detail-handled" style="display:none;"></p>
+                <div class="field">
+                  <label for="supportDetailStatus">Estado</label>
+                  <select id="supportDetailStatus">
+                    <option value="pending">Pendiente</option>
+                    <option value="in_progress">En curso</option>
+                    <option value="resolved">Resuelto</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="supportDetailResponse">Respuesta</label>
+                  <textarea id="supportDetailResponse" rows="5" placeholder="Escribí la respuesta para el usuario..."></textarea>
+                </div>
+                <p id="supportDetailMsg" class="roles-message" role="status" aria-live="polite" style="display:none;"></p>
+                <div class="roles-card-actions">
+                  <button type="button" class="btn btn-primary" id="saveSupportDetailBtn">Guardar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section><!-- /#supportSection -->
       </main>
 
       <!-- CREATE USER PANEL -->
@@ -818,6 +1210,20 @@
           <div id="viewUserContent" style="display:flex; flex-direction:column; gap:10px; overflow-y:auto;"></div>
           <div style="display:flex; justify-content:flex-end; margin-top:20px; flex-shrink:0;">
             <button id="closeViewModalBtn" type="button" class="btn btn-outline">Cerrar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- AUDIT CHANGES MODAL (solo lectura) -->
+      <div id="auditChangesModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:100; align-items:center; justify-content:center;">
+        <div style="background:#fff; border-radius:14px; width:460px; max-width:90%; max-height:85vh; padding:24px; box-shadow:0 20px 45px rgba(15,23,42,.25); display:flex; flex-direction:column;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-shrink:0;">
+            <h3 style="margin:0; font-size:17px; font-weight:700;">Detalle del cambio</h3>
+            <button id="closeAuditChangesModal" type="button" style="border:none; background:transparent; cursor:pointer; color:#64748b; font-size:20px; line-height:1;">&times;</button>
+          </div>
+          <div id="auditChangesContent" style="display:flex; flex-direction:column; gap:10px; overflow-y:auto;"></div>
+          <div style="display:flex; justify-content:flex-end; margin-top:20px; flex-shrink:0;">
+            <button id="closeAuditChangesModalBtn" type="button" class="btn btn-outline">Cerrar</button>
           </div>
         </div>
       </div>
