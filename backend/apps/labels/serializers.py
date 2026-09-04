@@ -216,3 +216,36 @@ class PlantillaSerializer(serializers.ModelSerializer):
             self._crear_elementos(instance, elementos)
 
         return instance
+
+
+class RenderizarSerializer(serializers.Serializer):
+    """Cuerpo de ``POST /plantillas/<id>/renderizar/``.
+
+    Los datos del envío viajan en el cuerpo y no salen de la base: no hay
+    modelo de envío en el sistema, y quien los tenga —un ERP, un CSV, el
+    editor— los manda y listo. Si más adelante aparece ese modelo, se agrega
+    una variante que los lee por id sin romper este contrato.
+    """
+
+    formato = serializers.ChoiceField(choices=["pdf", "png"], default="pdf")
+    # Sin datos sale la vista previa: cada variable se dibuja con su etiqueta.
+    # Es lo que necesita el editor para mostrar el diseño sin un envío real.
+    datos = serializers.DictField(required=False, allow_null=True)
+    # Un rótulo por página, para despachar un lote completo de una vez.
+    lote = serializers.ListField(
+        child=serializers.DictField(), required=False, allow_empty=False
+    )
+    # Solo para PNG: permite una vista previa liviana sin tocar la plantilla.
+    dpi = serializers.IntegerField(required=False, min_value=10, max_value=1200)
+
+    def validate(self, attrs):
+        if attrs.get("lote") and attrs.get("datos"):
+            raise serializers.ValidationError(
+                "Mandá 'datos' para un rótulo o 'lote' para varios, no ambos."
+            )
+        if attrs.get("lote") and attrs.get("formato", "pdf") != "pdf":
+            raise serializers.ValidationError(
+                {"lote": "Un lote solo se puede generar en PDF: un PNG es una "
+                         "sola imagen y no tiene páginas."}
+            )
+        return attrs

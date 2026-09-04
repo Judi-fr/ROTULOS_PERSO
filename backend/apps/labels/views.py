@@ -1,12 +1,20 @@
 """Vistas de la app labels (catálogo de variables y plantillas de rótulos)."""
 
 from django.db.models import Prefetch, ProtectedError
+from django.http import HttpResponse
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from . import render
 from .models import ElementoPlantilla, Plantilla, VariableRotulo
+from .render.fuentes import FuenteNoDisponible
 from .permissions import LecturaAutenticadaEscrituraAdministrador
-from .serializers import PlantillaSerializer, VariableRotuloSerializer
+from .serializers import (
+    PlantillaSerializer,
+    RenderizarSerializer,
+    VariableRotuloSerializer,
+)
 
 
 class VariableRotuloViewSet(viewsets.ModelViewSet):
@@ -100,3 +108,57 @@ class PlantillaViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(creada_por=self.request.user)
+
+    @action(detail=True, methods=["post"])
+    def renderizar(self, request, pk=None):
+        """Genera el rótulo imprimible y lo devuelve como archivo.
+
+        Es el endpoint que convierte un diseño guardado en algo que se pega en
+        un paquete. Tres formas de usarlo, todas sobre el mismo código:
+
+        - ``{"datos": {...}}`` -> un rótulo con datos reales.
+        - ``{}`` -> vista previa, con cada variable dibujada como su etiqueta.
+        - ``{"lote": [{...}, {...}]}`` -> un PDF de varias páginas.
+
+        Dos cabeceras de respuesta informan lo que pasó sin romper el flujo:
+        ``X-Rotulo-Faltantes`` lista las variables que no vinieron en los
+        datos, y ``X-Rotulo-Truncados`` las que no entraban en su caja y se
+        cortaron. Recortar un domicilio en silencio es la clase de error que
+        termina en un paquete que no llega, así que el dato viaja aunque la
+        impresión siga adelante.
+        """
+        plantilla = self.get_object()
+        entrada = RenderizarSerializer(data=request.data)
+        entrada.is_valid(raise_exception=True)
+        opciones = entrada.validated_data
+
+        try:
+            if opciones["formato"] == "png":
+                contenido, informe = render.renderizar_png(
+                    plantilla,
+                    datos=opciones.get("datos"),
+                    usuario=request.user,
+                    dpi=opciones.get("dpi"),
+                )
+                tipo, extension = "image/png", "png"
+            else:
+                contenido, informe = render.renderizar_pdf(
+                    plantilla,
+                    datos=opciones.get("datos"),
+                    usuario=request.user,
+                    lote=opciones.get("lote"),
+                )
+                tipo, extension = "application/pdf", "pdf"
+        except FuenteNoDisponible as exc:
+            # Es un problema de instalación del servidor, no de la petición.
+            return Response({"detail": str(exc)}, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+        respuesta = HttpResponse(contenido, content_type=tipo)
+        respuesta["Content-Disposition"] = (
+            f'attachment; filename="rotulo-{plantilla.pk}.{extension}"'
+        )
+        if informe["faltantes"]:
+            respuesta["X-Rotulo-Faltantes"] = ",".join(informe["faltantes"])
+        if informe["truncados"]:
+            respuesta["X-Rotulo-Truncados"] = ",".join(informe["truncados"])
+        return respuesta
