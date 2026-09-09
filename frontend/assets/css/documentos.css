@@ -1,0 +1,400 @@
+/* Mismo sistema visual que pedidos.css/rotulos.css: paleta, topbar,
+   botones y profile-card compartidos, con lo propio de la lista de
+   documentos (document-item, status-badge de documento, panel de "Generar
+   por lote" si se abre desde acá). */
+
+:root {
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --border: #e7eaf1;
+  --text-dark: #0f172a;
+  --text-muted: #64748b;
+  --blue: #f97316;
+  --blue-light: #ffedd5;
+  --green: #16a34a;
+  --green-light: #e9f9ee;
+  --amber: #d97706;
+  --amber-light: #fef6e6;
+  --red: #dc2626;
+  --red-light: #fdeeee;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Karla", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text-dark);
+}
+
+.layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* TOPBAR (igual que pedidos.html/rotulos.html) */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 28px;
+  gap: 16px;
+}
+
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--blue-light);
+}
+
+.topbar-user-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.topbar-user-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.topbar-user-email {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.btn {
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-outline {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-dark);
+}
+
+.btn-outline:hover {
+  background: var(--bg);
+}
+
+.btn-primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.05);
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.btn-danger-text {
+  background: transparent;
+  border: none;
+  color: var(--red);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 8px;
+}
+
+.btn-danger-text:hover {
+  text-decoration: underline;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* MAIN */
+.main {
+  flex: 1;
+  padding: 32px 28px 48px;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.main-heading h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+}
+
+.main-heading p {
+  margin: 0 0 24px;
+  color: var(--text-muted);
+}
+
+.page-message {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.page-message.error {
+  background: var(--red-light);
+  color: var(--red);
+  border: 1px solid #f6c9c9;
+}
+
+.page-message.success {
+  background: var(--green-light);
+  color: var(--green);
+  border: 1px solid #bfe8cc;
+}
+
+/* CARDS (mismo shell que pedidos.html/rotulos.html) */
+.profile-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 22px;
+  overflow: hidden;
+}
+
+.profile-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  font-size: 15.5px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.profile-card-body {
+  padding: 20px 22px 22px;
+}
+
+.empty-state {
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 8px 0;
+}
+
+/* Toolbar de búsqueda + filtro de estado */
+.documents-toolbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.search-input,
+.status-filter {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text-dark);
+  background: #fff;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 200px;
+}
+
+.search-input:focus,
+.status-filter:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+/* Lista de documentos */
+.document-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.document-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.document-item-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.document-item-title {
+  font-weight: 700;
+  font-size: 14.5px;
+  margin: 0 0 4px;
+}
+
+.document-item-meta {
+  margin: 2px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.document-item-error {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--red);
+}
+
+.document-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-badge .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.status-badge.processing { background: var(--amber-light); color: var(--amber); }
+.status-badge.processing .dot { background: var(--amber); animation: pulse 1.2s infinite; }
+.status-badge.ready { background: var(--green-light); color: var(--green); }
+.status-badge.ready .dot { background: var(--green); }
+.status-badge.failed { background: var(--red-light); color: var(--red); }
+.status-badge.failed .dot { background: var(--red); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* --- Panel "Generar por lote" (rotulos.html lo abre; documentos.html solo
+   muestra el resultado) --- */
+.batch-panel {
+  display: none;
+}
+
+.batch-panel.open {
+  display: block;
+}
+
+.batch-field {
+  margin-bottom: 14px;
+}
+
+.batch-field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.batch-field select,
+.batch-field input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text-dark);
+  background: #fff;
+}
+
+.batch-orders-list {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.batch-order-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 13.5px;
+}
+
+.batch-order-option input {
+  width: auto;
+}
+
+.form-message {
+  font-size: 13.5px;
+  margin: 4px 0 0;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    flex-wrap: wrap;
+    padding: 14px 18px;
+  }
+  .main {
+    padding: 24px 18px 40px;
+  }
+  .document-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .document-item-actions {
+    justify-content: flex-end;
+  }
+}

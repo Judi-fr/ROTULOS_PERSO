@@ -1,11 +1,10 @@
 // Direcciones y pedidos propios (self-service) para usuarios no administradores.
-// Reutiliza el mismo wrapper de fetch / manejo de 401 que el resto del
-// frontend (ver dashboard.js / perfil.js / admingestion_test.js).
+// Sesión y apiFetch salen de assets/js/auth.js (window.Auth), compartido con
+// el resto del frontend (ver dashboard.js / perfil.js / admingestion_test.js).
 
-const AUTH_BASE = "http://127.0.0.1:8000/api/v1/auth";
-const API_BASE = "http://127.0.0.1:8000/api/v1";
+const AUTH_BASE = `${window.APP_CONFIG.API_BASE}/auth`;
+const API_BASE = window.APP_CONFIG.API_BASE;
 const ME_URL = `${AUTH_BASE}/me/`;
-const LOGOUT_URL = `${AUTH_BASE}/logout/`;
 const ADDRESSES_URL = `${API_BASE}/addresses/`;
 const ORDERS_URL = `${API_BASE}/orders/`;
 
@@ -20,51 +19,8 @@ const STATUS_LABELS = {
 
 let addresses = [];
 
-function getAccessToken() {
-  return localStorage.getItem("access") || "";
-}
-
-// ---------------------------------------------------------------------------
-// apiFetch: mismo wrapper que usa el resto del frontend. Agrega el
-// Authorization header y, ante un 401, limpia la sesión local y redirige
-// al login.
-// ---------------------------------------------------------------------------
-async function apiFetch(url, options = {}) {
-  const headers = {
-    ...(options.headers || {}),
-    Authorization: `Bearer ${getAccessToken()}`,
-  };
-
-  const response = await fetch(url, { ...options, headers });
-
-  if (response.status === 401) {
-    handleSessionExpired();
-    const sessionError = new Error("Sesión expirada");
-    sessionError.isSessionExpired = true;
-    throw sessionError;
-  }
-
-  // 403 estructurado: cambio de contraseña pendiente (ver admingestion_test.js).
-  if (response.status === 403) {
-    const body = await response.clone().json().catch(() => ({}));
-    if (body && body.must_change_password) {
-      window.location.replace("cambiar-password.html");
-      const pendingError = new Error("Cambio de contraseña pendiente");
-      pendingError.isSessionExpired = true;
-      throw pendingError;
-    }
-  }
-
-  return response;
-}
-
-function handleSessionExpired() {
-  alert("Tu sesión expiró. Volvé a iniciar sesión.");
-  localStorage.removeItem("access");
-  localStorage.removeItem("refresh");
-  localStorage.removeItem("user");
-  window.location.replace("index.html");
-}
+const getAccessToken = () => window.Auth.getAccessToken();
+const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
 function showMessage(text, type = "error") {
   const el = document.getElementById("pageMessage");
@@ -114,13 +70,7 @@ function formatDate(iso) {
   }
 }
 
-function getCurrentUser() {
-  try {
-    return JSON.parse(localStorage.getItem("user") || "{}");
-  } catch {
-    return {};
-  }
-}
+const getCurrentUser = () => window.Auth.getCurrentUser();
 
 function renderTopbar(user) {
   const nameEl = document.getElementById("userName");
@@ -452,30 +402,11 @@ document.getElementById("saveAddressBtn")?.addEventListener("click", saveNewAddr
 document.getElementById("createOrderBtn")?.addEventListener("click", createOrder);
 
 // ---------------------------------------------------------------------------
-// Logout: misma lógica que dashboard.js / perfil.js.
+// Logout: misma lógica que dashboard.js / perfil.js (window.Auth.logout).
 // ---------------------------------------------------------------------------
 const logoutBtn = document.getElementById("logoutBtn");
 if (logoutBtn) {
-  logoutBtn.addEventListener("click", async () => {
-    const refresh = localStorage.getItem("refresh") || "";
-
-    if (refresh) {
-      try {
-        await apiFetch(LOGOUT_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refresh }),
-        });
-      } catch (err) {
-        console.warn("No se pudo invalidar el refresh token en el backend:", err);
-      }
-    }
-
-    localStorage.removeItem("access");
-    localStorage.removeItem("refresh");
-    localStorage.removeItem("user");
-    window.location.replace("index.html");
-  });
+  logoutBtn.addEventListener("click", () => window.Auth.logout());
 }
 
 async function init() {

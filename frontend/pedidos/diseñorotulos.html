@@ -5,9 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Diseño de Rótulos</title>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Sin librería de QR/códigos de barras por CDN: el QR y el código de
+         barras de acá abajo se piden como imagen al backend
+         (GET /api/v1/labels/barcode/, ver api.js/fetchCodePreview), que es
+         la MISMA implementación (ReportLab) que arma el rótulo definitivo
+         — así lo que se ve acá es exactamente lo que se va a imprimir. -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/auth.js"></script>
+
+    <!-- Estilos comunes del frontend (header/topbar, botones, avatar). Va
+         ANTES del <style> propio del editor para que este último (más
+         específico en orden de aparición) siga ganando en cualquier
+         selector compartido y el canvas no cambie ni un píxel. -->
+    <link rel="stylesheet" href="../assets/css/rotulos.css" />
 
     <style>
       :root {
@@ -24,6 +36,7 @@
       body {
         margin: 0;
         display: flex;
+        flex-direction: column;
         min-height: 100vh;
         font-family:
           system-ui,
@@ -38,16 +51,42 @@
         flex: 1;
         padding: 32px 40px;
         max-width: 1100px;
+        margin: 0 auto;
+        width: 100%;
       }
 
-      .topbar h1 {
+      /* Título de la página (no confundir con el header.topbar común, que
+         viene de rotulos.css: acá era ".topbar" en la versión vieja con
+         sidebar, renombrado para no chocar con esa clase). */
+      .editor-heading h1 {
         margin: 0 0 4px;
         font-size: 24px;
       }
-      .topbar .subtitle {
+      .editor-heading .subtitle {
         margin: 0 0 24px;
         color: var(--muted);
         font-size: 14px;
+      }
+
+      /* Enlace "Volver a mis rótulos" dentro de la barra de herramientas
+         del editor: mismo look que los <button> de acá al lado. */
+      .toolbar-link {
+        border: 1px solid var(--border);
+        background: #fff;
+        color: var(--text);
+        padding: 8px 14px;
+        border-radius: 7px;
+        font-size: 13px;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
+      }
+      .toolbar-link:hover {
+        border-color: var(--accent);
       }
 
       .toolbar {
@@ -176,14 +215,31 @@
         align-items: center;
         justify-content: center;
       }
-      #qrcode {
+      #qrImg {
         width: 100%;
         height: 100%;
+        object-fit: contain;
       }
-      #qrcode img,
-      #qrcode canvas {
-        width: 100% !important;
-        height: 100% !important;
+
+      #barcodeField {
+        width: 150px;
+        height: 46px;
+        padding: 2px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #barcodeImg {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+
+      /* Barra de configuración del código seleccionado (QR/código de
+         barras): mismo look que el resto de la toolbar. */
+      .code-config-label {
+        font-size: 12px;
+        color: var(--muted);
       }
 
       /* Estado limpio para exportar: sin bordes punteados ni fondos guía */
@@ -201,19 +257,137 @@
     </style>
   </head>
   <body>
-    <script src="../assets/html/aside.js"></script>
-    <app-sidebar active="rotulos"></app-sidebar>
+    <header class="topbar">
+      <div class="topbar-user">
+        <img
+          class="avatar"
+          id="userAvatar"
+          src="https://api.dicebear.com/7.x/avataaars/svg?seed=user"
+          alt=""
+        />
+        <div class="topbar-user-info">
+          <span class="topbar-user-name" id="userName">—</span>
+          <span class="topbar-user-email" id="userEmail">—</span>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <a class="btn btn-outline" href="../rotulos.html">Volver a mis rótulos</a>
+        <button class="btn btn-outline" id="logoutBtn" type="button">
+          Cerrar sesión
+        </button>
+      </div>
+    </header>
+
+    <script>
+      // Header común (avatar/nombre/email desde localStorage.user + logout),
+      // igual patrón que el resto del frontend (ver rotulos.js/ayuda.js).
+      // Sesión y logout salen de assets/js/auth.js (window.Auth). Guard de
+      // sesión antes de pintar nada más.
+      (function () {
+        if (!window.Auth.getAccessToken()) {
+          window.location.replace("../index.html");
+          return;
+        }
+
+        const user = window.Auth.getCurrentUser();
+        const email = user.email || "";
+        const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || email || "Usuario";
+        const nameEl = document.getElementById("userName");
+        const emailEl = document.getElementById("userEmail");
+        const avatarEl = document.getElementById("userAvatar");
+        if (nameEl) nameEl.textContent = name;
+        if (emailEl) emailEl.textContent = email || "—";
+        if (avatarEl) {
+          avatarEl.src = user.picture
+            ? user.picture
+            : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email || "user")}`;
+        }
+
+        document.getElementById("logoutBtn")?.addEventListener("click", () => window.Auth.logout());
+      })();
+    </script>
 
     <main>
-      <div class="topbar">
+      <div class="editor-heading">
         <h1>Diseño de Rótulos</h1>
         <p class="subtitle">
           Arrastrá cada dato a donde lo necesites en el rótulo. Hacé clic sobre
-          un texto para editarlo.
+          un texto para editarlo, o sobre el QR/código de barras para
+          configurarlos.
         </p>
       </div>
 
       <div class="toolbar">
+        <div class="tool-group">
+          <a class="toolbar-link" href="../rotulos.html">← Mis rótulos</a>
+        </div>
+        <div class="tool-group" id="codeConfigGroup" hidden>
+          <span class="code-config-label"
+            >Código: <strong id="codeConfigTitle">QR</strong></span
+          >
+          <label id="codeSizeLabel">
+            Tamaño (cm)
+            <input
+              type="number"
+              id="codeSizeInput"
+              min="1"
+              max="10"
+              step="0.5"
+              style="width: 60px"
+            />
+          </label>
+          <label id="codeWidthLabel" hidden>
+            Ancho (cm)
+            <input
+              type="number"
+              id="codeWidthInput"
+              min="2"
+              max="20"
+              step="0.5"
+              style="width: 60px"
+            />
+          </label>
+          <label id="codeHeightLabel" hidden>
+            Alto (cm)
+            <input
+              type="number"
+              id="codeHeightInput"
+              min="0.5"
+              max="5"
+              step="0.1"
+              style="width: 60px"
+            />
+          </label>
+          <label id="codeSymbologyLabel" hidden>
+            Simbología
+            <select id="codeSymbologySelect">
+              <option value="code128">Code128</option>
+              <option value="ean13">EAN-13</option>
+            </select>
+          </label>
+          <label id="codeShowTextLabel" hidden>
+            <input type="checkbox" id="codeShowTextInput" />
+            Mostrar texto
+          </label>
+          <label
+            >Contenido
+            <input type="text" id="codeDataInput" style="width: 190px" />
+          </label>
+          <label
+            >Insertar marcador
+            <select id="codeMarkerSelect">
+              <option value="">— elegir —</option>
+              <option value="remitente">Remitente</option>
+              <option value="destinatario">Destinatario</option>
+              <option value="domicilio">Domicilio</option>
+              <option value="cp">CP</option>
+              <option value="localidad">Localidad</option>
+              <option value="pedido">N° de pedido</option>
+              <option value="tracking">Código de seguimiento</option>
+              <option value="tracking_url">URL de seguimiento</option>
+            </select>
+          </label>
+        </div>
         <div class="tool-group">
           <label
             >Nombre
@@ -259,6 +433,14 @@
           <button id="saveBtn" class="primary">Guardar rótulo</button>
           <button id="exportPngBtn">Exportar PNG</button>
           <button id="exportPdfBtn">Exportar PDF</button>
+          <!-- Vista previa rápida (arriba) vs. rótulo definitivo (acá): el
+               PNG/PDF de arriba los arma html2canvas sobre lo que se ve en
+               pantalla; este lo arma el backend con ReportLab a partir de
+               los datos guardados, es el que va a imprenta. Por eso exige
+               que el rótulo ya esté guardado (necesita un id). -->
+          <button id="exportServerPdfBtn" title="Guardá el rótulo primero para poder descargar el PDF del servidor">
+            Descargar PDF (servidor)
+          </button>
         </div>
       </div>
       <p id="saveStatus" class="hint" style="display: none"></p>
@@ -271,7 +453,11 @@
           </div>
 
           <div class="field" data-field="qr" id="qrField">
-            <div id="qrcode">QR</div>
+            <img id="qrImg" alt="QR" />
+          </div>
+
+          <div class="field" data-field="barcode" id="barcodeField">
+            <img id="barcodeImg" alt="Código de barras" />
           </div>
 
           <div class="field" data-field="remitente" contenteditable="true">
@@ -315,6 +501,7 @@
       const DEFAULT_POSITIONS = {
         logo: { left: 6, top: 5 },
         qr: { left: 68, top: 5 },
+        barcode: { left: 6, top: 78 },
         remitente: { left: 6, top: 22 },
         destinatario: { left: 6, top: 38 },
         domicilio: { left: 6, top: 47 },
@@ -408,24 +595,9 @@
         reader.readAsDataURL(file);
       });
 
-      // --- Código QR (generado a partir del N° de Pedido) ---
-      function renderQR(text) {
-        const qrEl = document.getElementById("qrcode");
-        qrEl.innerHTML = "";
-        new QRCode(qrEl, {
-          text: text || "N/A",
-          width: 256,
-          height: 256,
-          correctLevel: QRCode.CorrectLevel.M,
-        });
-      }
-      renderQR(document.getElementById("pedidoField").innerText);
-
-      let qrTimeout;
-      document.getElementById("pedidoField").addEventListener("input", (e) => {
-        clearTimeout(qrTimeout);
-        qrTimeout = setTimeout(() => renderQR(e.target.innerText), 300);
-      });
+      // El QR y el código de barras ya no se generan acá: son imágenes
+      // reales pedidas al backend (ver el <script type="module"> de más
+      // abajo, sección "Configuración del QR/código de barras").
 
       // --- Exportar ---
       async function captureLabel() {
@@ -467,12 +639,48 @@
     </script>
 
     <script type="module">
-      import { getRotulo, createRotulo, updateRotulo } from "./api.js";
+      import {
+        getRotulo,
+        createRotulo,
+        updateRotulo,
+        getOrderInfo,
+        downloadRotuloPdfServer,
+        fetchCodePreview,
+      } from "./api.js";
 
       const params = new URLSearchParams(window.location.search);
       const editingId = params.get("id");
       const nombreInput = document.getElementById("nombreInput");
       const saveStatus = document.getElementById("saveStatus");
+      const exportServerPdfBtn = document.getElementById("exportServerPdfBtn");
+      // El PDF del servidor lee el rótulo YA guardado (necesita un id): solo
+      // se habilita editando uno existente, nunca antes del primer guardado.
+      exportServerPdfBtn.disabled = !editingId;
+
+      exportServerPdfBtn.addEventListener("click", async () => {
+        if (!editingId) return;
+        exportServerPdfBtn.disabled = true;
+        try {
+          const blob = await downloadRotuloPdfServer(editingId);
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `rotulo-${editingId}.pdf`;
+          link.click();
+          URL.revokeObjectURL(url);
+        } catch (err) {
+          if (err.isSessionExpired) return;
+          showStatus(err.message || "No se pudo generar el PDF del servidor.");
+        } finally {
+          exportServerPdfBtn.disabled = false;
+        }
+      });
+
+      // Vínculo opcional con un pedido: si venimos con ?order=<id> (rótulo
+      // nuevo a partir de un envío concreto) o el rótulo cargado ya tenía
+      // uno asociado, se manda en el payload. El usuario puede seguir
+      // editando los campos autocompletados en el diseño.
+      let currentOrderId = params.get("order") ? Number(params.get("order")) : null;
 
       const TEXT_FIELDS = [
         "remitente",
@@ -489,36 +697,219 @@
         setTimeout(() => (saveStatus.style.display = "none"), 2500);
       }
 
+      // --- Configuración del QR/código de barras --------------------------
+      //
+      // Ya no son texto contenteditable: guardan su propia configuración
+      // (tamaño/simbología/contenido) y se muestran pidiendo el SVG real al
+      // backend (fetchCodePreview -> GET /api/v1/labels/barcode/), el mismo
+      // código que arma el PDF definitivo.
+      const CODE_DEFAULTS = {
+        qr: { size: 3, data: "{{tracking_url}}" },
+        barcode: {
+          width: 8,
+          height: 1.5,
+          symbology: "code128",
+          data: "{{tracking}}",
+          show_text: true,
+        },
+      };
+      const codeConfig = {
+        qr: { ...CODE_DEFAULTS.qr },
+        barcode: { ...CODE_DEFAULTS.barcode },
+      };
+      let selectedCodeField = null; // "qr" | "barcode" | null
+
+      const codeConfigGroup = document.getElementById("codeConfigGroup");
+      const codeConfigTitle = document.getElementById("codeConfigTitle");
+      const codeSizeLabel = document.getElementById("codeSizeLabel");
+      const codeSizeInput = document.getElementById("codeSizeInput");
+      const codeWidthLabel = document.getElementById("codeWidthLabel");
+      const codeWidthInput = document.getElementById("codeWidthInput");
+      const codeHeightLabel = document.getElementById("codeHeightLabel");
+      const codeHeightInput = document.getElementById("codeHeightInput");
+      const codeSymbologyLabel = document.getElementById("codeSymbologyLabel");
+      const codeSymbologySelect = document.getElementById("codeSymbologySelect");
+      const codeShowTextLabel = document.getElementById("codeShowTextLabel");
+      const codeShowTextInput = document.getElementById("codeShowTextInput");
+      const codeDataInput = document.getElementById("codeDataInput");
+      const codeMarkerSelect = document.getElementById("codeMarkerSelect");
+
+      function selectCodeField(fieldName) {
+        selectedCodeField = fieldName;
+        const isQr = fieldName === "qr";
+        const cfg = codeConfig[fieldName];
+        codeConfigGroup.hidden = false;
+        codeConfigTitle.textContent = isQr ? "QR" : "Código de barras";
+        codeSizeLabel.hidden = !isQr;
+        codeWidthLabel.hidden = isQr;
+        codeHeightLabel.hidden = isQr;
+        codeSymbologyLabel.hidden = isQr;
+        codeShowTextLabel.hidden = isQr;
+        if (isQr) {
+          codeSizeInput.value = cfg.size;
+        } else {
+          codeWidthInput.value = cfg.width;
+          codeHeightInput.value = cfg.height;
+          codeSymbologySelect.value = cfg.symbology;
+          codeShowTextInput.checked = cfg.show_text;
+        }
+        codeDataInput.value = cfg.data;
+      }
+
+      document
+        .getElementById("qrField")
+        .addEventListener("click", () => selectCodeField("qr"));
+      document
+        .getElementById("barcodeField")
+        .addEventListener("click", () => selectCodeField("barcode"));
+
+      // Debounce por campo: no pedir un SVG nuevo en cada tecla.
+      const previewTimeouts = {};
+      const previewUrls = { qr: null, barcode: null };
+
+      function scheduleCodePreviewRefresh(fieldName) {
+        clearTimeout(previewTimeouts[fieldName]);
+        previewTimeouts[fieldName] = setTimeout(
+          () => refreshCodePreview(fieldName),
+          300,
+        );
+      }
+
+      async function refreshCodePreview(fieldName) {
+        const cfg = codeConfig[fieldName];
+        if (!cfg.data) return;
+        const queryParams =
+          fieldName === "qr"
+            ? { type: "qr", data: cfg.data, size: String(cfg.size) }
+            : {
+                type: cfg.symbology,
+                data: cfg.data,
+                width: String(cfg.width),
+                height: String(cfg.height),
+                show_text: cfg.show_text ? "true" : "false",
+              };
+        const blob = await fetchCodePreview(queryParams);
+        if (!blob) return;
+        const imgEl = document.getElementById(
+          fieldName === "qr" ? "qrImg" : "barcodeImg",
+        );
+        if (previewUrls[fieldName]) URL.revokeObjectURL(previewUrls[fieldName]);
+        previewUrls[fieldName] = URL.createObjectURL(blob);
+        imgEl.src = previewUrls[fieldName];
+      }
+
+      function applyCodeConfigChange() {
+        if (!selectedCodeField) return;
+        const cfg = codeConfig[selectedCodeField];
+        if (selectedCodeField === "qr") {
+          cfg.size = parseFloat(codeSizeInput.value) || CODE_DEFAULTS.qr.size;
+        } else {
+          cfg.width =
+            parseFloat(codeWidthInput.value) || CODE_DEFAULTS.barcode.width;
+          cfg.height =
+            parseFloat(codeHeightInput.value) || CODE_DEFAULTS.barcode.height;
+          cfg.symbology = codeSymbologySelect.value;
+          cfg.show_text = codeShowTextInput.checked;
+        }
+        cfg.data = codeDataInput.value;
+        scheduleCodePreviewRefresh(selectedCodeField);
+      }
+
+      [
+        codeSizeInput,
+        codeWidthInput,
+        codeHeightInput,
+        codeSymbologySelect,
+        codeShowTextInput,
+        codeDataInput,
+      ].forEach((el) => {
+        el.addEventListener("input", applyCodeConfigChange);
+        el.addEventListener("change", applyCodeConfigChange);
+      });
+
+      // Marcadores disponibles listados en un select, para no tener que
+      // escribirlos de memoria: al elegir uno se inserta en el punto del
+      // cursor del campo "Contenido".
+      codeMarkerSelect.addEventListener("change", () => {
+        const marker = codeMarkerSelect.value;
+        if (!marker) return;
+        const snippet = `{{${marker}}}`;
+        const start = codeDataInput.selectionStart ?? codeDataInput.value.length;
+        const end = codeDataInput.selectionEnd ?? codeDataInput.value.length;
+        codeDataInput.value =
+          codeDataInput.value.slice(0, start) +
+          snippet +
+          codeDataInput.value.slice(end);
+        codeMarkerSelect.value = "";
+        applyCodeConfigChange();
+      });
+
+      // --- Autocompletar domicilio/CP/localidad desde la dirección del
+      // pedido (?order=<id>). El destinatario/remitente los sigue
+      // completando el usuario: la dirección del pedido no guarda un
+      // nombre de destinatario.
+      async function prefillFromOrder(orderId) {
+        const order = await getOrderInfo(orderId);
+        const addr = order?.address;
+        if (!addr) return;
+        const setText = (field, text) => {
+          const el = document.querySelector(`.field[data-field="${field}"]`);
+          if (el) el.textContent = text;
+        };
+        setText("domicilio", `Domicilio: ${[addr.street, addr.number].filter(Boolean).join(" ")}`);
+        setText("cp", `CP: ${addr.postal_code || ""}`);
+        setText(
+          "localidad",
+          `Localidad/Provincia: ${[addr.city, addr.state].filter(Boolean).join(", ")}`,
+        );
+      }
+
       // --- Cargar rótulo existente si venimos con ?id= ---
       async function loadExisting() {
-        if (!editingId) return;
-        const r = await getRotulo(editingId);
-        if (!r) {
-          showStatus("No se encontró ese rótulo. Empezando uno nuevo.");
-          return;
+        if (!editingId) {
+          if (currentOrderId) await prefillFromOrder(currentOrderId);
+        } else {
+          const r = await getRotulo(editingId);
+          if (!r) {
+            showStatus("No se encontró ese rótulo. Empezando uno nuevo.");
+          } else {
+            currentOrderId = r.order || currentOrderId;
+            nombreInput.value = r.nombre || "";
+            if (r.size) {
+              document.getElementById("widthCm").value = r.size.widthCm;
+              document.getElementById("heightCm").value = r.size.heightCm;
+              updateLabelSize();
+            }
+            if (r.logo) {
+              document.getElementById("logoImg").src = r.logo;
+              document.getElementById("logoImg").style.display = "block";
+              document.getElementById("logoPlaceholder").style.display = "none";
+            }
+            if (r.fields) {
+              Object.entries(r.fields).forEach(([key, val]) => {
+                const el = document.querySelector(`.field[data-field="${key}"]`);
+                if (!el) return;
+                if (val.left != null) el.style.left = val.left + "%";
+                if (val.top != null) el.style.top = val.top + "%";
+                if (TEXT_FIELDS.includes(key) && val.text != null)
+                  el.textContent = val.text;
+              });
+              // Un diseño viejo puede no traer qr/barcode todavía, o traer
+              // el qr en el formato viejo (solo left/top): se completa con
+              // los defaults, nunca se pisa lo que sí vino.
+              if (r.fields.qr) {
+                codeConfig.qr = { ...CODE_DEFAULTS.qr, ...r.fields.qr };
+              }
+              if (r.fields.barcode) {
+                codeConfig.barcode = { ...CODE_DEFAULTS.barcode, ...r.fields.barcode };
+              }
+            }
+          }
         }
-        nombreInput.value = r.nombre || "";
-        if (r.size) {
-          document.getElementById("widthCm").value = r.size.widthCm;
-          document.getElementById("heightCm").value = r.size.heightCm;
-          updateLabelSize();
-        }
-        if (r.logo) {
-          document.getElementById("logoImg").src = r.logo;
-          document.getElementById("logoImg").style.display = "block";
-          document.getElementById("logoPlaceholder").style.display = "none";
-        }
-        if (r.fields) {
-          Object.entries(r.fields).forEach(([key, val]) => {
-            const el = document.querySelector(`.field[data-field="${key}"]`);
-            if (!el) return;
-            if (val.left != null) el.style.left = val.left + "%";
-            if (val.top != null) el.style.top = val.top + "%";
-            if (TEXT_FIELDS.includes(key) && val.text != null)
-              el.textContent = val.text;
-          });
-          renderQR(document.getElementById("pedidoField").innerText);
-        }
+        // Vista previa inicial de ambos códigos, con la config que haya
+        // quedado (la del rótulo cargado, o los defaults de uno nuevo).
+        refreshCodePreview("qr");
+        refreshCodePreview("barcode");
       }
 
       // --- Generar una miniatura liviana (JPEG) para la lista del dashboard ---
@@ -541,16 +932,37 @@
         return small.toDataURL("image/jpeg", 0.75);
       }
 
+      // Posición actual (left/top en %) de un campo del canvas.
+      function fieldPosition(el) {
+        return {
+          left: parseFloat(el.style.left) || 0,
+          top: parseFloat(el.style.top) || 0,
+        };
+      }
+
       function collectFields() {
         const fields = {};
         document.querySelectorAll(".field").forEach((el) => {
           const key = el.dataset.field;
-          fields[key] = {
-            left: parseFloat(el.style.left) || 0,
-            top: parseFloat(el.style.top) || 0,
-          };
+          // qr/barcode no son texto: se arman aparte, con su config
+          // (tamaño/simbología/data) en vez de leer el DOM.
+          if (key === "qr" || key === "barcode") return;
+          fields[key] = fieldPosition(el);
           if (TEXT_FIELDS.includes(key)) fields[key].text = el.textContent;
         });
+        fields.qr = {
+          ...fieldPosition(document.getElementById("qrField")),
+          size: codeConfig.qr.size,
+          data: codeConfig.qr.data,
+        };
+        fields.barcode = {
+          ...fieldPosition(document.getElementById("barcodeField")),
+          width: codeConfig.barcode.width,
+          height: codeConfig.barcode.height,
+          symbology: codeConfig.barcode.symbology,
+          data: codeConfig.barcode.data,
+          show_text: codeConfig.barcode.show_text,
+        };
         return fields;
       }
 
@@ -572,6 +984,7 @@
               ? document.getElementById("logoImg").src
               : null,
           fields: collectFields(),
+          order: currentOrderId,
         };
 
         if (editingId) {
@@ -579,7 +992,7 @@
         } else {
           await createRotulo(payload);
         }
-        window.location.href = "dashboard.html";
+        window.location.href = "../rotulos.html";
       });
 
       loadExisting();

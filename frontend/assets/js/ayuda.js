@@ -1,59 +1,14 @@
-// Ayuda / Soporte: form de contacto simple. Reutiliza el mismo wrapper de
-// fetch / manejo de 401 y 403 (cambio de contraseña pendiente) que el resto
-// del frontend (ver dashboard.js / perfil.js / admingestion_test.js).
+// Ayuda / Soporte: form de contacto simple. Sesión y apiFetch salen de
+// assets/js/auth.js (window.Auth), compartido con el resto del frontend
+// (ver dashboard.js / perfil.js / admingestion_test.js).
 
-const API_BASE = "http://127.0.0.1:8000/api/v1/auth";
+const API_BASE = `${window.APP_CONFIG.API_BASE}/auth`;
 const ME_URL = `${API_BASE}/me/`;
 const SUPPORT_URL = `${API_BASE}/support/`;
-const LOGOUT_URL = `${API_BASE}/logout/`;
 
-function getAccessToken() {
-  return localStorage.getItem("access") || "";
-}
-
-async function apiFetch(url, options = {}) {
-  const headers = {
-    ...(options.headers || {}),
-    Authorization: `Bearer ${getAccessToken()}`,
-  };
-
-  const response = await fetch(url, { ...options, headers });
-
-  if (response.status === 401) {
-    handleSessionExpired();
-    const sessionError = new Error("Sesión expirada");
-    sessionError.isSessionExpired = true;
-    throw sessionError;
-  }
-
-  if (response.status === 403) {
-    const body = await response.clone().json().catch(() => ({}));
-    if (body && body.must_change_password) {
-      window.location.replace("cambiar-password.html");
-      const pendingError = new Error("Cambio de contraseña pendiente");
-      pendingError.isSessionExpired = true;
-      throw pendingError;
-    }
-  }
-
-  return response;
-}
-
-function handleSessionExpired() {
-  alert("Tu sesión expiró. Volvé a iniciar sesión.");
-  localStorage.removeItem("access");
-  localStorage.removeItem("refresh");
-  localStorage.removeItem("user");
-  window.location.replace("index.html");
-}
-
-function getCurrentUser() {
-  try {
-    return JSON.parse(localStorage.getItem("user") || "{}");
-  } catch {
-    return {};
-  }
-}
+const getAccessToken = () => window.Auth.getAccessToken();
+const getCurrentUser = () => window.Auth.getCurrentUser();
+const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
 // Topbar: mismos datos que ya trae localStorage (evita otro round-trip solo
 // para pintar nombre/email/avatar), igual criterio que dashboard.html usa
@@ -197,24 +152,7 @@ document.getElementById("sendSupportBtn")?.addEventListener("click", async () =>
 
 const logoutBtn = document.getElementById("logoutBtn");
 if (logoutBtn) {
-  logoutBtn.addEventListener("click", async () => {
-    const refresh = localStorage.getItem("refresh") || "";
-    if (refresh) {
-      try {
-        await apiFetch(LOGOUT_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refresh }),
-        });
-      } catch {
-        // Igual se limpia la sesión local abajo aunque falle el backend.
-      }
-    }
-    localStorage.removeItem("access");
-    localStorage.removeItem("refresh");
-    localStorage.removeItem("user");
-    window.location.replace("index.html");
-  });
+  logoutBtn.addEventListener("click", () => window.Auth.logout());
 }
 
 if (!getAccessToken()) {

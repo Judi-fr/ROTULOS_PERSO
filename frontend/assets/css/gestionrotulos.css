@@ -1,0 +1,243 @@
+/* Listado de rótulos (plantillas_rotulos.html). Misma paleta que el editor
+   (pedidos/diseñorotulos.html) para que ambas pantallas del flujo de
+   rótulos se vean consistentes. */
+
+:root {
+  --accent: #7c5cff;
+  --dark: #1e1b2e;
+  --bg: #f4f3f9;
+  --card: #ffffff;
+  --border: #ddd8ee;
+  --text: #2c2840;
+  --muted: #8f89a8;
+  --red: #dc2626;
+  --red-light: #fdeeee;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  min-height: 100vh;
+  font-family: "Karla", system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+main {
+  flex: 1;
+  padding: 32px 40px;
+}
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.topbar h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+}
+.topbar .subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  padding: 8px 14px;
+  border-radius: 7px;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.btn:hover {
+  border-color: var(--accent);
+}
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.btn.primary:hover {
+  background: #6a4de8;
+}
+.btn-danger {
+  color: var(--red);
+  border-color: #f3caca;
+}
+.btn-danger:hover {
+  background: var(--red-light);
+  border-color: var(--red);
+}
+
+.controls {
+  margin-bottom: 24px;
+}
+.controls .search {
+  width: 100%;
+  max-width: 360px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  background: #fff;
+}
+.controls .search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.loading,
+.empty-state {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* --- Grilla de tarjetas ------------------------------------------------- */
+
+.rotulos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 20px;
+}
+
+.rotulo-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: box-shadow 0.15s;
+}
+.rotulo-card:hover {
+  box-shadow: 0 6px 20px rgba(30, 27, 46, 0.1);
+}
+
+.rotulo-thumb {
+  aspect-ratio: 4 / 3;
+  background: repeating-conic-gradient(#eceafb 0% 25%, #f4f3f9 0% 50%) 0 0 / 16px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.rotulo-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.rotulo-thumb-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.rotulo-card-body {
+  padding: 12px 14px 4px;
+  flex: 1;
+}
+.rotulo-card-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rotulo-card-client {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.rotulo-card-date {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.rotulo-card-actions {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px 14px;
+}
+.rotulo-card-actions .btn {
+  flex: 1;
+  justify-content: center;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+/* --- Modal de vista previa ------------------------------------------------ */
+
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 27, 46, 0.55);
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+.modal-overlay.open {
+  display: flex;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 420px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal img {
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  background: repeating-conic-gradient(#eceafb 0% 25%, #f4f3f9 0% 50%) 0 0 / 16px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+.modal h3 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+.modal dl {
+  margin: 0;
+}
+.modal dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  margin-top: 10px;
+}
+.modal dd {
+  margin: 2px 0 0;
+  font-size: 14px;
+}
+.modal-close {
+  margin-top: 20px;
+  text-align: right;
+}

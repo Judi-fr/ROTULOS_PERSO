@@ -4,12 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-ROTULOS_PERSO is a label/sign generation app split into a Django REST API (`backend/`) and a static
-multi-page frontend (`frontend/`, plain HTML/CSS/JS, no build step). `accounts` (authentication, user
-administration, roles/permissions, support inbox), `orders` (addresses/orders, self-service + admin
-"all orders" view) and `audit` (read-only audit trail) are implemented; `documents`, `processing`,
-and `labels` are scaffolded Django apps with empty models/views/urls, reserved for uploading
-files, converting them to a label format, and generating/printing the actual rótulos.
+ROTULOS_PERSO is a label/sign generation app for **Buspack**, a nationwide (Argentina) light-parcel
+delivery company (500+ points of sale, 600+ destinations, partnered long-distance bus companies as
+carriers). A "rótulo" here is a shipping/waybill LABEL that gets stuck on a parcel travelling on a bus —
+not a product tag — with sender, recipient, address, postal code, city/province, order number and a QR
+that gets scanned at the point of sale and at the terminal. The app is split into a Django REST API
+(`backend/`) and a static multi-page frontend (`frontend/`, plain HTML/CSS/JS, no build step). `accounts`
+(authentication, user administration, roles/permissions, support inbox), `orders` (addresses/orders,
+self-service + admin "all orders" view), `audit` (read-only audit trail) and `labels` (label templates +
+concrete labels, self-service + admin "all labels" view) are implemented; `documents` and `processing`
+are still scaffolded Django apps with empty models/views/urls, reserved for uploading files and
+converting them to a label format. There is no point-of-sale/destination catalog yet — `Address` stores
+city/state as free text and `Order.carrier` awaits the partner's tracking API — don't assume those exist.
 
 ## Commands
 
@@ -60,7 +66,8 @@ no env-based config, so keep the backend on that host/port for the existing fron
   router path resolves to `/api/v1/users/`), `apps.accounts.admin_urls` (admin support inbox) also
   mounts at `/api/v1/` (`/api/v1/support-messages/`), `apps.orders.urls` mounts at `/api/v1/`
   (`/api/v1/addresses/`, `/api/v1/orders/`, `/api/v1/admin/orders/`), `apps.audit.urls` mounts at
-  `/api/v1/audit/` (`/logs/`, `/actions/`), and `documents`/`processing`/`labels` mount at their own
+  `/api/v1/audit/` (`/logs/`, `/actions/`), `apps.labels.urls` mounts at `/api/v1/labels/`
+  (`/labels/`, `/templates/`, `/admin/`), and `documents`/`processing` mount at their own
   `/api/v1/<app>/` prefixes but currently expose empty `urlpatterns`.
 - REST Framework is closed by default: `DEFAULT_PERMISSION_CLASSES = [IsAuthenticated]` project-wide, so
   any new endpoint needs `permission_classes = [AllowAny]` explicitly to be public. JWT auth only
@@ -108,7 +115,9 @@ There is **no `role` field on `User`** — the role is derived, never stored dir
   a new source of role truth (no new `role` field, no separate group lookup).
 - Admin-only permissions (assigned **only** to the `admin` group, not to the self-service roles):
   `audit.view`, `orders.view_all`, `support.view_all`, `support.manage` — seeded by
-  `accounts/migrations/0014_seed_admin_only_permissions.py`.
+  `accounts/migrations/0014_seed_admin_only_permissions.py` — plus `labels.view_all` and
+  `labels.manage_templates`, seeded (together with the self-service `labels.view`/`create`/`edit`/
+  `delete`) by `accounts/migrations/0015_seed_label_permissions.py`.
 
 ### Audit trail (`apps/audit`) and admin support inbox
 
@@ -174,6 +183,53 @@ Pedidos/Soporte y actividad are fetched only when the user has the corresponding
 (`canUseUserPermission`) and hide themselves (not an error) otherwise; every renderer treats
 empty/`null` as "Sin datos todavía", never a fabricated number.
 
+### Labels / rótulos (`apps/labels`)
+
+A "rótulo" is the waybill label stuck on a Buspack parcel — sender, recipient (`Label.client`),
+address, postal code, city/province, order number and a QR — not a product label. The frontend editor
+(`frontend/pedidos/diseñorotulos.html`) already defines the design format and the backend just
+validates and persists it, it doesn't reinvent it: `design` is a dict keyed by the editor's field names
+(`logo`, `qr`, `remitente`, `destinatario`, `domicilio`, `cp`, `localidad`, `pedido`), each value
+`{"left": <0-100>, "top": <0-100>, "text": <optional str>}` — position in **percent** of the label so it
+survives a size change. There's no point-of-sale/destination catalog yet (see Project overview) — don't
+add `PickupPoint`/`Destination` models here.
+
+- `LabelTemplate` — reusable base design: `owner` (`SET_NULL`, `None` = system template),
+  `is_public`, `width_cm`/`height_cm` (5-30 / 5-40, validated in the serializer, not the model),
+  `design`, `preview` image.
+- `Label` — a concrete, printable label: `user` (`CASCADE`), `template` (`SET_NULL`, optional),
+  `order` (`SET_NULL`, optional FK to `apps.orders.Order` — the central case: a label normally belongs
+  to a real shipment), `client` (the recipient), `width_cm`/`height_cm`, `design`, `logo`/`thumbnail`
+  images, `is_active` (**soft-delete**, same as users — a label is never hard-deleted).
+- Serializers validate `design` for real (`serializers.validate_design`: unknown keys or out-of-range
+  `left`/`top` return 400) and accept `logo`/`thumbnail` either as a real file (`multipart/form-data`)
+  or as the base64 data URL the editor already produces (`ImageOrDataUrlField` decodes+verifies with
+  Pillow, rejects non-images, caps size at 2 MB for `logo` / 300 KB for `thumbnail`/`preview`). If
+  `order` is set it must belong to the requesting user (admin bypasses this, per
+  `permissions_map.get_effective_role`); `template` must be public or owned. Image URLs come back
+  absolute because the serializer context carries `request` (DRF's `ImageField.to_representation`
+  builds the absolute URI automatically).
+- Permissions: self-service `labels.view`/`create`/`edit`/`delete` (all four canonical roles) plus
+  admin-only `labels.view_all`/`labels.manage_templates` — see Roles & permissions above.
+  `LabelViewSet.get_permissions()` maps action → permission the same way `OrderViewSet` does.
+- `GET/POST /api/v1/labels/labels/`, `GET/PATCH/DELETE /api/v1/labels/labels/<id>/` — CRUD of the
+  caller's own labels (`LabelViewSet`, queryset always `user=request.user, is_active=True`); `DELETE`
+  is a soft-delete (`is_active=False`), never a real row delete. `POST
+  /api/v1/labels/labels/<id>/duplicate/` clones a label (`name + " (copia)"`) as an independent row —
+  "start from a previous one".
+- `GET/POST /api/v1/labels/templates/` — `LabelTemplateViewSet`: list/retrieve is open to any
+  authenticated user (public templates + the caller's own), create/update/delete requires
+  `labels.manage_templates`.
+- `GET /api/v1/labels/admin/` (`labels.view_all`, admin-only, paginated) — every user's labels
+  (`AdminLabelListView`/`AdminLabelSerializer`), filters `search`/`user`/`template`/`is_active`/
+  `date_from`/`date_to`; the self-service `LabelViewSet` queryset is untouched, same pattern as
+  `AdminOrderListView`.
+- Audit: `label.create`/`label.update`/`label.delete` and `template.create`/`update`/`delete` are
+  logged via `apps.audit.services.record` (added to `AuditLog.Category`/`Action` as a `labels`
+  category).
+- `Pillow` (in `backend/requirements.txt`) is required for `ImageField` and for verifying uploaded/
+  decoded images.
+
 ### Frontend
 
 Plain multi-page app, one HTML file per screen, no framework/bundler:
@@ -203,7 +259,20 @@ Plain multi-page app, one HTML file per screen, no framework/bundler:
 - Every page's fetch wrapper (`apiFetch`) attaches `Authorization: Bearer <access>` from
   `localStorage`, and on a 401 clears `access`/`refresh`/`user` from `localStorage` and redirects to
   `index.html`.
-- `frontend/pedidos/` and `plantillas_rotulos.html` are early UI for the not-yet-built labels flow.
+- `plantillas_rotulos.html` + `assets/js/dashboard_rotulos.js` + `assets/css/gestionrotulos.css` —
+  grid of the user's own labels (thumbnail, recipient, date), search, a preview modal, and
+  Editar/Duplicar/Eliminar actions. `frontend/pedidos/diseñorotulos.html` — the label editor (drag
+  fields, logo, QR, size in cm, PNG/PDF export); its `saveBtn` builds the payload in the EDITOR's own
+  shape (`{nombre, cliente, thumbnail, size:{widthCm,heightCm}, logo, fields, order}`).
+  `frontend/pedidos/api.js` is the thin adapter both pages import: it translates that shape to/from
+  the `apps.labels` API shape (`name`/`client`/`width_cm`/`height_cm`/`design`/...), and carries the
+  same `apiFetch`/401/403 handling as the rest of the frontend. Because `api.js` lives at
+  `frontend/pedidos/api.js` but is imported from pages at different depths (the editor itself, and
+  `dashboard_rotulos.js` for the root-level `plantillas_rotulos.html`), its session-redirect URLs are
+  built from `import.meta.url` rather than a hardcoded relative path — don't replace that with a plain
+  `"../index.html"` string, it would break for whichever page is at the other depth. `DashboardView`'s
+  `labels` menu item now points at `plantillas_rotulos.html` (`enabled: true`); `documents`/
+  `processing` are still `enabled: false` with no URL.
 
 ### Multiple sqlite files
 

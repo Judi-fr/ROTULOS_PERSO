@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Mis Rótulos</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/rotulos.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar">
+        <div class="topbar-user">
+          <img
+            class="avatar"
+            id="userAvatar"
+            src="https://api.dicebear.com/7.x/avataaars/svg?seed=user"
+            alt=""
+          />
+          <div class="topbar-user-info">
+            <span class="topbar-user-name" id="userName">—</span>
+            <span class="topbar-user-email" id="userEmail">—</span>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <a class="btn btn-outline" href="dashboard.html">Volver al panel</a>
+          <button class="btn btn-outline" id="logoutBtn" type="button">
+            Cerrar sesión
+          </button>
+        </div>
+      </header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Mis rótulos</h1>
+          <p>Creá y gestioná los rótulos de tus encomiendas.</p>
+        </div>
+
+        <p
+          id="pageMessage"
+          class="page-message"
+          role="status"
+          aria-live="polite"
+          style="display: none"
+        ></p>
+
+        <section class="profile-card">
+          <div class="profile-card-title">Rótulos</div>
+          <div class="profile-card-body">
+            <div class="rotulos-toolbar">
+              <input
+                type="search"
+                id="searchInput"
+                class="search-input"
+                placeholder="Buscar por nombre o destinatario..."
+              />
+              <button type="button" class="btn btn-outline" id="openBatchPanelBtn">
+                Generar por lote
+              </button>
+              <a class="btn btn-primary" href="pedidos/diseñorotulos.html">
+                + Nuevo rótulo
+              </a>
+            </div>
+
+            <div id="rotulosGrid" class="rotulos-grid">
+              <p class="empty-state">Cargando rótulos...</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Generación por lote: plantilla + selección de pedidos (por id o
+             por rango de fechas) -> POST /api/v1/labels/batch/. Con el 202
+             en mano, redirige a documentos.html para seguir el progreso. -->
+        <section class="profile-card batch-panel" id="batchPanel">
+          <div class="profile-card-title">
+            <span>Generar rótulos por lote</span>
+            <button type="button" class="btn btn-outline btn-small" id="closeBatchPanelBtn">
+              Cerrar
+            </button>
+          </div>
+          <div class="profile-card-body">
+            <div class="batch-field">
+              <label for="batchTemplateSelect">Plantilla</label>
+              <select id="batchTemplateSelect">
+                <option value="">Cargando plantillas...</option>
+              </select>
+            </div>
+
+            <div class="batch-field">
+              <label>¿Qué pedidos incluye?</label>
+              <label style="font-weight: 400; display: inline-flex; align-items: center; gap: 6px; margin-right: 16px;">
+                <input type="radio" name="batchMode" id="batchModeOrders" value="orders" checked />
+                Elegir pedidos
+              </label>
+              <label style="font-weight: 400; display: inline-flex; align-items: center; gap: 6px;">
+                <input type="radio" name="batchMode" id="batchModeFilters" value="filters" />
+                Por rango de fechas / estado
+              </label>
+            </div>
+
+            <div class="batch-field" id="batchOrdersField">
+              <div id="batchOrdersList" class="batch-orders-list">
+                <p class="empty-state">Cargando pedidos...</p>
+              </div>
+            </div>
+
+            <div class="batch-field" id="batchFiltersField" style="display: none">
+              <label for="batchDateFrom">Desde</label>
+              <input type="date" id="batchDateFrom" />
+              <label for="batchDateTo" style="margin-top: 10px">Hasta</label>
+              <input type="date" id="batchDateTo" />
+              <label for="batchStatusSelect" style="margin-top: 10px">
+                Estado del pedido (opcional)
+              </label>
+              <select id="batchStatusSelect">
+                <option value="">Cualquiera</option>
+                <option value="created">Creado</option>
+                <option value="preparing">En preparación</option>
+                <option value="dispatched">Despachado</option>
+                <option value="in_transit">En tránsito</option>
+                <option value="delivered">Entregado</option>
+              </select>
+            </div>
+
+            <div class="batch-field">
+              <label for="batchOutputSelect">Formato de salida</label>
+              <select id="batchOutputSelect">
+                <option value="pdf">Un solo PDF (una página por rótulo)</option>
+                <option value="zip">ZIP (un PDF por rótulo)</option>
+              </select>
+            </div>
+
+            <p id="batchMsg" class="form-message" style="display: none"></p>
+            <div class="form-actions">
+              <button type="button" class="btn btn-primary" id="generateBatchBtn">
+                Generar
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- Modal de vista previa (uno solo, reutilizado) -->
+    <div class="modal-overlay" id="previewOverlay">
+      <div class="modal-box">
+        <img id="previewImg" alt="Vista previa del rótulo" />
+        <h3 id="previewNombre"></h3>
+        <p class="preview-detail">
+          <strong>Destinatario:</strong> <span id="previewCliente"></span>
+        </p>
+        <p class="preview-detail">
+          <strong>Última modificación:</strong> <span id="previewFecha"></span>
+        </p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-outline" id="previewCloseBtn">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/rotulos.js"></script>
+  </body>
+</html>

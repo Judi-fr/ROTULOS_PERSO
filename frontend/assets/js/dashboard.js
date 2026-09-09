@@ -1,12 +1,12 @@
 // Dashboard (menú) para usuarios no administradores.
 // El menú se arma en el BACKEND según el rol efectivo del usuario: este
 // archivo solo pide el endpoint y renderiza lo que devuelve, sin decidir
-// visibilidad por rol acá.
+// visibilidad por rol acá. Sesión y apiFetch salen de assets/js/auth.js
+// (window.Auth), compartido con el resto del frontend.
 
-const API_BASE = "http://127.0.0.1:8000/api/v1/auth";
+const API_BASE = `${window.APP_CONFIG.API_BASE}/auth`;
 const DASHBOARD_URL = `${API_BASE}/users/me/dashboard/`;
-const LOGOUT_URL = `${API_BASE}/logout/`;
-const ORDERS_URL = "http://127.0.0.1:8000/api/v1/orders/";
+const ORDERS_URL = `${window.APP_CONFIG.API_BASE}/orders/`;
 
 // Íconos MDI por key de menú. Un key sin ícono cae en el genérico.
 const MENU_ICONS = {
@@ -40,63 +40,13 @@ const MENU_GROUPS = {
 };
 const GROUP_ORDER = ["Mis cosas", "Cuenta", "Ayuda", "Administración", "Otros"];
 
-function getAccessToken() {
-  return localStorage.getItem("access") || "";
-}
-
-function getCurrentUser() {
-  try {
-    return JSON.parse(localStorage.getItem("user") || "{}");
-  } catch {
-    return {};
-  }
-}
+const getAccessToken = () => window.Auth.getAccessToken();
+const getCurrentUser = () => window.Auth.getCurrentUser();
+const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
 function hasPermission(permission) {
   const permissions = getCurrentUser().permissions;
   return Array.isArray(permissions) && permissions.includes(permission);
-}
-
-// ---------------------------------------------------------------------------
-// apiFetch: mismo wrapper que usa el resto del frontend (admingestion_test.js).
-// Agrega el Authorization header y, ante un 401, limpia la sesión local y
-// redirige al login.
-// ---------------------------------------------------------------------------
-async function apiFetch(url, options = {}) {
-  const headers = {
-    ...(options.headers || {}),
-    Authorization: `Bearer ${getAccessToken()}`,
-  };
-
-  const response = await fetch(url, { ...options, headers });
-
-  if (response.status === 401) {
-    handleSessionExpired();
-    const sessionError = new Error("Sesión expirada");
-    sessionError.isSessionExpired = true;
-    throw sessionError;
-  }
-
-  // 403 estructurado: cambio de contraseña pendiente (ver admingestion_test.js).
-  if (response.status === 403) {
-    const body = await response.clone().json().catch(() => ({}));
-    if (body && body.must_change_password) {
-      window.location.replace("cambiar-password.html");
-      const pendingError = new Error("Cambio de contraseña pendiente");
-      pendingError.isSessionExpired = true;
-      throw pendingError;
-    }
-  }
-
-  return response;
-}
-
-function handleSessionExpired() {
-  alert("Tu sesión expiró. Volvé a iniciar sesión.");
-  localStorage.removeItem("access");
-  localStorage.removeItem("refresh");
-  localStorage.removeItem("user");
-  window.location.replace("index.html");
 }
 
 function showMessage(text, type = "error") {
@@ -296,31 +246,11 @@ async function loadDashboard() {
 }
 
 // ---------------------------------------------------------------------------
-// Logout: misma lógica que admingestion_test.js — invalida el refresh token
-// en el backend, limpia tokens locales y redirige directo al login.
+// Logout: misma lógica que admingestion_test.js (window.Auth.logout).
 // ---------------------------------------------------------------------------
 const logoutBtn = document.getElementById("logoutBtn");
 if (logoutBtn) {
-  logoutBtn.addEventListener("click", async () => {
-    const refresh = localStorage.getItem("refresh") || "";
-
-    if (refresh) {
-      try {
-        await apiFetch(LOGOUT_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refresh }),
-        });
-      } catch (err) {
-        console.warn("No se pudo invalidar el refresh token en el backend:", err);
-      }
-    }
-
-    localStorage.removeItem("access");
-    localStorage.removeItem("refresh");
-    localStorage.removeItem("user");
-    window.location.replace("index.html");
-  });
+  logoutBtn.addEventListener("click", () => window.Auth.logout());
 }
 
 if (!getAccessToken()) {

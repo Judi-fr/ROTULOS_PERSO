@@ -53,28 +53,23 @@ function formatLastOrderDate(value) {
 const tbody = document.getElementById("usersBody");
 
 // Endpoint real del proyecto
-const API_URL = "http://127.0.0.1:8000/api/v1/users/";
-const ME_URL = "http://127.0.0.1:8000/api/v1/auth/me/";
-const CHANGE_PASSWORD_URL = "http://127.0.0.1:8000/api/v1/auth/me/change-password/";
-const ROLES_URL = "http://127.0.0.1:8000/api/v1/auth/roles/";
-const PERMISSIONS_URL = "http://127.0.0.1:8000/api/v1/auth/permissions/";
-const EXPORT_CSV_URL = "http://127.0.0.1:8000/api/v1/users/export/";
-const METRICS_URL = "http://127.0.0.1:8000/api/v1/users/metrics/";
-const ORDERS_METRICS_URL = "http://127.0.0.1:8000/api/v1/orders/metrics/";
-const SUPPORT_METRICS_URL = "http://127.0.0.1:8000/api/v1/support-messages/metrics/";
-const AUDIT_METRICS_URL = "http://127.0.0.1:8000/api/v1/audit/metrics/";
+const API_URL = `${window.APP_CONFIG.API_BASE}/users/`;
+const ME_URL = `${window.APP_CONFIG.API_BASE}/auth/me/`;
+const CHANGE_PASSWORD_URL = `${window.APP_CONFIG.API_BASE}/auth/me/change-password/`;
+const ROLES_URL = `${window.APP_CONFIG.API_BASE}/auth/roles/`;
+const PERMISSIONS_URL = `${window.APP_CONFIG.API_BASE}/auth/permissions/`;
+const EXPORT_CSV_URL = `${window.APP_CONFIG.API_BASE}/users/export/`;
+const METRICS_URL = `${window.APP_CONFIG.API_BASE}/users/metrics/`;
+const ORDERS_METRICS_URL = `${window.APP_CONFIG.API_BASE}/orders/metrics/`;
+const SUPPORT_METRICS_URL = `${window.APP_CONFIG.API_BASE}/support-messages/metrics/`;
+const AUDIT_METRICS_URL = `${window.APP_CONFIG.API_BASE}/audit/metrics/`;
 
 // ---------------------------------------------------------------------------
-// MODO DE INTERFAZ: se detecta desde el objeto user guardado en localStorage.
-// El backend es la autoridad real de permisos; esto solo elige la UI.
+// MODO DE INTERFAZ: se detecta desde el objeto user guardado en localStorage
+// (window.Auth.getCurrentUser, ver assets/js/auth.js). El backend es la
+// autoridad real de permisos; esto solo elige la UI.
 // ---------------------------------------------------------------------------
-function getCurrentUser() {
-  try {
-    return JSON.parse(localStorage.getItem("user") || "{}");
-  } catch {
-    return {};
-  }
-}
+const getCurrentUser = () => window.Auth.getCurrentUser();
 
 function isAdminMode() {
   const u = getCurrentUser();
@@ -106,42 +101,11 @@ function canViewUsers() {
 }
 
 // ---------------------------------------------------------------------------
-// apiFetch: wrapper centralizado de fetch.
-// - Agrega el header Authorization con el access token.
-// - Si la API responde 401 (token expirado/inválido), muestra un aviso,
-//   elimina el access token y redirige a index.html para volver a iniciar sesión.
+// apiFetch: sale de assets/js/auth.js (window.Auth) — agrega el header
+// Authorization, renueva el access token vía refresh ante un 401 (una sola
+// vez) y, si no hay sesión válida, limpia todo y redirige a index.html.
 // ---------------------------------------------------------------------------
-async function apiFetch(url, options = {}) {
-  const headers = {
-    ...(options.headers || {}),
-    Authorization: `Bearer ${localStorage.getItem("access") || ""}`,
-  };
-
-  const response = await fetch(url, { ...options, headers });
-
-  if (response.status === 401) {
-    handleSessionExpired();
-    const sessionError = new Error("Sesión expirada");
-    sessionError.isSessionExpired = true;
-    throw sessionError;
-  }
-
-  // 403 estructurado del backend (JWTAuthenticationWithPasswordPolicy):
-  // la cuenta tiene un cambio de contraseña pendiente y no puede seguir
-  // usando la API hasta completarlo. Se clona la respuesta para poder
-  // leer el body acá sin consumirlo (el caller puede necesitar leerlo).
-  if (response.status === 403) {
-    const body = await response.clone().json().catch(() => ({}));
-    if (body && body.must_change_password) {
-      window.location.replace("cambiar-password.html");
-      const pendingError = new Error("Cambio de contraseña pendiente");
-      pendingError.isSessionExpired = true; // mismo tratamiento: no seguir procesando
-      throw pendingError;
-    }
-  }
-
-  return response;
-}
+const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
 // Estado de búsqueda, filtros y paginación
 let currentPage = 1;
@@ -1115,50 +1079,16 @@ document
 // Crear/Editar usuario: el submit se maneja más abajo (handleAdminSubmit).
 const createUserForm = document.getElementById("createUserForm");
 
-// 🚀 Logout: invalida el refresh token en el backend, limpia tokens y redirige.
+// 🚀 Logout: invalida el refresh token en el backend, limpia tokens y redirige
+// (window.Auth.logout, ver assets/js/auth.js).
 const logoutBtn = document.getElementById("logoutAdminBtn");
 if (logoutBtn) {
-  logoutBtn.addEventListener("click", async () => {
-    const refresh = localStorage.getItem("refresh") || "";
-
-    // 1. Intentar invalidar el refresh token en el backend.
-    //    Si falla (token expirado, red, etc.) igual se continúa con el logout local.
-    if (refresh) {
-      try {
-        await apiFetch("http://127.0.0.1:8000/api/v1/auth/logout/", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ refresh }),
-        });
-      } catch (err) {
-        console.warn("No se pudo invalidar el refresh token en el backend:", err);
-      }
-    }
-
-    // 2. Limpiar tokens locales SIEMPRE (aunque el backend falle).
-    localStorage.removeItem("access");
-    localStorage.removeItem("refresh");
-    localStorage.removeItem("user");
-
-    // 3. El logout ya se hizo acá mismo (token invalidado + storage limpio);
-    //    redirigir directo al login en vez de pasar por logoutpage.html.
-    window.location.replace("index.html");
-  });
+  logoutBtn.addEventListener("click", () => window.Auth.logout());
 }
 
 // ---------------------------------------------------------------------------
 // SETTINGS / PERFIL PROPIO (vista dentro de <main>)
 // ---------------------------------------------------------------------------
-function handleSessionExpired() {
-  alert("Tu sesión expiró. Volvé a iniciar sesión.");
-  localStorage.removeItem("access");
-  localStorage.removeItem("refresh");
-  localStorage.removeItem("user");
-  window.location.replace("index.html");
-}
-
 async function openSettings() {
   closeRoles();
   closeReports();
@@ -1189,12 +1119,8 @@ async function openSettings() {
     .forEach((id) => { const el = document.getElementById(id); if (el) el.value = ""; });
 
   // Cargar datos del perfil desde el backend
-  const token = localStorage.getItem("access");
   try {
-    const res = await fetch(ME_URL, {
-      headers: { "Authorization": `Bearer ${token}` }
-    });
-    if (res.status === 401) { handleSessionExpired(); return; }
+    const res = await apiFetch(ME_URL);
     if (!res.ok) throw new Error("Error al cargar el perfil");
     const user = await res.json();
 
@@ -1207,6 +1133,7 @@ async function openSettings() {
     v("settingsEmail",     user.email);
     v("settingsRole",      user.role ?? user.groups?.[0] ?? "—");
   } catch (err) {
+    if (err.isSessionExpired) return;
     if (profileMsg) {
       profileMsg.textContent = "No se pudo cargar el perfil.";
       profileMsg.style.color = "red";
@@ -1253,17 +1180,12 @@ async function settingsSaveProfile() {
     msg.style.display  = "block";
   };
 
-  const token = localStorage.getItem("access");
   try {
-    const res = await fetch(ME_URL, {
+    const res = await apiFetch(ME_URL, {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ first_name: firstName, last_name: lastName })
     });
-    if (res.status === 401) { handleSessionExpired(); return; }
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       showMsg("Changes saved successfully.", true);
@@ -1273,7 +1195,8 @@ async function settingsSaveProfile() {
     } else {
       showMsg(data?.detail ?? data?.first_name?.[0] ?? data?.last_name?.[0] ?? "Error saving changes.", false);
     }
-  } catch {
+  } catch (err) {
+    if (err.isSessionExpired) return;
     showMsg("Network error. Check your connection.", false);
   }
 }
@@ -1296,21 +1219,16 @@ async function settingsSavePassword() {
     return;
   }
 
-  const token = localStorage.getItem("access");
   try {
-    const res = await fetch(CHANGE_PASSWORD_URL, {
+    const res = await apiFetch(CHANGE_PASSWORD_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         current_password: current,
         new_password:     nuevo,
         confirm_password: confirm
       })
     });
-    if (res.status === 401) { handleSessionExpired(); return; }
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       showMsg("Password updated successfully.", true);
@@ -1325,7 +1243,8 @@ async function settingsSavePassword() {
         "Error changing password.";
       showMsg(err, false);
     }
-  } catch {
+  } catch (err) {
+    if (err.isSessionExpired) return;
     showMsg("Network error. Check your connection.", false);
   }
 }
@@ -2362,10 +2281,10 @@ document.querySelectorAll(".nav a:not(#navSettings):not(#navRoles):not(#navRepor
 // REGISTROS DE AUDITORÍA (solo audit.view) + PEDIDOS DE TODOS LOS USUARIOS
 // (solo orders.view_all), mismo patrón de sección que Roles/Reportes.
 // ---------------------------------------------------------------------------
-const AUDIT_LOGS_URL = "http://127.0.0.1:8000/api/v1/audit/logs/";
-const AUDIT_ACTIONS_URL = "http://127.0.0.1:8000/api/v1/audit/actions/";
-const ADMIN_ORDERS_URL = "http://127.0.0.1:8000/api/v1/admin/orders/";
-const SUPPORT_MESSAGES_URL = "http://127.0.0.1:8000/api/v1/support-messages/";
+const AUDIT_LOGS_URL = `${window.APP_CONFIG.API_BASE}/audit/logs/`;
+const AUDIT_ACTIONS_URL = `${window.APP_CONFIG.API_BASE}/audit/actions/`;
+const ADMIN_ORDERS_URL = `${window.APP_CONFIG.API_BASE}/admin/orders/`;
+const SUPPORT_MESSAGES_URL = `${window.APP_CONFIG.API_BASE}/support-messages/`;
 
 function formatDateTime(value) {
   if (!value) return "-";

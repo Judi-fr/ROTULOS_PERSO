@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Mis Documentos</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/documentos.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar">
+        <div class="topbar-user">
+          <img
+            class="avatar"
+            id="userAvatar"
+            src="https://api.dicebear.com/7.x/avataaars/svg?seed=user"
+            alt=""
+          />
+          <div class="topbar-user-info">
+            <span class="topbar-user-name" id="userName">—</span>
+            <span class="topbar-user-email" id="userEmail">—</span>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <a class="btn btn-outline" href="dashboard.html">Volver al panel</a>
+          <button class="btn btn-outline" id="logoutBtn" type="button">
+            Cerrar sesión
+          </button>
+        </div>
+      </header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Mis documentos</h1>
+          <p>
+            Rótulos generados por lote: descargá el archivo cuando esté listo
+            o revisá qué pasó si algo falló.
+          </p>
+        </div>
+
+        <p
+          id="pageMessage"
+          class="page-message"
+          role="status"
+          aria-live="polite"
+          style="display: none"
+        ></p>
+
+        <section class="profile-card">
+          <div class="profile-card-title">
+            <span>Documentos</span>
+            <a class="btn btn-primary btn-small" href="rotulos.html">
+              + Generar por lote
+            </a>
+          </div>
+          <div class="profile-card-body">
+            <div class="documents-toolbar">
+              <input
+                type="search"
+                id="searchInput"
+                class="search-input"
+                placeholder="Buscar por nombre..."
+              />
+              <select id="statusFilter" class="status-filter">
+                <option value="">Todos los estados</option>
+                <option value="processing">Procesando</option>
+                <option value="ready">Listo</option>
+                <option value="failed">Falló</option>
+              </select>
+            </div>
+
+            <div id="documentList" class="document-list">
+              <p class="empty-state">Cargando documentos...</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/documentos.js"></script>
+  </body>
+</html>
