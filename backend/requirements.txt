@@ -7,3 +7,5 @@ psycopg[binary]==3.3.4
 gunicorn==26.0.0
 google-auth==2.38.0
 requests==2.32.3
+Pillow==11.1.0
+reportlab==5.0.1

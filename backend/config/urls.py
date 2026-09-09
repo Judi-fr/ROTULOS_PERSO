@@ -27,7 +27,7 @@ urlpatterns = [
     path("api/v1/", include("apps.accounts.admin_urls")),  # bandeja de soporte (admin)
     path("api/v1/", include("apps.orders.urls")),  # direcciones y pedidos propios
     path("api/v1/audit/", include("apps.audit.urls")),  # registro de auditoría (solo lectura)
-    path("api/v1/documents/", include("apps.documents.urls")),
+    path("api/v1/documents/", include("apps.documents.urls")),  # documentos generados (lotes de rótulos)
     path("api/v1/processing/", include("apps.processing.urls")),
     path("api/v1/labels/", include("apps.labels.urls")),
 ]

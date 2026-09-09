@@ -227,6 +227,23 @@ PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT", default=60 * 60 * 24)
 ADMIN_CREATED_USER_PASSWORD = env("ADMIN_CREATED_USER_PASSWORD", default="")
 
 # ---------------------------------------------------------------------------
+# Rótulos (apps.labels) — datos del remitente para el render en servidor
+# ---------------------------------------------------------------------------
+
+# El destinatario/domicilio/CP/localidad salen del Order/Address del envío
+# (ver apps.labels.rendering.build_label_context); el remitente es siempre
+# Buspack, así que sale de acá y no de cada rótulo.
+LABEL_SENDER_NAME = env("LABEL_SENDER_NAME", default="Buspack")
+LABEL_SENDER_ADDRESS = env(
+    "LABEL_SENDER_ADDRESS", default="Buspack - Encomiendas"
+)
+
+# Tope de rótulos por lote (POST /api/v1/labels/batch/, ver
+# apps.labels.batch_views). El lote corre síncrono, en el mismo request:
+# sin esto, un lote gigante sería un timeout en vez de un error claro.
+LABELS_BATCH_MAX_ITEMS = env.int("LABELS_BATCH_MAX_ITEMS", default=200)
+
+# ---------------------------------------------------------------------------
 # JWT (djangorestframework-simplejwt)
 # ---------------------------------------------------------------------------
 

@@ -24,9 +24,8 @@ class DashboardView(APIView):
 
     El ítem "users" (gestión de usuarios) solo se agrega al menú si el rol
     efectivo es ``admin``. Las secciones que todavía no tienen pantalla
-    propia (labels/documents/processing) se devuelven con
-    ``enabled: False`` y sin URL en vez de omitirse o inventar una ruta que
-    no existe.
+    propia (documents/processing) se devuelven con ``enabled: False`` y sin
+    URL en vez de omitirse o inventar una ruta que no existe.
     """
 
     permission_classes = [IsAuthenticated]
@@ -82,13 +81,23 @@ class DashboardView(APIView):
             }
         )
 
-        # Labels/documents/processing todavía no tienen pantalla propia (sus
-        # apps backend exponen urlpatterns vacíos): se listan deshabilitados
-        # en vez de omitirse o apuntar a una URL inventada.
+        # Processing todavía no tiene pantalla propia (su app backend
+        # expone urlpatterns vacíos): se lista deshabilitado en vez de
+        # omitirse o apuntar a una URL inventada. Labels y documents ya
+        # tienen pantalla propia (rotulos.html / diseñorotulos.html,
+        # documentos.html). Nota: plantillas_rotulos.html +
+        # dashboard_rotulos.js + gestionrotulos.css son la pantalla vieja
+        # (Bootstrap/MDI/<app-sidebar>), reemplazada por rotulos.html;
+        # quedan sin uso pero no se borraron (ver CLAUDE.md).
         menu.extend(
             [
-                {"key": "labels", "label": "Mis rótulos", "url": "", "enabled": False},
-                {"key": "documents", "label": "Mis documentos", "url": "", "enabled": False},
+                {"key": "labels", "label": "Mis rótulos", "url": "rotulos.html", "enabled": True},
+                {
+                    "key": "documents",
+                    "label": "Mis documentos",
+                    "url": "documentos.html",
+                    "enabled": True,
+                },
                 {"key": "processing", "label": "Generar rótulo", "url": "", "enabled": False},
                 {"key": "profile", "label": "Mi perfil", "url": "perfil.html", "enabled": True},
                 {"key": "support", "label": "Ayuda / Soporte", "url": "ayuda.html", "enabled": True},

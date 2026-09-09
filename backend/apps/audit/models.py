@@ -25,6 +25,8 @@ class AuditLog(models.Model):
         ROLES = "roles", "Roles"
         ORDERS = "orders", "Pedidos"
         SUPPORT = "support", "Soporte"
+        LABELS = "labels", "Rótulos"
+        DOCUMENTS = "documents", "Documentos"
 
     class Action(models.TextChoices):
         # auth
@@ -54,6 +56,17 @@ class AuditLog(models.Model):
         SUPPORT_CREATE = "support.create", "Mensaje de soporte creado"
         SUPPORT_STATUS_CHANGE = "support.status_change", "Cambio de estado de soporte"
         SUPPORT_REPLY = "support.reply", "Respuesta de soporte"
+        # labels (rótulos)
+        LABEL_CREATE = "label.create", "Rótulo creado"
+        LABEL_UPDATE = "label.update", "Rótulo actualizado"
+        LABEL_DELETE = "label.delete", "Rótulo eliminado"
+        LABEL_RENDER = "label.render", "Rótulo renderizado (PDF)"
+        LABEL_BATCH = "label.batch", "Rótulos generados por lote"
+        TEMPLATE_CREATE = "template.create", "Plantilla de rótulo creada"
+        TEMPLATE_UPDATE = "template.update", "Plantilla de rótulo actualizada"
+        TEMPLATE_DELETE = "template.delete", "Plantilla de rótulo eliminada"
+        # documents
+        DOCUMENT_DELETE = "document.delete", "Documento eliminado"
 
     # Cada acción pertenece a exactamente una categoría. Se guarda acá (en vez
     # de derivarla del prefijo de la acción) porque los nombres no son
@@ -82,6 +95,15 @@ class AuditLog(models.Model):
         Action.SUPPORT_CREATE: Category.SUPPORT,
         Action.SUPPORT_STATUS_CHANGE: Category.SUPPORT,
         Action.SUPPORT_REPLY: Category.SUPPORT,
+        Action.LABEL_CREATE: Category.LABELS,
+        Action.LABEL_UPDATE: Category.LABELS,
+        Action.LABEL_DELETE: Category.LABELS,
+        Action.LABEL_RENDER: Category.LABELS,
+        Action.LABEL_BATCH: Category.LABELS,
+        Action.TEMPLATE_CREATE: Category.LABELS,
+        Action.TEMPLATE_UPDATE: Category.LABELS,
+        Action.TEMPLATE_DELETE: Category.LABELS,
+        Action.DOCUMENT_DELETE: Category.DOCUMENTS,
     }
 
     actor = models.ForeignKey(

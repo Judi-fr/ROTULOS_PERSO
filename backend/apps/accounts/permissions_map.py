@@ -91,12 +91,28 @@ PERMISSIONS = frozenset(
         "orders.cancel",
         # Contacto/soporte desde el dashboard
         "support.create",
-        # Auditoría, pedidos de todos los usuarios y bandeja de soporte
-        # (panel del admin): exclusivamente admin, ver 0014_seed_admin_only_permissions.
+        # Rótulos propios (self-service)
+        "labels.view",
+        "labels.create",
+        "labels.edit",
+        "labels.delete",
+        "labels.render",
+        "labels.batch",
+        # Documentos generados (hoy: lotes de rótulos) propios
+        "documents.view",
+        "documents.delete",
+        # Auditoría, pedidos de todos los usuarios, bandeja de soporte,
+        # rótulos de todos los usuarios / gestión de plantillas y
+        # documentos de todos los usuarios (panel del admin): exclusivamente
+        # admin, ver 0014_seed_admin_only_permissions, 0015_seed_label_permissions
+        # y 0017_seed_document_permissions.
         "audit.view",
         "orders.view_all",
         "support.view_all",
         "support.manage",
+        "labels.view_all",
+        "labels.manage_templates",
+        "documents.view_all",
     }
 )
 
@@ -111,6 +127,14 @@ _SELF_SERVICE_PERMISSIONS = {
     "orders.create",
     "orders.cancel",
     "support.create",
+    "labels.view",
+    "labels.create",
+    "labels.edit",
+    "labels.delete",
+    "labels.render",
+    "labels.batch",
+    "documents.view",
+    "documents.delete",
 }
 
 # Mapeo rol -> conjunto de permisos.

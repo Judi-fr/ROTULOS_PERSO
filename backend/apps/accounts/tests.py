@@ -532,16 +532,29 @@ class RolePermissionSystemTests(AuthTestCase):
         "orders.create",
         "orders.cancel",
         "support.create",
-        # Exclusivos del admin (ver 0014_seed_admin_only_permissions).
+        "labels.view",
+        "labels.create",
+        "labels.edit",
+        "labels.delete",
+        "labels.render",
+        "labels.batch",
+        "documents.view",
+        "documents.delete",
+        # Exclusivos del admin (ver 0014_seed_admin_only_permissions,
+        # 0015_seed_label_permissions y 0017_seed_document_permissions).
         "audit.view",
         "orders.view_all",
         "support.view_all",
         "support.manage",
+        "labels.view_all",
+        "labels.manage_templates",
+        "documents.view_all",
     }
 
-    # Self-service: perfil propio + direcciones/pedidos propios + soporte.
-    # Es lo que tienen designer/operator/subscriber (ver
-    # 0007_seed_order_permissions y 0012_seed_support_permission).
+    # Self-service: perfil propio + direcciones/pedidos propios + soporte +
+    # rótulos propios. Es lo que tienen designer/operator/subscriber (ver
+    # 0007_seed_order_permissions, 0012_seed_support_permission y
+    # 0015_seed_label_permissions).
     ME_VIEW_PERMISSIONS = {
         "users.me.view",
         "users.me.edit",
@@ -551,6 +564,14 @@ class RolePermissionSystemTests(AuthTestCase):
         "orders.create",
         "orders.cancel",
         "support.create",
+        "labels.view",
+        "labels.create",
+        "labels.edit",
+        "labels.delete",
+        "labels.render",
+        "labels.batch",
+        "documents.view",
+        "documents.delete",
     }
 
     def setUp(self):
@@ -651,13 +672,15 @@ class RolePermissionSystemTests(AuthTestCase):
                 group=link.group, permission=link.permission
             )
 
-        self.assertEqual(self.RolePermission.objects.count(), 18)
+        # El catálogo completo (RolePermission) es exactamente ALL_PERMISSIONS.
+        self.assertEqual(self.RolePermission.objects.count(), len(self.ALL_PERMISSIONS))
+        self_service_roles = [self.DESIGNER, self.OPERATOR, self.SUBSCRIBER]
         self.assertEqual(
             self.GroupRolePermission.objects.count(),
-            # admin tiene 18 (incluye users.unlock + audit.view/orders.view_all/
-            # support.view_all/support.manage, todos solo-admin) + 3 roles con
-            # 8 cada uno (self-service, incluye support.create) = 18 + 24 = 42
-            18 + 3 * 8,
+            # admin tiene el catálogo completo (ALL_PERMISSIONS) + cada rol
+            # self-service (designer/operator/subscriber) tiene
+            # ME_VIEW_PERMISSIONS.
+            len(self.ALL_PERMISSIONS) + len(self_service_roles) * len(self.ME_VIEW_PERMISSIONS),
         )
 
     # --- Endpoints autenticados (admin) --------------------------------------
@@ -679,7 +702,8 @@ class RolePermissionSystemTests(AuthTestCase):
         self.client.force_authenticate(user=self.admin_user)
         resp = self.client.get("/api/v1/auth/permissions/")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(resp.data), 18)
+        # El catálogo completo del endpoint es exactamente ALL_PERMISSIONS.
+        self.assertEqual(len(resp.data), len(self.ALL_PERMISSIONS))
         keys = {p["key"] for p in resp.data}
         self.assertEqual(keys, self.ALL_PERMISSIONS)
 
@@ -2248,11 +2272,12 @@ class RoleCrudTests(AuthTestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual({p["key"] for p in resp.data["permissions"]}, {"users.view"})
 
-        # Eliminar el rol de prueba no rompe el catálogo.
+        # Eliminar el rol de prueba no rompe el catálogo: sigue siendo
+        # exactamente ALL_PERMISSIONS (ver RolePermissionSystemTests).
         self.client.delete(f"{self.ROLES_URL}{role.id}/")
         resp = self.client.get("/api/v1/auth/permissions/")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(resp.data), 18)
+        self.assertEqual(len(resp.data), len(RolePermissionSystemTests.ALL_PERMISSIONS))
 
     def test_get_roles_lista_incluye_personalizados(self):
         self.Group.objects.create(name="auditor")
@@ -2320,13 +2345,29 @@ class DashboardTests(AuthTestCase):
         self.assertTrue(by_key["support"]["enabled"])
         self.assertEqual(by_key["support"]["url"], "ayuda.html")
 
-    def test_labels_sigue_deshabilitado(self):
-        # No hay backend de generación de rótulos todavía: el tile se lista
+    def test_labels_habilitado(self):
+        # apps.labels ya tiene CRUD y pantalla propia (rotulos.html).
+        self.client.force_authenticate(user=self.subscriber)
+        resp = self.client.get(self.URL)
+        by_key = {item["key"]: item for item in resp.data["menu"]}
+        self.assertTrue(by_key["labels"]["enabled"])
+        self.assertEqual(by_key["labels"]["url"], "rotulos.html")
+
+    def test_documents_habilitado(self):
+        # apps.documents ya tiene CRUD y pantalla propia (documentos.html).
+        self.client.force_authenticate(user=self.subscriber)
+        resp = self.client.get(self.URL)
+        by_key = {item["key"]: item for item in resp.data["menu"]}
+        self.assertTrue(by_key["documents"]["enabled"])
+        self.assertEqual(by_key["documents"]["url"], "documentos.html")
+
+    def test_processing_sigue_deshabilitado(self):
+        # No hay backend de processing todavía: el tile se lista
         # deshabilitado en vez de apuntar a una pantalla inexistente.
         self.client.force_authenticate(user=self.subscriber)
         resp = self.client.get(self.URL)
         by_key = {item["key"]: item for item in resp.data["menu"]}
-        self.assertFalse(by_key["labels"]["enabled"])
+        self.assertFalse(by_key["processing"]["enabled"])
 
 
 class SupportMessageTests(AuthTestCase):
