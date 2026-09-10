@@ -5,16 +5,32 @@ from django.http import HttpResponse
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from . import render
 from .models import ElementoPlantilla, Plantilla, VariableRotulo
-from .render.fuentes import FuenteNoDisponible
+from .render.fuentes import FuenteNoDisponible, familias_disponibles
 from .permissions import LecturaAutenticadaEscrituraAdministrador
 from .serializers import (
     PlantillaSerializer,
     RenderizarSerializer,
     VariableRotuloSerializer,
 )
+
+
+class FuentesView(APIView):
+    """Familias tipográficas que el editor puede ofrecer.
+
+    Se consulta al servidor en vez de codificar la lista en el frontend porque
+    la disponibilidad depende de la máquina: el PDF sale siempre —sus fuentes
+    viajan dentro del formato— pero el PNG necesita un ``.ttf`` instalado, y
+    eso cambia entre tu Windows y un contenedor. Cada familia viene con
+    ``png_disponible`` para que la interfaz pueda avisar antes de que alguien
+    elija una y no entienda por qué la vista previa se ve distinta.
+    """
+
+    def get(self, request):
+        return Response(familias_disponibles())
 
 
 class VariableRotuloViewSet(viewsets.ModelViewSet):
@@ -122,10 +138,12 @@ class PlantillaViewSet(viewsets.ModelViewSet):
 
         Dos cabeceras de respuesta informan lo que pasó sin romper el flujo:
         ``X-Rotulo-Faltantes`` lista las variables que no vinieron en los
-        datos, y ``X-Rotulo-Truncados`` las que no entraban en su caja y se
-        cortaron. Recortar un domicilio en silencio es la clase de error que
-        termina en un paquete que no llega, así que el dato viaja aunque la
-        impresión siga adelante.
+        datos, ``X-Rotulo-Truncados`` las que no entraban en su caja y se
+        cortaron, y ``X-Rotulo-Avisos`` el resto —hoy, un QR que quedó
+        demasiado denso para el tamaño de su caja y que ningún lector va a
+        levantar—. Recortar un domicilio o imprimir un QR ilegible en silencio
+        es la clase de error que termina en un paquete que no llega, así que
+        el dato viaja aunque la impresión siga adelante.
         """
         plantilla = self.get_object()
         entrada = RenderizarSerializer(data=request.data)
@@ -161,4 +179,6 @@ class PlantillaViewSet(viewsets.ModelViewSet):
             respuesta["X-Rotulo-Faltantes"] = ",".join(informe["faltantes"])
         if informe["truncados"]:
             respuesta["X-Rotulo-Truncados"] = ",".join(informe["truncados"])
+        if informe["avisos"]:
+            respuesta["X-Rotulo-Avisos"] = ",".join(informe["avisos"])
         return respuesta

@@ -21,7 +21,8 @@ clave          valores                 por defecto    equivalente CSS
                derecha/justificado
 ``negrita``    booleano                ``False``      ``font-weight: bold``
 ``cursiva``    booleano                ``False``      ``font-style: italic``
-``fuente``     texto o ``None``        ``None``       ``font-family``
+``fuente``     helvetica/times/        ``None``       ``font-family``
+               courier, o ``None``
 ``color``      ``#rrggbb``             ``#000000``    ``color``
 ``grosor_mm``  número >= 0             ``0.3``        ``border-width`` (mm)
 =============  ======================  =============  ============================
@@ -64,6 +65,30 @@ def _validar_numero(clave, valor, minimo):
         raise ValidationError(f"«{clave}» debe ser mayor o igual que {minimo}.")
 
 
+def _validar_fuente(valor):
+    """Valida el código de familia tipográfica.
+
+    Se importa acá adentro y no arriba a propósito: ``render.fuentes`` es
+    quien conoce las familias, y el paquete ``render`` importa este módulo
+    para resolver los estilos. Un import a nivel de módulo cerraría el
+    círculo; adentro de la función no, porque para cuando se llama, ambos
+    módulos ya terminaron de cargarse.
+    """
+    from apps.labels.render.fuentes import CODIGOS
+
+    if valor is None:
+        return  # nulo = la familia por defecto
+    if not isinstance(valor, str):
+        raise ValidationError("«fuente» debe ser texto o nulo.")
+    if valor not in CODIGOS:
+        raise ValidationError(
+            "«fuente» debe ser una de: {}. Se valida contra la lista en vez de "
+            "aceptar cualquier nombre porque una familia que el motor no "
+            "conoce no falla al guardar: falla al imprimir, saliendo con otra "
+            "tipografía sin avisar.".format(", ".join(sorted(CODIGOS)))
+        )
+
+
 def validar_estilo(estilo):
     """Valida un diccionario de estilo contra el contrato.
 
@@ -100,8 +125,8 @@ def validar_estilo(estilo):
         if clave in estilo and not isinstance(estilo[clave], bool):
             raise ValidationError(f"«{clave}» debe ser verdadero o falso.")
 
-    if "fuente" in estilo and not isinstance(estilo["fuente"], (str, type(None))):
-        raise ValidationError("«fuente» debe ser texto o nulo.")
+    if "fuente" in estilo:
+        _validar_fuente(estilo["fuente"])
 
     if "color" in estilo:
         color = estilo["color"]

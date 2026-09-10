@@ -8,13 +8,15 @@ Que no importe reportlab ni Pillow es deliberado: se puede testear el
 renderizado entero afirmando sobre primitivas, sin generar un archivo ni
 comparar imágenes.
 
-**Las medidas de texto se toman siempre con las métricas de Helvetica**, aun
-cuando el PNG se dibuje con otra tipografía. Podría parecer un descuido pero
-es lo que se quiere: así el truncado se decide una sola vez y el PNG de la
-vista previa muestra exactamente el mismo texto que va a salir impreso. Si
-cada backend midiera con su fuente, la previsualización mentiría.
+**Las medidas de texto se toman una sola vez acá**, con las métricas de la
+familia elegida en el estilo, y valen para los dos backends. Así el truncado
+se decide en un solo lugar y el PNG de la vista previa muestra exactamente el
+mismo texto que va a salir impreso; si cada backend midiera con lo suyo, la
+previsualización mentiría. Que la familia entre en la cuenta no es un detalle:
+Courier es bastante más ancha que Helvetica al mismo cuerpo.
 """
 
+import json
 import logging
 
 from reportlab.pdfbase import pdfmetrics
@@ -32,6 +34,13 @@ PT_POR_MM = 72 / 25.4
 # Por debajo de esto el texto deja de ser legible en un rótulo impreso; antes
 # de achicar más, se trunca.
 TAMANO_PT_MINIMO = 4
+
+# Lado mínimo de un módulo de QR impreso, en milímetros, para que un lector de
+# mano común lo levante. Por debajo de 0.4 mm hace falta un escáner dedicado y
+# una impresión muy limpia; el rótulo de una encomienda no es ninguna de las
+# dos cosas. Es el número que convierte "el QR entró en la caja" en "el QR se
+# puede leer", que no es lo mismo.
+MODULO_QR_MINIMO_MM = 0.4
 
 # Proporción de la altura de la fuente que queda por encima de la línea base.
 # Es una aproximación (varía por tipografía) y solo se usa para centrar el
@@ -62,15 +71,32 @@ def resolver(plantilla, datos=None, usuario=None):
         color_fondo=plantilla.metadatos.get("color_fondo", "#ffffff"),
     )
 
+    # Qué variables de esta plantilla son imágenes. Lo necesita el QR del
+    # envío para dejarlas afuera: en los datos son ids de documentos de este
+    # sistema, que no le dicen nada a quien escanea el paquete. Se calcula una
+    # vez acá porque los elementos ya vienen prefetcheados y recorrerlos nada
+    # cuesta, mientras que averiguarlo dentro del QR obligaría a otra consulta.
+    codigos_imagen = {
+        e.variable.codigo
+        for e in plantilla.elementos.all()
+        if e.tipo == TipoElemento.VARIABLE
+        and e.variable_id
+        and e.variable.tipo_dato == TipoDato.IMAGEN
+    }
+
     # `elementos.all()` ya viene ordenado por `orden` y después por `id`
     # (Meta.ordering), o sea en orden de pintado: el fondo primero.
     for elemento in plantilla.elementos.all():
-        _resolver_elemento(elemento, lienzo, datos, vista_previa, usuario)
+        _resolver_elemento(
+            elemento, lienzo, datos, vista_previa, usuario, codigos_imagen
+        )
 
     return lienzo
 
 
-def _resolver_elemento(elemento, lienzo, datos, vista_previa, usuario):
+def _resolver_elemento(
+    elemento, lienzo, datos, vista_previa, usuario, codigos_imagen=frozenset()
+):
     """Agrega al lienzo las primitivas que produce un elemento."""
     estilo = estilo_efectivo(elemento.estilo)
     caja = (
@@ -93,7 +119,14 @@ def _resolver_elemento(elemento, lienzo, datos, vista_previa, usuario):
         return
 
     if elemento.tipo == TipoElemento.TEXTO_ESTATICO:
-        _agregar_texto(lienzo, caja, elemento.contenido, estilo, etiqueta=None)
+        # Se reporta por id y no por su contenido porque el aviso viaja en una
+        # cabecera HTTP separada por comas: un texto con acentos o con una coma
+        # la rompería. Con el id, el cliente encuentra el elemento en la
+        # plantilla que ya tiene.
+        _agregar_texto(
+            lienzo, caja, elemento.contenido, estilo,
+            etiqueta=f"texto_estatico#{elemento.pk}",
+        )
         return
 
     # A partir de acá, tipo == variable.
@@ -104,6 +137,13 @@ def _resolver_elemento(elemento, lienzo, datos, vista_previa, usuario):
         _agregar_marcador(lienzo, caja, variable, estilo)
         return
 
+    # El QR del envío es el único que no espera un dato propio: su contenido lo
+    # arma con los de todos los demás. Por eso se atiende antes del control de
+    # "valor vacío", que para él no significa nada.
+    if variable.tipo_dato == TipoDato.QR_ENVIO:
+        _agregar_qr_envio(lienzo, caja, variable, datos, codigos_imagen)
+        return
+
     if valor in (None, ""):
         # Un campo vacío no es un error —la plantilla puede tener opcionales—
         # pero quien imprime 200 rótulos debería enterarse antes.
@@ -112,7 +152,7 @@ def _resolver_elemento(elemento, lienzo, datos, vista_previa, usuario):
         return
 
     if variable.tipo_dato == TipoDato.QR:
-        lienzo.primitivas.append(Imagen(*caja, png=codigos.generar_qr(str(valor))))
+        _agregar_qr(lienzo, caja, variable.codigo, str(valor))
     elif variable.tipo_dato == TipoDato.CODIGO_BARRAS:
         png = codigos.generar_codigo_barras(valor)
         if png is None:
@@ -125,13 +165,83 @@ def _resolver_elemento(elemento, lienzo, datos, vista_previa, usuario):
         _agregar_texto(lienzo, caja, str(valor), estilo, etiqueta=variable.codigo)
 
 
+def _agregar_qr(lienzo, caja, codigo, contenido):
+    """Pega un QR y avisa si le quedaron los módulos demasiado finos.
+
+    Que un QR entre en su caja no quiere decir que se pueda leer: cuanto más
+    datos lleva, más módulos tiene, y con la caja fija cada módulo se achica.
+    Pasado cierto punto el código sale impecable en pantalla y ningún lector
+    lo levanta. Como no rompe nada, sin este aviso se descubre con el paquete
+    ya despachado.
+    """
+    png, modulos = codigos.generar_qr(contenido)
+    lienzo.primitivas.append(Imagen(*caja, png=png))
+
+    # El QR es cuadrado y se pega centrado conservando su proporción, así que
+    # el lado que manda es el menor de la caja.
+    lado_mm = min(caja[2], caja[3])
+    modulo_mm = lado_mm / modulos if modulos else 0
+    if modulo_mm < MODULO_QR_MINIMO_MM:
+        aviso = f"qr_denso:{codigo}"
+        if aviso not in lienzo.avisos:
+            lienzo.avisos.append(aviso)
+        logger.info(
+            "QR %s: %s módulos en %.1f mm dan %.2f mm por módulo (mínimo %.2f)",
+            codigo, modulos, lado_mm, modulo_mm, MODULO_QR_MINIMO_MM,
+        )
+
+
+def payload_envio(datos, excluir=()):
+    """Arma el contenido del QR del envío: un JSON compacto con todo el dato.
+
+    Decisiones y por qué:
+
+    - **JSON y no texto suelto** porque del otro lado hay un sistema leyendo,
+      no una persona. Un WMS que recibe ``{"destinatario":"..."}`` sabe qué es
+      cada cosa; uno que recibe tres líneas sueltas tiene que adivinar.
+    - **Sin espacios** (``separators``): cada carácter de más son módulos de
+      más, y los módulos de más son lo que vuelve ilegible el código.
+    - **``ensure_ascii=False``** por lo mismo: "Gómez" son seis bytes en UTF-8
+      y catorce caracteres si se escapa como ``Gómez``. El QR codifica
+      bytes, así que escapar solo agranda.
+    - **Ordenado por clave** para que el mismo envío produzca siempre el mismo
+      código: si no, dos impresiones del mismo rótulo darían QR distintos y
+      cualquier comparación se vuelve imposible.
+
+    ``excluir`` deja afuera lo que no tiene sentido codificar: el propio QR y
+    las imágenes, que en los datos son ids de documentos de este sistema y no
+    significan nada para quien escanea el paquete.
+    """
+    utiles = {
+        clave: str(valor)
+        for clave, valor in sorted(datos.items())
+        if clave not in excluir and valor not in (None, "")
+    }
+    return json.dumps(utiles, ensure_ascii=False, separators=(",", ":"))
+
+
+def _agregar_qr_envio(lienzo, caja, variable, datos, codigos_imagen=frozenset()):
+    """QR que lleva adentro todos los datos del envío, no un número suelto."""
+    contenido = payload_envio(datos, {variable.codigo} | set(codigos_imagen))
+
+    # Un JSON vacío ("{}") es un QR que no dice nada: se reporta como dato
+    # faltante, igual que cualquier otra variable sin valor.
+    if len(contenido) <= 2:
+        if variable.codigo not in lienzo.faltantes:
+            lienzo.faltantes.append(variable.codigo)
+        return
+
+    _agregar_qr(lienzo, caja, variable.codigo, contenido)
+
+
 def _agregar_texto(lienzo, caja, texto, estilo, etiqueta):
     """Agrega un texto, truncándolo si no entra en su caja."""
     x, y, ancho, alto = caja
     tamano = float(estilo["tamano_pt"])
     negrita, cursiva = bool(estilo["negrita"]), bool(estilo["cursiva"])
+    fuente = estilo.get("fuente")
 
-    recortado, hubo_recorte = _truncar(texto, ancho, tamano, negrita, cursiva)
+    recortado, hubo_recorte = _truncar(texto, ancho, tamano, negrita, cursiva, fuente)
     if hubo_recorte and etiqueta and etiqueta not in lienzo.truncados:
         lienzo.truncados.append(etiqueta)
 
@@ -144,6 +254,7 @@ def _agregar_texto(lienzo, caja, texto, estilo, etiqueta):
             cursiva=cursiva,
             color=estilo["color"],
             alineacion=estilo["alineacion"],
+            fuente=fuente,
             truncado=hubo_recorte,
         )
     )
@@ -158,7 +269,9 @@ def _agregar_marcador(lienzo, caja, variable, estilo):
     """
     x, y, ancho, alto = caja
 
-    if variable.tipo_dato in (TipoDato.QR, TipoDato.CODIGO_BARRAS, TipoDato.IMAGEN):
+    if variable.tipo_dato in (
+        TipoDato.QR, TipoDato.QR_ENVIO, TipoDato.CODIGO_BARRAS, TipoDato.IMAGEN
+    ):
         lienzo.primitivas.append(
             Rectangulo(x, y, ancho, alto, grosor_mm=0.2, color="#999999")
         )
@@ -206,22 +319,26 @@ def _agregar_imagen(lienzo, caja, variable, valor, usuario):
 # ---------------------------------------------------------------------------
 
 
-def ancho_texto_mm(texto, tamano_pt, negrita=False, cursiva=False):
+def ancho_texto_mm(texto, tamano_pt, negrita=False, cursiva=False, fuente=None):
     """Ancho que ocupa un texto, en milímetros.
 
     Usa las métricas reales de la fuente y no un promedio por carácter: con
     ancho variable, "MMMM" ocupa más del doble que "iiii", y contar caracteres
     haría que un texto en mayúsculas se desborde igual.
+
+    Se mide con la familia que se va a imprimir: Courier es bastante más ancha
+    que Helvetica al mismo cuerpo, así que medir todo con una sola haría que
+    un texto en monoespaciada se desborde sin que nadie lo reporte.
     """
     puntos = pdfmetrics.stringWidth(
-        texto, fuentes.nombre_pdf(negrita, cursiva), tamano_pt
+        texto, fuentes.nombre_pdf(negrita, cursiva, fuente), tamano_pt
     )
     return puntos / PT_POR_MM
 
 
-def _truncar(texto, ancho_mm, tamano_pt, negrita, cursiva):
+def _truncar(texto, ancho_mm, tamano_pt, negrita, cursiva, fuente=None):
     """Devuelve ``(texto, hubo_recorte)`` recortando con "…" si no entra."""
-    if not texto or ancho_texto_mm(texto, tamano_pt, negrita, cursiva) <= ancho_mm:
+    if not texto or ancho_texto_mm(texto, tamano_pt, negrita, cursiva, fuente) <= ancho_mm:
         return texto, False
 
     # Se saca un carácter por vez desde el final hasta que el texto más los
@@ -231,7 +348,7 @@ def _truncar(texto, ancho_mm, tamano_pt, negrita, cursiva):
     while recortado:
         recortado = recortado[:-1]
         candidato = recortado.rstrip() + "…"
-        if ancho_texto_mm(candidato, tamano_pt, negrita, cursiva) <= ancho_mm:
+        if ancho_texto_mm(candidato, tamano_pt, negrita, cursiva, fuente) <= ancho_mm:
             return candidato, True
 
     # La caja es tan angosta que no entra ni un carácter con puntos.

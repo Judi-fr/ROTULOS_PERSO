@@ -158,6 +158,18 @@ REST_FRAMEWORK = {
 
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
 
+# Cabeceras de respuesta que el navegador le deja leer al JavaScript de otro
+# origen. Por defecto CORS solo expone un puñado de cabeceras estándar, así que
+# sin esta lista el frontend recibe el rótulo impreso pero no puede enterarse
+# de que a un campo le faltó el dato o de que un domicilio se cortó: el motor
+# de impresión las informa acá (ver PlantillaViewSet.renderizar) justamente
+# para que el usuario lo vea antes de pegar la etiqueta en el paquete.
+CORS_EXPOSE_HEADERS = [
+    "X-Rotulo-Faltantes",
+    "X-Rotulo-Truncados",
+    "X-Rotulo-Avisos",
+]
+
 # ---------------------------------------------------------------------------
 # Google OAuth / Sign-In
 # ---------------------------------------------------------------------------

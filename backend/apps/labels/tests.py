@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.db import IntegrityError, connection, transaction
 from django.test.utils import CaptureQueriesContext
+from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -108,7 +109,14 @@ class CatalogoVariablesTests(BaseLabelsTests):
         # Sin paginar: la respuesta es la lista completa, no un objeto con
         # 'results'. El editor la consume entera para poblar su selector.
         codigos = {v["codigo"] for v in resp.data}
-        self.assertEqual(len(resp.data), 8)
+        # El total se compara contra la base y no contra un número escrito acá:
+        # las variables del sistema las siembran las migraciones, y agregar una
+        # es algo que va a volver a pasar. Lo que importa es que el listado
+        # traiga todas y que no se cuele ninguna que no sea del sistema.
+        self.assertEqual(
+            len(resp.data),
+            VariableRotulo.objects.filter(es_sistema=True, activa=True).count(),
+        )
         self.assertIn("qr", codigos)
         self.assertIn("codigo_postal", codigos)
         self.assertTrue(all(v["es_sistema"] for v in resp.data))
@@ -438,3 +446,45 @@ class EstiloTests(BaseLabelsTests):
     def test_color_mal_formado_da_400(self):
         resp = self._post_con_estilo({"color": "rojo"})
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_una_familia_del_catalogo_es_valida(self):
+        self.assertEqual(
+            self._post_con_estilo({"fuente": "courier"}).status_code,
+            status.HTTP_201_CREATED,
+        )
+
+    def test_fuente_nula_es_valida(self):
+        """Nulo significa «la familia por defecto», que es un caso normal."""
+        self.assertEqual(
+            self._post_con_estilo({"fuente": None}).status_code,
+            status.HTTP_201_CREATED,
+        )
+
+    def test_una_familia_desconocida_da_400(self):
+        """Guardarla no fallaría; imprimirla saldría con otra tipografía."""
+        resp = self._post_con_estilo({"fuente": "Comic Sans MS"})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class FuentesAPITests(BaseLabelsTests):
+    """El editor consulta al servidor qué familias puede ofrecer."""
+
+    def test_lista_las_familias(self):
+        resp = self.client.get(reverse("fuentes"))
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        codigos = [f["codigo"] for f in resp.data]
+        self.assertIn("helvetica", codigos)
+        self.assertIn("times", codigos)
+        self.assertIn("courier", codigos)
+        # Cada una trae lo que la interfaz necesita para armar el selector y
+        # para avisar si la vista previa en PNG no va a estar disponible.
+        for familia in resp.data:
+            self.assertIn("etiqueta", familia)
+            self.assertIn("png_disponible", familia)
+
+    def test_requiere_autenticacion(self):
+        # force_authenticate lo dejó logueado en setUp; se deshace pasando None.
+        self.client.force_authenticate(None)
+        resp = self.client.get(reverse("fuentes"))
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)

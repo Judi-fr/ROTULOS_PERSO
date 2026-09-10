@@ -71,18 +71,59 @@ def respuesta_del_modelo(**extra):
     return base
 
 
+def codigos_ofrecidos(esquema):
+    """Los códigos de variable que el esquema le ofrece al modelo.
+
+    El campo es un ``anyOf`` (enum de strings, o null) y no un enum plano: ver
+    ``esquema._enum_o_nulo`` para por qué. Se busca la rama con enum en lugar
+    de indexarla por posición, así el test no se rompe si se reordena.
+    """
+    campo = esquema["properties"]["elementos"]["items"]["properties"]["variable"]
+    return next(rama["enum"] for rama in campo["anyOf"] if "enum" in rama)
+
+
+def propiedades(esquema):
+    """Todas las propiedades del esquema, las del objeto raíz y las de un elemento."""
+    del_elemento = esquema["properties"]["elementos"]["items"]["properties"]
+    return list(esquema["properties"].items()) + list(del_elemento.items())
+
+
 class EsquemaDinamicoTests(APITestCase):
     """El esquema y el prompt salen del catálogo, no de constantes."""
 
     def test_el_enum_de_variables_sale_de_la_base(self):
         variables = VariableRotulo.objects.filter(activa=True)
         esquema = construir_esquema(variables)
-        enum = esquema["properties"]["elementos"]["items"]["properties"]["variable"]["enum"]
+        enum = codigos_ofrecidos(esquema)
 
         for codigo in variables.values_list("codigo", flat=True):
             self.assertIn(codigo, enum)
-        # null también, porque los elementos que no son variables lo dejan vacío.
-        self.assertIn(None, enum)
+
+    def test_un_elemento_que_no_es_variable_puede_dejarla_vacia(self):
+        """Una línea o un texto estático mandan null en 'variable'."""
+        esquema = construir_esquema(VariableRotulo.objects.filter(activa=True))
+        campo = esquema["properties"]["elementos"]["items"]["properties"]["variable"]
+        self.assertIn({"type": "null"}, campo["anyOf"])
+
+    def test_ninguna_propiedad_mezcla_type_lista_con_enum(self):
+        """El validador de structured outputs rechaza esa combinación.
+
+        Es válida como JSON Schema, así que no salta en ninguna revisión local:
+        el error aparece recién en la primera llamada real, como un 400 con
+        «Enum value 'qr' does not match declared type '['string', 'null']'».
+        Un enum que además admite null va como ``anyOf`` (ver
+        ``esquema._enum_o_nulo``).
+        """
+        esquema = construir_esquema(VariableRotulo.objects.filter(activa=True))
+        for nombre, propiedad in propiedades(esquema):
+            with self.subTest(propiedad=nombre):
+                if isinstance(propiedad.get("type"), list):
+                    self.assertNotIn(
+                        "enum",
+                        propiedad,
+                        f"«{nombre}» combina un type de lista con enum: "
+                        "partilo en un anyOf con la rama null aparte.",
+                    )
 
     def test_una_variable_nueva_aparece_sin_tocar_codigo(self):
         """Es la razón de ser del catálogo dinámico."""
@@ -90,14 +131,12 @@ class EsquemaDinamicoTests(APITestCase):
             codigo="numero_bulto", etiqueta="Número de bulto", tipo_dato="texto"
         )
         esquema = construir_esquema(VariableRotulo.objects.filter(activa=True))
-        enum = esquema["properties"]["elementos"]["items"]["properties"]["variable"]["enum"]
-        self.assertIn("numero_bulto", enum)
+        self.assertIn("numero_bulto", codigos_ofrecidos(esquema))
 
     def test_una_variable_inactiva_no_se_ofrece(self):
         VariableRotulo.objects.filter(codigo="qr").update(activa=False)
         esquema = construir_esquema(VariableRotulo.objects.filter(activa=True))
-        enum = esquema["properties"]["elementos"]["items"]["properties"]["variable"]["enum"]
-        self.assertNotIn("qr", enum)
+        self.assertNotIn("qr", codigos_ofrecidos(esquema))
 
     def test_el_prompt_incluye_las_descripciones(self):
         """Las descripciones son lo que distingue remitente de destinatario."""

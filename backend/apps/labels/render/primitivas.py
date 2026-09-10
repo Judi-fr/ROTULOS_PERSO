@@ -42,6 +42,10 @@ class Texto:
     cursiva: bool = False
     color: str = "#000000"
     alineacion: str = "izquierda"
+    # Código de familia (ver apps.labels.render.fuentes). None = la por
+    # defecto. Viaja hasta acá porque los dos backends la resuelven distinto:
+    # el PDF por nombre y el PNG por ruta a un archivo.
+    fuente: str = None
     truncado: bool = False
 
 
@@ -110,7 +114,15 @@ class Lienzo:
       usuario debería enterarse antes de mandar 200 rótulos a la impresora.
     - ``truncados``: textos que no entraban en su caja y se cortaron. Cortar
       en silencio un domicilio es la clase de error que termina en un paquete
-      que no llega.
+      que no llega. Las variables se identifican por su código y los textos
+      fijos como ``texto_estatico#<id>``: un texto fijo también se corta, y
+      cuando la plantilla la propuso el importador a partir de una foto —y no
+      una persona que lo vio en pantalla— nadie se entera de otro modo.
+    - ``avisos``: el resto de los problemas que no impiden imprimir pero sí
+      arruinan el rótulo. Hoy solo uno: un QR que quedó tan denso para el
+      tamaño de su caja que un escáner no lo va a leer. Sale como código
+      ASCII (``qr_denso:<codigo>``) y no como frase, porque viaja en una
+      cabecera HTTP; la frase la arma el cliente.
     """
 
     ancho_mm: float
@@ -120,3 +132,4 @@ class Lienzo:
     primitivas: list = field(default_factory=list)
     faltantes: list = field(default_factory=list)
     truncados: list = field(default_factory=list)
+    avisos: list = field(default_factory=list)

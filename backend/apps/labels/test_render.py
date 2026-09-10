@@ -14,6 +14,7 @@ decir sin ojos humanos.
 
 import io
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -28,7 +29,8 @@ from .models import ElementoPlantilla, Plantilla, VariableRotulo, mm_a_px
 from .render import renderizar_pdf, renderizar_png, resolver
 from .render.pdf import _y
 from .render.primitivas import Imagen, Lienzo, Linea, Rectangulo, Texto
-from .render.resolucion import ancho_texto_mm
+from .render import fuentes
+from .render.resolucion import ancho_texto_mm, payload_envio
 
 User = get_user_model()
 
@@ -193,6 +195,25 @@ class TruncadoTests(BaseRenderTests):
         lienzo = resolver(self.plantilla, {"destinatario": "Nombre larguísimo acá"})
         self.assertEqual(lienzo.truncados, ["destinatario"])
 
+    def test_tambien_se_reporta_el_recorte_de_un_texto_fijo(self):
+        """Un texto fijo cortado tampoco puede pasar inadvertido.
+
+        Cuando la plantilla la dibujó una persona, un rótulo de campo que no
+        entra se ve en pantalla. Cuando la propuso el importador a partir de
+        una foto, el ancho es una estimación del modelo y nadie la miró: el
+        nombre de la empresa sale cortado en la impresión y no avisa nadie.
+        """
+        elemento = self.elemento(
+            "texto_estatico", contenido="EXPRESO PAMPEANA", ancho_mm=Decimal("15")
+        )
+        lienzo = resolver(self.plantilla, {})
+        self.assertEqual(lienzo.truncados, [f"texto_estatico#{elemento.pk}"])
+
+    def test_un_texto_fijo_que_entra_no_se_reporta(self):
+        self.elemento("texto_estatico", contenido="CP", ancho_mm=Decimal("40"))
+        lienzo = resolver(self.plantilla, {})
+        self.assertEqual(lienzo.truncados, [])
+
     def test_el_texto_recortado_entra_en_la_caja(self):
         ancho = 20.0
         self.elemento("variable", variable=self.destinatario,
@@ -221,6 +242,199 @@ class TruncadoTests(BaseRenderTests):
             ancho_texto_mm("Ancho", 10, negrita=True),
             ancho_texto_mm("Ancho", 10, negrita=False),
         )
+
+
+class QrDelEnvioTests(BaseRenderTests):
+    """El QR que lleva adentro el envío entero, no un número suelto."""
+
+    def setUp(self):
+        super().setUp()
+        self.qr_envio = VariableRotulo.objects.get(codigo="qr_envio")
+        self.datos = {
+            "destinatario": "Laura Fernández",
+            "domicilio": "Belgrano 1847",
+            "numero_pedido": "2888",
+        }
+
+    def test_el_payload_es_json_compacto_y_ordenado(self):
+        """Ordenado para que el mismo envío dé siempre el mismo código."""
+        payload = payload_envio({"b": "2", "a": "1"})
+        self.assertEqual(payload, '{"a":"1","b":"2"}')
+
+    def test_el_payload_no_escapa_los_acentos(self):
+        """Escapar solo agranda el QR: el código va en bytes UTF-8."""
+        payload = payload_envio({"destinatario": "Gómez"})
+        self.assertIn("Gómez", payload)
+        # Los seis caracteres de la secuencia de escape, no la o ya
+        # decodificada: lo que se quiere comprobar es que json.dumps no
+        # la escribio escapada, porque escapar solo agranda el QR.
+        self.assertNotIn(chr(92) + "u00f3", payload)
+
+    def test_el_payload_deja_afuera_lo_excluido_y_lo_vacio(self):
+        payload = payload_envio(
+            {"a": "1", "qr_envio": "x", "logo_empresa": "7", "vacio": ""},
+            excluir={"qr_envio", "logo_empresa"},
+        )
+        self.assertEqual(payload, '{"a":"1"}')
+
+    def test_se_dibuja_sin_necesitar_un_valor_propio(self):
+        """Es la diferencia con `qr`: su contenido lo arma con el resto."""
+        self.elemento("variable", variable=self.qr_envio,
+                      ancho_mm=Decimal("34"), alto_mm=Decimal("34"))
+        lienzo = resolver(self.plantilla, self.datos)
+
+        self.assertIsInstance(lienzo.primitivas[0], Imagen)
+        self.assertEqual(lienzo.faltantes, [])
+
+    def test_el_contenido_lleva_los_datos_del_envio(self):
+        excluidos = {"qr_envio", "logo_empresa"}
+        payload = payload_envio(self.datos, excluidos)
+        for valor in self.datos.values():
+            self.assertIn(valor, payload)
+
+    def test_una_imagen_no_entra_en_el_qr(self):
+        """En los datos es un id de documento: no le dice nada a quien escanea."""
+        self.elemento("variable", variable=self.logo, ancho_mm=Decimal("20"),
+                      alto_mm=Decimal("20"))
+        self.elemento("variable", variable=self.qr_envio,
+                      ancho_mm=Decimal("34"), alto_mm=Decimal("34"))
+
+        with patch("apps.labels.render.resolucion.codigos.generar_qr") as generar:
+            generar.return_value = (PNG_MINIMO, 25)
+            resolver(self.plantilla, dict(self.datos, logo_empresa="7"))
+
+        contenido = generar.call_args[0][0]
+        self.assertNotIn("logo_empresa", contenido)
+        self.assertIn("destinatario", contenido)
+
+    def test_sin_ningun_dato_se_reporta_como_faltante(self):
+        """Un QR con "{}" adentro es un QR que no dice nada."""
+        self.elemento("variable", variable=self.qr_envio,
+                      ancho_mm=Decimal("34"), alto_mm=Decimal("34"))
+        lienzo = resolver(self.plantilla, {})
+
+        self.assertEqual(lienzo.primitivas, [])
+        self.assertEqual(lienzo.faltantes, ["qr_envio"])
+
+    def test_una_caja_chica_para_tantos_datos_se_avisa(self):
+        """Entrar en la caja no es lo mismo que poder leerse.
+
+        Con el envío entero adentro el QR pasa de los 60 módulos de lado; en
+        una caja de 20 mm cada módulo queda en 0.33 mm y ningún lector de mano
+        lo levanta. El rótulo sale igual —no romper la impresión de un lote es
+        más importante— pero el aviso viaja.
+        """
+        self.elemento("variable", variable=self.qr_envio,
+                      ancho_mm=Decimal("20"), alto_mm=Decimal("20"))
+        lienzo = resolver(self.plantilla, {
+            "destinatario": "Laura Fernández",
+            "domicilio": "Belgrano 1847, Piso 2 Dto A",
+            "localidad_provincia": "Rosario, Santa Fe",
+            "codigo_postal": "S2000",
+            "remitente": "Textiles del Litoral S.A.",
+            "numero_pedido": "EP-44120",
+        })
+
+        self.assertEqual(lienzo.avisos, ["qr_denso:qr_envio"])
+        # Se dibuja igual: el aviso informa, no cancela.
+        self.assertIsInstance(lienzo.primitivas[0], Imagen)
+
+    def test_una_caja_holgada_no_avisa(self):
+        self.elemento("variable", variable=self.qr_envio,
+                      ancho_mm=Decimal("40"), alto_mm=Decimal("40"))
+        lienzo = resolver(self.plantilla, {"numero_pedido": "2888"})
+        self.assertEqual(lienzo.avisos, [])
+
+    def test_en_vista_previa_se_dibuja_como_marco_con_etiqueta(self):
+        self.elemento("variable", variable=self.qr_envio,
+                      ancho_mm=Decimal("34"), alto_mm=Decimal("34"))
+        primitivas = resolver(self.plantilla, None).primitivas
+
+        self.assertIsInstance(primitivas[0], Rectangulo)
+        # La etiqueta se centra en el marco y se trunca si no entra, que
+        # es lo que pasa aca: importa que salga de la variable, no que
+        # entre entera.
+        self.assertTrue(
+            primitivas[1].texto.startswith("QR del env"), primitivas[1].texto
+        )
+
+    def test_el_informe_del_lote_junta_los_avisos_sin_repetir(self):
+        self.elemento("variable", variable=self.qr_envio,
+                      ancho_mm=Decimal("20"), alto_mm=Decimal("20"))
+        envio = {
+            "destinatario": "Laura Fernández",
+            "domicilio": "Belgrano 1847, Piso 2 Dto A",
+            "localidad_provincia": "Rosario, Santa Fe",
+            "remitente": "Textiles del Litoral S.A.",
+        }
+        _, informe = renderizar_pdf(self.plantilla, lote=[envio, envio, envio])
+        self.assertEqual(informe["avisos"], ["qr_denso:qr_envio"])
+
+
+class FamiliaTipograficaTests(BaseRenderTests):
+    """La familia elegida en el estilo llega hasta el dibujo y hasta la medida."""
+
+    def test_la_familia_viaja_del_estilo_a_la_primitiva(self):
+        self.elemento("texto_estatico", contenido="ABC",
+                      estilo={"fuente": "courier"})
+        texto = resolver(self.plantilla, {}).primitivas[0]
+        self.assertEqual(texto.fuente, "courier")
+
+    def test_cada_familia_usa_su_fuente_pdf(self):
+        self.assertEqual(fuentes.nombre_pdf(familia="times"), "Times-Roman")
+        self.assertEqual(
+            fuentes.nombre_pdf(negrita=True, familia="courier"), "Courier-Bold")
+        self.assertEqual(
+            fuentes.nombre_pdf(negrita=True, cursiva=True, familia="helvetica"),
+            "Helvetica-BoldOblique")
+
+    def test_una_familia_desconocida_cae_en_la_por_defecto(self):
+        """Salir con otra tipografía es mejor que no salir."""
+        self.assertEqual(
+            fuentes.nombre_pdf(familia="comic-sans-inexistente"),
+            fuentes.nombre_pdf(familia=fuentes.FAMILIA_POR_DEFECTO),
+        )
+
+    def test_se_mide_con_la_familia_elegida(self):
+        """Courier es más ancha que Helvetica al mismo cuerpo.
+
+        Si se midiera todo con una sola familia, un texto en monoespaciada se
+        desbordaría de su caja sin que el informe de truncados lo reporte.
+        """
+        self.assertGreater(
+            ancho_texto_mm("1234567890", 10, fuente="courier"),
+            ancho_texto_mm("1234567890", 10, fuente="helvetica"),
+        )
+
+    def test_el_truncado_tiene_en_cuenta_la_familia(self):
+        """La misma caja y el mismo texto: entra en una familia y en otra no.
+
+        El ancho de la caja se calcula en vez de fijarlo a mano: se elige uno
+        que queda justo entre lo que mide el texto en cada familia, así el
+        test dice lo que quiere decir sin depender de las métricas exactas de
+        una versión de reportlab.
+        """
+        texto = "1234567890"
+        angosta = ancho_texto_mm(texto, 10, fuente="helvetica")
+        ancha = ancho_texto_mm(texto, 10, fuente="courier")
+        self.assertLess(angosta, ancha)
+        caja = Decimal(str(round((angosta + ancha) / 2, 2)))
+
+        self.elemento("texto_estatico", contenido=texto, ancho_mm=caja,
+                      estilo={"tamano_pt": 10, "fuente": "helvetica"})
+        self.assertFalse(resolver(self.plantilla, {}).primitivas[0].truncado)
+
+        self.plantilla.elementos.all().delete()
+        self.elemento("texto_estatico", contenido=texto, ancho_mm=caja,
+                      estilo={"tamano_pt": 10, "fuente": "courier"})
+        self.assertTrue(resolver(self.plantilla, {}).primitivas[0].truncado)
+
+    def test_el_catalogo_dice_que_hay_disponible(self):
+        catalogo = {f["codigo"]: f for f in fuentes.familias_disponibles()}
+        self.assertEqual(set(catalogo), set(fuentes.CODIGOS))
+        self.assertTrue(catalogo[fuentes.FAMILIA_POR_DEFECTO]["por_defecto"])
+        for datos in catalogo.values():
+            self.assertIn("png_disponible", datos)
 
 
 class CoordenadasPdfTests(BaseRenderTests):

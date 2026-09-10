@@ -97,7 +97,7 @@ def _fondo(c, lienzo):
 
 
 def _texto(c, lienzo, t):
-    c.setFont(fuentes.nombre_pdf(t.negrita, t.cursiva), t.tamano_pt)
+    c.setFont(fuentes.nombre_pdf(t.negrita, t.cursiva, t.fuente), t.tamano_pt)
     c.setFillColorRGB(*color_rgb(t.color))
 
     base_mm = linea_base_mm(t.y_mm, t.alto_mm, t.tamano_pt)

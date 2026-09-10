@@ -57,14 +57,14 @@ def dibujar(lienzo, dpi=None):
     return buffer.getvalue()
 
 
-def _fuente(tamano_pt, dpi, negrita, cursiva):
+def _fuente(tamano_pt, dpi, negrita, cursiva, familia=None):
     """Carga el TTF al tamaño en píxeles que corresponde a ese DPI."""
     alto_px = max(mm_a_px(tamano_pt / PT_POR_MM, dpi), 1)
-    return ImageFont.truetype(fuentes.ruta_ttf(negrita, cursiva), alto_px)
+    return ImageFont.truetype(fuentes.ruta_ttf(negrita, cursiva, familia), alto_px)
 
 
 def _texto(lapiz, t, dpi):
-    fuente = _fuente(t.tamano_pt, dpi, t.negrita, t.cursiva)
+    fuente = _fuente(t.tamano_pt, dpi, t.negrita, t.cursiva, t.fuente)
     base_mm = linea_base_mm(t.y_mm, t.alto_mm, t.tamano_pt)
 
     if t.alineacion == "centro":

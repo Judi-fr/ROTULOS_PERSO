@@ -37,6 +37,22 @@ ANCHO_MM_POR_DEFECTO = 100
 ALTO_MM_POR_DEFECTO = 150
 
 
+def _enum_o_nulo(valores, descripcion):
+    """Campo que es uno de ``valores`` o ``null``, en la forma que acepta la API.
+
+    Lo natural sería ``{"type": ["string", "null"], "enum": valores + [None]}``,
+    y es válido como JSON Schema, pero el validador de *structured outputs* lo
+    rechaza con «Enum value 'qr' does not match declared type '['string',
+    'null']'»: acepta un ``type`` de lista, y acepta un ``enum``, pero no los
+    dos en la misma propiedad. La forma que sí pasa es partirlo en un
+    ``anyOf`` con la rama nula aparte.
+    """
+    return {
+        "anyOf": [{"type": "string", "enum": list(valores)}, {"type": "null"}],
+        "description": descripcion,
+    }
+
+
 def construir_esquema(variables):
     """Arma el JSON Schema de la respuesta a partir del catálogo activo.
 
@@ -138,17 +154,14 @@ def _esquema_elemento(codigos):
                     "marco o caja dibujada."
                 ),
             },
-            "variable": {
-                "type": ["string", "null"],
-                "enum": codigos + [None],
-                "description": (
-                    "Solo cuando tipo es 'variable': el código del catálogo "
-                    "que corresponde a este dato. null en cualquier otro caso. "
-                    "Si un dato variable no encaja en ninguno de los códigos "
-                    "disponibles, no lo fuerces: marcá el elemento como "
-                    "texto_estatico y explicá en 'notas' qué campo faltaría."
-                ),
-            },
+            "variable": _enum_o_nulo(
+                codigos,
+                "Solo cuando tipo es 'variable': el código del catálogo "
+                "que corresponde a este dato. null en cualquier otro caso. "
+                "Si un dato variable no encaja en ninguno de los códigos "
+                "disponibles, no lo fuerces: marcá el elemento como "
+                "texto_estatico y explicá en 'notas' qué campo faltaría.",
+            ),
             "contenido": {
                 "type": ["string", "null"],
                 "description": (
@@ -200,11 +213,10 @@ def _esquema_elemento(codigos):
                     "null para líneas, recuadros, QR e imágenes."
                 ),
             },
-            "alineacion": {
-                "type": ["string", "null"],
-                "enum": list(ALINEACIONES) + [None],
-                "description": "Alineación del texto. null si el elemento no lleva texto.",
-            },
+            "alineacion": _enum_o_nulo(
+                ALINEACIONES,
+                "Alineación del texto. null si el elemento no lleva texto.",
+            ),
             "negrita": {
                 "type": "boolean",
                 "description": "Si el texto se ve en negrita. false si no lleva texto.",

@@ -39,12 +39,18 @@ __all__ = [
 
 
 def _informe(lienzos):
-    """Junta lo que hay que reportarle a quien pidió el render."""
-    faltantes, truncados = [], []
+    """Junta lo que hay que reportarle a quien pidió el render.
+
+    Se acumula por lote y sin repetir: en un PDF de doscientos rótulos el
+    problema suele ser el mismo doscientas veces, y listarlo doscientas veces
+    no agrega nada.
+    """
+    faltantes, truncados, avisos = [], [], []
     for lienzo in lienzos:
         faltantes.extend(c for c in lienzo.faltantes if c not in faltantes)
         truncados.extend(c for c in lienzo.truncados if c not in truncados)
-    return {"faltantes": faltantes, "truncados": truncados}
+        avisos.extend(a for a in lienzo.avisos if a not in avisos)
+    return {"faltantes": faltantes, "truncados": truncados, "avisos": avisos}
 
 
 def renderizar_pdf(plantilla, datos=None, usuario=None, lote=None):

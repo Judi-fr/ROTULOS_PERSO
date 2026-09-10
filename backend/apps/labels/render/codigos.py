@@ -24,8 +24,20 @@ logger = logging.getLogger(__name__)
 SIMBOLOGIA = "code128"
 
 
+# Módulos de margen blanco alrededor del código. El estándar pide 4; 2 alcanza
+# porque el rótulo tiene su propio espacio en blanco alrededor de la caja.
+BORDE_MODULOS = 2
+
+
 def generar_qr(valor):
-    """Devuelve un PNG con el código QR de ``valor``.
+    """Devuelve ``(png, modulos)`` con el código QR de ``valor``.
+
+    ``modulos`` es cuántos cuadraditos tiene el código de lado, borde incluido.
+    Lo devuelve porque quien lo pega en el rótulo es el único que sabe de qué
+    tamaño físico va a quedar la caja, y con las dos cosas puede calcular
+    cuánto mide cada módulo impreso — que es lo que decide si un escáner lo
+    va a poder leer. Sin ese dato, meter un envío entero adentro de un QR de
+    dos centímetros produce un código perfecto e ilegible.
 
     Corrección de errores media (~15%): un rótulo pegado en un paquete se
     raya, se moja y se arruga, así que conviene tener margen. Alta (~30%)
@@ -38,14 +50,14 @@ def generar_qr(valor):
         # importa que la imagen tenga resolución suficiente para no verse
         # escalonada al ampliarla.
         box_size=10,
-        border=2,
+        border=BORDE_MODULOS,
     )
     qr.add_data(valor)
     qr.make(fit=True)
 
     buffer = io.BytesIO()
     qr.make_image(fill_color="black", back_color="white").save(buffer, format="PNG")
-    return buffer.getvalue()
+    return buffer.getvalue(), qr.modules_count + BORDE_MODULOS * 2
 
 
 def generar_codigo_barras(valor):

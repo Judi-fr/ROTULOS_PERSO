@@ -217,6 +217,14 @@ def _mensaje_de_error(exc):
     """Traduce una excepción del SDK a algo accionable para el usuario."""
     if isinstance(exc, anthropic.AuthenticationError):
         return "La ANTHROPIC_API_KEY configurada no es válida."
+    # Sin saldo la API devuelve un 400 genérico, que sin traducir llega al
+    # usuario como un volcado del error crudo. Es la falla más fácil de
+    # confundir con un bug del sistema, y la única que se arregla en otro lado.
+    if "credit balance is too low" in str(getattr(exc, "message", "")):
+        return (
+            "La cuenta de Anthropic se quedó sin saldo. Cargá créditos en "
+            "console.anthropic.com (Plans & Billing) y volvé a intentar."
+        )
     if isinstance(exc, anthropic.RateLimitError):
         return "Se alcanzó el límite de peticiones al modelo. Probá de nuevo en un minuto."
     if isinstance(exc, anthropic.APIConnectionError):

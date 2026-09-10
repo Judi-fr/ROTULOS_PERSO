@@ -54,6 +54,12 @@ class TipoDato(models.TextChoices):
 
     TEXTO = "texto", "Texto"
     QR = "qr", "Código QR"
+    # A diferencia de QR, este no toma su contenido de un dato propio: lo arma
+    # con TODOS los datos del envío. Es la diferencia entre un QR que dice
+    # "AR0087123456" —y obliga a consultar un sistema para saber qué es— y uno
+    # que lleva encima el destinatario, el domicilio y el pedido, y se puede
+    # leer aunque no haya señal en el depósito.
+    QR_ENVIO = "qr_envio", "Código QR con el envío completo"
     CODIGO_BARRAS = "codigo_barras", "Código de barras"
     IMAGEN = "imagen", "Imagen"
 

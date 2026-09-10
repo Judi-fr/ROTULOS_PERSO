@@ -9,6 +9,7 @@ Se montan bajo ``/api/v1/labels/`` (ver config/urls.py):
     PUT    /api/v1/labels/plantillas/<id>/       -> editar (completo)
     DELETE /api/v1/labels/plantillas/<id>/       -> eliminar
 
+    GET    /api/v1/labels/fuentes/               -> familias tipográficas
     GET    /api/v1/labels/variables/             -> catálogo (activas, sin paginar)
     POST   /api/v1/labels/variables/             -> crear      (administradores)
     GET    /api/v1/labels/variables/<id>/        -> detalle
@@ -19,12 +20,17 @@ Se usa SimpleRouter (no DefaultRouter) porque la API es JSON pura, igual que
 en la administración de usuarios.
 """
 
+from django.urls import path
 from rest_framework.routers import SimpleRouter
 
-from .views import PlantillaViewSet, VariableRotuloViewSet
+from .views import FuentesView, PlantillaViewSet, VariableRotuloViewSet
 
 router = SimpleRouter()
 router.register(r"plantillas", PlantillaViewSet, basename="plantilla")
 router.register(r"variables", VariableRotuloViewSet, basename="variable-rotulo")
 
-urlpatterns = router.urls
+# El listado de fuentes no es un recurso con CRUD —no se crean ni se borran
+# familias por API—, así que va como vista suelta y no en el router.
+urlpatterns = router.urls + [
+    path("fuentes/", FuentesView.as_view(), name="fuentes"),
+]
