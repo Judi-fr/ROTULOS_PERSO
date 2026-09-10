@@ -30,6 +30,8 @@ urlpatterns = [
     path("api/v1/documents/", include("apps.documents.urls")),  # documentos generados (lotes de rótulos)
     path("api/v1/processing/", include("apps.processing.urls")),
     path("api/v1/labels/", include("apps.labels.urls")),
+    path("api/v1/integrations/", include("apps.integrations.urls")),  # ABM de claves/webhooks (admin)
+    path("api/v1/ingest/", include("apps.integrations.ingest_urls")),  # entradas automáticas (API key / webhook)
 ]
 
 if settings.DEBUG:

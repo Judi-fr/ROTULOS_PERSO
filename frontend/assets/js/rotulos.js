@@ -154,13 +154,21 @@ function buildCard(rotulo) {
   duplicateBtn.textContent = "Duplicar";
   duplicateBtn.addEventListener("click", () => handleDuplicate(rotulo));
 
+  const printBtn = document.createElement("button");
+  printBtn.type = "button";
+  printBtn.className = "btn btn-outline";
+  printBtn.textContent = "Imprimir";
+  printBtn.addEventListener("click", () =>
+    window.PrintHelper.printFromBlobFn(() => labelsApi.downloadRotuloPdfServer(rotulo.id), printBtn)
+  );
+
   const deleteBtn = document.createElement("button");
   deleteBtn.type = "button";
   deleteBtn.className = "btn btn-danger";
   deleteBtn.textContent = "Eliminar";
   deleteBtn.addEventListener("click", () => handleDelete(rotulo));
 
-  actions.append(editBtn, duplicateBtn, deleteBtn);
+  actions.append(editBtn, duplicateBtn, printBtn, deleteBtn);
   card.append(thumbBtn, body, actions);
   return card;
 }
@@ -270,13 +278,12 @@ async function loadBatchTemplates() {
     const response = await apiFetch(TEMPLATES_URL);
     if (!response.ok) throw new Error();
     const templates = extractResults(await response.json());
-    if (!templates.length) {
-      batchTemplateSelect.innerHTML = '<option value="">No hay plantillas disponibles</option>';
-      return;
-    }
-    batchTemplateSelect.innerHTML = templates
-      .map((t) => `<option value="${t.id}">${t.name}</option>`)
-      .join("");
+    // Dejar sin elegir vale: el backend cae a la plantilla pública por
+    // defecto (ver apps.labels.batch_views._resolve_template).
+    const defaultOption = '<option value="">Plantilla pública por defecto</option>';
+    batchTemplateSelect.innerHTML =
+      defaultOption +
+      templates.map((t) => `<option value="${t.id}">${t.name}</option>`).join("");
   } catch (err) {
     if (err.isSessionExpired) return;
     console.error("Error al cargar plantillas:", err);
@@ -339,14 +346,14 @@ document.querySelectorAll('input[name="batchMode"]').forEach((radio) => {
 
 async function generateBatch() {
   const templateId = batchTemplateSelect.value;
-  if (!templateId) {
-    showBatchMsg("Elegí una plantilla.", false);
-    return;
-  }
-
   const output = document.getElementById("batchOutputSelect").value;
+  const pageLayout = document.getElementById("batchPageLayoutSelect").value;
+  const skipExisting = document.getElementById("batchSkipExistingInput").checked;
   const byOrders = document.getElementById("batchModeOrders").checked;
-  const payload = { template_id: Number(templateId), output };
+  const payload = { output, page_layout: pageLayout, skip_existing: skipExisting };
+  // Sin elegir plantilla, no se manda template_id: el backend cae a la
+  // pública por defecto.
+  if (templateId) payload.template_id = Number(templateId);
 
   if (byOrders) {
     const orderIds = Array.from(

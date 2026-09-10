@@ -89,6 +89,12 @@ PERMISSIONS = frozenset(
         "orders.view",
         "orders.create",
         "orders.cancel",
+        # Carga operativa de pedidos (admin + operator, ver
+        # 0020_seed_order_ingestion_permissions): alta manual a nombre
+        # propio, importación CSV/Excel y plantillas de mapeo guardadas.
+        "orders.create_manual",
+        "orders.import",
+        "orders.import_mappings",
         # Contacto/soporte desde el dashboard
         "support.create",
         # Rótulos propios (self-service)
@@ -98,6 +104,7 @@ PERMISSIONS = frozenset(
         "labels.delete",
         "labels.render",
         "labels.batch",
+        "labels.template_create",
         # Documentos generados (hoy: lotes de rótulos) propios
         "documents.view",
         "documents.delete",
@@ -113,6 +120,12 @@ PERMISSIONS = frozenset(
         "labels.view_all",
         "labels.manage_templates",
         "documents.view_all",
+        # Dar de alta un pedido a nombre de OTRO usuario (0020): exclusivo
+        # admin, ni siquiera operator lo tiene (ver ManualOrderCreateView).
+        "orders.create_for_others",
+        # ABM de credenciales/webhooks de integraciones (0021): exclusivo
+        # admin, ver apps.integrations.
+        "integrations.manage",
     }
 )
 
@@ -133,19 +146,31 @@ _SELF_SERVICE_PERMISSIONS = {
     "labels.delete",
     "labels.render",
     "labels.batch",
+    "labels.template_create",
     "documents.view",
     "documents.delete",
+}
+
+# operator hace, además del self-service de designer/subscriber, la carga
+# OPERATIVA de pedidos (alta manual, importación CSV/Excel, plantillas de
+# mapeo) — ver 0020_seed_order_ingestion_permissions. "orders.create_for_others"
+# queda afuera: eso es exclusivo admin, ni operator lo tiene.
+_OPERATOR_PERMISSIONS = _SELF_SERVICE_PERMISSIONS | {
+    "orders.create_manual",
+    "orders.import",
+    "orders.import_mappings",
 }
 
 # Mapeo rol -> conjunto de permisos.
 # Reproduce EXACTAMENTE el comportamiento actual del backend:
 #   - admin: acceso completo (el CRUD admin está protegido por IsAdminUser).
-#   - designer / operator / subscriber: acceso a su propio perfil, sus
-#     direcciones y sus pedidos.
+#   - operator: self-service + carga operativa de pedidos.
+#   - designer / subscriber: acceso a su propio perfil, sus direcciones y
+#     sus pedidos.
 ROLE_PERMISSIONS = {
     "admin": set(PERMISSIONS),
     "designer": set(_SELF_SERVICE_PERMISSIONS),
-    "operator": set(_SELF_SERVICE_PERMISSIONS),
+    "operator": set(_OPERATOR_PERMISSIONS),
     "subscriber": set(_SELF_SERVICE_PERMISSIONS),
 }
 

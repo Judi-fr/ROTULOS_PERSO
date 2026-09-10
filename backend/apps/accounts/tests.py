@@ -531,6 +531,9 @@ class RolePermissionSystemTests(AuthTestCase):
         "orders.view",
         "orders.create",
         "orders.cancel",
+        "orders.create_manual",
+        "orders.import",
+        "orders.import_mappings",
         "support.create",
         "labels.view",
         "labels.create",
@@ -538,10 +541,13 @@ class RolePermissionSystemTests(AuthTestCase):
         "labels.delete",
         "labels.render",
         "labels.batch",
+        "labels.template_create",
         "documents.view",
         "documents.delete",
         # Exclusivos del admin (ver 0014_seed_admin_only_permissions,
-        # 0015_seed_label_permissions y 0017_seed_document_permissions).
+        # 0015_seed_label_permissions, 0017_seed_document_permissions,
+        # 0020_seed_order_ingestion_permissions y
+        # 0021_seed_integrations_manage_permission).
         "audit.view",
         "orders.view_all",
         "support.view_all",
@@ -549,12 +555,15 @@ class RolePermissionSystemTests(AuthTestCase):
         "labels.view_all",
         "labels.manage_templates",
         "documents.view_all",
+        "orders.create_for_others",
+        "integrations.manage",
     }
 
     # Self-service: perfil propio + direcciones/pedidos propios + soporte +
-    # rótulos propios. Es lo que tienen designer/operator/subscriber (ver
+    # rótulos propios. Es lo que tienen designer/subscriber (ver
     # 0007_seed_order_permissions, 0012_seed_support_permission y
-    # 0015_seed_label_permissions).
+    # 0015_seed_label_permissions). operator tiene esto MÁS la carga
+    # operativa de pedidos (ver OPERATOR_PERMISSIONS, 0020).
     ME_VIEW_PERMISSIONS = {
         "users.me.view",
         "users.me.edit",
@@ -570,8 +579,17 @@ class RolePermissionSystemTests(AuthTestCase):
         "labels.delete",
         "labels.render",
         "labels.batch",
+        "labels.template_create",
         "documents.view",
         "documents.delete",
+    }
+
+    # operator: ME_VIEW_PERMISSIONS + carga operativa de pedidos (alta
+    # manual, importación, plantillas de mapeo) — ver 0020.
+    OPERATOR_PERMISSIONS = ME_VIEW_PERMISSIONS | {
+        "orders.create_manual",
+        "orders.import",
+        "orders.import_mappings",
     }
 
     def setUp(self):
@@ -654,7 +672,7 @@ class RolePermissionSystemTests(AuthTestCase):
 
         self.assertEqual(admin_perm, self.ALL_PERMISSIONS)
         self.assertEqual(designer_perm, self.ME_VIEW_PERMISSIONS)
-        self.assertEqual(operator_perm, self.ME_VIEW_PERMISSIONS)
+        self.assertEqual(operator_perm, self.OPERATOR_PERMISSIONS)
         self.assertEqual(subscriber_perm, self.ME_VIEW_PERMISSIONS)
 
     def test_re_ejecutar_migracion_no_duplica(self):
@@ -674,13 +692,14 @@ class RolePermissionSystemTests(AuthTestCase):
 
         # El catálogo completo (RolePermission) es exactamente ALL_PERMISSIONS.
         self.assertEqual(self.RolePermission.objects.count(), len(self.ALL_PERMISSIONS))
-        self_service_roles = [self.DESIGNER, self.OPERATOR, self.SUBSCRIBER]
         self.assertEqual(
             self.GroupRolePermission.objects.count(),
-            # admin tiene el catálogo completo (ALL_PERMISSIONS) + cada rol
-            # self-service (designer/operator/subscriber) tiene
-            # ME_VIEW_PERMISSIONS.
-            len(self.ALL_PERMISSIONS) + len(self_service_roles) * len(self.ME_VIEW_PERMISSIONS),
+            # admin tiene el catálogo completo (ALL_PERMISSIONS); designer y
+            # subscriber tienen ME_VIEW_PERMISSIONS cada uno; operator tiene
+            # OPERATOR_PERMISSIONS (ME_VIEW_PERMISSIONS + carga operativa).
+            len(self.ALL_PERMISSIONS)
+            + 2 * len(self.ME_VIEW_PERMISSIONS)
+            + len(self.OPERATOR_PERMISSIONS),
         )
 
     # --- Endpoints autenticados (admin) --------------------------------------

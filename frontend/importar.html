@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Carga de pedidos</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/importar.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar">
+        <div class="topbar-user">
+          <img
+            class="avatar"
+            id="userAvatar"
+            src="https://api.dicebear.com/7.x/avataaars/svg?seed=user"
+            alt=""
+          />
+          <div class="topbar-user-info">
+            <span class="topbar-user-name" id="userName">—</span>
+            <span class="topbar-user-email" id="userEmail">—</span>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <a class="btn btn-outline" href="dashboard.html">Volver al panel</a>
+          <button class="btn btn-outline" id="logoutBtn" type="button">
+            Cerrar sesión
+          </button>
+        </div>
+      </header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Carga de pedidos</h1>
+          <p>
+            Alta operativa de envíos: escribí los datos de un destinatario a
+            mano o importá varios de una desde un CSV/Excel.
+          </p>
+        </div>
+
+        <p
+          id="pageMessage"
+          class="page-message"
+          role="status"
+          aria-live="polite"
+          style="display: none"
+        ></p>
+
+        <div class="tabs">
+          <button type="button" class="tab-btn active" id="tabManualBtn">
+            Alta manual
+          </button>
+          <button type="button" class="tab-btn" id="tabImportBtn">
+            Importar archivo
+          </button>
+        </div>
+
+        <!-- ===================== ALTA MANUAL (story 20) ===================== -->
+        <section class="tab-panel active" id="tabManualPanel">
+          <section class="profile-card">
+            <div class="profile-card-title">
+              <span>Datos del envío</span>
+            </div>
+            <div class="profile-card-body">
+              <form id="manualOrderForm">
+                <div class="form-grid">
+                  <div class="form-field span-2" id="manualUserIdField" style="display: none">
+                    <label for="manualUserId">Dar de alta a nombre de (ID de usuario)</label>
+                    <input type="number" id="manualUserId" min="1" placeholder="Vacío = a tu propio nombre" />
+                    <span class="hint">Dejalo vacío para cargarlo a tu propio nombre.</span>
+                  </div>
+                  <div class="form-field">
+                    <label for="manualDestinatario">Destinatario <span class="required-mark">*</span></label>
+                    <input type="text" id="manualDestinatario" required />
+                  </div>
+                  <div class="form-field">
+                    <label for="manualDomicilio">Domicilio (calle) <span class="required-mark">*</span></label>
+                    <input type="text" id="manualDomicilio" required />
+                  </div>
+                  <div class="form-field">
+                    <label for="manualNumero">Número</label>
+                    <input type="text" id="manualNumero" />
+                  </div>
+                  <div class="form-field">
+                    <label for="manualCiudad">Ciudad <span class="required-mark">*</span></label>
+                    <input type="text" id="manualCiudad" required />
+                  </div>
+                  <div class="form-field">
+                    <label for="manualProvincia">Provincia</label>
+                    <input type="text" id="manualProvincia" />
+                  </div>
+                  <div class="form-field">
+                    <label for="manualCp">Código postal</label>
+                    <input type="text" id="manualCp" />
+                  </div>
+                  <div class="form-field span-2">
+                    <label for="manualReferencia">Referencia</label>
+                    <input type="text" id="manualReferencia" placeholder="Ej: timbre azul, portón negro" />
+                  </div>
+                  <div class="form-field span-2">
+                    <label for="manualDescripcion">Descripción del envío</label>
+                    <input type="text" id="manualDescripcion" placeholder="Ej: paquete chico" />
+                  </div>
+                  <div class="form-field">
+                    <label for="manualExternalId">ID externo</label>
+                    <input type="text" id="manualExternalId" placeholder="Opcional: ID en tu sistema" />
+                    <span class="hint">Si ya existe un pedido con este ID, se reutiliza en vez de duplicarlo.</span>
+                  </div>
+                </div>
+                <p id="manualFormMsg" class="page-message" style="display: none"></p>
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary" id="manualSubmitBtn">
+                    Dar de alta el envío
+                  </button>
+                </div>
+              </form>
+            </div>
+          </section>
+        </section>
+
+        <!-- ===================== IMPORTACIÓN (stories 21-22) ===================== -->
+        <section class="tab-panel" id="tabImportPanel">
+          <div class="import-steps">
+            <span class="import-step active" data-step="1"><span class="step-number">1</span> Subir archivo</span>
+            <span class="import-step" data-step="2"><span class="step-number">2</span> Mapear columnas</span>
+            <span class="import-step" data-step="3"><span class="step-number">3</span> Confirmar</span>
+          </div>
+
+          <!-- Paso 1: subir -->
+          <section class="profile-card" id="importUploadStep">
+            <div class="profile-card-title">
+              <span>Subir archivo (.csv o .xlsx)</span>
+              <button class="btn btn-outline btn-small" id="downloadTemplateBtn" type="button">
+                Descargar plantilla de ejemplo
+              </button>
+            </div>
+            <div class="profile-card-body">
+              <div class="upload-drop">
+                <p>Elegí un archivo CSV o Excel con tus pedidos.</p>
+                <input type="file" id="importFileInput" accept=".csv,.xlsx" />
+              </div>
+              <p id="uploadMsg" class="page-message" style="display: none"></p>
+              <div class="form-actions">
+                <button class="btn btn-primary" id="uploadFileBtn" type="button">Subir</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- Paso 2: mapear -->
+          <section class="profile-card" id="importMappingStep" style="display: none">
+            <div class="profile-card-title">
+              <span>Mapeo de columnas</span>
+              <span id="importFileSummary" class="hint"></span>
+            </div>
+            <div class="profile-card-body">
+              <div class="mapping-templates-row">
+                <select id="mappingTemplateSelect">
+                  <option value="">Aplicar una plantilla de mapeo guardada...</option>
+                </select>
+                <input type="text" id="mappingTemplateName" placeholder="Nombre para guardar este mapeo" style="flex:1; min-width:180px; padding:9px 12px; border:1px solid var(--border); border-radius:8px;" />
+                <button class="btn btn-outline btn-small" id="saveMappingTemplateBtn" type="button">
+                  Guardar como plantilla
+                </button>
+              </div>
+
+              <div class="table-scroll">
+                <table class="data-table mapping-table">
+                  <thead>
+                    <tr>
+                      <th>Columna del archivo</th>
+                      <th>Campo del sistema</th>
+                    </tr>
+                  </thead>
+                  <tbody id="mappingTableBody"></tbody>
+                </table>
+              </div>
+
+              <p class="hint" style="margin: 4px 0 10px;">Vista previa (primeras filas del archivo):</p>
+              <div class="table-scroll">
+                <table class="data-table" id="previewTable">
+                  <thead><tr id="previewTableHead"></tr></thead>
+                  <tbody id="previewTableBody"></tbody>
+                </table>
+              </div>
+
+              <p id="mappingMsg" class="page-message" style="display: none"></p>
+              <div class="form-actions">
+                <button class="btn btn-outline" id="backToUploadBtn" type="button">Volver</button>
+                <button class="btn btn-primary" id="validateMappingBtn" type="button">Validar</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- Resultado de la validación -->
+          <section class="profile-card" id="importValidationStep" style="display: none">
+            <div class="profile-card-title"><span>Resultado de la validación</span></div>
+            <div class="profile-card-body">
+              <div class="summary-stats">
+                <div class="summary-stat ok">
+                  <span class="value" id="validCountValue">0</span>
+                  <span class="label">Filas válidas</span>
+                </div>
+                <div class="summary-stat error">
+                  <span class="value" id="invalidCountValue">0</span>
+                  <span class="label">Filas con error</span>
+                </div>
+                <div class="summary-stat">
+                  <span class="value" id="totalRowsValue">0</span>
+                  <span class="label">Total de filas</span>
+                </div>
+              </div>
+              <div class="error-list" id="validationErrorList"></div>
+              <div class="form-actions">
+                <button class="btn btn-outline" id="backToMappingBtn" type="button">Ajustar mapeo</button>
+                <button class="btn btn-primary" id="confirmImportBtn" type="button">
+                  Confirmar importación
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- Paso 3: resultado final -->
+          <section class="profile-card" id="importDoneStep" style="display: none">
+            <div class="profile-card-title"><span>Importación terminada</span></div>
+            <div class="profile-card-body">
+              <div class="summary-stats">
+                <div class="summary-stat ok">
+                  <span class="value" id="importedCountValue">0</span>
+                  <span class="label">Importados</span>
+                </div>
+                <div class="summary-stat skip">
+                  <span class="value" id="skippedCountValue">0</span>
+                  <span class="label">Salteados (ya existían)</span>
+                </div>
+                <div class="summary-stat error">
+                  <span class="value" id="errorCountValue">0</span>
+                  <span class="label">Con error</span>
+                </div>
+              </div>
+              <div class="error-list" id="doneErrorList"></div>
+              <div class="form-actions">
+                <button class="btn btn-primary" id="newImportBtn" type="button">
+                  Importar otro archivo
+                </button>
+              </div>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/importar.js"></script>
+  </body>
+</html>

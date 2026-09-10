@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Integraciones</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/integraciones.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar">
+        <div class="topbar-user">
+          <img
+            class="avatar"
+            id="userAvatar"
+            src="https://api.dicebear.com/7.x/avataaars/svg?seed=user"
+            alt=""
+          />
+          <div class="topbar-user-info">
+            <span class="topbar-user-name" id="userName">—</span>
+            <span class="topbar-user-email" id="userEmail">—</span>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <a class="btn btn-outline" href="gestionuser.html">Panel admin</a>
+          <a class="btn btn-outline" href="dashboard.html">Volver al panel</a>
+          <button class="btn btn-outline" id="logoutBtn" type="button">
+            Cerrar sesión
+          </button>
+        </div>
+      </header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Integraciones</h1>
+          <p>
+            Credenciales de API y webhooks para que un ERP o una tienda entre
+            o salga de la app sin usuario/contraseña.
+          </p>
+        </div>
+
+        <p
+          id="pageMessage"
+          class="page-message"
+          role="status"
+          aria-live="polite"
+          style="display: none"
+        ></p>
+
+        <div class="tabs">
+          <button type="button" class="tab-btn active" id="tabKeysBtn">Claves de API</button>
+          <button type="button" class="tab-btn" id="tabIncomingBtn">Webhooks entrantes</button>
+          <button type="button" class="tab-btn" id="tabOutgoingBtn">Webhooks salientes</button>
+          <button type="button" class="tab-btn" id="tabDeliveriesBtn">Historial de entregas</button>
+        </div>
+
+        <!-- ===================== CLAVES DE API (story 23) ===================== -->
+        <section class="tab-panel active" id="tabKeysPanel">
+          <div class="new-key-banner" id="newKeyBanner">
+            <p>
+              Esta es la ÚNICA vez que se muestra la clave completa. Copiala
+              ahora: no se puede volver a ver después.
+            </p>
+            <div class="new-key-value">
+              <code id="newKeyValue"></code>
+              <button class="btn btn-outline btn-small" id="copyNewKeyBtn" type="button">Copiar</button>
+            </div>
+          </div>
+
+          <section class="profile-card">
+            <div class="profile-card-title"><span>Nueva clave de API</span></div>
+            <div class="profile-card-body">
+              <form id="keyForm">
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label for="keyName">Nombre</label>
+                    <input type="text" id="keyName" placeholder="Ej: ERP Tienda X" required />
+                  </div>
+                  <div class="form-field">
+                    <label>Dueño (a quién le pertenecen los pedidos)</label>
+                    <div class="owner-picker">
+                      <input type="text" id="keyOwnerSearch" placeholder="Buscar por email..." />
+                      <button class="btn btn-outline btn-small" id="keyOwnerSearchBtn" type="button">Buscar</button>
+                    </div>
+                    <div class="owner-results" id="keyOwnerResults"></div>
+                    <p class="owner-selected" id="keyOwnerSelected"></p>
+                  </div>
+                </div>
+                <p id="keyFormMsg" class="page-message" style="display: none"></p>
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary">Crear clave</button>
+                </div>
+              </form>
+            </div>
+          </section>
+
+          <section class="profile-card">
+            <div class="profile-card-title"><span>Claves existentes</span></div>
+            <div class="profile-card-body">
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Nombre</th>
+                      <th>Prefijo</th>
+                      <th>Dueño</th>
+                      <th>Estado</th>
+                      <th>Último uso</th>
+                      <th>Creada</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="keysTableBody">
+                    <tr><td colspan="7" style="text-align:center; padding:20px;">Cargando...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <!-- ===================== WEBHOOKS ENTRANTES (story 24) ===================== -->
+        <section class="tab-panel" id="tabIncomingPanel">
+          <section class="profile-card">
+            <div class="profile-card-title"><span>Nuevo webhook entrante</span></div>
+            <div class="profile-card-body">
+              <form id="incomingForm">
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label for="incomingName">Nombre</label>
+                    <input type="text" id="incomingName" placeholder="Ej: Tienda X - pedidos" required />
+                  </div>
+                  <div class="form-field">
+                    <label for="incomingSlug">Slug (parte de la URL)</label>
+                    <input type="text" id="incomingSlug" placeholder="Ej: tienda-x" pattern="[a-z0-9-]+" required />
+                    <span class="hint">La URL final será /api/v1/ingest/webhooks/&lt;slug&gt;/</span>
+                  </div>
+                  <div class="form-field">
+                    <label>Dueño</label>
+                    <div class="owner-picker">
+                      <input type="text" id="incomingOwnerSearch" placeholder="Buscar por email..." />
+                      <button class="btn btn-outline btn-small" id="incomingOwnerSearchBtn" type="button">Buscar</button>
+                    </div>
+                    <div class="owner-results" id="incomingOwnerResults"></div>
+                    <p class="owner-selected" id="incomingOwnerSelected"></p>
+                  </div>
+                  <div class="form-field">
+                    <label for="incomingKeySelect">Clave de API asociada</label>
+                    <select id="incomingKeySelect" required>
+                      <option value="">Elegí una clave...</option>
+                    </select>
+                  </div>
+                  <div class="form-field span-2">
+                    <label for="incomingMapping">
+                      Mapeo de campos (JSON: campo_destino -&gt; clave del payload)
+                    </label>
+                    <input
+                      type="text"
+                      id="incomingMapping"
+                      placeholder='Ej: {"destinatario":"cliente","domicilio":"calle","ciudad":"ciudad","external_id":"id"}'
+                    />
+                    <span class="hint">
+                      Campos destino: destinatario, domicilio, numero, ciudad, provincia, cp,
+                      referencia, descripcion, external_id. Dejalo vacío para usar esos mismos
+                      nombres tal cual en el payload.
+                    </span>
+                  </div>
+                </div>
+                <p id="incomingFormMsg" class="page-message" style="display: none"></p>
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary">Crear webhook entrante</button>
+                </div>
+              </form>
+            </div>
+          </section>
+
+          <section class="profile-card">
+            <div class="profile-card-title"><span>Webhooks entrantes configurados</span></div>
+            <div class="profile-card-body">
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Nombre</th>
+                      <th>URL</th>
+                      <th>Secreto</th>
+                      <th>Clave</th>
+                      <th>Estado</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="incomingTableBody">
+                    <tr><td colspan="6" style="text-align:center; padding:20px;">Cargando...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <!-- ===================== WEBHOOKS SALIENTES (story 24) ===================== -->
+        <section class="tab-panel" id="tabOutgoingPanel">
+          <section class="profile-card">
+            <div class="profile-card-title"><span>Nuevo webhook saliente</span></div>
+            <div class="profile-card-body">
+              <form id="outgoingForm">
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label for="outgoingName">Nombre</label>
+                    <input type="text" id="outgoingName" placeholder="Opcional" />
+                  </div>
+                  <div class="form-field">
+                    <label for="outgoingUrl">URL de destino</label>
+                    <input type="url" id="outgoingUrl" placeholder="https://..." required />
+                  </div>
+                  <div class="form-field">
+                    <label>Dueño (pedidos de quién notifica)</label>
+                    <div class="owner-picker">
+                      <input type="text" id="outgoingOwnerSearch" placeholder="Buscar por email..." />
+                      <button class="btn btn-outline btn-small" id="outgoingOwnerSearchBtn" type="button">Buscar</button>
+                    </div>
+                    <div class="owner-results" id="outgoingOwnerResults"></div>
+                    <p class="owner-selected" id="outgoingOwnerSelected"></p>
+                  </div>
+                  <div class="form-field">
+                    <label for="outgoingEvents">Eventos (separados por coma)</label>
+                    <input type="text" id="outgoingEvents" placeholder="order.created, order.status_change" />
+                    <span class="hint">Vacío = todos los eventos.</span>
+                  </div>
+                </div>
+                <p id="outgoingFormMsg" class="page-message" style="display: none"></p>
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary">Crear webhook saliente</button>
+                </div>
+              </form>
+            </div>
+          </section>
+
+          <section class="profile-card">
+            <div class="profile-card-title"><span>Webhooks salientes configurados</span></div>
+            <div class="profile-card-body">
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Nombre</th>
+                      <th>URL</th>
+                      <th>Secreto</th>
+                      <th>Eventos</th>
+                      <th>Estado</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="outgoingTableBody">
+                    <tr><td colspan="6" style="text-align:center; padding:20px;">Cargando...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <!-- ===================== HISTORIAL DE ENTREGAS ===================== -->
+        <section class="tab-panel" id="tabDeliveriesPanel">
+          <section class="profile-card">
+            <div class="profile-card-title">
+              <span>Historial de entregas de webhooks salientes</span>
+              <select id="deliveriesEndpointFilter">
+                <option value="">Todos los webhooks salientes</option>
+              </select>
+            </div>
+            <div class="profile-card-body">
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Evento</th>
+                      <th>HTTP</th>
+                      <th>Resultado</th>
+                      <th>Respuesta</th>
+                      <th>Fecha</th>
+                    </tr>
+                  </thead>
+                  <tbody id="deliveriesTableBody">
+                    <tr><td colspan="5" style="text-align:center; padding:20px;">Cargando...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/integraciones.js"></script>
+  </body>
+</html>

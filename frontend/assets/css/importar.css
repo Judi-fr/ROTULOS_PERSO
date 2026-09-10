@@ -1,0 +1,476 @@
+/* Carga e importación de pedidos (importar.html): mismo sistema visual que
+   documentos.css/pedidos.css/rotulos.css (paleta, topbar, botones,
+   profile-card compartidos), con lo propio de esta pantalla: tabs, el
+   formulario de alta manual y el wizard de importación (subir -> mapear ->
+   confirmar). */
+
+:root {
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --border: #e7eaf1;
+  --text-dark: #0f172a;
+  --text-muted: #64748b;
+  --blue: #f97316;
+  --blue-light: #ffedd5;
+  --green: #16a34a;
+  --green-light: #e9f9ee;
+  --amber: #d97706;
+  --amber-light: #fef6e6;
+  --red: #dc2626;
+  --red-light: #fdeeee;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Karla", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text-dark);
+}
+
+.layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* TOPBAR (igual que documentos.html) */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 28px;
+  gap: 16px;
+}
+
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--blue-light);
+}
+
+.topbar-user-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.topbar-user-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.topbar-user-email {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.btn {
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--card);
+}
+
+.btn-outline {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-dark);
+}
+
+.btn-outline:hover {
+  background: var(--bg);
+}
+
+.btn-primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.05);
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* MAIN */
+.main {
+  flex: 1;
+  padding: 32px 28px 48px;
+  max-width: 980px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.main-heading h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+}
+
+.main-heading p {
+  margin: 0 0 24px;
+  color: var(--text-muted);
+}
+
+.page-message {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.page-message.error {
+  background: var(--red-light);
+  color: var(--red);
+  border: 1px solid #f6c9c9;
+}
+
+.page-message.success {
+  background: var(--green-light);
+  color: var(--green);
+  border: 1px solid #bfe8cc;
+}
+
+/* CARDS (mismo shell que documentos.html) */
+.profile-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 22px;
+  overflow: hidden;
+}
+
+.profile-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  font-size: 15.5px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.profile-card-body {
+  padding: 20px 22px 22px;
+}
+
+.empty-state {
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 8px 0;
+}
+
+/* TABS: "Alta manual" / "Importar archivo" */
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+
+.tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 4px;
+  margin-right: 22px;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  color: var(--blue);
+  border-bottom-color: var(--blue);
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+/* FORMULARIOS */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+
+.form-field {
+  margin-bottom: 4px;
+}
+
+.form-field.span-2 {
+  grid-column: 1 / -1;
+}
+
+.form-field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.form-field .hint {
+  display: block;
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text-dark);
+  background: #fff;
+}
+
+.form-field input:focus,
+.form-field select:focus,
+.form-field textarea:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.required-mark {
+  color: var(--red);
+}
+
+/* WIZARD DE IMPORTACIÓN */
+.import-steps {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.import-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 8px;
+  border-radius: 20px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.import-step .step-number {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--text-dark);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11.5px;
+}
+
+.import-step.active {
+  background: var(--blue-light);
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.import-step.active .step-number {
+  background: var(--blue);
+  color: #fff;
+}
+
+.import-step.done .step-number {
+  background: var(--green);
+  color: #fff;
+}
+
+.upload-drop {
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 28px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.upload-drop input[type="file"] {
+  margin-top: 10px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin: 16px 0;
+}
+
+table.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+  min-width: 520px;
+}
+
+table.data-table th,
+table.data-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+table.data-table th {
+  background: var(--bg);
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+table.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.mapping-table select {
+  min-width: 200px;
+}
+
+.summary-stats {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 6px 0 16px;
+}
+
+.summary-stat {
+  flex: 1;
+  min-width: 120px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 16px;
+  text-align: center;
+}
+
+.summary-stat .value {
+  font-size: 22px;
+  font-weight: 700;
+  display: block;
+}
+
+.summary-stat .label {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.summary-stat.ok .value { color: var(--green); }
+.summary-stat.skip .value { color: var(--amber); }
+.summary-stat.error .value { color: var(--red); }
+
+.error-list {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.error-list-item {
+  padding: 8px 12px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+.error-list-item:last-child {
+  border-bottom: none;
+}
+
+.error-list-item .row-number {
+  font-weight: 700;
+  margin-right: 6px;
+}
+
+.mapping-templates-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.mapping-templates-row select {
+  flex: 1;
+  min-width: 200px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    flex-wrap: wrap;
+    padding: 14px 18px;
+  }
+  .main {
+    padding: 24px 18px 40px;
+  }
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}

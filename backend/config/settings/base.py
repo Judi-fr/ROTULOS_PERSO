@@ -62,6 +62,7 @@ LOCAL_APPS = [
     "apps.labels",      # rótulos generados, plantillas e impresión
     "apps.orders",      # direcciones y pedidos del cliente final
     "apps.audit",       # registro de auditoría (solo lectura)
+    "apps.integrations",  # claves de API y webhooks (entrada/salida)
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -156,6 +157,11 @@ REST_FRAMEWORK = {
         "password_reset": "5/min",
         # Reenvío del email de verificación: frena el reenvío masivo.
         "email_verification": "5/min",
+        # API de ingesta de pedidos (apps.integrations, autenticada con
+        # Api-Key): un ERP/tienda que reintenta agresivo no debe poder
+        # tumbar la API. Configurable por .env porque el volumen esperado
+        # varía mucho de un cliente a otro.
+        "ingest": env("INGEST_THROTTLE_RATE", default="120/min"),
     },
 }
 
@@ -242,6 +248,23 @@ LABEL_SENDER_ADDRESS = env(
 # apps.labels.batch_views). El lote corre síncrono, en el mismo request:
 # sin esto, un lote gigante sería un timeout en vez de un error claro.
 LABELS_BATCH_MAX_ITEMS = env.int("LABELS_BATCH_MAX_ITEMS", default=200)
+
+# ---------------------------------------------------------------------------
+# Importación de pedidos (apps.orders.import_views) — story 21
+# ---------------------------------------------------------------------------
+
+# Igual que LABELS_BATCH_MAX_ITEMS: corre síncrono, en el mismo request.
+ORDERS_IMPORT_MAX_ROWS = env.int("ORDERS_IMPORT_MAX_ROWS", default=1000)
+ORDERS_IMPORT_MAX_FILE_SIZE_MB = env.int("ORDERS_IMPORT_MAX_FILE_SIZE_MB", default=10)
+
+# ---------------------------------------------------------------------------
+# Webhooks salientes (apps.integrations.webhooks) — story 24
+# ---------------------------------------------------------------------------
+
+# Sin cola de tareas: el envío es síncrono, en el mismo request que cambió
+# el estado del pedido. Un timeout corto evita que un endpoint del cliente
+# que no responde bloquee esa operación.
+WEBHOOK_DELIVERY_TIMEOUT_SECONDS = env.int("WEBHOOK_DELIVERY_TIMEOUT_SECONDS", default=3)
 
 # ---------------------------------------------------------------------------
 # JWT (djangorestframework-simplejwt)

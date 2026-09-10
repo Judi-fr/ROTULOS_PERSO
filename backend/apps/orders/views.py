@@ -11,19 +11,22 @@ from datetime import datetime, timedelta
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Max, ProtectedError, Q
 from django.db.models.functions import TruncMonth
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.pagination import UserAdminPagination
+from apps.accounts.permissions_map import user_has_permission
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
 
+from .ingestion import TARGET_FIELDS, create_order_from_data, validate_mapped_row
 from .models import Address, Order
 from .serializers import AddressSerializer, AdminOrderSerializer, OrderSerializer
 
@@ -122,6 +125,61 @@ class OrderViewSet(
             changes={"status": {"from": previous_status, "to": order.status}},
         )
         return Response(self.get_serializer(order).data)
+
+
+class ManualOrderCreateView(APIView):
+    """POST /api/v1/orders/manual/
+
+    Carga OPERATIVA de un envío (story 20): alguien de Buspack escribe los
+    datos del destinatario a mano —no está guardado en ninguna dirección
+    propia, a diferencia del alta self-service de ``OrderViewSet.create``,
+    que elige entre las direcciones YA guardadas del propio cliente—.
+    Crea la ``Address`` y el ``Order`` en una sola llamada (ver
+    ``ingestion.create_order_from_data``).
+
+    Campos: los de ``ingestion.TARGET_FIELDS`` (destinatario, domicilio,
+    numero, ciudad, provincia, cp, referencia, descripcion, external_id).
+    Con ``user_id`` Y el permiso ``orders.create_for_others`` (solo
+    admin), da de alta el envío a nombre de OTRO usuario; sin ese permiso
+    el pedido es siempre del usuario autenticado, ``user_id`` se ignora
+    aunque venga en el body — la identidad nunca sale de un id que manda
+    el cliente.
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission("orders.create_manual")]
+
+    def post(self, request):
+        data = request.data
+        target_user = request.user
+
+        user_id = data.get("user_id")
+        if user_id:
+            if not user_has_permission(request.user, "orders.create_for_others"):
+                raise PermissionDenied(
+                    "No tenés permiso para dar de alta pedidos a nombre de otro usuario."
+                )
+            target_user = get_object_or_404(User, pk=user_id)
+
+        mapped = {field: data.get(field) for field in TARGET_FIELDS}
+        row_errors = validate_mapped_row(mapped)
+        if row_errors:
+            raise ValidationError({"detail": row_errors})
+
+        order, created = create_order_from_data(target_user, mapped, source=Order.Source.MANUAL)
+        record(
+            request,
+            category="orders",
+            action="order.create",
+            target=order,
+            target_type="order",
+            target_repr=str(order),
+            changes={"source": {"from": None, "to": Order.Source.MANUAL}} if created else None,
+        )
+        return Response(
+            OrderSerializer(order, context={"request": request}).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
 
 
 class AdminOrderPagination(UserAdminPagination):

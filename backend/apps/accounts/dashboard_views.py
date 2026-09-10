@@ -12,7 +12,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .permissions_map import get_effective_role
+from .permissions_map import get_effective_role, user_has_permission
 
 
 class DashboardView(APIView):
@@ -63,6 +63,29 @@ class DashboardView(APIView):
                     "enabled": True,
                 }
             )
+            menu.append(
+                {
+                    "key": "integrations",
+                    "label": "Integraciones",
+                    "url": "integraciones.html",
+                    "enabled": True,
+                }
+            )
+
+        # Carga operativa de pedidos (stories 20-22): alta manual + importación
+        # CSV/Excel + plantillas de mapeo. Va a admin y operator (mismos roles
+        # que "orders.create_manual"/"orders.import", ver permissions_map),
+        # NO a designer/subscriber -- ellos solo tienen el self-service de
+        # "orders"/"addresses" ya listado más abajo.
+        if is_admin or user_has_permission(user, "orders.create_manual"):
+            menu.append(
+                {
+                    "key": "orders_ingestion",
+                    "label": "Carga e importación de pedidos",
+                    "url": "importar.html",
+                    "enabled": True,
+                }
+            )
 
         # Direcciones y pedidos: self-service, disponible para los cuatro
         # roles (ver apps.orders y los permisos orders.*/addresses.manage).
@@ -92,6 +115,12 @@ class DashboardView(APIView):
         menu.extend(
             [
                 {"key": "labels", "label": "Mis rótulos", "url": "rotulos.html", "enabled": True},
+                {
+                    "key": "templates",
+                    "label": "Plantillas",
+                    "url": "plantillas.html",
+                    "enabled": True,
+                },
                 {
                     "key": "documents",
                     "label": "Mis documentos",

@@ -16,7 +16,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -36,7 +36,9 @@ from .rendering import (
     DEFAULT_BARCODE_WIDTH_CM,
     DEFAULT_QR_SIZE_CM,
     QR_SIZE_RANGE_CM,
+    SAMPLE_LABEL_CONTEXT,
     build_barcode_drawing,
+    build_computed_context,
     build_label_context,
     build_qr_drawing,
     render_code_svg,
@@ -169,12 +171,14 @@ class LabelViewSet(viewsets.ModelViewSet):
         """
         label = self.get_object()
         context = build_label_context(order=label.order, label=label)
+        computed = build_computed_context(owner=label.user)
         pdf_bytes = render_label_pdf(
             design=label.design,
             width_cm=label.width_cm,
             height_cm=label.height_cm,
             context=context,
             logo_file=label.logo if label.logo else None,
+            computed=computed,
         )
         record(
             request,
@@ -190,21 +194,39 @@ class LabelViewSet(viewsets.ModelViewSet):
 
 
 class LabelTemplateViewSet(viewsets.ModelViewSet):
-    """Plantillas de rótulo: lectura para todos (públicas + propias);
-    crear/editar/borrar exige ``labels.manage_templates``."""
+    """Plantillas de rótulo: lectura para todos (públicas + propias
+    activas). Crear/editar una plantilla PROPIA privada exige
+    ``labels.template_create`` (self-service, los cuatro roles); tocar una
+    plantilla PÚBLICA o de OTRO usuario, o marcar una como pública, exige
+    ``labels.manage_templates`` (solo admin) — el chequeo fino vive en
+    ``perform_create``/``perform_update``/``destroy`` porque depende del
+    objeto/los datos, no solo de la acción (``get_permissions`` solo
+    filtra la entrada mínima)."""
 
     serializer_class = LabelTemplateSerializer
 
     def get_permissions(self):
-        if self.action in ("list", "retrieve"):
+        if self.action in ("list", "retrieve", "preview"):
             return [IsAuthenticated()]
-        return [IsAuthenticated(), HasRolePermission("labels.manage_templates")]
+        return [IsAuthenticated(), HasRolePermission("labels.template_create")]
 
     def get_queryset(self):
         user = self.request.user
-        return LabelTemplate.objects.filter(Q(is_public=True) | Q(owner=user))
+        queryset = LabelTemplate.objects.filter(
+            Q(is_public=True) | Q(owner=user), is_active=True
+        )
+        search = self.request.query_params.get("search", "").strip()
+        if search:
+            queryset = queryset.filter(name__icontains=search)
+        return queryset
+
+    def _can_manage_templates(self):
+        return user_has_permission(self.request.user, "labels.manage_templates")
 
     def perform_create(self, serializer):
+        is_public = bool(serializer.validated_data.get("is_public", False))
+        if is_public and not self._can_manage_templates():
+            raise PermissionDenied("Solo un administrador puede crear una plantilla pública.")
         template = serializer.save(owner=self.request.user)
         record(
             self.request,
@@ -216,6 +238,17 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
+        instance = serializer.instance
+        user = self.request.user
+        is_own_private = instance.owner_id == user.id and not instance.is_public
+        if not self._can_manage_templates():
+            if not is_own_private:
+                raise PermissionDenied("Solo podés editar tus propias plantillas privadas.")
+            requested_is_public = serializer.validated_data.get("is_public", instance.is_public)
+            if requested_is_public:
+                raise PermissionDenied(
+                    "Solo un administrador puede marcar una plantilla como pública."
+                )
         template = serializer.save()
         record(
             self.request,
@@ -226,16 +259,85 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
             target_repr=str(template),
         )
 
-    def perform_destroy(self, instance):
+    def destroy(self, request, *args, **kwargs):
+        """Archivar (soft-delete), no borrar de verdad: mismo criterio que
+        ``Label``/``Document`` — los rótulos ya generados con esta
+        plantilla siguen apuntándola (``Label.template``)."""
+        instance = self.get_object()
+        is_own_private = instance.owner_id == request.user.id and not instance.is_public
+        if not self._can_manage_templates() and not is_own_private:
+            raise PermissionDenied("Solo podés archivar tus propias plantillas privadas.")
+        instance.is_active = False
+        instance.save(update_fields=["is_active", "updated_at"])
         record(
-            self.request,
+            request,
             category="labels",
             action="template.delete",
             target=instance,
             target_type="labeltemplate",
             target_repr=str(instance),
         )
-        instance.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["post"])
+    def duplicate(self, request, pk=None):
+        """POST /api/v1/labels/templates/<id>/duplicate/
+
+        Copia PROPIA y privada (``" (copia)"``), sin importar si el
+        original es público o de otro usuario: duplicar no modifica el
+        original, así que alcanza con ``labels.template_create``.
+        """
+        original = self.get_object()
+        copy = LabelTemplate.objects.create(
+            name=f"{original.name} (copia)",
+            description=original.description,
+            owner=request.user,
+            is_public=False,
+            width_cm=original.width_cm,
+            height_cm=original.height_cm,
+            design=original.design,
+        )
+        if original.preview:
+            copy.preview.save(
+                original.preview.name.rsplit("/", 1)[-1],
+                ContentFile(original.preview.read()),
+                save=True,
+            )
+        record(
+            request,
+            category="labels",
+            action="template.create",
+            target=copy,
+            target_type="labeltemplate",
+            target_repr=str(copy),
+            changes={"duplicated_from": {"from": None, "to": original.pk}},
+        )
+        return Response(
+            self.get_serializer(copy).data, status=status.HTTP_201_CREATED
+        )
+
+    @action(detail=True, methods=["get"])
+    def preview(self, request, pk=None):
+        """GET /api/v1/labels/templates/<id>/preview/
+
+        PDF de la plantilla con datos de EJEMPLO (``rendering.
+        SAMPLE_LABEL_CONTEXT``), no de un pedido real: la misma cadena de
+        render que arma el rótulo definitivo (``render_label_pdf``), para
+        que la vista previa de ``frontend/plantillas.html`` sea fiel al
+        resultado real sin necesitar un pedido.
+        """
+        template = self.get_object()
+        computed = build_computed_context(owner=request.user, is_preview=True)
+        pdf_bytes = render_label_pdf(
+            design=template.design,
+            width_cm=template.width_cm,
+            height_cm=template.height_cm,
+            context=SAMPLE_LABEL_CONTEXT,
+            computed=computed,
+        )
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'inline; filename="plantilla-{template.pk}-preview.pdf"'
+        return response
 
 
 class AdminLabelPagination(UserAdminPagination):
@@ -354,11 +456,16 @@ class RenderLabelView(APIView):
         )
 
         context = build_label_context(order=order)
+        # /labels/render/ es una vista previa sin persistir (ver el
+        # docstring de la clase): no consume la numeración secuencial real,
+        # el flag es explícito acá, no se adivina del request.
+        computed = build_computed_context(owner=request.user, is_preview=True)
         pdf_bytes = render_label_pdf(
             design=template.design,
             width_cm=template.width_cm,
             height_cm=template.height_cm,
             context=context,
+            computed=computed,
         )
         record(
             request,

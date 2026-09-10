@@ -14,6 +14,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="../assets/js/config.js"></script>
     <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/print.js"></script>
 
     <!-- Estilos comunes del frontend (header/topbar, botones, avatar). Va
          ANTES del <style> propio del editor para que este último (más
@@ -431,6 +432,7 @@
         </div>
         <div class="tool-group">
           <button id="saveBtn" class="primary">Guardar rótulo</button>
+          <button id="saveAsTemplateBtn">Guardar como plantilla</button>
           <button id="exportPngBtn">Exportar PNG</button>
           <button id="exportPdfBtn">Exportar PDF</button>
           <!-- Vista previa rápida (arriba) vs. rótulo definitivo (acá): el
@@ -440,6 +442,9 @@
                que el rótulo ya esté guardado (necesita un id). -->
           <button id="exportServerPdfBtn" title="Guardá el rótulo primero para poder descargar el PDF del servidor">
             Descargar PDF (servidor)
+          </button>
+          <button id="printBtn" title="Guardá el rótulo primero para poder imprimirlo">
+            Imprimir
           </button>
         </div>
       </div>
@@ -646,6 +651,8 @@
         getOrderInfo,
         downloadRotuloPdfServer,
         fetchCodePreview,
+        getTemplate,
+        createTemplate,
       } from "./api.js";
 
       const params = new URLSearchParams(window.location.search);
@@ -653,9 +660,13 @@
       const nombreInput = document.getElementById("nombreInput");
       const saveStatus = document.getElementById("saveStatus");
       const exportServerPdfBtn = document.getElementById("exportServerPdfBtn");
-      // El PDF del servidor lee el rótulo YA guardado (necesita un id): solo
-      // se habilita editando uno existente, nunca antes del primer guardado.
+      const printBtn = document.getElementById("printBtn");
+      const saveAsTemplateBtn = document.getElementById("saveAsTemplateBtn");
+      // El PDF del servidor (y la impresión, que lo reusa) lee el rótulo
+      // YA guardado (necesita un id): solo se habilitan editando uno
+      // existente, nunca antes del primer guardado.
       exportServerPdfBtn.disabled = !editingId;
+      printBtn.disabled = !editingId;
 
       exportServerPdfBtn.addEventListener("click", async () => {
         if (!editingId) return;
@@ -676,11 +687,44 @@
         }
       });
 
+      printBtn.addEventListener("click", () => {
+        if (!editingId) return;
+        window.PrintHelper.printFromBlobFn(() => downloadRotuloPdfServer(editingId), printBtn);
+      });
+
       // Vínculo opcional con un pedido: si venimos con ?order=<id> (rótulo
       // nuevo a partir de un envío concreto) o el rótulo cargado ya tenía
       // uno asociado, se manda en el payload. El usuario puede seguir
       // editando los campos autocompletados en el diseño.
       let currentOrderId = params.get("order") ? Number(params.get("order")) : null;
+      // Vínculo opcional con la plantilla de origen (?template=<id>, o la
+      // que ya traía el rótulo cargado): se manda en el payload para que
+      // Label.template quede completo (ver api.js/toApiPayload).
+      let currentTemplateId = params.get("template") ? Number(params.get("template")) : null;
+
+      // --- Guardar como plantilla propia (privada) ------------------------
+      saveAsTemplateBtn.addEventListener("click", async () => {
+        const suggestedName = nombreInput.value.trim() || "Plantilla sin nombre";
+        const name = window.prompt("Nombre de la plantilla:", suggestedName);
+        if (!name) return;
+        saveAsTemplateBtn.disabled = true;
+        try {
+          await createTemplate({
+            nombre: name.trim(),
+            size: {
+              widthCm: parseFloat(document.getElementById("widthCm").value) || 10,
+              heightCm: parseFloat(document.getElementById("heightCm").value) || 15,
+            },
+            fields: collectFields(),
+          });
+          showStatus(`Plantilla "${name.trim()}" guardada.`);
+        } catch (err) {
+          if (err.isSessionExpired) return;
+          showStatus(err.message || "No se pudo guardar la plantilla.");
+        } finally {
+          saveAsTemplateBtn.disabled = false;
+        }
+      });
 
       const TEXT_FIELDS = [
         "remitente",
@@ -864,9 +908,47 @@
         );
       }
 
+      // Aplica un bloque design/fields (de un rótulo o de una plantilla) al
+      // canvas: posiciones + textos de los campos de texto, y la config de
+      // qr/barcode. Compartido entre "cargar rótulo existente" y "cargar
+      // plantilla" para no duplicar el mismo mapeo dos veces.
+      function applyFields(fields) {
+        if (!fields) return;
+        Object.entries(fields).forEach(([key, val]) => {
+          const el = document.querySelector(`.field[data-field="${key}"]`);
+          if (!el) return;
+          if (val.left != null) el.style.left = val.left + "%";
+          if (val.top != null) el.style.top = val.top + "%";
+          if (TEXT_FIELDS.includes(key) && val.text != null) el.textContent = val.text;
+        });
+        // Un diseño viejo puede no traer qr/barcode todavía, o traer el qr
+        // en el formato viejo (solo left/top): se completa con los
+        // defaults, nunca se pisa lo que sí vino.
+        if (fields.qr) codeConfig.qr = { ...CODE_DEFAULTS.qr, ...fields.qr };
+        if (fields.barcode) codeConfig.barcode = { ...CODE_DEFAULTS.barcode, ...fields.barcode };
+      }
+
+      // --- Cargar una plantilla como punto de partida (?template=<id>),
+      // solo para un rótulo NUEVO: uno existente ya trae su propio diseño.
+      async function loadFromTemplate(templateId) {
+        const template = await getTemplate(templateId);
+        if (!template) {
+          showStatus("No se encontró esa plantilla. Empezando en blanco.");
+          currentTemplateId = null;
+          return;
+        }
+        if (template.size) {
+          document.getElementById("widthCm").value = template.size.widthCm;
+          document.getElementById("heightCm").value = template.size.heightCm;
+          updateLabelSize();
+        }
+        applyFields(template.fields);
+      }
+
       // --- Cargar rótulo existente si venimos con ?id= ---
       async function loadExisting() {
         if (!editingId) {
+          if (currentTemplateId) await loadFromTemplate(currentTemplateId);
           if (currentOrderId) await prefillFromOrder(currentOrderId);
         } else {
           const r = await getRotulo(editingId);
@@ -874,6 +956,7 @@
             showStatus("No se encontró ese rótulo. Empezando uno nuevo.");
           } else {
             currentOrderId = r.order || currentOrderId;
+            currentTemplateId = r.template || currentTemplateId;
             nombreInput.value = r.nombre || "";
             if (r.size) {
               document.getElementById("widthCm").value = r.size.widthCm;
@@ -885,29 +968,12 @@
               document.getElementById("logoImg").style.display = "block";
               document.getElementById("logoPlaceholder").style.display = "none";
             }
-            if (r.fields) {
-              Object.entries(r.fields).forEach(([key, val]) => {
-                const el = document.querySelector(`.field[data-field="${key}"]`);
-                if (!el) return;
-                if (val.left != null) el.style.left = val.left + "%";
-                if (val.top != null) el.style.top = val.top + "%";
-                if (TEXT_FIELDS.includes(key) && val.text != null)
-                  el.textContent = val.text;
-              });
-              // Un diseño viejo puede no traer qr/barcode todavía, o traer
-              // el qr en el formato viejo (solo left/top): se completa con
-              // los defaults, nunca se pisa lo que sí vino.
-              if (r.fields.qr) {
-                codeConfig.qr = { ...CODE_DEFAULTS.qr, ...r.fields.qr };
-              }
-              if (r.fields.barcode) {
-                codeConfig.barcode = { ...CODE_DEFAULTS.barcode, ...r.fields.barcode };
-              }
-            }
+            applyFields(r.fields);
           }
         }
         // Vista previa inicial de ambos códigos, con la config que haya
-        // quedado (la del rótulo cargado, o los defaults de uno nuevo).
+        // quedado (la del rótulo/plantilla cargados, o los defaults de uno
+        // nuevo en blanco).
         refreshCodePreview("qr");
         refreshCodePreview("barcode");
       }
@@ -985,6 +1051,7 @@
               : null,
           fields: collectFields(),
           order: currentOrderId,
+          template: currentTemplateId,
         };
 
         if (editingId) {

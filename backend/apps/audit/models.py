@@ -27,6 +27,7 @@ class AuditLog(models.Model):
         SUPPORT = "support", "Soporte"
         LABELS = "labels", "Rótulos"
         DOCUMENTS = "documents", "Documentos"
+        INTEGRATIONS = "integrations", "Integraciones"
 
     class Action(models.TextChoices):
         # auth
@@ -52,6 +53,8 @@ class AuditLog(models.Model):
         ORDER_CREATE = "order.create", "Pedido creado"
         ORDER_STATUS_CHANGE = "order.status_change", "Cambio de estado de pedido"
         ORDER_CANCEL = "order.cancel", "Pedido cancelado"
+        ORDER_IMPORT = "order.import", "Importación de pedidos"
+        ORDER_WEBHOOK_INGEST = "order.webhook_ingest", "Pedido recibido por webhook"
         # support
         SUPPORT_CREATE = "support.create", "Mensaje de soporte creado"
         SUPPORT_STATUS_CHANGE = "support.status_change", "Cambio de estado de soporte"
@@ -67,6 +70,11 @@ class AuditLog(models.Model):
         TEMPLATE_DELETE = "template.delete", "Plantilla de rótulo eliminada"
         # documents
         DOCUMENT_DELETE = "document.delete", "Documento eliminado"
+        # integrations (apps.integrations)
+        INTEGRATION_KEY_CREATE = "integration_key.create", "Clave de integración creada"
+        INTEGRATION_KEY_DELETE = "integration_key.delete", "Clave de integración eliminada"
+        INCOMING_WEBHOOK_CREATE = "incoming_webhook.create", "Webhook entrante creado"
+        WEBHOOK_ENDPOINT_CREATE = "webhook_endpoint.create", "Webhook saliente creado"
 
     # Cada acción pertenece a exactamente una categoría. Se guarda acá (en vez
     # de derivarla del prefijo de la acción) porque los nombres no son
@@ -92,6 +100,8 @@ class AuditLog(models.Model):
         Action.ORDER_CREATE: Category.ORDERS,
         Action.ORDER_STATUS_CHANGE: Category.ORDERS,
         Action.ORDER_CANCEL: Category.ORDERS,
+        Action.ORDER_IMPORT: Category.ORDERS,
+        Action.ORDER_WEBHOOK_INGEST: Category.ORDERS,
         Action.SUPPORT_CREATE: Category.SUPPORT,
         Action.SUPPORT_STATUS_CHANGE: Category.SUPPORT,
         Action.SUPPORT_REPLY: Category.SUPPORT,
@@ -104,6 +114,10 @@ class AuditLog(models.Model):
         Action.TEMPLATE_UPDATE: Category.LABELS,
         Action.TEMPLATE_DELETE: Category.LABELS,
         Action.DOCUMENT_DELETE: Category.DOCUMENTS,
+        Action.INTEGRATION_KEY_CREATE: Category.INTEGRATIONS,
+        Action.INTEGRATION_KEY_DELETE: Category.INTEGRATIONS,
+        Action.INCOMING_WEBHOOK_CREATE: Category.INTEGRATIONS,
+        Action.WEBHOOK_ENDPOINT_CREATE: Category.INTEGRATIONS,
     }
 
     actor = models.ForeignKey(

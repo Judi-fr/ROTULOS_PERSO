@@ -18,7 +18,7 @@ para más adelante, no lo asuma este módulo.
 from __future__ import annotations
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 
 
 class LabelTemplate(models.Model):
@@ -45,6 +45,10 @@ class LabelTemplate(models.Model):
     # Bloque "fields" del editor: posiciones por defecto de cada campo.
     design = models.JSONField(default=dict, blank=True)
     preview = models.ImageField(upload_to="labels/templates/", null=True, blank=True)
+    # Soft-delete, igual criterio que Label/Document: archivar una
+    # plantilla nunca la destruye (rótulos ya generados con ella siguen
+    # apuntándola vía Label.template).
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -108,3 +112,44 @@ class Label(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.user.email})"
+
+
+class LabelSequence(models.Model):
+    """Contador de numeración secuencial para el marcador ``{{secuencia}}``
+    (Historia 29, ver ``apps.labels.rendering.build_computed_context``).
+
+    Una fila por ``owner``+``key``: hoy todo el mundo usa ``key="default"``
+    (no hay todavía un lugar natural para elegir otra desde el editor), pero
+    la columna queda para no tener que migrar el día que lo haya. El valor
+    devuelto es ``prefix`` + el número con ceros a la izquierda según
+    ``padding`` — ver ``next_value``.
+    """
+
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    key = models.CharField(max_length=50, default="default")
+    prefix = models.CharField(max_length=20, blank=True)
+    padding = models.PositiveSmallIntegerField(default=6)
+    current = models.BigIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("owner", "key")
+        verbose_name = "secuencia de rótulos"
+        verbose_name_plural = "secuencias de rótulos"
+
+    def __str__(self):
+        return f"{self.owner_id}:{self.key} ({self.current})"
+
+    @classmethod
+    def next_value(cls, owner, key="default"):
+        """Incrementa el contador y devuelve el valor formateado
+        (``prefix`` + ceros a la izquierda). Atómico vía ``F("current") +
+        1`` (una sola sentencia UPDATE) en vez de leer-sumar-guardar en
+        Python: dos rótulos del mismo lote generados "al mismo tiempo"
+        nunca pueden llevarse el mismo número. Un valor por RÓTULO, nunca
+        uno por lote entero (el llamador pide uno por cada ítem)."""
+        with transaction.atomic():
+            obj, _ = cls.objects.get_or_create(owner=owner, key=key)
+            cls.objects.filter(pk=obj.pk).update(current=models.F("current") + 1)
+            obj.refresh_from_db(fields=["current"])
+        return f"{obj.prefix}{obj.current:0{obj.padding}d}"

@@ -255,3 +255,104 @@ class AdminOrdersTests(APITestCase):
         log = AuditLog.objects.filter(action="order.status_change").latest("created_at")
         self.assertIsNone(log.actor_id)
         self.assertEqual(log.changes["status"], {"from": Order.Status.CREATED, "to": Order.Status.PREPARING})
+
+
+class OrderImportTests(APITestCase):
+    """Importación CSV/Excel (story 21): lo que se rompe en silencio si
+    sale mal es (1) reimportar duplica pedidos y (2) una fila inválida
+    tumba el resto del archivo en vez de saltearse."""
+
+    CSV_HEADERS = [
+        "Destinatario",
+        "Domicilio",
+        "Numero",
+        "Ciudad",
+        "Provincia",
+        "CP",
+        "Referencia",
+        "Descripcion",
+        "ID Externo",
+    ]
+    MAPPING = {
+        "destinatario": "Destinatario",
+        "domicilio": "Domicilio",
+        "numero": "Numero",
+        "ciudad": "Ciudad",
+        "provincia": "Provincia",
+        "cp": "CP",
+        "referencia": "Referencia",
+        "descripcion": "Descripcion",
+        "external_id": "ID Externo",
+    }
+
+    def setUp(self):
+        operator_group, _ = Group.objects.get_or_create(name="operator")
+        self.user = User.objects.create_user(
+            username="operador1@example.com",
+            email="operador1@example.com",
+            password="Clave123!",
+        )
+        self.user.groups.add(operator_group)
+
+    def _upload_csv(self, csv_text):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        file_obj = SimpleUploadedFile(
+            "pedidos.csv", csv_text.encode("utf-8"), content_type="text/csv"
+        )
+        response = self.client.post(
+            "/api/v1/orders/imports/", {"file": file_obj}, **auth_headers_for(self.user)
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        return response.data["id"]
+
+    def _confirm(self, import_id, mapping=None):
+        response = self.client.post(
+            f"/api/v1/orders/imports/{import_id}/confirm/",
+            {"mapping": mapping or self.MAPPING},
+            format="json",
+            **auth_headers_for(self.user),
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        return response.data
+
+    def test_importar_el_mismo_archivo_dos_veces_no_duplica_pedidos(self):
+        csv_text = (
+            ";".join(self.CSV_HEADERS)
+            + "\n"
+            + "Juan Pérez;Av. Siempre Viva;742;CABA;Buenos Aires;1000;Timbre azul;Paquete;PED-0001"
+        )
+
+        first_import_id = self._upload_csv(csv_text)
+        first_result = self._confirm(first_import_id)
+        self.assertEqual(first_result["imported_count"], 1)
+        self.assertEqual(first_result["skipped_count"], 0)
+        self.assertEqual(Order.objects.filter(user=self.user).count(), 1)
+
+        # Mismo archivo, misma sesión de importación (mismo external_id):
+        # la segunda vez no debe crear un pedido nuevo, tiene que saltearlo.
+        second_import_id = self._upload_csv(csv_text)
+        second_result = self._confirm(second_import_id)
+        self.assertEqual(second_result["imported_count"], 0)
+        self.assertEqual(second_result["skipped_count"], 1)
+        self.assertEqual(Order.objects.filter(user=self.user).count(), 1)
+
+    def test_fila_invalida_no_aborta_el_resto_y_reporta_su_numero(self):
+        csv_text = (
+            ";".join(self.CSV_HEADERS)
+            + "\n"
+            # Fila 2 (primera de datos): válida.
+            + "Juan Pérez;Av. Siempre Viva;742;CABA;Buenos Aires;1000;Timbre azul;Paquete;PED-0002\n"
+            # Fila 3: sin domicilio ni ciudad -> inválida, tiene que saltearse
+            # y reportarse con su número de fila, sin tumbar la fila 2.
+            + "María Gómez;;;;;;;Otro paquete;PED-0003"
+        )
+
+        import_id = self._upload_csv(csv_text)
+        result = self._confirm(import_id)
+
+        self.assertEqual(result["imported_count"], 1)
+        self.assertEqual(result["error_count"], 1)
+        self.assertEqual(len(result["errors"]), 1)
+        self.assertEqual(result["errors"][0]["fila"], 3)
+        self.assertEqual(Order.objects.filter(user=self.user).count(), 1)

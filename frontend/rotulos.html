@@ -137,6 +137,21 @@
               </select>
             </div>
 
+            <div class="batch-field" id="batchPageLayoutField">
+              <label for="batchPageLayoutSelect">Diseño de página (solo PDF)</label>
+              <select id="batchPageLayoutSelect">
+                <option value="label">Una página del tamaño del rótulo (impresora de etiquetas)</option>
+                <option value="a4">Varios rótulos por hoja A4 (impresora de oficina)</option>
+              </select>
+            </div>
+
+            <div class="batch-field">
+              <label style="font-weight: 400; display: inline-flex; align-items: center; gap: 6px;">
+                <input type="checkbox" id="batchSkipExistingInput" />
+                Saltear pedidos que ya tienen un rótulo generado
+              </label>
+            </div>
+
             <p id="batchMsg" class="form-message" style="display: none"></p>
             <div class="form-actions">
               <button type="button" class="btn btn-primary" id="generateBatchBtn">
@@ -169,6 +184,7 @@
 
     <script src="assets/js/config.js"></script>
     <script src="assets/js/auth.js"></script>
+    <script src="assets/js/print.js"></script>
     <script src="assets/js/rotulos.js"></script>
   </body>
 </html>

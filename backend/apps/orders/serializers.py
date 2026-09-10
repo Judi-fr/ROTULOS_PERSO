@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 
-from .models import Address, Order, OrderStatusEvent
+from .models import Address, ImportMapping, Order, OrderImport, OrderStatusEvent
 
 
 class AddressSerializer(serializers.ModelSerializer):
@@ -11,6 +11,7 @@ class AddressSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "label",
+            "recipient_name",
             "street",
             "number",
             "city",
@@ -64,6 +65,8 @@ class OrderSerializer(serializers.ModelSerializer):
             "carrier",
             "tracking_number",
             "tracking_url",
+            "external_id",
+            "source",
             "status_events",
             "created_at",
             "updated_at",
@@ -74,6 +77,8 @@ class OrderSerializer(serializers.ModelSerializer):
             "carrier",
             "tracking_number",
             "tracking_url",
+            "external_id",
+            "source",
             "created_at",
             "updated_at",
         ]
@@ -109,6 +114,8 @@ class AdminOrderSerializer(serializers.ModelSerializer):
             "carrier",
             "tracking_number",
             "tracking_url",
+            "external_id",
+            "source",
             "last_event",
             "created_at",
             "updated_at",
@@ -128,3 +135,38 @@ class AdminOrderSerializer(serializers.ModelSerializer):
             "status_label": last.get_status_display(),
             "created_at": last.created_at,
         }
+
+
+class OrderImportSerializer(serializers.ModelSerializer):
+    """Solo lectura: un ``OrderImport`` lo crea/completa el flujo de subir
+    -> mapear -> confirmar (``import_views``), acá solo se expone su
+    estado y contadores."""
+
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = OrderImport
+        fields = [
+            "id",
+            "original_filename",
+            "status",
+            "status_label",
+            "total_rows",
+            "imported_count",
+            "skipped_count",
+            "error_count",
+            "errors",
+            "mapping",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class ImportMappingSerializer(serializers.ModelSerializer):
+    """CRUD de las plantillas de mapeo propias del usuario (story 22)."""
+
+    class Meta:
+        model = ImportMapping
+        fields = ["id", "name", "mapping", "created_at"]
+        read_only_fields = ["id", "created_at"]

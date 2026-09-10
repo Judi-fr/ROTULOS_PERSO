@@ -14,6 +14,7 @@
 
 const API_BASE = `${window.APP_CONFIG.API_BASE}/labels`;
 const LABELS_URL = `${API_BASE}/labels/`;
+const TEMPLATES_URL = `${API_BASE}/templates/`;
 const ORDERS_URL = `${window.APP_CONFIG.API_BASE}/orders/`;
 const BARCODE_URL = `${API_BASE}/barcode/`;
 
@@ -32,6 +33,10 @@ function toApiPayload(rotulo) {
   if (rotulo.thumbnail) payload.thumbnail = rotulo.thumbnail;
   if (rotulo.logo) payload.logo = rotulo.logo;
   if (rotulo.order) payload.order = rotulo.order;
+  // La plantilla de origen (si el rótulo se creó a partir de una, ver
+  // diseñorotulos.html?template=<id>): sin esto Label.template nunca se
+  // completa y no queda rastro de qué plantilla generó qué rótulo.
+  if (rotulo.template) payload.template = rotulo.template;
   return payload;
 }
 
@@ -41,6 +46,7 @@ function fromApiLabel(label) {
     nombre: label.name,
     cliente: label.client,
     order: label.order,
+    template: label.template || null,
     thumbnail: label.thumbnail || null,
     logo: label.logo || null,
     size: { widthCm: Number(label.width_cm), heightCm: Number(label.height_cm) },
@@ -49,6 +55,135 @@ function fromApiLabel(label) {
     createdAt: label.created_at,
     updatedAt: label.updated_at,
   };
+}
+
+// --- Plantillas (apps.labels.LabelTemplate) --------------------------------
+//
+// Mismo adaptador del formato del editor ({nombre, size:{widthCm,
+// heightCm}, fields}) al de la API ({name, width_cm, height_cm, design}),
+// para que frontend/pedidos/diseñorotulos.html y frontend/plantillas.html
+// compartan una sola fuente de verdad.
+
+// Para crear (desde "Guardar como plantilla" del editor) SIEMPRE vienen
+// nombre/tamaño/diseño completos. Para actualizar, en cambio, solo se
+// manda lo que efectivamente vino en `plantilla` (p. ej. renombrar desde
+// plantillas.html no debe pisar el diseño con {} por no traerlo).
+function toApiTemplateCreatePayload(plantilla) {
+  return {
+    name: plantilla.nombre,
+    width_cm: plantilla.size?.widthCm,
+    height_cm: plantilla.size?.heightCm,
+    design: plantilla.fields || {},
+    ...(plantilla.description != null ? { description: plantilla.description } : {}),
+    ...(plantilla.isPublic != null ? { is_public: plantilla.isPublic } : {}),
+  };
+}
+
+function toApiTemplateUpdatePayload(plantilla) {
+  const payload = {};
+  if (plantilla.nombre != null) payload.name = plantilla.nombre;
+  if (plantilla.description != null) payload.description = plantilla.description;
+  if (plantilla.isPublic != null) payload.is_public = plantilla.isPublic;
+  if (plantilla.size?.widthCm != null) payload.width_cm = plantilla.size.widthCm;
+  if (plantilla.size?.heightCm != null) payload.height_cm = plantilla.size.heightCm;
+  if (plantilla.fields != null) payload.design = plantilla.fields;
+  return payload;
+}
+
+function fromApiTemplate(template) {
+  return {
+    id: template.id,
+    nombre: template.name,
+    description: template.description || "",
+    owner: template.owner,
+    ownerEmail: template.owner_email || null,
+    isPublic: Boolean(template.is_public),
+    size: { widthCm: Number(template.width_cm), heightCm: Number(template.height_cm) },
+    fields: template.design || {},
+    preview: template.preview || null,
+    createdAt: template.created_at,
+    updatedAt: template.updated_at,
+  };
+}
+
+// La API pagina (PageNumberPagination): {count, next, previous, results}.
+export async function listTemplates(params = {}) {
+  const query = new URLSearchParams(params).toString();
+  const response = await apiFetch(`${TEMPLATES_URL}${query ? `?${query}` : ""}`);
+  if (!response.ok) return [];
+  const data = await response.json().catch(() => ({}));
+  const results = Array.isArray(data) ? data : data.results || [];
+  return results.map(fromApiTemplate);
+}
+
+export async function getTemplate(id) {
+  try {
+    const response = await apiFetch(`${TEMPLATES_URL}${id}/`);
+    if (!response.ok) return null;
+    return fromApiTemplate(await response.json());
+  } catch (err) {
+    if (err.isSessionExpired) throw err;
+    console.error("Error al obtener la plantilla:", err);
+    return null;
+  }
+}
+
+export async function createTemplate(plantilla) {
+  const response = await apiFetch(TEMPLATES_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(toApiTemplateCreatePayload(plantilla)),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(getErrorMessage(data, "No se pudo guardar la plantilla."));
+  }
+  return fromApiTemplate(data);
+}
+
+export async function updateTemplate(id, plantilla) {
+  const response = await apiFetch(`${TEMPLATES_URL}${id}/`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(toApiTemplateUpdatePayload(plantilla)),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(getErrorMessage(data, "No se pudo actualizar la plantilla."));
+  }
+  return fromApiTemplate(data);
+}
+
+// Soft-delete (archivar) en el backend: la plantilla deja de listarse
+// pero los rótulos ya generados con ella la siguen referenciando.
+export async function archiveTemplate(id) {
+  const response = await apiFetch(`${TEMPLATES_URL}${id}/`, { method: "DELETE" });
+  if (!response.ok && response.status !== 204) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(getErrorMessage(data, "No se pudo archivar la plantilla."));
+  }
+  return true;
+}
+
+export async function duplicateTemplate(id) {
+  const response = await apiFetch(`${TEMPLATES_URL}${id}/duplicate/`, { method: "POST" });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(getErrorMessage(data, "No se pudo duplicar la plantilla."));
+  }
+  return fromApiTemplate(data);
+}
+
+// PDF de la plantilla con datos de EJEMPLO (no un pedido real): vista
+// previa real para frontend/plantillas.html, mismo render del servidor
+// que arma el rótulo definitivo.
+export async function fetchTemplatePreviewPdf(id) {
+  const response = await apiFetch(`${TEMPLATES_URL}${id}/preview/`);
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(getErrorMessage(data, "No se pudo generar la vista previa."));
+  }
+  return response.blob();
 }
 
 function getErrorMessage(data, fallback) {

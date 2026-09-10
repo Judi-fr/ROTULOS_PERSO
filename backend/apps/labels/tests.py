@@ -12,7 +12,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.orders.models import Address, Order
 
-from .models import Label, LabelTemplate
+from .models import Label, LabelSequence, LabelTemplate
 
 User = get_user_model()
 
@@ -198,6 +198,20 @@ class LabelsSelfServiceTests(APITestCase):
         response = self.client.get("/api/v1/labels/labels/")
         self.assertEqual(response.status_code, 401)
 
+    def test_create_label_with_unknown_rule_op_returns_400(self):
+        # Historia 28: design["rules"] se valida igual que el resto del
+        # design — un op inventado corta en seco, nunca llega al render.
+        design = dict(VALID_DESIGN)
+        design["rules"] = [
+            {
+                "when": {"field": "localidad", "op": "es_igual_a", "value": "CABA"},
+                "then": {"action": "hide", "target": "qr"},
+            }
+        ]
+        response = self._create_label(design=design)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("design", response.data)
+
 
 class LabelTemplatesTests(APITestCase):
     def setUp(self):
@@ -219,10 +233,30 @@ class LabelTemplatesTests(APITestCase):
         )
         self.user.groups.add(subscriber_group)
 
-    def test_non_admin_cannot_create_template(self):
+    def test_non_admin_can_create_own_private_template_but_not_a_public_one(self):
+        # labels.template_create (self-service, los cuatro roles) alcanza
+        # para una plantilla PROPIA privada; marcarla pública sigue
+        # exigiendo labels.manage_templates (solo admin) — antes, cualquiera
+        # de las dos cosas exigía ser admin.
         response = self.client.post(
             "/api/v1/labels/templates/",
             {"name": "Plantilla base", "width_cm": "10", "height_cm": "15", "design": VALID_DESIGN},
+            format="json",
+            **auth_headers_for(self.user),
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertFalse(response.data["is_public"])
+        self.assertEqual(response.data["owner"], self.user.pk)
+
+        response = self.client.post(
+            "/api/v1/labels/templates/",
+            {
+                "name": "Plantilla pública trucha",
+                "width_cm": "10",
+                "height_cm": "15",
+                "design": VALID_DESIGN,
+                "is_public": True,
+            },
             format="json",
             **auth_headers_for(self.user),
         )
@@ -255,7 +289,10 @@ class LabelTemplatesTests(APITestCase):
         response = self.client.get("/api/v1/labels/templates/", **auth_headers_for(self.user))
         self.assertEqual(response.status_code, 200)
         results = response.data["results"] if "results" in response.data else response.data
-        self.assertEqual(len(results), 1)
+        # No se asume que sea la ÚNICA pública: la plantilla de sistema
+        # sembrada por 0003_seed_default_label_template también es pública
+        # y activa, así que también aparece acá.
+        self.assertIn("Plantilla pública", [t["name"] for t in results])
 
 
 class AdminLabelsTests(APITestCase):
@@ -419,3 +456,225 @@ class LabelBatchForeignOrderTests(APITestCase):
         )
         self.assertEqual(response.status_code, 400, response.data)
         self.assertEqual(self.Document.objects.count(), 0)
+
+
+class ComputeA4GridTests(SimpleTestCase):
+    """Cuántos rótulos entran por hoja A4 y en qué posición: si esta cuenta
+    sale mal, el PDF por lote recorta etiquetas contra el borde de la hoja
+    y no se nota hasta que salen impresas."""
+
+    def test_10x15_label_fits_two_per_a4_sheet_within_margins(self):
+        from .rendering import compute_a4_grid
+
+        margin_cm = 1.0
+        grid = compute_a4_grid(10, 15, margin_cm=margin_cm, gap_cm=0.5)
+
+        self.assertEqual(grid["per_page"], 2)
+        self.assertEqual(len(grid["positions"]), 2)
+
+        for x_cm, y_cm in grid["positions"]:
+            self.assertGreaterEqual(x_cm, margin_cm)
+            self.assertGreaterEqual(y_cm, margin_cm)
+            self.assertLessEqual(x_cm + 10, grid["page_width_cm"] - margin_cm + 1e-9)
+            self.assertLessEqual(y_cm + 15, grid["page_height_cm"] - margin_cm + 1e-9)
+
+
+class LabelSequenceTests(APITestCase):
+    """Numeración secuencial de {{secuencia}} (Historia 29)."""
+
+    def setUp(self):
+        subscriber_group, _ = Group.objects.get_or_create(name="subscriber")
+        self.user = User.objects.create_user(
+            username="secuencia@example.com",
+            email="secuencia@example.com",
+            password="Clave123!",
+        )
+        self.user.groups.add(subscriber_group)
+
+    def test_next_value_is_consecutive(self):
+        first = LabelSequence.next_value(self.user, key="envios")
+        second = LabelSequence.next_value(self.user, key="envios")
+        third = LabelSequence.next_value(self.user, key="envios")
+        self.assertEqual([first, second, third], ["000001", "000002", "000003"])
+
+    def test_next_value_applies_prefix_and_padding(self):
+        LabelSequence.objects.create(owner=self.user, key="cortos", prefix="BP-", padding=3)
+        self.assertEqual(LabelSequence.next_value(self.user, key="cortos"), "BP-001")
+        self.assertEqual(LabelSequence.next_value(self.user, key="cortos"), "BP-002")
+
+    def test_preview_does_not_consume_sequence(self):
+        from .rendering import build_computed_context
+
+        seq = LabelSequence.objects.create(owner=self.user, key="default", current=5)
+
+        computed = build_computed_context(owner=self.user, is_preview=True)
+        value = computed("secuencia")
+
+        self.assertEqual(value, "000001")  # valor de MUESTRA, no current+1
+        seq.refresh_from_db()
+        self.assertEqual(seq.current, 5)  # el contador real no se tocó
+
+
+class ComputedVariablesTests(SimpleTestCase):
+    """Variables calculadas del render (Historia 29): fecha/hora, bulto(s)
+    y prioridad frente a un dato real del pedido del mismo nombre."""
+
+    def test_real_order_field_wins_over_computed_variable_with_same_name(self):
+        from .rendering import _replace_placeholders, build_computed_context
+
+        # El pedido ya trae un campo "fecha" propio: tiene que ganarle a la
+        # fecha de emisión calculada, aunque el marcador sea {{fecha}}.
+        context = {"fecha": "01/01/2000"}
+        computed = build_computed_context()
+        self.assertEqual(_replace_placeholders("{{fecha}}", context, computed), "01/01/2000")
+
+    def test_fecha_hora_and_custom_format_markers(self):
+        from datetime import datetime
+
+        from .rendering import _replace_placeholders, build_computed_context
+
+        now = datetime(2026, 3, 5, 14, 30)
+        computed = build_computed_context(now=now)
+        self.assertEqual(_replace_placeholders("{{fecha}}", {}, computed), "05/03/2026")
+        self.assertEqual(_replace_placeholders("{{hora}}", {}, computed), "14:30")
+        self.assertEqual(_replace_placeholders("{{fecha_hora}}", {}, computed), "05/03/2026 14:30")
+        self.assertEqual(
+            _replace_placeholders("{{fecha:%Y-%m-%d}}", {}, computed), "2026-03-05"
+        )
+
+    def test_unknown_marker_resolves_to_empty_string(self):
+        from .rendering import _replace_placeholders, build_computed_context
+
+        computed = build_computed_context()
+        self.assertEqual(_replace_placeholders("{{campo_inexistente}}", {}, computed), "")
+
+
+class DesignRulesTests(SimpleTestCase):
+    """Evaluación de design["rules"] (Historia 28) sobre una copia del
+    diseño — el guardado en la base nunca se toca."""
+
+    def test_hide_rule_removes_field_from_effective_design_and_leaves_saved_design_intact(self):
+        from .rendering import apply_design_rules
+
+        design = {
+            "qr": {"left": 68, "top": 5},
+            "localidad": {"left": 6, "top": 63, "text": "CABA"},
+            "rules": [
+                {
+                    "when": {"field": "provincia", "op": "equals", "value": "Buenos Aires"},
+                    "then": {"action": "hide", "target": "qr"},
+                }
+            ],
+        }
+        context = {"provincia": "Buenos Aires"}
+
+        effective = apply_design_rules(design, context, None)
+
+        self.assertNotIn("qr", effective)
+        self.assertIn("qr", design)  # el design guardado no se modifica
+
+    def test_last_rule_wins_when_two_rules_touch_the_same_target(self):
+        from .rendering import apply_design_rules
+
+        design = {
+            "qr": {"left": 68, "top": 5},
+            "rules": [
+                {"when": {"field": "x", "op": "empty"}, "then": {"action": "hide", "target": "qr"}},
+                {"when": {"field": "x", "op": "empty"}, "then": {"action": "show", "target": "qr"}},
+            ],
+        }
+
+        effective = apply_design_rules(design, {}, None)
+
+        self.assertIn("qr", effective)
+
+    def test_set_text_and_move_actions(self):
+        from .rendering import apply_design_rules
+
+        design = {
+            "pedido": {"left": 6, "top": 88, "text": "N° de Pedido: 000123"},
+            "rules": [
+                {
+                    "when": {"field": "estado", "op": "equals", "value": "urgente"},
+                    "then": {"action": "set_text", "target": "pedido", "value": "URGENTE"},
+                },
+                {
+                    "when": {"field": "estado", "op": "equals", "value": "urgente"},
+                    "then": {"action": "move", "target": "pedido", "left": 10, "top": 20},
+                },
+            ],
+        }
+        context = {"estado": "urgente"}
+
+        effective = apply_design_rules(design, context, None)
+
+        self.assertEqual(effective["pedido"]["text"], "URGENTE")
+        self.assertEqual(effective["pedido"]["left"], 10)
+        self.assertEqual(effective["pedido"]["top"], 20)
+
+    def test_rule_with_unknown_target_is_ignored_silently(self):
+        from .rendering import apply_design_rules
+
+        design = {
+            "qr": {"left": 68, "top": 5},
+            "rules": [
+                {"when": {"field": "x", "op": "empty"}, "then": {"action": "hide", "target": "no_existe"}}
+            ],
+        }
+
+        effective = apply_design_rules(design, {}, None)
+
+        self.assertIn("qr", effective)
+
+
+class LabelBatchComputedContextTests(APITestCase):
+    """Historia 29 en el lote: un valor de {{bulto}}/{{bultos}} distinto
+    por ítem, calculado sobre la posición real dentro del LOTE."""
+
+    def setUp(self):
+        subscriber_group, _ = Group.objects.get_or_create(name="subscriber")
+        self.user = User.objects.create_user(
+            username="lotebultos@example.com",
+            email="lotebultos@example.com",
+            password="Clave123!",
+        )
+        self.user.groups.add(subscriber_group)
+
+        self.orders = []
+        for i in range(3):
+            address = Address.objects.create(
+                user=self.user, street=f"Calle {i}", number=str(i), city="CABA", is_default=(i == 0)
+            )
+            self.orders.append(Order.objects.create(user=self.user, address=address))
+
+        self.template = LabelTemplate.objects.create(
+            name="Plantilla lote bultos",
+            owner=self.user,
+            is_public=True,
+            width_cm=10,
+            height_cm=15,
+            design=VALID_DESIGN,
+        )
+
+    def test_batch_of_three_resolves_bulto_de_bultos_per_item(self):
+        from unittest.mock import patch
+
+        from . import batch_views
+
+        seen = []
+        original_draw = batch_views.draw_label_page
+
+        def spy_draw(pdf, design, width_cm, height_cm, context=None, logo_file=None, computed=None):
+            seen.append(computed("bulto_de_bultos") if computed else None)
+            return original_draw(
+                pdf, design, width_cm, height_cm, context=context, logo_file=logo_file, computed=computed
+            )
+
+        with patch.object(batch_views, "draw_label_page", side_effect=spy_draw):
+            file_bytes, item_count, skipped = batch_views._render_combined_pdf(
+                self.orders, self.template, owner=self.user
+            )
+
+        self.assertEqual(item_count, 3)
+        self.assertEqual(skipped, [])
+        self.assertEqual(seen, ["1 de 3", "2 de 3", "3 de 3"])

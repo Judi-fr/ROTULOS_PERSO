@@ -49,6 +49,23 @@ BARCODE_WIDTH_MIN, BARCODE_WIDTH_MAX = 2, 20
 BARCODE_HEIGHT_MIN, BARCODE_HEIGHT_MAX = 0.5, 5
 VALID_BARCODE_SYMBOLOGIES = {"code128", "ean13"}
 
+# Reglas condicionales de contenido (Historia 28, ver
+# apps.labels.rendering.apply_design_rules, que las EVALÚA con esta misma
+# forma).
+VALID_RULE_OPS = {
+    "equals",
+    "not_equals",
+    "contains",
+    "not_contains",
+    "empty",
+    "not_empty",
+    "in",
+    "gt",
+    "lt",
+}
+VALID_RULE_ACTIONS = {"hide", "show", "set_text", "move"}
+MAX_DESIGN_RULES = 50
+
 
 def _validate_number_range(value, field_label, minimum, maximum):
     if (
@@ -99,6 +116,60 @@ def _validate_barcode_entry(key, entry):
         raise serializers.ValidationError(f"'{key}.show_text' debe ser verdadero/falso.")
 
 
+def _validate_design_rule(rule, index, known_targets):
+    if not isinstance(rule, dict):
+        raise serializers.ValidationError(f"'rules[{index}]' debe ser un objeto.")
+    extra_keys = set(rule) - {"when", "then"}
+    if extra_keys:
+        raise serializers.ValidationError(
+            f"'rules[{index}]' no admite: {', '.join(sorted(extra_keys))}."
+        )
+
+    when = rule.get("when")
+    if not isinstance(when, dict):
+        raise serializers.ValidationError(f"'rules[{index}].when' es obligatorio.")
+    field = when.get("field")
+    if not isinstance(field, str) or not field.strip():
+        raise serializers.ValidationError(f"'rules[{index}].when.field' es obligatorio.")
+    op = when.get("op")
+    if op not in VALID_RULE_OPS:
+        raise serializers.ValidationError(
+            f"'rules[{index}].when.op' debe ser uno de: {', '.join(sorted(VALID_RULE_OPS))}."
+        )
+    if op == "in" and not isinstance(when.get("value"), list):
+        raise serializers.ValidationError(
+            f"'rules[{index}].when.value' debe ser una lista para el operador 'in'."
+        )
+
+    then = rule.get("then")
+    if not isinstance(then, dict):
+        raise serializers.ValidationError(f"'rules[{index}].then' es obligatorio.")
+    action = then.get("action")
+    if action not in VALID_RULE_ACTIONS:
+        raise serializers.ValidationError(
+            f"'rules[{index}].then.action' debe ser uno de: "
+            f"{', '.join(sorted(VALID_RULE_ACTIONS))}."
+        )
+    target = then.get("target")
+    if target not in known_targets:
+        raise serializers.ValidationError(
+            f"'rules[{index}].then.target' debe ser un campo existente del diseño."
+        )
+    if action == "set_text" and not isinstance(then.get("value", ""), str):
+        raise serializers.ValidationError(f"'rules[{index}].then.value' debe ser un texto.")
+    if action == "move":
+        for coord in ("left", "top"):
+            coord_value = then.get(coord)
+            if (
+                not isinstance(coord_value, (int, float))
+                or isinstance(coord_value, bool)
+                or not (0 <= coord_value <= 100)
+            ):
+                raise serializers.ValidationError(
+                    f"'rules[{index}].then.{coord}' debe ser un número entre 0 y 100."
+                )
+
+
 def validate_design(value):
     """Valida el bloque ``design``/``fields`` del editor.
 
@@ -114,12 +185,32 @@ def validate_design(value):
     - ``barcode``: ``"width"``/``"height"`` opcionales en cm (2-20 / 0.5-5),
       ``"symbology"`` opcional (``code128``/``ean13``), ``"data"`` opcional
       y ``"show_text"`` opcional (booleano).
+
+    Además, ``"rules"`` (opcional, lista, Historia 28) — reglas
+    condicionales que ``apps.labels.rendering.apply_design_rules`` evalúa
+    en el render: cada ítem necesita ``when``/``then`` con las claves
+    obligatorias, ``when.op``/``then.action`` dentro de los valores
+    permitidos, ``then.target`` una clave que exista en este mismo
+    ``design``, y ``then.left``/``then.top`` (para ``action: "move"``) en
+    0-100. Máximo ``MAX_DESIGN_RULES`` reglas.
     """
     if not isinstance(value, dict):
         raise serializers.ValidationError(
             "El diseño debe ser un objeto con la posición de cada campo."
         )
+
+    rules = value.get("rules", [])
+    if not isinstance(rules, list):
+        raise serializers.ValidationError("'rules' debe ser una lista.")
+    if len(rules) > MAX_DESIGN_RULES:
+        raise serializers.ValidationError(
+            f"'rules' admite como máximo {MAX_DESIGN_RULES} reglas."
+        )
+    known_targets = set(value.keys()) - {"rules"}
+
     for key, entry in value.items():
+        if key == "rules":
+            continue
         if key not in KNOWN_DESIGN_FIELDS:
             raise serializers.ValidationError(f"'{key}' no es un campo de rótulo reconocido.")
         if not isinstance(entry, dict):
@@ -144,6 +235,10 @@ def validate_design(value):
         elif key == "barcode":
             _validate_barcode_entry(key, entry)
         # "logo": solo left/top, nada más que validar acá.
+
+    for index, rule in enumerate(rules):
+        _validate_design_rule(rule, index, known_targets)
+
     return value
 
 
@@ -263,9 +358,12 @@ class LabelSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         user = getattr(request, "user", None) if request is not None else None
         if user is not None and user.is_authenticated:
-            # Un usuario solo puede elegir plantillas propias o públicas.
+            # Un usuario solo puede elegir plantillas propias o públicas,
+            # y solo si siguen activas (una archivada no se puede volver a
+            # usar en un rótulo nuevo, aunque los ya creados con ella la
+            # sigan referenciando).
             self.fields["template"].queryset = LabelTemplate.objects.filter(
-                Q(is_public=True) | Q(owner=user)
+                Q(is_public=True) | Q(owner=user), is_active=True
             )
             # Un usuario solo puede colgar el rótulo de un pedido PROPIO; el
             # admin puede saltarse esa restricción.

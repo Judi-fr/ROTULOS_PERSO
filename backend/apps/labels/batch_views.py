@@ -38,9 +38,17 @@ from apps.documents.serializers import DocumentSerializer
 from apps.orders.models import Order
 
 from .models import Label, LabelTemplate
-from .rendering import CM_TO_POINTS, build_label_context, draw_label_page, render_label_pdf
+from .rendering import (
+    CM_TO_POINTS,
+    build_computed_context,
+    build_label_context,
+    compute_a4_grid,
+    draw_label_page,
+    render_label_pdf,
+)
 
 VALID_OUTPUTS = {"pdf", "zip"}
+VALID_PAGE_LAYOUTS = {"label", "a4"}
 SELECTOR_KEYS = ("order_ids", "label_ids", "filters")
 
 
@@ -90,22 +98,29 @@ def _safe_zip_name(name_hint, used_names):
     return candidate
 
 
-def _render_combined_pdf(items, template):
+def _render_combined_pdf(items, template, owner=None):
     """Un PDF con una página por ítem, sobre el MISMO canvas (no arma N
     PDFs para concatenarlos después: con un lote grande la diferencia de
     memoria es real). Un ítem que falla se salta sin dejar una página
     a medio dibujar: como todavía no se confirmó con ``showPage()``, se
-    descarta lo que se llegó a dibujar de ese ítem antes de seguir."""
+    descarta lo que se llegó a dibujar de ese ítem antes de seguir.
+
+    ``owner`` + la posición de cada ítem alimentan las variables calculadas
+    de la Historia 29 (``{{bulto}}``/``{{bultos}}``/``{{secuencia}}``): un
+    valor de secuencia por RÓTULO, no uno por lote entero — ver
+    ``build_computed_context``, se construye un resolver nuevo por ítem."""
     buffer = BytesIO()
     pdf = None
     item_count = 0
     skipped = []
     page_has_content = False
+    total = len(items)
 
-    for item in items:
+    for bulto, item in enumerate(items, start=1):
         design, width_cm, height_cm, context, logo_file, name_hint = _render_params_for_item(
             item, template
         )
+        computed = build_computed_context(owner=owner, bulto=bulto, bultos=total)
         width_pt = float(width_cm) * CM_TO_POINTS
         height_pt = float(height_cm) * CM_TO_POINTS
 
@@ -123,7 +138,9 @@ def _render_combined_pdf(items, template):
         # PDF aparte para descartarlo).
         code_snapshot = len(pdf._code)
         try:
-            draw_label_page(pdf, design, width_cm, height_cm, context=context, logo_file=logo_file)
+            draw_label_page(
+                pdf, design, width_cm, height_cm, context=context, logo_file=logo_file, computed=computed
+            )
         except Exception as exc:  # noqa: BLE001 - un ítem roto no tumba el lote
             del pdf._code[code_snapshot:]
             # Página en blanco otra vez: si el ÚLTIMO ítem es el que
@@ -143,23 +160,128 @@ def _render_combined_pdf(items, template):
     return buffer.getvalue(), item_count, skipped
 
 
-def _render_zip(items, template):
+def _draw_cut_lines(pdf, x_pt, y_pt, w_pt, h_pt):
+    """Línea de corte punteada fina alrededor de un rótulo en una hoja A4
+    (ver ``_render_combined_pdf_a4``): coordenadas ABSOLUTAS de la hoja
+    (no las del rótulo), se dibuja antes de trasladar el canvas."""
+    pdf.saveState()
+    pdf.setDash(2, 2)
+    pdf.setLineWidth(0.4)
+    pdf.setStrokeColorRGB(0.6, 0.6, 0.6)
+    pdf.rect(x_pt, y_pt, w_pt, h_pt, stroke=1, fill=0)
+    pdf.restoreState()
+
+
+def _render_combined_pdf_a4(items, template, owner=None):
+    """Igual que ``_render_combined_pdf`` (un PDF, varias páginas, mismo
+    canvas), pero acomoda varios rótulos por hoja A4 en vez de una página
+    del tamaño exacto del rótulo (ver ``rendering.compute_a4_grid``) —
+    pensado para imprimir en una impresora de oficina común en vez de una
+    térmica de etiquetas. El dibujo de cada rótulo sigue siendo
+    EXACTAMENTE ``draw_label_page``: lo único que cambia es dónde se
+    traslada el origen del canvas antes de llamarlo.
+
+    Asume que todos los ítems miden igual (el tamaño del primero define la
+    grilla): un ítem de otra medida no entraría en las mismas casillas, así
+    que se omite igual que un ítem que falla al dibujarse.
+
+    ``owner`` — ver ``_render_combined_pdf``: un valor de secuencia por
+    RÓTULO, con su posición real dentro del LOTE (no de la hoja).
+    """
+    if not items:
+        return b"", 0, []
+
+    first_width, first_height = _render_params_for_item(items[0], template)[1:3]
+    grid = compute_a4_grid(first_width, first_height)
+    if grid["per_page"] == 0:
+        raise ValidationError(
+            {
+                "detail": (
+                    f"Un rótulo de {first_width}x{first_height} cm no entra en una "
+                    "hoja A4 con los márgenes actuales."
+                )
+            }
+        )
+
+    page_w_pt = grid["page_width_cm"] * CM_TO_POINTS
+    page_h_pt = grid["page_height_cm"] * CM_TO_POINTS
+    label_w_pt = float(first_width) * CM_TO_POINTS
+    label_h_pt = float(first_height) * CM_TO_POINTS
+
+    buffer = BytesIO()
+    pdf = pdf_canvas.Canvas(buffer, pagesize=(page_w_pt, page_h_pt))
+    item_count = 0
+    skipped = []
+    slot_index = 0
+    total = len(items)
+
+    for bulto, item in enumerate(items, start=1):
+        design, width_cm, height_cm, context, logo_file, name_hint = _render_params_for_item(
+            item, template
+        )
+        computed = build_computed_context(owner=owner, bulto=bulto, bultos=total)
+        if float(width_cm) != float(first_width) or float(height_cm) != float(first_height):
+            skipped.append(
+                f"{name_hint}: mide {width_cm}x{height_cm} cm, distinto al resto del lote "
+                f"({first_width}x{first_height} cm) — no entra en la misma grilla A4."
+            )
+            continue
+
+        if slot_index >= grid["per_page"]:
+            pdf.showPage()
+            pdf.setPageSize((page_w_pt, page_h_pt))
+            slot_index = 0
+
+        x_cm, y_cm = grid["positions"][slot_index]
+        x_pt = x_cm * CM_TO_POINTS
+        y_bottom_pt = page_h_pt - (y_cm * CM_TO_POINTS) - label_h_pt
+
+        # Igual criterio que _render_combined_pdf: si el dibujo falla a
+        # mitad de camino, se descarta lo ya escrito de ESTE ítem (nunca
+        # arrastra un rótulo a medio dibujar), sin tocar los demás que ya
+        # están en la misma hoja.
+        code_snapshot = len(pdf._code)
+        try:
+            _draw_cut_lines(pdf, x_pt, y_bottom_pt, label_w_pt, label_h_pt)
+            pdf.saveState()
+            pdf.translate(x_pt, y_bottom_pt)
+            draw_label_page(
+                pdf, design, width_cm, height_cm, context=context, logo_file=logo_file, computed=computed
+            )
+            pdf.restoreState()
+        except Exception as exc:  # noqa: BLE001 - un ítem roto no tumba el lote
+            del pdf._code[code_snapshot:]
+            skipped.append(f"{name_hint}: {exc}")
+            continue
+
+        slot_index += 1
+        item_count += 1
+
+    if item_count > 0:
+        pdf.showPage()
+        pdf.save()
+    return buffer.getvalue(), item_count, skipped
+
+
+def _render_zip(items, template, owner=None):
     """Un ZIP con un PDF por ítem (``render_label_pdf``, el mismo wrapper
     que usa el endpoint individual), nombrados por el código de
-    seguimiento."""
+    seguimiento. ``owner`` — ver ``_render_combined_pdf``."""
     buffer = BytesIO()
     item_count = 0
     skipped = []
     used_names = set()
+    total = len(items)
 
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for item in items:
+        for bulto, item in enumerate(items, start=1):
             design, width_cm, height_cm, context, logo_file, name_hint = _render_params_for_item(
                 item, template
             )
+            computed = build_computed_context(owner=owner, bulto=bulto, bultos=total)
             try:
                 pdf_bytes = render_label_pdf(
-                    design, width_cm, height_cm, context=context, logo_file=logo_file
+                    design, width_cm, height_cm, context=context, logo_file=logo_file, computed=computed
                 )
             except Exception as exc:  # noqa: BLE001 - un ítem roto no tumba el lote
                 skipped.append(f"{name_hint}: {exc}")
@@ -187,6 +309,14 @@ class LabelBatchView(APIView):
         if output not in VALID_OUTPUTS:
             raise ValidationError({"output": "Debe ser 'pdf' o 'zip'."})
 
+        page_layout = str(data.get("page_layout") or "label").strip().lower()
+        if page_layout not in VALID_PAGE_LAYOUTS:
+            raise ValidationError({"page_layout": "Debe ser 'label' o 'a4'."})
+
+        # Nunca la verdad del valor (un booleano False mandado explícito
+        # tiene que seguir siendo False, no "ausente"): default False.
+        skip_existing = bool(data.get("skip_existing", False))
+
         # "in data" (no la verdad del valor): un 'filters' vacío ({}) es
         # una selección válida ("todos mis pedidos", sin recorte), no la
         # ausencia del selector.
@@ -204,16 +334,30 @@ class LabelBatchView(APIView):
         can_view_all = user_has_permission(request.user, "labels.view_all")
 
         template = None
+        skipped_existing_count = 0
         if selector == "label_ids":
             items = self._resolve_labels(request.user, data["label_ids"], can_view_all)
         else:
             template = self._resolve_template(request.user, data.get("template_id"))
             if selector == "order_ids":
-                items = self._resolve_orders(request.user, data["order_ids"], can_view_all)
+                items, skipped_existing_count = self._resolve_orders(
+                    request.user, data["order_ids"], can_view_all, skip_existing
+                )
             else:
-                items = self._resolve_orders_by_filters(request.user, data["filters"], can_view_all)
+                items, skipped_existing_count = self._resolve_orders_by_filters(
+                    request.user, data["filters"], can_view_all, skip_existing
+                )
 
         if not items:
+            if skipped_existing_count:
+                raise ValidationError(
+                    {
+                        "detail": (
+                            f"Los {skipped_existing_count} pedido(s) seleccionados ya tienen "
+                            "un rótulo generado (skip_existing)."
+                        )
+                    }
+                )
             raise ValidationError({"detail": "No hay elementos para generar."})
 
         max_items = getattr(settings, "LABELS_BATCH_MAX_ITEMS", 200)
@@ -240,10 +384,14 @@ class LabelBatchView(APIView):
             target=document,
             target_type="document",
             target_repr=str(document),
-            changes={"item_count": {"from": None, "to": len(items)}, "output": {"from": None, "to": output}},
+            changes={
+                "item_count": {"from": None, "to": len(items)},
+                "output": {"from": None, "to": output},
+                "page_layout": {"from": None, "to": page_layout},
+            },
         )
 
-        self._run_batch(document, items, template, output)
+        self._run_batch(document, items, template, output, page_layout, skipped_existing_count)
 
         return Response(
             DocumentSerializer(document, context={"request": request}).data,
@@ -254,14 +402,31 @@ class LabelBatchView(APIView):
 
     def _resolve_template(self, user, template_id):
         if not template_id:
-            raise ValidationError(
-                {"template_id": "Es obligatorio junto con 'order_ids'/'filters'."}
+            # Sin template_id: cae a la plantilla pública "por defecto"
+            # (la más antigua activa — normalmente la sembrada por
+            # apps.labels.migrations.0003_seed_default_label_template) en
+            # vez de exigirle a cada usuario que cree una antes de poder
+            # usar el lote.
+            template = (
+                LabelTemplate.objects.filter(is_public=True, is_active=True).order_by("id").first()
             )
+            if template is None:
+                raise ValidationError(
+                    {
+                        "template_id": (
+                            "No hay ninguna plantilla pública disponible: pasá 'template_id' "
+                            "con una propia, o creá/publicá una plantilla primero."
+                        )
+                    }
+                )
+            return template
         # Mismo criterio que RenderLabelView: pública o propia (una
         # plantilla no es un dato privado de OTRO usuario en el mismo
         # sentido que un pedido/rótulo, así que no hay bypass de admin acá).
         try:
-            return LabelTemplate.objects.get(Q(is_public=True) | Q(owner=user), pk=template_id)
+            return LabelTemplate.objects.get(
+                Q(is_public=True) | Q(owner=user), pk=template_id, is_active=True
+            )
         except LabelTemplate.DoesNotExist:
             raise ValidationError(
                 {"template_id": f"La plantilla {template_id!r} no existe o no es tuya."}
@@ -284,7 +449,26 @@ class LabelBatchView(APIView):
             )
         return [found[i] for i in label_ids]
 
-    def _resolve_orders(self, user, order_ids, can_view_all):
+    def _filter_skip_existing(self, orders, skip_existing):
+        """Si ``skip_existing``, saca de ``orders`` los que ya tienen un
+        ``Label`` activo asociado (correr el mismo lote dos veces no debe
+        volver a imprimir todo sin avisar). Devuelve ``(orders, cuántos se
+        saltearon)`` — el llamador decide qué hacer con ese conteo (ver
+        ``post``/``_run_batch``, que lo suma al ``error_message`` del
+        documento junto con los ítems omitidos por error)."""
+        if not skip_existing or not orders:
+            return orders, 0
+        order_ids_with_label = set(
+            Label.objects.filter(order_id__in=[o.pk for o in orders], is_active=True)
+            .values_list("order_id", flat=True)
+            .distinct()
+        )
+        if not order_ids_with_label:
+            return orders, 0
+        remaining = [o for o in orders if o.pk not in order_ids_with_label]
+        return remaining, len(orders) - len(remaining)
+
+    def _resolve_orders(self, user, order_ids, can_view_all, skip_existing=False):
         order_ids = _as_int_list(order_ids, "order_ids")
         queryset = Order.objects.select_related("address", "user").filter(pk__in=order_ids)
         if not can_view_all:
@@ -299,9 +483,10 @@ class LabelBatchView(APIView):
                     )
                 }
             )
-        return [found[i] for i in order_ids]
+        orders = [found[i] for i in order_ids]
+        return self._filter_skip_existing(orders, skip_existing)
 
-    def _resolve_orders_by_filters(self, user, filters, can_view_all):
+    def _resolve_orders_by_filters(self, user, filters, can_view_all, skip_existing=False):
         if not isinstance(filters, dict):
             raise ValidationError({"filters": "Debe ser un objeto."})
 
@@ -324,22 +509,42 @@ class LabelBatchView(APIView):
         if date_to:
             queryset = queryset.filter(created_at__date__lte=_parse_date(date_to, "date_to"))
 
-        return list(queryset.order_by("id"))
+        orders = list(queryset.order_by("id"))
+        return self._filter_skip_existing(orders, skip_existing)
 
     # --- Generación ------------------------------------------------------
 
-    def _run_batch(self, document, items, template, output):
+    def _run_batch(self, document, items, template, output, page_layout, skipped_existing_count=0):
+        # Dueño de la numeración secuencial del lote (Historia 29): el
+        # ``Document`` ya se creó con ``user=request.user`` (ver ``post``),
+        # así que sale de ahí en vez de threadear ``request`` hasta acá.
+        owner = document.user
         try:
             if output == "zip":
-                file_bytes, item_count, skipped = _render_zip(items, template)
+                # El layout A4 (varios rótulos por hoja) no tiene sentido
+                # para un ZIP (cada entrada ya es su propio PDF de una
+                # página): se ignora en silencio, no es un error del
+                # usuario.
+                file_bytes, item_count, skipped = _render_zip(items, template, owner=owner)
                 filename = f"rotulos-{document.pk}.zip"
-            else:
-                file_bytes, item_count, skipped = _render_combined_pdf(items, template)
+            elif page_layout == "a4":
+                file_bytes, item_count, skipped = _render_combined_pdf_a4(items, template, owner=owner)
                 filename = f"rotulos-{document.pk}.pdf"
+            else:
+                file_bytes, item_count, skipped = _render_combined_pdf(items, template, owner=owner)
+                filename = f"rotulos-{document.pk}.pdf"
+
+            notes = []
+            if skipped_existing_count:
+                notes.append(
+                    f"{skipped_existing_count} pedido(s) omitido(s) por ya tener un rótulo "
+                    "generado (skip_existing)."
+                )
 
             if item_count == 0:
                 document.status = Document.Status.FAILED
-                document.error_message = "No se pudo generar ningún rótulo. " + "; ".join(skipped)
+                notes.append("No se pudo generar ningún rótulo. " + "; ".join(skipped))
+                document.error_message = " ".join(notes)
                 document.save(update_fields=["status", "error_message", "updated_at"])
                 return
 
@@ -348,10 +553,26 @@ class LabelBatchView(APIView):
             document.size_bytes = len(file_bytes)
             document.status = Document.Status.READY
             if skipped:
-                document.error_message = (
+                notes.append(
                     f"{len(skipped)} rótulo(s) omitido(s) de {len(items)}: " + "; ".join(skipped)
                 )
+            if notes:
+                document.error_message = " ".join(notes)
             document.save()
+        except ValidationError as exc:
+            # P.ej. "el rótulo no entra en una hoja A4": un error de
+            # generación, no de la solicitud (el Document YA existe) — se
+            # deja en FAILED con el mensaje, nunca a medio camino en
+            # "processing" ni propagado como un 400 con el documento
+            # huérfano.
+            document.status = Document.Status.FAILED
+            detail = exc.detail
+            document.error_message = (
+                "; ".join(str(v) for v in detail.values())
+                if isinstance(detail, dict)
+                else str(detail)
+            )
+            document.save(update_fields=["status", "error_message", "updated_at"])
         except Exception as exc:  # noqa: BLE001 - un lote no puede quedar a medio camino
             document.status = Document.Status.FAILED
             document.error_message = str(exc)

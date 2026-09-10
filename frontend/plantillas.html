@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Mis Plantillas</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/rotulos.css" />
+    <link rel="stylesheet" href="assets/css/plantillas.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar">
+        <div class="topbar-user">
+          <img
+            class="avatar"
+            id="userAvatar"
+            src="https://api.dicebear.com/7.x/avataaars/svg?seed=user"
+            alt=""
+          />
+          <div class="topbar-user-info">
+            <span class="topbar-user-name" id="userName">—</span>
+            <span class="topbar-user-email" id="userEmail">—</span>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <a class="btn btn-outline" href="dashboard.html">Volver al panel</a>
+          <button class="btn btn-outline" id="logoutBtn" type="button">
+            Cerrar sesión
+          </button>
+        </div>
+      </header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Mis plantillas</h1>
+          <p>
+            Diseños base reutilizables: usalas para crear un rótulo nuevo o
+            para la generación por lote, en vez de armar el diseño de cero
+            cada vez.
+          </p>
+        </div>
+
+        <p
+          id="pageMessage"
+          class="page-message"
+          role="status"
+          aria-live="polite"
+          style="display: none"
+        ></p>
+
+        <section class="profile-card">
+          <div class="profile-card-title">Plantillas</div>
+          <div class="profile-card-body">
+            <div class="rotulos-toolbar">
+              <input
+                type="search"
+                id="searchInput"
+                class="search-input"
+                placeholder="Buscar por nombre..."
+              />
+              <a class="btn btn-primary" href="pedidos/diseñorotulos.html">
+                + Nueva plantilla
+              </a>
+            </div>
+
+            <div id="templatesGrid" class="templates-grid">
+              <p class="empty-state">Cargando plantillas...</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- Modal de vista previa: PDF real (endpoint de render), no una imagen -->
+    <div class="modal-overlay" id="previewOverlay">
+      <div class="modal-box modal-box-wide">
+        <h3 id="previewNombre"></h3>
+        <p class="preview-detail" id="previewMeta"></p>
+        <div class="preview-frame-wrap">
+          <img id="previewImg" alt="Vista previa de la plantilla" hidden />
+          <iframe id="previewFrame" title="Vista previa de la plantilla" hidden></iframe>
+          <p id="previewLoading" class="empty-state">Generando vista previa...</p>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-outline" id="previewCloseBtn">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/plantillas.js"></script>
+  </body>
+</html>

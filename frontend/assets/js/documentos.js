@@ -96,6 +96,20 @@ function renderTopbar(user) {
 // <a href> plano no puede mandar ese header (mismo criterio que el PDF del
 // servidor en pedidos/diseñorotulos.html).
 // ---------------------------------------------------------------------------
+// Un ZIP no se imprime (son varios PDFs sueltos, ver isPrintablePdf): ahí
+// solo tiene sentido "Descargar".
+function isPrintablePdf(doc) {
+  return doc.status === "ready" && (doc.file_name || "").toLowerCase().endsWith(".pdf");
+}
+
+async function fetchDocumentBlob(doc) {
+  const response = await apiFetch(`${DOCUMENTS_URL}${doc.id}/download/`);
+  if (!response.ok) {
+    throw new Error("No se pudo generar el archivo para imprimir.");
+  }
+  return response.blob();
+}
+
 async function downloadDocument(doc) {
   try {
     const response = await apiFetch(`${DOCUMENTS_URL}${doc.id}/download/`);
@@ -180,6 +194,17 @@ function buildItem(doc) {
     downloadBtn.textContent = "Descargar";
     downloadBtn.addEventListener("click", () => downloadDocument(doc));
     actions.appendChild(downloadBtn);
+
+    if (isPrintablePdf(doc)) {
+      const printBtn = document.createElement("button");
+      printBtn.type = "button";
+      printBtn.className = "btn btn-outline btn-small";
+      printBtn.textContent = "Imprimir";
+      printBtn.addEventListener("click", () =>
+        window.PrintHelper.printFromBlobFn(() => fetchDocumentBlob(doc), printBtn)
+      );
+      actions.appendChild(printBtn);
+    }
   }
 
   const deleteBtn = document.createElement("button");

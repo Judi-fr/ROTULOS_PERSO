@@ -14,12 +14,15 @@ const MENU_ICONS = {
   orders: "mdi mdi-truck-delivery-outline",
   addresses: "mdi mdi-map-marker-outline",
   labels: "mdi mdi-tag-outline",
+  templates: "mdi mdi-view-grid-plus-outline",
   documents: "mdi mdi-file-document-outline",
   processing: "mdi mdi-cog-outline",
   profile: "mdi mdi-account-circle-outline",
   support: "mdi mdi-lifebuoy",
   audit: "mdi mdi-shield-search-outline",
   support_inbox: "mdi mdi-email-alert-outline",
+  integrations: "mdi mdi-key-outline",
+  orders_ingestion: "mdi mdi-file-upload-outline",
 };
 
 // Agrupación puramente visual (el backend decide qué ítems existen y si
@@ -30,6 +33,7 @@ const MENU_GROUPS = {
   orders: "Mis cosas",
   addresses: "Mis cosas",
   labels: "Mis cosas",
+  templates: "Mis cosas",
   documents: "Mis cosas",
   processing: "Mis cosas",
   users: "Cuenta",
@@ -37,6 +41,8 @@ const MENU_GROUPS = {
   support: "Ayuda",
   audit: "Administración",
   support_inbox: "Administración",
+  integrations: "Administración",
+  orders_ingestion: "Administración",
 };
 const GROUP_ORDER = ["Mis cosas", "Cuenta", "Ayuda", "Administración", "Otros"];
 

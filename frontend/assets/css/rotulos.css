@@ -303,12 +303,14 @@ body {
 
 .rotulo-card-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 10px 14px 14px;
 }
 
 .rotulo-card-actions .btn {
   flex: 1;
+  min-width: 78px;
   justify-content: center;
   padding: 6px 8px;
   font-size: 12.5px;
