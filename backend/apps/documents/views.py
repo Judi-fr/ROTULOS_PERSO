@@ -209,4 +209,27 @@ class DocumentoViewSet(
         return Documento.objects.filter(subido_por=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(subido_por=self.request.user)
+        documento = serializer.save(subido_por=self.request.user)
+        record(
+            self.request,
+            category="documents",
+            action="documento.create",
+            target=documento,
+            target_type="documento",
+            target_repr=str(documento),
+        )
+
+    def perform_destroy(self, instance):
+        # Se captura antes de borrar: tras el delete(), la instancia pierde
+        # su pk y ya no sirve como ``target`` de record().
+        target_id = str(instance.pk)
+        target_repr = str(instance)
+        instance.delete()
+        record(
+            self.request,
+            category="documents",
+            action="documento.delete",
+            target_type="documento",
+            target_id=target_id,
+            target_repr=target_repr,
+        )

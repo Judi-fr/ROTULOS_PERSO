@@ -138,3 +138,37 @@ class SubidaDeDocumentosTests(APITestCase):
             reverse("documento-detail", args=[ajeno.pk])
         )
         self.assertEqual(respuesta.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_subir_un_documento_deja_auditlog(self):
+        from apps.audit.models import AuditLog
+
+        self.client.force_authenticate(self.usuario)
+        respuesta = self.client.post(
+            self.url, {"archivo": archivo("rotulo.png", PNG)}, format="multipart"
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_201_CREATED)
+
+        log = AuditLog.objects.filter(action="documento.create").latest("created_at")
+        self.assertEqual(log.actor_id, self.usuario.id)
+        self.assertEqual(log.target_id, str(respuesta.data["id"]))
+
+    def test_borrar_un_documento_deja_auditlog(self):
+        from apps.audit.models import AuditLog
+
+        propio = Documento.objects.create(
+            archivo="rotulos/b.png",
+            nombre_original="b.png",
+            tipo_mime="image/png",
+            tamano_bytes=10,
+            subido_por=self.usuario,
+        )
+        self.client.force_authenticate(self.usuario)
+        respuesta = self.client.delete(
+            reverse("documento-detail", args=[propio.pk])
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_204_NO_CONTENT)
+
+        log = AuditLog.objects.filter(action="documento.delete").latest("created_at")
+        self.assertEqual(log.actor_id, self.usuario.id)
+        self.assertEqual(log.target_id, str(propio.pk))
+        self.assertFalse(Documento.objects.filter(pk=propio.pk).exists())

@@ -602,7 +602,26 @@ class VariableRotuloViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        serializer.save(creada_por=self.request.user)
+        variable = serializer.save(creada_por=self.request.user)
+        record(
+            self.request,
+            category="labels",
+            action="variable_rotulo.create",
+            target=variable,
+            target_type="variablerotulo",
+            target_repr=str(variable),
+        )
+
+    def perform_update(self, serializer):
+        variable = serializer.save()
+        record(
+            self.request,
+            category="labels",
+            action="variable_rotulo.update",
+            target=variable,
+            target_type="variablerotulo",
+            target_repr=str(variable),
+        )
 
     def destroy(self, request, *args, **kwargs):
         """Elimina una variable, salvo que sea del sistema o esté en uso."""
@@ -617,6 +636,11 @@ class VariableRotuloViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
+        # Se captura antes de borrar: tras el delete(), la instancia pierde
+        # su pk y ya no sirve como ``target`` de record().
+        target_id = str(variable.pk)
+        target_repr = str(variable)
+
         try:
             variable.delete()
         except ProtectedError:
@@ -628,6 +652,14 @@ class VariableRotuloViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
+        record(
+            request,
+            category="labels",
+            action="variable_rotulo.delete",
+            target_type="variablerotulo",
+            target_id=target_id,
+            target_repr=target_repr,
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -659,7 +691,41 @@ class PlantillaViewSet(viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer):
-        serializer.save(creada_por=self.request.user)
+        plantilla = serializer.save(creada_por=self.request.user)
+        record(
+            self.request,
+            category="labels",
+            action="plantilla.create",
+            target=plantilla,
+            target_type="plantilla",
+            target_repr=str(plantilla),
+        )
+
+    def perform_update(self, serializer):
+        plantilla = serializer.save()
+        record(
+            self.request,
+            category="labels",
+            action="plantilla.update",
+            target=plantilla,
+            target_type="plantilla",
+            target_repr=str(plantilla),
+        )
+
+    def perform_destroy(self, instance):
+        # Se captura antes de borrar: tras el delete(), la instancia pierde
+        # su pk y ya no sirve como ``target`` de record().
+        target_id = str(instance.pk)
+        target_repr = str(instance)
+        instance.delete()
+        record(
+            self.request,
+            category="labels",
+            action="plantilla.delete",
+            target_type="plantilla",
+            target_id=target_id,
+            target_repr=target_repr,
+        )
 
     @action(detail=True, methods=["post"])
     def renderizar(self, request, pk=None):

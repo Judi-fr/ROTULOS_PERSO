@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 
 from apps.accounts.role_permissions import HasRolePermission
+from apps.audit.services import record
 
 from . import agente
 from .models import EstadoImportacion, ImportacionRotulo
@@ -57,6 +58,16 @@ class ImportacionRotuloViewSet(
 
         agente.interpretar(importacion)
 
+        record(
+            request,
+            category="processing",
+            action="importacion_rotulo.create",
+            target=importacion,
+            target_type="importacionrotulo",
+            target_repr=str(importacion),
+            changes={"documento": {"from": None, "to": importacion.documento_id}},
+        )
+
         salida = self.get_serializer(importacion)
         codigo = (
             status.HTTP_201_CREATED
@@ -73,6 +84,19 @@ class ImportacionRotuloViewSet(
             documento=original.documento, creada_por=request.user
         )
         agente.interpretar(nueva)
+
+        record(
+            request,
+            category="processing",
+            action="importacion_rotulo.create",
+            target=nueva,
+            target_type="importacionrotulo",
+            target_repr=str(nueva),
+            changes={
+                "documento": {"from": None, "to": nueva.documento_id},
+                "reintento_de": {"from": None, "to": original.pk},
+            },
+        )
 
         salida = self.get_serializer(nueva)
         codigo = (

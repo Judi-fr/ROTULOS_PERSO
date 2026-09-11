@@ -237,6 +237,47 @@ class CatalogoVariablesTests(BaseLabelsTests):
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(VariableRotulo.objects.filter(pk=variable.pk).exists())
 
+    def test_crear_variable_deja_auditlog(self):
+        from apps.audit.models import AuditLog
+
+        self.client.force_authenticate(self.admin)
+        resp = self.client.post(
+            URL_VARIABLES,
+            {"codigo": "numero_bulto", "etiqueta": "Número de Bulto"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.data)
+
+        log = AuditLog.objects.filter(action="variable_rotulo.create").latest("created_at")
+        self.assertEqual(log.actor_id, self.admin.id)
+        self.assertEqual(log.target_id, str(resp.data["id"]))
+
+    def test_editar_variable_deja_auditlog(self):
+        from apps.audit.models import AuditLog
+
+        self.client.force_authenticate(self.admin)
+        qr = VariableRotulo.objects.get(codigo="qr")
+        resp = self.client.patch(
+            f"{URL_VARIABLES}{qr.id}/", {"etiqueta": "Código QR"}, format="json"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+
+        log = AuditLog.objects.filter(action="variable_rotulo.update").latest("created_at")
+        self.assertEqual(log.actor_id, self.admin.id)
+        self.assertEqual(log.target_id, str(qr.pk))
+
+    def test_eliminar_variable_deja_auditlog(self):
+        from apps.audit.models import AuditLog
+
+        self.client.force_authenticate(self.admin)
+        variable = VariableRotulo.objects.create(codigo="temporal2", etiqueta="Temporal 2")
+        resp = self.client.delete(f"{URL_VARIABLES}{variable.id}/")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+        log = AuditLog.objects.filter(action="variable_rotulo.delete").latest("created_at")
+        self.assertEqual(log.actor_id, self.admin.id)
+        self.assertEqual(log.target_id, str(variable.pk))
+
 
 class PlantillaAPITests(BaseLabelsTests):
     def test_requiere_autenticacion(self):
@@ -330,6 +371,43 @@ class PlantillaAPITests(BaseLabelsTests):
             self.client.get(URL_PLANTILLAS)
 
         self.assertEqual(len(con_cuatro), len(con_una))
+
+    def test_crear_plantilla_deja_auditlog(self):
+        from apps.audit.models import AuditLog
+
+        resp = self.client.post(URL_PLANTILLAS, self._payload(), format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.data)
+
+        log = AuditLog.objects.filter(action="plantilla.create").latest("created_at")
+        self.assertEqual(log.actor_id, self.user.id)
+        self.assertEqual(log.target_id, str(resp.data["id"]))
+
+    def test_editar_plantilla_deja_auditlog(self):
+        from apps.audit.models import AuditLog
+
+        self.client.post(URL_PLANTILLAS, self._payload(), format="json")
+        plantilla = Plantilla.objects.get()
+        resp = self.client.patch(
+            f"{URL_PLANTILLAS}{plantilla.id}/", {"nombre": "Nuevo nombre"}, format="json"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+
+        log = AuditLog.objects.filter(action="plantilla.update").latest("created_at")
+        self.assertEqual(log.actor_id, self.user.id)
+        self.assertEqual(log.target_id, str(plantilla.pk))
+
+    def test_eliminar_plantilla_deja_auditlog(self):
+        from apps.audit.models import AuditLog
+
+        self.client.post(URL_PLANTILLAS, self._payload(), format="json")
+        plantilla = Plantilla.objects.get()
+        resp = self.client.delete(f"{URL_PLANTILLAS}{plantilla.id}/")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+        log = AuditLog.objects.filter(action="plantilla.delete").latest("created_at")
+        self.assertEqual(log.actor_id, self.user.id)
+        self.assertEqual(log.target_id, str(plantilla.pk))
+        self.assertFalse(Plantilla.objects.filter(pk=plantilla.pk).exists())
 
 
 class CoherenciaElementosTests(BaseLabelsTests):

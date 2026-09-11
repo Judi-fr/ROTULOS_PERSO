@@ -388,3 +388,56 @@ class ImportacionAPITests(APITestCase):
         self.client.force_authenticate(self.otro)
         respuesta = self.client.get(self.url)
         self.assertEqual(respuesta.data["count"], 0)
+
+    @patch("apps.processing.agente._pedir_lectura")
+    def test_lanzar_una_importacion_deja_auditlog(self, pedir):
+        from apps.audit.models import AuditLog
+
+        pedir.return_value = (respuesta_del_modelo(), {}, "req_1")
+        self.client.force_authenticate(self.usuario)
+        respuesta = self.client.post(self.url, {"documento": self.documento.pk})
+        self.assertEqual(respuesta.status_code, status.HTTP_201_CREATED)
+
+        log = AuditLog.objects.filter(action="importacion_rotulo.create").latest(
+            "created_at"
+        )
+        self.assertEqual(log.actor_id, self.usuario.id)
+        self.assertEqual(log.target_id, str(respuesta.data["id"]))
+
+    @patch("apps.processing.agente._pedir_lectura")
+    def test_un_fallo_del_modelo_tambien_deja_auditlog(self, pedir):
+        """Se paga el token aunque la lectura falle: igual queda registrada."""
+        from apps.audit.models import AuditLog
+        from .agente import ErrorDeAgente
+
+        pedir.side_effect = ErrorDeAgente("La ANTHROPIC_API_KEY no es válida.")
+        self.client.force_authenticate(self.usuario)
+        respuesta = self.client.post(self.url, {"documento": self.documento.pk})
+        self.assertEqual(respuesta.status_code, status.HTTP_502_BAD_GATEWAY)
+
+        log = AuditLog.objects.filter(action="importacion_rotulo.create").latest(
+            "created_at"
+        )
+        self.assertEqual(log.actor_id, self.usuario.id)
+        self.assertEqual(log.target_id, str(respuesta.data["id"]))
+
+    @patch("apps.processing.agente._pedir_lectura")
+    def test_reintentar_deja_un_segundo_auditlog(self, pedir):
+        from apps.audit.models import AuditLog
+
+        pedir.return_value = (respuesta_del_modelo(), {}, "req_1")
+        self.client.force_authenticate(self.usuario)
+        primera = self.client.post(self.url, {"documento": self.documento.pk})
+
+        respuesta = self.client.post(
+            reverse("importacion-rotulo-reintentar", args=[primera.data["id"]])
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_201_CREATED)
+
+        logs = AuditLog.objects.filter(action="importacion_rotulo.create").order_by(
+            "created_at"
+        )
+        self.assertEqual(logs.count(), 2)
+        segundo = logs.last()
+        self.assertEqual(segundo.target_id, str(respuesta.data["id"]))
+        self.assertEqual(segundo.changes["reintento_de"]["to"], primera.data["id"])
