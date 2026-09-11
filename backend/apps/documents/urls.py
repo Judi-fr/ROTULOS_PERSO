@@ -8,9 +8,14 @@ cual pide el endpoint, más la acción ``download`` anidada del router
 from django.urls import path
 from rest_framework.routers import SimpleRouter
 
-from .views import AdminDocumentListView, DocumentViewSet
+from .views import AdminDocumentListView, DocumentoViewSet, DocumentViewSet
 
 router = SimpleRouter()
+# ``documentos`` se registra PRIMERO que el router con prefijo "" del
+# ``DocumentViewSet``: el patrón ``<pk>/`` del segundo matchearía la palabra
+# ``documentos`` como un id (el mismo problema que se resuelve para
+# ``admin/`` con un path explícito ANTES del router).
+router.register(r"documentos", DocumentoViewSet, basename="documento")
 router.register(r"", DocumentViewSet, basename="document")
 
 urlpatterns = [

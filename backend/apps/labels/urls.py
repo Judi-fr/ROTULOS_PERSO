@@ -11,14 +11,19 @@ from .batch_views import LabelBatchView
 from .views import (
     AdminLabelListView,
     BarcodeImageView,
+    FuentesView,
     LabelTemplateViewSet,
     LabelViewSet,
+    PlantillaViewSet,
     RenderLabelView,
+    VariableRotuloViewSet,
 )
 
 router = SimpleRouter()
 router.register(r"labels", LabelViewSet, basename="label")
 router.register(r"templates", LabelTemplateViewSet, basename="label-template")
+router.register(r"plantillas", PlantillaViewSet, basename="plantilla")
+router.register(r"variables", VariableRotuloViewSet, basename="variable-rotulo")
 
 urlpatterns = [
     # Rótulos de TODOS los usuarios (panel admin, labels.view_all). Path
@@ -31,4 +36,7 @@ urlpatterns = [
     path("barcode/", BarcodeImageView.as_view(), name="label-barcode"),
     # Generación por lote: muchos rótulos -> un Document (apps.documents).
     path("batch/", LabelBatchView.as_view(), name="label-batch"),
+    # Familias tipográficas para el editor de plantillas nuevas (no es un
+    # recurso con CRUD, va como vista suelta).
+    path("fuentes/", FuentesView.as_view(), name="fuentes"),
 ] + router.urls

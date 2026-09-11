@@ -11,14 +11,14 @@ from __future__ import annotations
 from datetime import datetime
 
 from django.core.files.base import ContentFile
-from django.db.models import Q
+from django.db.models import Prefetch, ProtectedError, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.generics import ListAPIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, SAFE_METHODS
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -28,7 +28,7 @@ from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
 from apps.orders.models import Order
 
-from .models import Label, LabelTemplate
+from .models import ElementoPlantilla, Label, LabelTemplate, Plantilla, VariableRotulo
 from .rendering import (
     BARCODE_HEIGHT_RANGE_CM,
     BARCODE_WIDTH_RANGE_CM,
@@ -44,7 +44,16 @@ from .rendering import (
     render_code_svg,
     render_label_pdf,
 )
-from .serializers import AdminLabelSerializer, LabelSerializer, LabelTemplateSerializer
+from .render import renderizar_pdf, renderizar_png
+from .render.fuentes import FuenteNoDisponible, familias_disponibles
+from .serializers import (
+    AdminLabelSerializer,
+    LabelSerializer,
+    LabelTemplateSerializer,
+    PlantillaSerializer,
+    RenderizarSerializer,
+    VariableRotuloSerializer,
+)
 
 
 class LabelViewSet(viewsets.ModelViewSet):
@@ -545,3 +554,154 @@ class BarcodeImageView(APIView):
 
         svg = render_code_svg(drawing)
         return HttpResponse(svg, content_type="image/svg+xml")
+
+# ---------------------------------------------------------------------------
+# Plantillas por elementos / catálogo de variables (integradas desde
+# backend_echu), adaptadas al sistema de roles/permisos del backend.
+# ---------------------------------------------------------------------------
+
+
+class FuentesView(APIView):
+    """GET /api/v1/labels/fuentes/
+
+    Familias tipográficas que el editor puede ofrecer. La disponibilidad
+    depende de la máquina: el PDF sale siempre, pero el PNG necesita un
+    ``.ttf`` instalado.
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission("plantillas.view")]
+
+    def get(self, request):
+        return Response(familias_disponibles())
+
+
+class VariableRotuloViewSet(viewsets.ModelViewSet):
+    """CRUD del catálogo de variables que puede contener un rótulo.
+
+    Leer el catálogo lo puede hacer cualquier usuario autenticado (el editor
+    lo necesita para armar sus selectores); modificarlo queda reservado a
+    administradores (``variables.manage``), porque es un recurso compartido
+    por todas las plantillas.
+    """
+
+    serializer_class = VariableRotuloSerializer
+    pagination_class = None
+
+    def get_permissions(self):
+        if self.request.method in SAFE_METHODS:
+            return [IsAuthenticated(), HasRolePermission("variables.view")]
+        return [IsAuthenticated(), HasRolePermission("variables.manage")]
+
+    def get_queryset(self):
+        queryset = VariableRotulo.objects.select_related("creada_por")
+        if self.action == "list":
+            incluir = self.request.query_params.get("incluir_inactivas")
+            if incluir not in ("1", "true", "True"):
+                queryset = queryset.filter(activa=True)
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(creada_por=self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        """Elimina una variable, salvo que sea del sistema o esté en uso."""
+        variable = self.get_object()
+
+        if variable.es_sistema:
+            return Response(
+                {
+                    "detail": "Las variables del sistema no se pueden eliminar. "
+                    "Si no se usa, marcala como inactiva."
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        try:
+            variable.delete()
+        except ProtectedError:
+            return Response(
+                {
+                    "detail": "La variable está en uso en alguna plantilla. "
+                    "Marcala como inactiva en lugar de eliminarla."
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PlantillaViewSet(viewsets.ModelViewSet):
+    """CRUD de plantillas de rótulos por elementos.
+
+    Self-service: cada usuario opera sobre SUS propias plantillas
+    (``creada_por``). Leer/renderizar exige ``plantillas.view``; escribir
+    exige ``plantillas.edit``.
+    """
+
+    serializer_class = PlantillaSerializer
+
+    def get_permissions(self):
+        if self.action in ("list", "retrieve", "renderizar"):
+            return [IsAuthenticated(), HasRolePermission("plantillas.view")]
+        return [IsAuthenticated(), HasRolePermission("plantillas.edit")]
+
+    def get_queryset(self):
+        return (
+            Plantilla.objects.filter(creada_por=self.request.user)
+            .select_related("creada_por")
+            .prefetch_related(
+                Prefetch(
+                    "elementos",
+                    queryset=ElementoPlantilla.objects.select_related("variable"),
+                )
+            )
+        )
+
+    def perform_create(self, serializer):
+        serializer.save(creada_por=self.request.user)
+
+    @action(detail=True, methods=["post"])
+    def renderizar(self, request, pk=None):
+        """POST /api/v1/labels/plantillas/<id>/renderizar/
+
+        Convierte un diseño guardado en algo que se pega en un paquete:
+        ``{"datos": {...}}`` un rótulo, ``{}`` vista previa, o
+        ``{"lote": [{...}, ...]}`` un PDF de varias páginas.
+        """
+        plantilla = self.get_object()
+        entrada = RenderizarSerializer(data=request.data)
+        entrada.is_valid(raise_exception=True)
+        opciones = entrada.validated_data
+
+        try:
+            if opciones["formato"] == "png":
+                contenido, informe = renderizar_png(
+                    plantilla,
+                    datos=opciones.get("datos"),
+                    usuario=request.user,
+                    dpi=opciones.get("dpi"),
+                )
+                tipo, extension = "image/png", "png"
+            else:
+                contenido, informe = renderizar_pdf(
+                    plantilla,
+                    datos=opciones.get("datos"),
+                    usuario=request.user,
+                    lote=opciones.get("lote"),
+                )
+                tipo, extension = "application/pdf", "pdf"
+        except FuenteNoDisponible as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+        respuesta = HttpResponse(contenido, content_type=tipo)
+        respuesta["Content-Disposition"] = (
+            f'attachment; filename="rotulo-{plantilla.pk}.{extension}"'
+        )
+        if informe["faltantes"]:
+            respuesta["X-Rotulo-Faltantes"] = ",".join(informe["faltantes"])
+        if informe["truncados"]:
+            respuesta["X-Rotulo-Truncados"] = ",".join(informe["truncados"])
+        if informe["avisos"]:
+            respuesta["X-Rotulo-Avisos"] = ",".join(informe["avisos"])
+        return respuesta

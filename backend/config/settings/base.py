@@ -162,6 +162,10 @@ REST_FRAMEWORK = {
         # tumbar la API. Configurable por .env porque el volumen esperado
         # varía mucho de un cliente a otro.
         "ingest": env("INGEST_THROTTLE_RATE", default="120/min"),
+        # Lectura de rótulos con el modelo (apps.processing): cada llamada se
+        # paga por token, así que se limita por usuario para que un bucle en el
+        # frontend no gaste dinero antes de que nadie lo note.
+        "importacion_rotulo": env("IMPORTACION_THROTTLE_RATE", default="20/min"),
     },
 }
 
@@ -317,3 +321,31 @@ MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ---------------------------------------------------------------------------
+# Claude (lectura de rótulos desde una foto) — apps.processing.agente
+# ---------------------------------------------------------------------------
+
+# Clave de la API de Anthropic. Sin ella, la app processing devuelve un error
+# explicando que falta configurarla, en vez de fallar de forma críptica.
+ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+
+# Modelo que interpreta los rótulos. Leer un rótulo de una foto es una tarea
+# visual con criterio —hay que distinguir el rótulo de un campo de su valor—,
+# así que se usa el modelo más capaz.
+ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", default="claude-opus-5")
+
+# Segundos de espera antes de dar por perdida la llamada. Una lectura normal
+# tarda entre 10 y 60; el default del SDK son 600, demasiado para dejar a un
+# usuario esperando frente a una pantalla.
+ANTHROPIC_TIMEOUT = env.float("ANTHROPIC_TIMEOUT", default=120.0)
+
+# ---------------------------------------------------------------------------
+# Render de rótulos (apps.labels.render) — fuentes para PNG
+# ---------------------------------------------------------------------------
+
+# Configuración de fuentes TTF para el render a PNG. Las rutas por defecto del
+# módulo render.fuentes cubren Linux/Windows/macOS; este diccionario permite
+# anteponer rutas propias en un contenedor que empaqueta sus propias fuentes.
+#   RENDER_FUENTES_TTF = {"helvetica": ("/opt/fonts/Helvetica.ttf", ...)}
+RENDER_FUENTES_TTF = env.json("RENDER_FUENTES_TTF", default={})

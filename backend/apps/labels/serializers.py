@@ -16,6 +16,8 @@ import uuid
 from decimal import Decimal
 from io import BytesIO
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.core.files.base import ContentFile
 from django.db.models import Q
 from PIL import Image, UnidentifiedImageError
@@ -24,7 +26,8 @@ from rest_framework import serializers
 from apps.accounts.permissions_map import get_effective_role
 from apps.orders.models import Order
 
-from .models import Label, LabelTemplate
+from .estilos import validar_estilo
+from .models import ElementoPlantilla, Label, LabelTemplate, Plantilla, VariableRotulo
 
 # Campos de texto simple del diseño: solo left/top + un "text" opcional.
 TEXT_DESIGN_FIELDS = {
@@ -403,3 +406,196 @@ class AdminLabelSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = fields
+
+# ---------------------------------------------------------------------------
+# Plantillas por elementos / catálogo de variables (integradas desde
+# backend_echu). Conviven con los serializers de Label/LabelTemplate.
+# ---------------------------------------------------------------------------
+
+
+class VariableRotuloSerializer(serializers.ModelSerializer):
+    """Una variable del catálogo.
+
+    ``es_sistema`` es de solo lectura: las variables del sistema las siembra
+    una migración, no se crean por API. ``creada_por`` lo fija la vista con el
+    usuario autenticado.
+    """
+
+    creada_por_email = serializers.EmailField(
+        source="creada_por.email", read_only=True, default=None
+    )
+
+    class Meta:
+        model = VariableRotulo
+        fields = [
+            "id",
+            "codigo",
+            "etiqueta",
+            "descripcion",
+            "tipo_dato",
+            "activa",
+            "es_sistema",
+            "orden",
+            "creada_por",
+            "creada_por_email",
+            "creada_en",
+        ]
+        read_only_fields = [
+            "id",
+            "es_sistema",
+            "creada_por",
+            "creada_por_email",
+            "creada_en",
+        ]
+
+    def validate(self, attrs):
+        if self.instance and self.instance.es_sistema:
+            nuevo = attrs.get("codigo", self.instance.codigo)
+            if nuevo != self.instance.codigo:
+                raise serializers.ValidationError(
+                    {"codigo": "No se puede cambiar el código de una "
+                               "variable del sistema."}
+                )
+        return attrs
+
+
+class ElementoPlantillaSerializer(serializers.ModelSerializer):
+    """Un elemento posicionado dentro de una plantilla."""
+
+    variable = serializers.SlugRelatedField(
+        slug_field="codigo",
+        queryset=VariableRotulo.objects.all(),
+        allow_null=True,
+        required=False,
+    )
+    variable_display = serializers.SerializerMethodField()
+    variable_tipo_dato = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ElementoPlantilla
+        fields = [
+            "id",
+            "tipo",
+            "variable",
+            "variable_display",
+            "variable_tipo_dato",
+            "contenido",
+            "x_mm",
+            "y_mm",
+            "ancho_mm",
+            "alto_mm",
+            "estilo",
+            "orden",
+        ]
+
+    def get_variable_display(self, obj):
+        """Etiqueta legible de la variable, o ``None`` si el elemento no usa una."""
+        return obj.variable.etiqueta if obj.variable_id else None
+
+    def get_variable_tipo_dato(self, obj):
+        """Cómo debe dibujarse la variable (texto, qr, imagen…)."""
+        return obj.variable.tipo_dato if obj.variable_id else None
+
+    def validate_estilo(self, value):
+        try:
+            validar_estilo(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages) from exc
+        return value
+
+    def validate(self, attrs):
+        try:
+            ElementoPlantilla(**attrs).clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.message_dict) from exc
+        return attrs
+
+
+class PlantillaSerializer(serializers.ModelSerializer):
+    """Plantilla con sus elementos anidados."""
+
+    elementos = ElementoPlantillaSerializer(many=True, required=False)
+    creada_por_email = serializers.EmailField(
+        source="creada_por.email", read_only=True, default=None
+    )
+    ancho_px = serializers.IntegerField(read_only=True)
+    alto_px = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Plantilla
+        fields = [
+            "id",
+            "nombre",
+            "descripcion",
+            "ancho_mm",
+            "alto_mm",
+            "dpi",
+            "orientacion",
+            "metadatos",
+            "activa",
+            "elementos",
+            "ancho_px",
+            "alto_px",
+            "creada_por",
+            "creada_por_email",
+            "creada_en",
+            "actualizada_en",
+        ]
+        read_only_fields = [
+            "id",
+            "creada_por",
+            "creada_por_email",
+            "ancho_px",
+            "alto_px",
+            "creada_en",
+            "actualizada_en",
+        ]
+
+    def _crear_elementos(self, plantilla, elementos):
+        ElementoPlantilla.objects.bulk_create(
+            [ElementoPlantilla(plantilla=plantilla, **elem) for elem in elementos]
+        )
+
+    @transaction.atomic
+    def create(self, validated_data):
+        elementos = validated_data.pop("elementos", [])
+        plantilla = Plantilla.objects.create(**validated_data)
+        self._crear_elementos(plantilla, elementos)
+        return plantilla
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        elementos = validated_data.pop("elementos", None)
+
+        for campo, valor in validated_data.items():
+            setattr(instance, campo, valor)
+        instance.save()
+
+        if elementos is not None:
+            instance.elementos.all().delete()
+            self._crear_elementos(instance, elementos)
+
+        return instance
+
+
+class RenderizarSerializer(serializers.Serializer):
+    """Cuerpo de ``POST /plantillas/<id>/renderizar/``."""
+
+    formato = serializers.ChoiceField(choices=["pdf", "png"], default="pdf")
+    datos = serializers.DictField(required=False, allow_null=True)
+    lote = serializers.ListField(
+        child=serializers.DictField(), required=False, allow_empty=False
+    )
+    dpi = serializers.IntegerField(required=False, min_value=10, max_value=1200)
+
+    def validate(self, attrs):
+        if attrs.get("lote") and attrs.get("datos"):
+            raise serializers.ValidationError(
+                "Mandá 'datos' para un rótulo o 'lote' para varios, no ambos."
+            )
+        if attrs.get("lote") and attrs.get("formato", "pdf") != "pdf":
+            raise serializers.ValidationError(
+                {"lote": "Un lote solo se puede generar en PDF: un PNG es una "
+                         "sola imagen y no tiene páginas."}
+            )
+        return attrs
