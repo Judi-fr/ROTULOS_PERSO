@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Variables de rótulos</title>
+    <link rel="stylesheet" href="/assets/css/gestionrotulos.css" />
+  </head>
+  <body>
+    <script src="/assets/html/aside.js"></script>
+    <app-sidebar active="variables"></app-sidebar>
+
+    <main>
+      <div class="topbar">
+        <div>
+          <h1>Variables de rótulos</h1>
+          <p class="subtitle">
+            Los campos que se pueden colocar en una plantilla y que se completan
+            con los datos de cada envío al imprimir.
+          </p>
+        </div>
+        <div class="topbar-actions">
+          <button class="btn primary" id="nuevaBtn" hidden>+ Nueva variable</button>
+        </div>
+      </div>
+
+      <div id="mensaje" class="aviso" hidden></div>
+
+      <section class="panel" id="formulario" hidden>
+        <h2 id="formTitulo">Nueva variable</h2>
+        <p class="panel-sub" id="formSub">
+          El código es el nombre con el que llega el dato al imprimir: en
+          minúsculas, con guiones bajos (p. ej. <code class="codigo">numero_bulto</code>).
+        </p>
+        <form id="form">
+          <div class="form-grid">
+            <div class="campo">
+              <label for="codigo">Código</label>
+              <input class="input" id="codigo" required maxlength="50" placeholder="numero_bulto" />
+            </div>
+            <div class="campo">
+              <label for="etiqueta">Etiqueta</label>
+              <input class="input" id="etiqueta" required maxlength="100" placeholder="Número de bulto" />
+            </div>
+            <div class="campo">
+              <label for="tipo_dato">Tipo de dato</label>
+              <select class="input" id="tipo_dato"></select>
+            </div>
+            <div class="campo">
+              <label for="orden">Orden</label>
+              <input class="input" id="orden" type="number" min="0" value="100" />
+            </div>
+            <div class="campo full">
+              <label for="descripcion">Descripción</label>
+              <textarea class="input" id="descripcion" rows="2" placeholder="Para qué sirve. La lee también el modelo que importa rótulos desde fotos."></textarea>
+            </div>
+            <div class="campo">
+              <label><input type="checkbox" id="activa" checked /> Activa (se ofrece en el editor)</label>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn primary" id="guardarBtn">Guardar</button>
+            <button type="button" class="btn" id="cancelarBtn">Cancelar</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="controls" style="margin-bottom: 12px">
+          <label class="subtitle" style="display: flex; gap: 6px; align-items: center">
+            <input type="checkbox" id="verInactivas" /> Mostrar inactivas
+          </label>
+        </div>
+        <div id="lista" class="table-wrap"><div class="loading">Cargando catálogo...</div></div>
+      </section>
+    </main>
+
+    <script src="/assets/js/auth-api.js"></script>
+    <script src="/assets/js/rotulos-api.js"></script>
+    <script src="/assets/js/variables.js"></script>
+  </body>
+</html>

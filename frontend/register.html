@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Crear cuenta</title>
+  <link href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.materialdesignicons.com/4.8.95/css/materialdesignicons.min.css">
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css">
+  <link rel="stylesheet" href="assets/css/index.css">
+</head>
+<body>
+  <main class="d-flex align-items-center min-vh-100 py-3 py-md-0">
+    <div class="container">
+      <div class="card login-card">
+        <div class="row no-gutters">
+          <div class="col-md-5">
+            <img src="assets/images/LogoLogin.png" alt="registro" class="login-card-img">
+          </div>
+          <div class="col-md-7">
+            <div class="card-body">
+              <div class="brand-wrapper">
+                <img src="assets/images/HLLogoFinal.jpg" alt="logo" class="logo">
+              </div>
+              <p class="login-card-description">Crear una cuenta</p>
+
+              <form action="" id="register-form">
+                <div class="form-group">
+                  <label for="first_name" class="sr-only">Nombre</label>
+                  <input type="text" id="first_name" class="form-control" placeholder="nombre" autocomplete="given-name">
+                </div>
+                <div class="form-group">
+                  <label for="last_name" class="sr-only">Apellido</label>
+                  <input type="text" id="last_name" class="form-control" placeholder="apellido" autocomplete="family-name">
+                </div>
+                <div class="form-group">
+                  <label for="email" class="sr-only">Email</label>
+                  <input type="email" id="email" class="form-control" placeholder="email" autocomplete="email">
+                </div>
+                <div class="form-group">
+                  <label for="password" class="sr-only">Clave</label>
+                  <input type="password" id="password" class="form-control" placeholder="contraseña" autocomplete="new-password">
+                </div>
+                <div class="form-group mb-4">
+                  <label for="password2" class="sr-only">Repetir clave</label>
+                  <input type="password" id="password2" class="form-control" placeholder="repetir contraseña" autocomplete="new-password">
+                </div>
+
+                <!-- Las reglas se muestran antes de escribir, no después de que
+                     el backend rechace: son las que valida RegisterView. -->
+                <p class="login-card-footer-text">
+                  La contraseña necesita al menos 6 caracteres, una mayúscula y un número.
+                </p>
+
+                <div id="mensaje" class="alert alert-danger" hidden></div>
+                <input id="registrar" class="btn btn-block login-btn mb-4" type="submit" value="Crear cuenta">
+              </form>
+
+              <p class="login-card-footer-text">¿Ya tenés cuenta? <a href="index.html" class="text-reset">Iniciá sesión</a></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="assets/js/auth-api.js"></script>
+  <script>
+  document.getElementById("register-form").addEventListener("submit", (event) => {
+    // Primero, para que un error más abajo no recargue igual la página.
+    event.preventDefault();
+
+    const password = document.getElementById("password").value;
+    // Que las dos contraseñas coincidan se controla acá y no en el backend:
+    // la API recibe una sola, no tiene con qué compararla.
+    if (password !== document.getElementById("password2").value) {
+      mostrarMensaje("Las contraseñas no coinciden.");
+      return;
+    }
+
+    const boton = document.getElementById("registrar");
+    conBoton(boton, "Creando...", async () => {
+      const data = await postear("/auth/register/", {
+        email: document.getElementById("email").value.trim(),
+        password: password,
+        first_name: document.getElementById("first_name").value.trim(),
+        last_name: document.getElementById("last_name").value.trim(),
+      });
+      if (!data) return;
+      // El registro devuelve los mismos tokens que el login, así que la
+      // cuenta recién creada entra directo sin pasar por la pantalla de acceso.
+      guardarSesion(data);
+      window.location.replace(DESTINO);
+    });
+  });
+  </script>
+</body>
+</html>

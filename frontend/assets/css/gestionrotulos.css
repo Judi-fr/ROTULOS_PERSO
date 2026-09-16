@@ -1,0 +1,469 @@
+/* Estilos compartidos de la sección de rótulos: listado de plantillas,
+   importación desde foto y catálogo de variables. Sigue la paleta del
+   diseñador (pedidos/diseñorotulos.html) y del menú lateral (aside.js). */
+
+:root {
+  --accent: #7c5cff;
+  --accent-dark: #6a4de8;
+  --dark: #1e1b2e;
+  --bg: #f4f3f9;
+  --card: #ffffff;
+  --border: #ddd8ee;
+  --text: #2c2840;
+  --muted: #8f89a8;
+  --ok: #1f9d55;
+  --warn: #b7791f;
+  --danger: #d64545;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* El atributo `hidden` solo aplica display:none desde la hoja del navegador,
+   y cualquier regla con display (como .btn) le gana. Sin esto, los botones
+   que el JS oculta con el.hidden = true siguen a la vista. */
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  min-height: 100vh;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+app-sidebar {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  flex-shrink: 0;
+}
+
+main {
+  flex: 1;
+  min-width: 0;
+  padding: 32px 40px;
+  max-width: 1200px;
+}
+
+/* --- Encabezado --- */
+
+.topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+.topbar h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+}
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.topbar-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* --- Botones --- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  padding: 8px 14px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  text-decoration: none;
+}
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.btn.primary:hover {
+  background: var(--accent-dark);
+  color: #fff;
+}
+.btn.danger {
+  color: var(--danger);
+}
+.btn.danger:hover {
+  border-color: var(--danger);
+}
+.btn.small {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* --- Controles y tarjetas --- */
+
+.controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.search,
+.input,
+select.input,
+textarea.input {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--text);
+}
+.search {
+  width: 320px;
+  max-width: 100%;
+}
+.input:focus,
+.search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.panel h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.panel .panel-sub {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.loading,
+.empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* --- Grilla de plantillas --- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 18px;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.card-thumb {
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: repeating-conic-gradient(#eceafb 0% 25%, #f4f3f9 0% 50%) 0 0 / 16px 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.card-thumb img {
+  max-width: 88%;
+  max-height: 88%;
+  box-shadow: 0 2px 10px rgba(30, 27, 46, 0.18);
+  background: #fff;
+}
+.card-thumb .thumb-msg {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  padding: 10px;
+}
+.card-body {
+  padding: 14px;
+  flex: 1;
+}
+.card-body h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  word-break: break-word;
+}
+.card-meta {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.card-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 0 14px 14px;
+}
+
+/* --- Tablas --- */
+
+.table-wrap {
+  overflow-x: auto;
+}
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+table.data th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+table.data td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #eeebf6;
+  vertical-align: middle;
+}
+table.data tr:last-child td {
+  border-bottom: none;
+}
+.acciones {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+code.codigo {
+  background: #f0edfb;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+/* --- Badges --- */
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #efedf7;
+  color: var(--muted);
+}
+.badge.ok {
+  background: #e3f5ea;
+  color: var(--ok);
+}
+.badge.warn {
+  background: #fbf1e0;
+  color: var(--warn);
+}
+.badge.danger {
+  background: #fbe6e6;
+  color: var(--danger);
+}
+.badge.accent {
+  background: #ece6ff;
+  color: var(--accent-dark);
+}
+
+/* --- Avisos --- */
+
+.aviso {
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  white-space: pre-line;
+  border: 1px solid transparent;
+}
+.aviso.info {
+  background: #eef0ff;
+  border-color: #d9dcff;
+}
+.aviso.ok {
+  background: #e3f5ea;
+  border-color: #c3e8d1;
+  color: #146c3b;
+}
+.aviso.warn {
+  background: #fbf1e0;
+  border-color: #f1dcb4;
+  color: #7a5212;
+}
+.aviso.error {
+  background: #fbe6e6;
+  border-color: #f3c7c7;
+  color: #9b2c2c;
+}
+
+/* --- Formularios --- */
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px 16px;
+}
+.form-grid .full {
+  grid-column: 1 / -1;
+}
+.campo label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.campo .input {
+  width: 100%;
+}
+.form-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+/* --- Zona de carga --- */
+
+.dropzone {
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 28px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.dropzone.over,
+.dropzone:hover {
+  border-color: var(--accent);
+  background: #f7f5ff;
+}
+.dropzone strong {
+  color: var(--accent-dark);
+}
+
+.mini-thumb {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #faf9fd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: girar 0.8s linear infinite;
+  vertical-align: -2px;
+}
+@keyframes girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- Modal --- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 27, 46, 0.55);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 100;
+}
+.modal-overlay.open {
+  display: flex;
+}
+.modal {
+  background: #fff;
+  border-radius: 14px;
+  padding: 22px;
+  max-width: 640px;
+  width: 100%;
+  max-height: 92vh;
+  overflow: auto;
+}
+.modal img {
+  display: block;
+  max-width: 100%;
+  max-height: 60vh;
+  margin: 0 auto 16px;
+  box-shadow: 0 2px 14px rgba(30, 27, 46, 0.2);
+}
+.modal h3 {
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+.modal dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 14px;
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+.modal dt {
+  color: var(--muted);
+}
+.modal dd {
+  margin: 0;
+}
+.modal-close {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}

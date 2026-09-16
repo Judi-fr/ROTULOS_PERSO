@@ -221,6 +221,7 @@
               </svg>
               Create User
             </button>
+            <button class="btn btn-cancel" id="cerrarSesion">Cerrar sesion</button>
           </div>
         </div>
 
@@ -544,40 +545,45 @@
           </button>
         </div>
         <div class="field">
-          <label>Full Name</label>
-          <input type="text" placeholder="Enter full name" />
+          <label>Nombre completo</label>
+          <input type="text" id="nuevoNombre" placeholder="Nombre y apellido" />
         </div>
         <div class="field">
           <label>Email</label>
-          <input type="email" placeholder="Enter email address" />
+          <input type="email" id="nuevoEmail" placeholder="email@ejemplo.com" />
         </div>
         <div class="field">
-          <label>Role</label>
-          <select>
-            <option>Select role</option>
-            <option>Admin</option>
-            <option>Editor</option>
-            <option>Author</option>
-            <option>Subscriber</option>
+          <label>Contrase&ntilde;a</label>
+          <input type="password" id="nuevaClave" placeholder="6 caracteres, una mayuscula y un numero" />
+        </div>
+        <div class="field">
+          <label>Rol</label>
+          <!-- Los valores son los nombres de los Groups que siembra la
+               migracion 0001_seed_roles: la API los recibe por nombre, asi
+               que cualquier otro texto da 400. -->
+          <select id="nuevoRol">
+            <option value="">Sin rol</option>
+            <option value="administradores">Administradores</option>
+            <option value="dise&ntilde;adores">Dise&ntilde;adores</option>
+            <option value="operadores">Operadores</option>
           </select>
         </div>
         <div class="field">
-          <label>Status</label>
-          <select>
-            <option>Select status</option>
-            <option>Active</option>
-            <option>Inactive</option>
-            <option>Locked</option>
+          <label>Estado</label>
+          <select id="nuevoEstado">
+            <option value="activo">Activo</option>
+            <option value="inactivo">Inactivo</option>
           </select>
         </div>
         <div class="create-panel-actions">
           <button class="btn btn-cancel" id="cancelCreate">Cancel</button>
-          <button class="btn btn-primary" style="justify-content: center">
-            Create User
+          <button class="btn btn-primary" id="crearUsuario" style="justify-content: center">
+            Crear usuario
           </button>
         </div>
       </div>
 
+      <script src="assets/js/auth-api.js"></script>
       <script src="assets/js/admingestion_test.js"></script>
       <!-- <script src="assets/js/admingestion.js"></script> -->
       <!-- JavaScript para Google Sign-In -->

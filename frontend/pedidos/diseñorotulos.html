@@ -5,66 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Diseño de Rótulos</title>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Ya no se cargan qrcodejs, html2canvas ni jsPDF: el QR, el PNG y el
+         PDF los genera el backend (/labels/plantillas/<id>/renderizar/), que
+         mide con las métricas reales de cada fuente y avisa cuando algo no
+         entra. Lo que se ve en este lienzo es una guía de posiciones; lo que
+         se imprime sale siempre del servidor. -->
+    <link rel="stylesheet" href="/assets/css/gestionrotulos.css" />
 
     <style>
-      :root {
-        --accent: #7c5cff;
-        --dark: #1e1b2e;
-        --bg: #f4f3f9;
-        --border: #ddd8ee;
-        --text: #2c2840;
-        --muted: #8f89a8;
-      }
-      * {
-        box-sizing: border-box;
-      }
-      body {
-        margin: 0;
-        display: flex;
-        min-height: 100vh;
-        font-family:
-          system-ui,
-          -apple-system,
-          "Segoe UI",
-          sans-serif;
-        background: var(--bg);
-        color: var(--text);
-      }
-
       main {
-        flex: 1;
-        padding: 32px 40px;
-        max-width: 1100px;
-      }
-
-      .topbar h1 {
-        margin: 0 0 4px;
-        font-size: 24px;
-      }
-      .topbar .subtitle {
-        margin: 0 0 24px;
-        color: var(--muted);
-        font-size: 14px;
+        max-width: none;
       }
 
       .toolbar {
         display: flex;
         flex-wrap: wrap;
-        align-items: center;
+        align-items: flex-end;
         justify-content: space-between;
-        gap: 16px;
+        gap: 14px;
         background: #fff;
         border: 1px solid var(--border);
         border-radius: 10px;
         padding: 14px 18px;
-        margin-bottom: 28px;
+        margin-bottom: 16px;
       }
       .tool-group {
         display: flex;
-        align-items: center;
+        align-items: flex-end;
         gap: 10px;
         flex-wrap: wrap;
       }
@@ -72,517 +39,320 @@
         font-size: 12px;
         color: var(--muted);
         display: flex;
-        align-items: center;
-        gap: 6px;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .tool-group .input {
+        padding: 6px 8px;
+        font-size: 13px;
       }
       .tool-group input[type="number"] {
-        width: 60px;
-        padding: 6px 8px;
-        border: 1px solid var(--border);
-        border-radius: 6px;
+        width: 76px;
+      }
+
+      .editor {
+        display: grid;
+        grid-template-columns: 210px minmax(0, 1fr) 270px;
+        gap: 16px;
+        align-items: start;
+      }
+      @media (max-width: 1150px) {
+        .editor {
+          grid-template-columns: 1fr;
+        }
+      }
+      .lateral .panel {
+        padding: 14px;
+        margin-bottom: 14px;
+      }
+      .lateral h2 {
         font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+        margin: 0 0 10px;
       }
-      button {
-        border: 1px solid var(--border);
-        background: #fff;
-        color: var(--text);
-        padding: 8px 14px;
-        border-radius: 7px;
-        font-size: 13px;
-        cursor: pointer;
-        transition:
-          background 0.15s,
-          border-color 0.15s;
+      .lateral .grupo {
+        font-size: 11px;
+        color: var(--muted);
+        margin: 12px 0 6px;
       }
-      button:hover {
-        border-color: var(--accent);
+      .agregar {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
       }
-      button.primary {
-        background: var(--accent);
-        border-color: var(--accent);
-        color: #fff;
-        font-weight: 600;
+      .agregar .btn {
+        justify-content: space-between;
+        width: 100%;
+        font-size: 12px;
+        padding: 6px 10px;
       }
-      button.primary:hover {
-        background: #6a4de8;
+      .agregar .usada {
+        font-size: 10px;
+        color: var(--ok);
       }
 
       .canvas-wrap {
         display: flex;
         justify-content: center;
-        padding: 30px;
-        background: repeating-conic-gradient(#eceafb 0% 25%, #f4f3f9 0% 50%) 0
-          0 / 20px 20px;
+        align-items: flex-start;
+        padding: 24px;
+        background: repeating-conic-gradient(#eceafb 0% 25%, #f4f3f9 0% 50%) 0 0 / 20px 20px;
         border-radius: 12px;
+        overflow: auto;
+        min-height: 300px;
       }
-
       .label {
         position: relative;
+        flex-shrink: 0;
         background: #fff;
         box-shadow: 0 4px 20px rgba(30, 27, 46, 0.15);
-        overflow: hidden;
-        /* width/height set dynamically in cm via JS */
       }
 
-      .field {
+      .elem {
         position: absolute;
-        padding: 4px 8px;
-        border: 1px dashed rgba(124, 92, 255, 0.5);
-        background: rgba(124, 92, 255, 0.06);
-        font-size: 11px;
-        line-height: 1.35;
-        max-width: 75%;
-        white-space: pre-wrap;
+        box-sizing: border-box;
         cursor: grab;
-        border-radius: 3px;
+        outline: 1px dashed rgba(124, 92, 255, 0.5);
+        background: rgba(124, 92, 255, 0.04);
+        user-select: none;
+        touch-action: none;
       }
-      .field:focus {
-        outline: none;
-        border-color: var(--accent);
-        background: rgba(124, 92, 255, 0.1);
+      .elem.sel {
+        outline: 2px solid var(--accent);
+        z-index: 5;
       }
-      .field.dragging {
+      .elem.arrastrando {
         cursor: grabbing;
         opacity: 0.85;
-        z-index: 50;
-        user-select: none;
       }
-
-      #logoField {
-        width: 64px;
-        height: 64px;
+      .elem.afuera {
+        outline-color: var(--danger);
+      }
+      .elem .texto {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        padding: 0 1px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        line-height: 1.15;
+      }
+      .elem .ph {
+        position: absolute;
+        inset: 0;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: 0;
-      }
-      .logo-placeholder {
+        gap: 2px;
+        overflow: hidden;
         font-size: 10px;
-        color: var(--muted);
+        color: #6b6490;
         text-align: center;
-        padding: 4px;
       }
-      #logoImg {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
+      .ph .cuadro-qr {
+        height: 72%;
+        aspect-ratio: 1;
+        max-width: 72%;
+        background: repeating-conic-gradient(#2c2840 0 25%, #fff 0 50%) 0 0 / 6px 6px;
+        opacity: 0.75;
+      }
+      .ph .barras {
+        width: 88%;
+        height: 60%;
+        background: repeating-linear-gradient(90deg, #2c2840 0 2px, #fff 2px 4px, #2c2840 4px 5px, #fff 5px 8px);
+        opacity: 0.75;
+      }
+      .ph.imagen {
+        border: 1px dashed #b3acd3;
+      }
+      .elem .linea {
+        position: absolute;
+      }
+      .tirador {
+        position: absolute;
+        right: -6px;
+        bottom: -6px;
+        width: 11px;
+        height: 11px;
+        background: var(--accent);
+        border: 2px solid #fff;
+        border-radius: 2px;
+        cursor: nwse-resize;
+        z-index: 6;
       }
 
-      #qrField {
-        width: 72px;
-        height: 72px;
-        padding: 2px;
+      .props .fila {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .props label {
+        display: block;
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 3px;
+      }
+      .props .input {
+        width: 100%;
+        padding: 5px 7px;
+        font-size: 13px;
+      }
+      .props .check {
         display: flex;
+        gap: 14px;
+        margin: 6px 0 10px;
+        font-size: 13px;
+      }
+      .props .check label {
+        display: flex;
+        gap: 5px;
         align-items: center;
-        justify-content: center;
+        color: var(--text);
+        font-size: 13px;
+        margin: 0;
       }
-      #qrcode {
+      .props .tipo {
+        font-size: 12px;
+        margin-bottom: 10px;
+      }
+      .props .acciones-elem {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 12px;
+      }
+      .props .vacio,
+      .datos .vacio {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .datos .campo {
+        margin-bottom: 8px;
+      }
+      .datos .campo label {
+        font-size: 11px;
+      }
+      .datos .input {
         width: 100%;
-        height: 100%;
+        padding: 5px 7px;
+        font-size: 13px;
       }
-      #qrcode img,
-      #qrcode canvas {
-        width: 100% !important;
-        height: 100% !important;
-      }
-
-      /* Estado limpio para exportar: sin bordes punteados ni fondos guía */
-      .label.exporting .field {
-        border-color: transparent;
-        background: transparent;
-      }
-
       .hint {
-        margin-top: 14px;
+        margin: 10px 0 0;
         font-size: 12px;
         color: var(--muted);
         text-align: center;
       }
+      .informe {
+        font-size: 13px;
+        margin: 0 0 12px;
+        padding-left: 18px;
+      }
     </style>
   </head>
   <body>
-    <script src="../assets/html/aside.js"></script>
+    <script src="/assets/html/aside.js"></script>
     <app-sidebar active="rotulos"></app-sidebar>
 
     <main>
       <div class="topbar">
-        <h1>Diseño de Rótulos</h1>
-        <p class="subtitle">
-          Arrastrá cada dato a donde lo necesites en el rótulo. Hacé clic sobre
-          un texto para editarlo.
-        </p>
+        <div>
+          <h1 id="titulo">Nueva plantilla</h1>
+          <p class="subtitle">
+            Agregá campos desde la izquierda, arrastralos sobre el rótulo y
+            ajustalos a la derecha. Las medidas son en milímetros.
+          </p>
+        </div>
+        <div class="topbar-actions">
+          <a class="btn" href="/plantillas_rotulos.html">← Volver a plantillas</a>
+        </div>
       </div>
 
       <div class="toolbar">
         <div class="tool-group">
-          <label
-            >Nombre
-            <input
-              type="text"
-              id="nombreInput"
-              placeholder="Rótulo sin nombre"
-              style="width: 160px"
-          /></label>
+          <label>
+            Nombre
+            <input type="text" id="nombreInput" class="input" placeholder="Plantilla sin nombre" style="width: 220px" />
+          </label>
+          <label>
+            Ancho (mm)
+            <input type="number" id="anchoMm" class="input" min="10" max="1000" step="1" />
+          </label>
+          <label>
+            Alto (mm)
+            <input type="number" id="altoMm" class="input" min="10" max="1000" step="1" />
+          </label>
         </div>
         <div class="tool-group">
-          <label
-            >Ancho
-            <input
-              type="number"
-              id="widthCm"
-              value="10"
-              min="5"
-              max="30"
-              step="0.5"
-            />
-            cm</label
-          >
-          <label
-            >Alto
-            <input
-              type="number"
-              id="heightCm"
-              value="15"
-              min="5"
-              max="40"
-              step="0.5"
-            />
-            cm</label
-          >
-        </div>
-        <div class="tool-group">
-          <button id="uploadLogoBtn">Subir logo</button>
-          <input type="file" id="logoInput" accept="image/*" hidden />
-          <button id="resetBtn">Restablecer posiciones</button>
-        </div>
-        <div class="tool-group">
-          <button id="saveBtn" class="primary">Guardar rótulo</button>
-          <button id="exportPngBtn">Exportar PNG</button>
-          <button id="exportPdfBtn">Exportar PDF</button>
-        </div>
-      </div>
-      <p id="saveStatus" class="hint" style="display: none"></p>
-
-      <div class="canvas-wrap">
-        <div id="label" class="label">
-          <div class="field" data-field="logo" id="logoField">
-            <div class="logo-placeholder" id="logoPlaceholder">+ Logo</div>
-            <img id="logoImg" style="display: none" alt="Logo" />
-          </div>
-
-          <div class="field" data-field="qr" id="qrField">
-            <div id="qrcode">QR</div>
-          </div>
-
-          <div class="field" data-field="remitente" contenteditable="true">
-            Remitente: Juan Pérez
-          </div>
-          <div class="field" data-field="destinatario" contenteditable="true">
-            Destinatario: María Gómez
-          </div>
-          <div class="field" data-field="domicilio" contenteditable="true">
-            Domicilio: Av. Siempre Viva 742
-          </div>
-          <div class="field" data-field="cp" contenteditable="true">
-            CP: 1000
-          </div>
-          <div class="field" data-field="localidad" contenteditable="true">
-            Localidad/Provincia: CABA, Bs. As.
-          </div>
-          <div
-            class="field"
-            data-field="pedido"
-            id="pedidoField"
-            contenteditable="true"
-          >
-            N° de Pedido: 000123
-          </div>
+          <button id="baseBtn" class="btn">Diseño base</button>
+          <button id="previewBtn" class="btn">Vista previa</button>
+          <button id="pdfBtn" class="btn">Descargar PDF</button>
+          <button id="saveBtn" class="btn primary">Guardar</button>
         </div>
       </div>
 
-      <p class="hint">
-        Los campos se guardan en % del rótulo, así que si cambiás el tamaño, la
-        posición relativa se mantiene.
-      </p>
+      <div id="estado" class="aviso info" hidden></div>
+      <div id="revision" class="aviso warn" hidden></div>
+
+      <div class="editor">
+        <aside class="lateral">
+          <div class="panel">
+            <h2>Agregar</h2>
+            <div id="agregar" class="agregar">
+              <div class="vacio">Cargando catálogo...</div>
+            </div>
+          </div>
+        </aside>
+
+        <section>
+          <div class="canvas-wrap" id="canvasWrap">
+            <div id="label" class="label"></div>
+          </div>
+          <p class="hint">
+            Suprimir borra el elemento seleccionado · las flechas lo mueven
+            0,5 mm (con Shift, 5 mm).
+          </p>
+        </section>
+
+        <aside class="lateral">
+          <div class="panel props">
+            <h2>Propiedades</h2>
+            <div id="propiedades"></div>
+          </div>
+          <div class="panel datos">
+            <h2>Datos para imprimir</h2>
+            <p class="vacio" style="margin: 0 0 10px">
+              Opcional. Sin datos, la vista previa dibuja cada campo con su
+              nombre.
+            </p>
+            <div id="datos"></div>
+          </div>
+        </aside>
+      </div>
     </main>
 
-    <script>
-      const label = document.getElementById("label");
-      const widthCmInput = document.getElementById("widthCm");
-      const heightCmInput = document.getElementById("heightCm");
+    <!-- Vista previa generada por el servidor -->
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal">
+        <h3>Vista previa</h3>
+        <ul id="informe" class="informe" hidden></ul>
+        <img id="previewImg" alt="Generando vista previa..." />
+        <div class="modal-close">
+          <button class="btn" id="previewPngBtn">Descargar PNG</button>
+          <button class="btn" id="modalCloseBtn">Cerrar</button>
+        </div>
+      </div>
+    </div>
 
-      // Posiciones por defecto (en % del rótulo) para un formato vertical típico
-      const DEFAULT_POSITIONS = {
-        logo: { left: 6, top: 5 },
-        qr: { left: 68, top: 5 },
-        remitente: { left: 6, top: 22 },
-        destinatario: { left: 6, top: 38 },
-        domicilio: { left: 6, top: 47 },
-        cp: { left: 6, top: 56 },
-        localidad: { left: 6, top: 63 },
-        pedido: { left: 6, top: 88 },
-      };
-
-      function applyDefaultPositions() {
-        document.querySelectorAll(".field").forEach((el) => {
-          const pos = DEFAULT_POSITIONS[el.dataset.field];
-          if (pos) {
-            el.style.left = pos.left + "%";
-            el.style.top = pos.top + "%";
-          }
-        });
-      }
-      applyDefaultPositions();
-
-      function updateLabelSize() {
-        label.style.width = (parseFloat(widthCmInput.value) || 10) + "cm";
-        label.style.height = (parseFloat(heightCmInput.value) || 15) + "cm";
-      }
-      updateLabelSize();
-      widthCmInput.addEventListener("input", updateLabelSize);
-      heightCmInput.addEventListener("input", updateLabelSize);
-
-      document
-        .getElementById("resetBtn")
-        .addEventListener("click", applyDefaultPositions);
-
-      // --- Arrastrar campos ---
-      let activeEl = null,
-        startX = 0,
-        startY = 0,
-        startLeft = 0,
-        startTop = 0,
-        moved = false;
-
-      document.querySelectorAll(".field").forEach((el) => {
-        el.addEventListener("pointerdown", (e) => {
-          activeEl = el;
-          startX = e.clientX;
-          startY = e.clientY;
-          startLeft = parseFloat(el.style.left) || 0;
-          startTop = parseFloat(el.style.top) || 0;
-          moved = false;
-        });
-      });
-
-      document.addEventListener("pointermove", (e) => {
-        if (!activeEl) return;
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-        if (!moved && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
-        moved = true;
-        activeEl.classList.add("dragging");
-
-        const rect = label.getBoundingClientRect();
-        const elRect = activeEl.getBoundingClientRect();
-        const dxPct = (dx / rect.width) * 100;
-        const dyPct = (dy / rect.height) * 100;
-        const elWpct = (elRect.width / rect.width) * 100;
-        const elHpct = (elRect.height / rect.height) * 100;
-
-        const newLeft = Math.max(0, Math.min(100 - elWpct, startLeft + dxPct));
-        const newTop = Math.max(0, Math.min(100 - elHpct, startTop + dyPct));
-        activeEl.style.left = newLeft + "%";
-        activeEl.style.top = newTop + "%";
-      });
-
-      document.addEventListener("pointerup", () => {
-        if (activeEl) activeEl.classList.remove("dragging");
-        activeEl = null;
-      });
-
-      // --- Logo ---
-      const logoInput = document.getElementById("logoInput");
-      document
-        .getElementById("uploadLogoBtn")
-        .addEventListener("click", () => logoInput.click());
-      logoInput.addEventListener("change", () => {
-        const file = logoInput.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-          document.getElementById("logoImg").src = reader.result;
-          document.getElementById("logoImg").style.display = "block";
-          document.getElementById("logoPlaceholder").style.display = "none";
-        };
-        reader.readAsDataURL(file);
-      });
-
-      // --- Código QR (generado a partir del N° de Pedido) ---
-      function renderQR(text) {
-        const qrEl = document.getElementById("qrcode");
-        qrEl.innerHTML = "";
-        new QRCode(qrEl, {
-          text: text || "N/A",
-          width: 256,
-          height: 256,
-          correctLevel: QRCode.CorrectLevel.M,
-        });
-      }
-      renderQR(document.getElementById("pedidoField").innerText);
-
-      let qrTimeout;
-      document.getElementById("pedidoField").addEventListener("input", (e) => {
-        clearTimeout(qrTimeout);
-        qrTimeout = setTimeout(() => renderQR(e.target.innerText), 300);
-      });
-
-      // --- Exportar ---
-      async function captureLabel() {
-        label.classList.add("exporting");
-        const canvas = await html2canvas(label, {
-          scale: 4,
-          backgroundColor: "#ffffff",
-        });
-        label.classList.remove("exporting");
-        return canvas;
-      }
-
-      document
-        .getElementById("exportPngBtn")
-        .addEventListener("click", async () => {
-          const canvas = await captureLabel();
-          const link = document.createElement("a");
-          link.download = "rotulo.png";
-          link.href = canvas.toDataURL("image/png");
-          link.click();
-        });
-
-      document
-        .getElementById("exportPdfBtn")
-        .addEventListener("click", async () => {
-          const canvas = await captureLabel();
-          const imgData = canvas.toDataURL("image/png");
-          const wCm = parseFloat(widthCmInput.value) || 10;
-          const hCm = parseFloat(heightCmInput.value) || 15;
-          const { jsPDF } = window.jspdf;
-          const pdf = new jsPDF({
-            orientation: hCm >= wCm ? "portrait" : "landscape",
-            unit: "cm",
-            format: [wCm, hCm],
-          });
-          pdf.addImage(imgData, "PNG", 0, 0, wCm, hCm);
-          pdf.save("rotulo.pdf");
-        });
-    </script>
-
-    <script type="module">
-      import { getRotulo, createRotulo, updateRotulo } from "./api.js";
-
-      const params = new URLSearchParams(window.location.search);
-      const editingId = params.get("id");
-      const nombreInput = document.getElementById("nombreInput");
-      const saveStatus = document.getElementById("saveStatus");
-
-      const TEXT_FIELDS = [
-        "remitente",
-        "destinatario",
-        "domicilio",
-        "cp",
-        "localidad",
-        "pedido",
-      ];
-
-      function showStatus(msg) {
-        saveStatus.textContent = msg;
-        saveStatus.style.display = "block";
-        setTimeout(() => (saveStatus.style.display = "none"), 2500);
-      }
-
-      // --- Cargar rótulo existente si venimos con ?id= ---
-      async function loadExisting() {
-        if (!editingId) return;
-        const r = await getRotulo(editingId);
-        if (!r) {
-          showStatus("No se encontró ese rótulo. Empezando uno nuevo.");
-          return;
-        }
-        nombreInput.value = r.nombre || "";
-        if (r.size) {
-          document.getElementById("widthCm").value = r.size.widthCm;
-          document.getElementById("heightCm").value = r.size.heightCm;
-          updateLabelSize();
-        }
-        if (r.logo) {
-          document.getElementById("logoImg").src = r.logo;
-          document.getElementById("logoImg").style.display = "block";
-          document.getElementById("logoPlaceholder").style.display = "none";
-        }
-        if (r.fields) {
-          Object.entries(r.fields).forEach(([key, val]) => {
-            const el = document.querySelector(`.field[data-field="${key}"]`);
-            if (!el) return;
-            if (val.left != null) el.style.left = val.left + "%";
-            if (val.top != null) el.style.top = val.top + "%";
-            if (TEXT_FIELDS.includes(key) && val.text != null)
-              el.textContent = val.text;
-          });
-          renderQR(document.getElementById("pedidoField").innerText);
-        }
-      }
-
-      // --- Generar una miniatura liviana (JPEG) para la lista del dashboard ---
-      async function generateThumbnail() {
-        label.classList.add("exporting");
-        const canvas = await html2canvas(label, {
-          scale: 1.5,
-          backgroundColor: "#ffffff",
-        });
-        label.classList.remove("exporting");
-
-        const maxWidth = 320;
-        const ratio = maxWidth / canvas.width;
-        const small = document.createElement("canvas");
-        small.width = maxWidth;
-        small.height = canvas.height * ratio;
-        small
-          .getContext("2d")
-          .drawImage(canvas, 0, 0, small.width, small.height);
-        return small.toDataURL("image/jpeg", 0.75);
-      }
-
-      function collectFields() {
-        const fields = {};
-        document.querySelectorAll(".field").forEach((el) => {
-          const key = el.dataset.field;
-          fields[key] = {
-            left: parseFloat(el.style.left) || 0,
-            top: parseFloat(el.style.top) || 0,
-          };
-          if (TEXT_FIELDS.includes(key)) fields[key].text = el.textContent;
-        });
-        return fields;
-      }
-
-      document.getElementById("saveBtn").addEventListener("click", async () => {
-        const thumbnail = await generateThumbnail();
-        const payload = {
-          nombre: nombreInput.value.trim() || "Rótulo sin nombre",
-          cliente: document
-            .querySelector('.field[data-field="destinatario"]')
-            .textContent.trim(),
-          thumbnail,
-          size: {
-            widthCm: parseFloat(document.getElementById("widthCm").value) || 10,
-            heightCm:
-              parseFloat(document.getElementById("heightCm").value) || 15,
-          },
-          logo:
-            document.getElementById("logoImg").style.display !== "none"
-              ? document.getElementById("logoImg").src
-              : null,
-          fields: collectFields(),
-        };
-
-        if (editingId) {
-          await updateRotulo(editingId, payload);
-        } else {
-          await createRotulo(payload);
-        }
-        window.location.href = "dashboard.html";
-      });
-
-      loadExisting();
-    </script>
+    <script src="/assets/js/auth-api.js"></script>
+    <script src="/assets/js/rotulos-api.js"></script>
+    <script src="/assets/js/editor_rotulos.js"></script>
   </body>
 </html>

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Importar rótulo desde foto</title>
+    <link rel="stylesheet" href="/assets/css/gestionrotulos.css" />
+  </head>
+  <body>
+    <script src="/assets/html/aside.js"></script>
+    <app-sidebar active="importar"></app-sidebar>
+
+    <main>
+      <div class="topbar">
+        <div>
+          <h1>Importar rótulo desde una foto</h1>
+          <p class="subtitle">
+            Subí la foto o el PDF de un rótulo y el sistema propone una
+            plantilla con sus campos. La revisás en el editor antes de guardarla.
+          </p>
+        </div>
+        <div class="topbar-actions">
+          <a href="/plantillas_rotulos.html" class="btn">Ver plantillas</a>
+        </div>
+      </div>
+
+      <div id="mensaje" class="aviso" hidden></div>
+
+      <section class="panel">
+        <h2>1. Subir archivo</h2>
+        <p class="panel-sub">JPG, PNG, GIF o WEBP hasta 5 MB · PDF hasta 32 MB.</p>
+        <label class="dropzone" id="dropzone">
+          <input type="file" id="archivo" accept="image/jpeg,image/png,image/gif,image/webp,application/pdf" hidden />
+          <span id="dropzoneTexto"><strong>Elegí un archivo</strong> o arrastralo acá</span>
+        </label>
+      </section>
+
+      <section class="panel">
+        <h2>2. Mis archivos</h2>
+        <p class="panel-sub">
+          «Leer rótulo» envía el archivo al modelo: tarda entre 10 y 60 segundos
+          y hay un máximo de 20 lecturas por hora, porque cada una tiene costo.
+        </p>
+        <div id="documentos" class="table-wrap"><div class="loading">Cargando...</div></div>
+        <div class="controls" style="justify-content: center; margin: 12px 0 0">
+          <button class="btn" id="masDocumentos" hidden>Cargar más</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>3. Lecturas</h2>
+        <p class="panel-sub">
+          Abrí una lectura completada en el editor para revisarla y guardarla
+          como plantilla.
+        </p>
+        <div id="importaciones" class="table-wrap"><div class="loading">Cargando...</div></div>
+        <div class="controls" style="justify-content: center; margin: 12px 0 0">
+          <button class="btn" id="masImportaciones" hidden>Cargar más</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="/assets/js/auth-api.js"></script>
+    <script src="/assets/js/rotulos-api.js"></script>
+    <script src="/assets/js/importar.js"></script>
+  </body>
+</html>
