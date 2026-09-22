@@ -28,8 +28,8 @@ from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
 from apps.orders.models import Order
 
-from .models import ElementoPlantilla, Label, LabelTemplate, Plantilla, VariableRotulo
-from .rendering import (
+from .models import ElementLayout, Label, LabelTemplate, LayoutElement, LayoutVariable
+from .label_rendering import (
     BARCODE_HEIGHT_RANGE_CM,
     BARCODE_WIDTH_RANGE_CM,
     DEFAULT_BARCODE_HEIGHT_CM,
@@ -44,15 +44,15 @@ from .rendering import (
     render_code_svg,
     render_label_pdf,
 )
-from .render import renderizar_pdf, renderizar_png
-from .render.fuentes import FuenteNoDisponible, familias_disponibles
+from .element_layout_render import render_element_layout_pdf, render_element_layout_png
+from .element_layout_render.fonts import FontNotAvailable, available_font_families
 from .serializers import (
     AdminLabelSerializer,
+    ElementLayoutSerializer,
     LabelSerializer,
     LabelTemplateSerializer,
-    PlantillaSerializer,
-    RenderizarSerializer,
-    VariableRotuloSerializer,
+    LayoutVariableSerializer,
+    RenderElementLayoutSerializer,
 )
 
 
@@ -83,7 +83,7 @@ class LabelViewSet(viewsets.ModelViewSet):
         queryset = Label.objects.filter(user=self.request.user, is_active=True).select_related(
             "template", "order"
         )
-        # ?search= filtra por nombre o destinatario (frontend/rotulos.html).
+        # ?search= filtra por nombre o destinatario (frontend/mis_rotulos.html).
         search = self.request.query_params.get("search", "").strip()
         if search:
             queryset = queryset.filter(Q(name__icontains=search) | Q(client__icontains=search))
@@ -174,7 +174,7 @@ class LabelViewSet(viewsets.ModelViewSet):
         """GET /api/v1/labels/labels/<id>/pdf/
 
         Rótulo definitivo (el que va a imprenta), armado en el servidor con
-        ``apps.labels.rendering`` en vez del PNG/PDF del navegador. Si el
+        ``apps.labels.label_rendering`` en vez del PNG/PDF del navegador. Si el
         rótulo tiene ``order``, los marcadores ``{{clave}}`` del diseño se
         resuelven con los datos de ese envío.
         """
@@ -332,7 +332,7 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
         PDF de la plantilla con datos de EJEMPLO (``rendering.
         SAMPLE_LABEL_CONTEXT``), no de un pedido real: la misma cadena de
         render que arma el rótulo definitivo (``render_label_pdf``), para
-        que la vista previa de ``frontend/plantillas.html`` sea fiel al
+        que la vista previa de ``frontend/mis_plantillas.html`` sea fiel al
         resultado real sin necesitar un pedido.
         """
         template = self.get_object()
@@ -510,7 +510,7 @@ class BarcodeImageView(APIView):
     """GET /api/v1/labels/barcode/?type=qr|code128|ean13&data=...
 
     SVG de un código QR/de barras suelto, con los mismos
-    ``apps.labels.rendering.build_qr_drawing``/``build_barcode_drawing``
+    ``apps.labels.label_rendering.build_qr_drawing``/``build_barcode_drawing``
     que arman el PDF del rótulo (``render_code_svg``, Python puro vía
     ``reportlab.graphics.renderSVG`` — nada de rasterizar a mano). Sirve
     para que el editor muestre el código real en la vista previa (en vez
@@ -556,13 +556,13 @@ class BarcodeImageView(APIView):
         return HttpResponse(svg, content_type="image/svg+xml")
 
 # ---------------------------------------------------------------------------
-# Plantillas por elementos / catálogo de variables (integradas desde
-# backend_echu), adaptadas al sistema de roles/permisos del backend.
+# ElementLayout/LayoutElement/LayoutVariable: plantillas por elementos +
+# catálogo de variables, adaptadas al sistema de roles/permisos del backend.
 # ---------------------------------------------------------------------------
 
 
-class FuentesView(APIView):
-    """GET /api/v1/labels/fuentes/
+class AvailableFontsView(APIView):
+    """GET /api/v1/labels/fonts/
 
     Familias tipográficas que el editor puede ofrecer. La disponibilidad
     depende de la máquina: el PDF sale siempre, pero el PNG necesita un
@@ -573,10 +573,10 @@ class FuentesView(APIView):
         return [IsAuthenticated(), HasRolePermission("plantillas.view")]
 
     def get(self, request):
-        return Response(familias_disponibles())
+        return Response(available_font_families())
 
 
-class VariableRotuloViewSet(viewsets.ModelViewSet):
+class LayoutVariableViewSet(viewsets.ModelViewSet):
     """CRUD del catálogo de variables que puede contener un rótulo.
 
     Leer el catálogo lo puede hacer cualquier usuario autenticado (el editor
@@ -585,7 +585,7 @@ class VariableRotuloViewSet(viewsets.ModelViewSet):
     por todas las plantillas.
     """
 
-    serializer_class = VariableRotuloSerializer
+    serializer_class = LayoutVariableSerializer
     pagination_class = None
 
     def get_permissions(self):
@@ -594,15 +594,15 @@ class VariableRotuloViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated(), HasRolePermission("variables.manage")]
 
     def get_queryset(self):
-        queryset = VariableRotulo.objects.select_related("creada_por")
+        queryset = LayoutVariable.objects.select_related("created_by")
         if self.action == "list":
-            incluir = self.request.query_params.get("incluir_inactivas")
-            if incluir not in ("1", "true", "True"):
-                queryset = queryset.filter(activa=True)
+            include_inactive = self.request.query_params.get("incluir_inactivas")
+            if include_inactive not in ("1", "true", "True"):
+                queryset = queryset.filter(is_active=True)
         return queryset
 
     def perform_create(self, serializer):
-        variable = serializer.save(creada_por=self.request.user)
+        variable = serializer.save(created_by=self.request.user)
         record(
             self.request,
             category="labels",
@@ -627,7 +627,7 @@ class VariableRotuloViewSet(viewsets.ModelViewSet):
         """Elimina una variable, salvo que sea del sistema o esté en uso."""
         variable = self.get_object()
 
-        if variable.es_sistema:
+        if variable.is_system:
             return Response(
                 {
                     "detail": "Las variables del sistema no se pueden eliminar. "
@@ -663,53 +663,53 @@ class VariableRotuloViewSet(viewsets.ModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class PlantillaViewSet(viewsets.ModelViewSet):
+class ElementLayoutViewSet(viewsets.ModelViewSet):
     """CRUD de plantillas de rótulos por elementos.
 
     Self-service: cada usuario opera sobre SUS propias plantillas
-    (``creada_por``). Leer/renderizar exige ``plantillas.view``; escribir
+    (``created_by``). Leer/renderizar exige ``plantillas.view``; escribir
     exige ``plantillas.edit``.
     """
 
-    serializer_class = PlantillaSerializer
+    serializer_class = ElementLayoutSerializer
 
     def get_permissions(self):
-        if self.action in ("list", "retrieve", "renderizar"):
+        if self.action in ("list", "retrieve", "render"):
             return [IsAuthenticated(), HasRolePermission("plantillas.view")]
         return [IsAuthenticated(), HasRolePermission("plantillas.edit")]
 
     def get_queryset(self):
         return (
-            Plantilla.objects.filter(creada_por=self.request.user)
-            .select_related("creada_por")
+            ElementLayout.objects.filter(created_by=self.request.user)
+            .select_related("created_by")
             .prefetch_related(
                 Prefetch(
-                    "elementos",
-                    queryset=ElementoPlantilla.objects.select_related("variable"),
+                    "elements",
+                    queryset=LayoutElement.objects.select_related("variable"),
                 )
             )
         )
 
     def perform_create(self, serializer):
-        plantilla = serializer.save(creada_por=self.request.user)
+        layout = serializer.save(created_by=self.request.user)
         record(
             self.request,
             category="labels",
             action="plantilla.create",
-            target=plantilla,
+            target=layout,
             target_type="plantilla",
-            target_repr=str(plantilla),
+            target_repr=str(layout),
         )
 
     def perform_update(self, serializer):
-        plantilla = serializer.save()
+        layout = serializer.save()
         record(
             self.request,
             category="labels",
             action="plantilla.update",
-            target=plantilla,
+            target=layout,
             target_type="plantilla",
-            target_repr=str(plantilla),
+            target_repr=str(layout),
         )
 
     def perform_destroy(self, instance):
@@ -728,46 +728,46 @@ class PlantillaViewSet(viewsets.ModelViewSet):
         )
 
     @action(detail=True, methods=["post"])
-    def renderizar(self, request, pk=None):
-        """POST /api/v1/labels/plantillas/<id>/renderizar/
+    def render(self, request, pk=None):
+        """POST /api/v1/labels/element-layouts/<id>/render/
 
         Convierte un diseño guardado en algo que se pega en un paquete:
         ``{"datos": {...}}`` un rótulo, ``{}`` vista previa, o
         ``{"lote": [{...}, ...]}`` un PDF de varias páginas.
         """
-        plantilla = self.get_object()
-        entrada = RenderizarSerializer(data=request.data)
-        entrada.is_valid(raise_exception=True)
-        opciones = entrada.validated_data
+        layout = self.get_object()
+        input_serializer = RenderElementLayoutSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        options = input_serializer.validated_data
 
         try:
-            if opciones["formato"] == "png":
-                contenido, informe = renderizar_png(
-                    plantilla,
-                    datos=opciones.get("datos"),
-                    usuario=request.user,
-                    dpi=opciones.get("dpi"),
+            if options["format"] == "png":
+                content, report = render_element_layout_png(
+                    layout,
+                    data=options.get("data"),
+                    user=request.user,
+                    dpi=options.get("dpi"),
                 )
-                tipo, extension = "image/png", "png"
+                content_type, extension = "image/png", "png"
             else:
-                contenido, informe = renderizar_pdf(
-                    plantilla,
-                    datos=opciones.get("datos"),
-                    usuario=request.user,
-                    lote=opciones.get("lote"),
+                content, report = render_element_layout_pdf(
+                    layout,
+                    data=options.get("data"),
+                    user=request.user,
+                    batch=options.get("batch"),
                 )
-                tipo, extension = "application/pdf", "pdf"
-        except FuenteNoDisponible as exc:
+                content_type, extension = "application/pdf", "pdf"
+        except FontNotAvailable as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_501_NOT_IMPLEMENTED)
 
-        respuesta = HttpResponse(contenido, content_type=tipo)
-        respuesta["Content-Disposition"] = (
-            f'attachment; filename="rotulo-{plantilla.pk}.{extension}"'
+        response = HttpResponse(content, content_type=content_type)
+        response["Content-Disposition"] = (
+            f'attachment; filename="rotulo-{layout.pk}.{extension}"'
         )
-        if informe["faltantes"]:
-            respuesta["X-Rotulo-Faltantes"] = ",".join(informe["faltantes"])
-        if informe["truncados"]:
-            respuesta["X-Rotulo-Truncados"] = ",".join(informe["truncados"])
-        if informe["avisos"]:
-            respuesta["X-Rotulo-Avisos"] = ",".join(informe["avisos"])
-        return respuesta
+        if report["missing"]:
+            response["X-Layout-Missing"] = ",".join(report["missing"])
+        if report["truncated"]:
+            response["X-Layout-Truncated"] = ",".join(report["truncated"])
+        if report["warnings"]:
+            response["X-Layout-Warnings"] = ",".join(report["warnings"])
+        return response

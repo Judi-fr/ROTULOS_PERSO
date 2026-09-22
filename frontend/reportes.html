@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Reportes</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.materialdesignicons.com/4.8.95/css/materialdesignicons.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
+    />
+
+    <link rel="stylesheet" href="assets/css/gestionuser.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- SIDEBAR: renderizado por assets/js/admin_sidebar.js -->
+      <div id="adminSidebar" data-active="reports"></div>
+
+      <!-- MAIN -->
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1 id="reportsTitle">Reportes</h1>
+            <p>Métricas sobre usuarios, seguridad de cuentas, pedidos y soporte.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn btn-outline" id="logoutAdminBtn" type="button">Cerrar sesión</button>
+          </div>
+        </div>
+
+        <section aria-labelledby="reportsTitle">
+          <div class="reports-toolbar">
+            <label for="reportsMonthsSelect">Período</label>
+            <select id="reportsMonthsSelect">
+              <option value="3">Últimos 3 meses</option>
+              <option value="6" selected>Últimos 6 meses</option>
+              <option value="12">Últimos 12 meses</option>
+            </select>
+            <button type="button" class="btn btn-outline" id="reportsRefreshBtn">Actualizar</button>
+          </div>
+
+          <!-- USUARIOS -->
+          <h2 class="reports-block-title">Usuarios</h2>
+          <div class="reports-grid">
+            <div class="roles-card">
+              <div class="roles-card-title">Usuarios por rol</div>
+              <div id="metricsRoleDistribution" class="metrics-bars">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title" id="metricsSignupsByMonthTitle">Altas por mes</div>
+              <div id="metricsSignupsByMonth" class="metrics-bars">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Método de autenticación</div>
+              <div id="metricsAuthMethod" class="metrics-stat-row">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Altas vs. bajas por mes</div>
+              <div id="metricsActiveVsInactive" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Usuarios activos</div>
+              <div id="metricsActiveUsers" class="metrics-stat-row">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Retención por cohorte de registro</div>
+              <div id="metricsRetention" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Bloqueos por mes</div>
+              <div id="metricsLockoutsByMonth" class="metrics-bars">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Top 10 · intentos fallidos</div>
+              <div id="metricsTopFailedAttempts" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Antigüedad de cuentas</div>
+              <div id="metricsAccountAge" class="metrics-stat-row">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- SEGURIDAD -->
+          <h2 class="reports-block-title">Seguridad</h2>
+          <div class="reports-grid">
+            <div class="roles-card">
+              <div class="roles-card-title">Verificación de email</div>
+              <div id="metricsEmailVerification" class="metrics-stat-row">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Cambio de contraseña pendiente</div>
+              <div id="metricsPendingPasswordChange" class="metrics-stat-row">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Método de autenticación × verificación de email</div>
+              <div id="metricsAuthVerificationCross" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- PEDIDOS -->
+          <h2 class="reports-block-title">Pedidos</h2>
+          <div class="reports-grid" id="ordersMetricsGrid" style="display:none;">
+            <div class="roles-card">
+              <div class="roles-card-title">Pedidos por mes</div>
+              <div id="metricsOrdersByMonth" class="metrics-bars">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Embudo de estados</div>
+              <div id="metricsOrdersByStatus" class="metrics-bars">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Tasa de cancelación</div>
+              <div id="metricsCancellationRate" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Tiempo promedio entre estados</div>
+              <div id="metricsAvgTimeBetweenStatuses" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Top 10 · usuarios por pedidos</div>
+              <div id="metricsTopUsersByOrders" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Usuarios con pedidos</div>
+              <div id="metricsUsersWithOrders" class="metrics-stat-row">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Pedidos por ciudad</div>
+              <div id="metricsOrdersByCity" class="metrics-bars">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Pedidos por provincia</div>
+              <div id="metricsOrdersByState" class="metrics-bars">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+          </div>
+          <p id="ordersMetricsEmpty" class="roles-loading" style="display:none;">Sin datos todavía.</p>
+
+          <!-- SOPORTE Y ACTIVIDAD -->
+          <h2 class="reports-block-title" id="supportActivityTitle" style="display:none;">Soporte y actividad</h2>
+          <div class="reports-grid" id="supportActivityGrid" style="display:none;">
+            <div class="roles-card">
+              <div class="roles-card-title">Mensajes de soporte por mes</div>
+              <div id="metricsSupportByMonth" class="metrics-bars">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Mensajes por estado</div>
+              <div id="metricsSupportByStatus" class="metrics-bars">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Tiempo promedio de respuesta</div>
+              <div id="metricsAvgResponseTime" class="metrics-stat-row">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Actividad por administrador</div>
+              <div id="metricsAdminActivityByActor" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Actividad por tipo de acción</div>
+              <div id="metricsAdminActivityByAction" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+
+            <div class="roles-card">
+              <div class="roles-card-title">Logins por mes</div>
+              <div id="metricsLoginEvents" class="metrics-table">
+                <p class="roles-loading">Cargando métricas...</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <script src="assets/js/config.js"></script>
+      <script src="assets/js/auth.js"></script>
+      <script src="assets/js/utils.js"></script>
+      <script src="assets/js/admin_common.js"></script>
+      <script src="assets/js/admin_sidebar.js"></script>
+      <script src="assets/js/reportes.js"></script>
+    </div>
+  </body>
+</html>

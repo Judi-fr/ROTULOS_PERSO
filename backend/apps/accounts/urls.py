@@ -12,7 +12,7 @@ from .role_permission_views import (
     RoleListView,
     RolePermissionsView,
 )
-from .views import (
+from .auth_views import (
     ChangePasswordView,
     EmailVerificationConfirmView,
     EmailVerificationResendView,

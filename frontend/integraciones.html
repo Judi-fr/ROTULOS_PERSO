@@ -12,31 +12,13 @@
       rel="stylesheet"
     />
 
+    <link rel="stylesheet" href="assets/css/base.css" />
     <link rel="stylesheet" href="assets/css/integraciones.css" />
   </head>
   <body>
     <div class="layout">
-      <header class="topbar">
-        <div class="topbar-user">
-          <img
-            class="avatar"
-            id="userAvatar"
-            src="https://api.dicebear.com/7.x/avataaars/svg?seed=user"
-            alt=""
-          />
-          <div class="topbar-user-info">
-            <span class="topbar-user-name" id="userName">—</span>
-            <span class="topbar-user-email" id="userEmail">—</span>
-          </div>
-        </div>
-        <div class="topbar-actions">
-          <a class="btn btn-outline" href="gestionuser.html">Panel admin</a>
-          <a class="btn btn-outline" href="dashboard.html">Volver al panel</a>
-          <button class="btn btn-outline" id="logoutBtn" type="button">
-            Cerrar sesión
-          </button>
-        </div>
-      </header>
+      <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
+      <header class="topbar" id="appTopbar" data-links='[{"href": "gestionuser.html", "label": "Panel admin"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
 
       <main class="main">
         <div class="main-heading">
@@ -302,6 +284,8 @@
 
     <script src="assets/js/config.js"></script>
     <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
     <script src="assets/js/integraciones.js"></script>
   </body>
 </html>

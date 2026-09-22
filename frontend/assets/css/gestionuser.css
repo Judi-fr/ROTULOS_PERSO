@@ -30,7 +30,13 @@
     display:flex;
     min-height:100vh;
   }
- 
+
+  /* Contenedor que assets/js/admin_sidebar.js rellena con el <aside>: se
+     comporta como si el <aside> fuera hijo directo de .layout (sin esto, al
+     ser un <div> normal metido en un flex container, no heredaría el
+     flex-shrink:0 ni el stretch de altura del <aside> original). */
+  #adminSidebar{ display:contents; }
+
   /* SIDEBAR */
   .sidebar{
     width:250px;

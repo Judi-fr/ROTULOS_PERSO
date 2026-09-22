@@ -75,7 +75,9 @@
       }
       const role = String((data.user && data.user.role) || '').toLowerCase();
       const isAdmin = Boolean((data.user && data.user.is_staff) || role === 'admin');
-      window.location.replace(isAdmin ? 'gestionuser.html' : 'dashboard.html');
+      // Si venía de instalar la app en su tienda sin sesión (tiendas.js guardó
+      // el enlace de vinculación), vuelve a terminar ese paso.
+      window.location.replace(localStorage.getItem('pendingStoreClaim') ? 'tiendas.html' : (isAdmin ? 'gestionuser.html' : 'dashboard.html'));
     }
 
     // Callback de Google Identity Services: response.credential es el ID
@@ -152,7 +154,9 @@
         // a la gestión de usuarios; el resto va a su panel (dashboard.html).
         const role = String((data.user && data.user.role) || '').toLowerCase();
         const isAdmin = Boolean((data.user && data.user.is_staff) || role === 'admin');
-        window.location.replace(isAdmin ? 'gestionuser.html' : 'dashboard.html');
+        // Si venía de instalar la app en su tienda sin sesión (tiendas.js guardó
+        // el enlace de vinculación), vuelve a terminar ese paso.
+        window.location.replace(localStorage.getItem('pendingStoreClaim') ? 'tiendas.html' : (isAdmin ? 'gestionuser.html' : 'dashboard.html'));
       } catch (error) {
         alert(error.message || 'Error en usuario o clave - Reingrese');
       }

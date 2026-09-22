@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Pedidos de todos los usuarios</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.materialdesignicons.com/4.8.95/css/materialdesignicons.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
+    />
+
+    <link rel="stylesheet" href="assets/css/gestionuser.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- SIDEBAR: renderizado por assets/js/admin_sidebar.js. No hay ítem
+           propio en el menú (tampoco lo había antes, cuando esta tabla vivía
+           dentro de Auditoría), así que se marca Auditoría como activo. -->
+      <div id="adminSidebar" data-active="audit"></div>
+
+      <!-- MAIN -->
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1 id="adminOrdersTitle">Pedidos de todos los usuarios</h1>
+            <p>Todos los pedidos del sitio, de cualquier usuario.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn btn-outline" id="logoutAdminBtn" type="button">Cerrar sesión</button>
+          </div>
+        </div>
+
+        <section aria-labelledby="adminOrdersTitle">
+          <div class="roles-card">
+            <div class="roles-card-title">Filtros</div>
+            <div class="filter-bar">
+              <input type="text" id="adminOrdersSearchInput" placeholder="Buscar por email o descripción..." />
+              <select id="adminOrdersStatusFilter">
+                <option value="">Todos los estados</option>
+              </select>
+              <label>Desde <input type="date" id="adminOrdersDateFrom" /></label>
+              <label>Hasta <input type="date" id="adminOrdersDateTo" /></label>
+              <button type="button" class="btn btn-outline" id="applyAdminOrdersFiltersBtn">Aplicar</button>
+              <button type="button" class="btn btn-outline" id="clearAdminOrdersFiltersBtn">Limpiar</button>
+            </div>
+          </div>
+
+          <div class="roles-card">
+            <div class="roles-card-title">Pedidos</div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width: 18%">Usuario</th>
+                    <th style="width: 30%">Descripción</th>
+                    <th style="width: 12%">Estado</th>
+                    <th style="width: 20%">Último evento</th>
+                    <th style="width: 20%">Creado</th>
+                  </tr>
+                </thead>
+                <tbody id="adminOrdersBody">
+                  <tr><td colspan="5" style="text-align:center; padding:20px;">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pagination-bar">
+              <div class="showing" id="adminOrdersPaginationInfo">Mostrando 0 pedidos</div>
+              <div class="pager" id="adminOrdersPaginationControls"></div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <script src="assets/js/config.js"></script>
+      <script src="assets/js/auth.js"></script>
+      <script src="assets/js/utils.js"></script>
+      <script src="assets/js/admin_common.js"></script>
+      <script src="assets/js/admin_sidebar.js"></script>
+      <script src="assets/js/pedidos_admin.js"></script>
+    </div>
+  </body>
+</html>

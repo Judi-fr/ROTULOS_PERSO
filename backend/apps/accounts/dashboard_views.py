@@ -51,7 +51,7 @@ class DashboardView(APIView):
                 {
                     "key": "audit",
                     "label": "Registros de auditoría",
-                    "url": "gestionuser.html#audit",
+                    "url": "auditoria.html",
                     "enabled": True,
                 }
             )
@@ -59,7 +59,7 @@ class DashboardView(APIView):
                 {
                     "key": "support_inbox",
                     "label": "Mensajes de soporte",
-                    "url": "gestionuser.html#support",
+                    "url": "soporte_admin.html",
                     "enabled": True,
                 }
             )
@@ -92,9 +92,36 @@ class DashboardView(APIView):
         # "Direcciones guardadas" reusa la misma pantalla (pedidos.html ya
         # tiene su propia sección de direcciones): no hace falta una página
         # nueva para lo que ya es un CRUD completo ahí.
+        # Tiendas online conectadas (apps.integrations): mismo permiso que
+        # exige la API para conectarlas.
+        if user_has_permission(user, "orders.create"):
+            menu.append(
+                {"key": "stores", "label": "Tiendas conectadas", "url": "tiendas.html", "enabled": True}
+            )
+            # Los rótulos que la tienda pidió desde SU panel: solo lectura,
+            # para ver por qué falló uno (ver apps.integrations.store_labels).
+            menu.append(
+                {
+                    "key": "store_labels",
+                    "label": "Rótulos de la tienda",
+                    "url": "rotulos_tienda.html",
+                    "enabled": True,
+                }
+            )
         menu.append(
             {"key": "orders", "label": "Mis pedidos", "url": "pedidos.html", "enabled": True}
         )
+        # Imprimir los rótulos de varios pedidos de una (apps.labels batch):
+        # mismo permiso que exige LabelBatchView.
+        if user_has_permission(user, "labels.batch"):
+            menu.append(
+                {
+                    "key": "labels_print",
+                    "label": "Imprimir rótulos",
+                    "url": "imprimir_rotulos.html",
+                    "enabled": True,
+                }
+            )
         menu.append(
             {
                 "key": "addresses",
@@ -107,18 +134,15 @@ class DashboardView(APIView):
         # Processing todavía no tiene pantalla propia (su app backend
         # expone urlpatterns vacíos): se lista deshabilitado en vez de
         # omitirse o apuntar a una URL inventada. Labels y documents ya
-        # tienen pantalla propia (rotulos.html / diseñorotulos.html,
-        # documentos.html). Nota: plantillas_rotulos.html +
-        # dashboard_rotulos.js + gestionrotulos.css son la pantalla vieja
-        # (Bootstrap/MDI/<app-sidebar>), reemplazada por rotulos.html;
-        # quedan sin uso pero no se borraron (ver CLAUDE.md).
+        # tienen pantalla propia (mis_rotulos.html / editor_rotulos.html,
+        # documentos.html).
         menu.extend(
             [
-                {"key": "labels", "label": "Mis rótulos", "url": "rotulos.html", "enabled": True},
+                {"key": "labels", "label": "Mis rótulos", "url": "mis_rotulos.html", "enabled": True},
                 {
                     "key": "templates",
                     "label": "Plantillas",
-                    "url": "plantillas.html",
+                    "url": "mis_plantillas.html",
                     "enabled": True,
                 },
                 {

@@ -1,0 +1,414 @@
+/* Tiendas conectadas (tiendas.html). Misma paleta y topbar que perfil.css. */
+
+:root {
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --border: #e7eaf1;
+  --text-dark: #0f172a;
+  --text-muted: #64748b;
+  --accent: #f97316;
+  --accent-light: #ffedd5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Karla", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text-dark);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* TOPBAR */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 28px;
+  gap: 16px;
+}
+
+.topbar-user,
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--accent-light);
+}
+
+.topbar-user-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.topbar-user-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.topbar-user-email {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* BOTONES */
+.btn {
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.btn-outline {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-dark);
+}
+
+.btn-outline:hover {
+  background: var(--bg);
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.05);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* MAIN */
+.main {
+  flex: 1;
+  padding: 32px 28px 48px;
+  max-width: 820px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.main-heading h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+}
+
+.main-heading p {
+  margin: 0 0 24px;
+  color: var(--text-muted);
+}
+
+.page-message {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin: 0 0 20px;
+  font-size: 14px;
+}
+
+.page-message.error {
+  background: #fdeeee;
+  color: #b91c1c;
+  border: 1px solid #f6c9c9;
+}
+
+.page-message.success {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+/* TARJETAS */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 22px;
+  overflow: hidden;
+}
+
+.card-title {
+  font-weight: 700;
+  font-size: 15.5px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card-body {
+  padding: 20px 22px 22px;
+}
+
+.muted-text {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* CONECTAR */
+.connect-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.connect-platform {
+  margin: 0 0 4px;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.connect-help {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+/* TIENDA */
+.store-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+
+.store-card:last-child {
+  margin-bottom: 0;
+}
+
+.store-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.store-name {
+  margin: 0;
+  font-size: 16px;
+}
+
+.store-platform {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.store-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.store-status.ok {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.store-status.warn {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.store-status.off {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.store-link {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 13.5px;
+  color: var(--accent);
+  word-break: break-all;
+}
+
+.store-details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 14px;
+  margin: 12px 0 0;
+  font-size: 13.5px;
+}
+
+.store-details dt {
+  color: var(--text-muted);
+}
+
+.store-details dd {
+  margin: 0;
+}
+
+.store-error {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 13.5px;
+}
+
+.store-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    flex-wrap: wrap;
+    padding: 14px 18px;
+  }
+  .main {
+    padding: 24px 18px 40px;
+  }
+  .connect-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* Remitente de los rótulos, dentro de la tarjeta de cada tienda. */
+.store-sender {
+  margin: 16px 0 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.store-sender-title {
+  margin: 0;
+  font-size: 14px;
+}
+
+.store-sender-help {
+  margin: 4px 0 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.store-sender .field {
+  margin: 0 0 10px;
+}
+
+.store-sender .field label {
+  display: block;
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.store-sender .field input {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  background: var(--card);
+  color: var(--text-dark);
+}
+
+.store-sender .field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.store-sender-msg {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.store-sender-msg.ok {
+  color: var(--green, #16a34a);
+}
+
+.store-sender-msg.error {
+  color: var(--red, #dc2626);
+}
+
+.store-sender .field select {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  background: var(--card);
+  color: var(--text-dark);
+}
+
+.store-logo-current {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 8px;
+}
+
+.store-logo-current img {
+  max-width: 120px;
+  max-height: 60px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  padding: 4px;
+}
+
+.btn-danger-text {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  color: #dc2626;
+  cursor: pointer;
+}

@@ -16,24 +16,6 @@
   --red-light: #fdeeee;
 }
 
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family: "Karla", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    Helvetica, Arial, sans-serif;
-  background: var(--bg);
-  color: var(--text-dark);
-}
-
-.layout {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
 /* TOPBAR (igual que perfil.html/dashboard.html) */
 .topbar {
   display: flex;
@@ -43,41 +25,6 @@ body {
   border-bottom: 1px solid var(--border);
   padding: 16px 28px;
   gap: 16px;
-}
-
-.topbar-user {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.avatar {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  background: var(--blue-light);
-}
-
-.topbar-user-info {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.3;
-}
-
-.topbar-user-name {
-  font-weight: 700;
-  font-size: 15px;
-}
-
-.topbar-user-email {
-  font-size: 13px;
-  color: var(--text-muted);
 }
 
 .btn {
@@ -93,24 +40,13 @@ body {
   gap: 6px;
 }
 
+/* base.css ya define .btn-outline, pero se carga ANTES que esta hoja: el .btn
+   de acá arriba le pisa el borde (y el fondo, donde lo define) con su shorthand.
+   Se repite para que el botón conserve borde y fondo propios. */
 .btn-outline {
   background: transparent;
   border-color: var(--border);
   color: var(--text-dark);
-}
-
-.btn-outline:hover {
-  background: var(--bg);
-}
-
-.btn-primary {
-  background: var(--blue);
-  border-color: var(--blue);
-  color: #fff;
-}
-
-.btn-primary:hover {
-  filter: brightness(1.05);
 }
 
 .btn-small {
@@ -132,11 +68,6 @@ body {
   text-decoration: underline;
 }
 
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 /* MAIN */
 .main {
   flex: 1;
@@ -144,23 +75,6 @@ body {
   max-width: 780px;
   width: 100%;
   margin: 0 auto;
-}
-
-.main-heading h1 {
-  margin: 0 0 4px;
-  font-size: 24px;
-}
-
-.main-heading p {
-  margin: 0 0 24px;
-  color: var(--text-muted);
-}
-
-.page-message {
-  padding: 12px 16px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  font-size: 14px;
 }
 
 .page-message.error {
@@ -192,10 +106,6 @@ body {
   font-size: 15.5px;
   padding: 16px 22px;
   border-bottom: 1px solid var(--border);
-}
-
-.profile-card-body {
-  padding: 20px 22px 22px;
 }
 
 .field {
@@ -335,6 +245,18 @@ body {
   font-size: 14.5px;
 }
 
+.store-tag {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 20px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--purple-light);
+  color: var(--purple);
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
 .order-item-address {
   margin: 6px 0 0;
   font-size: 13.5px;
@@ -394,17 +316,22 @@ body {
 }
 
 @media (max-width: 640px) {
-  .topbar {
-    flex-wrap: wrap;
-    padding: 14px 18px;
-  }
-  .main {
-    padding: 24px 18px 40px;
-  }
+
   .field-row {
     grid-template-columns: 1fr;
   }
   .address-item {
     flex-direction: column;
   }
+}
+
+/* Paginación del historial de pedidos. */
+.orders-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 14px 0 0;
+  font-size: 13.5px;
+  color: var(--text-muted);
 }

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Registros de auditoría</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.materialdesignicons.com/4.8.95/css/materialdesignicons.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
+    />
+
+    <link rel="stylesheet" href="assets/css/gestionuser.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- SIDEBAR: renderizado por assets/js/admin_sidebar.js -->
+      <div id="adminSidebar" data-active="audit"></div>
+
+      <!-- MAIN -->
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1 id="auditTitle">Registros de auditoría</h1>
+            <p>Rastro de acciones sensibles: login, altas/bajas de usuarios, roles, pedidos y soporte.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn btn-outline" id="logoutAdminBtn" type="button">Cerrar sesión</button>
+          </div>
+        </div>
+
+        <section aria-labelledby="auditTitle">
+          <div class="roles-card">
+            <div class="roles-card-title">Filtros</div>
+            <div class="filter-bar">
+              <input type="text" id="auditSearchInput" placeholder="Buscar por actor, objetivo o acción..." />
+              <select id="auditCategoryFilter">
+                <option value="">Todas las categorías</option>
+              </select>
+              <select id="auditActionFilter">
+                <option value="">Todas las acciones</option>
+              </select>
+              <input type="text" id="auditActorFilter" placeholder="Actor (id o email)" />
+              <label>Desde <input type="date" id="auditDateFrom" /></label>
+              <label>Hasta <input type="date" id="auditDateTo" /></label>
+              <button type="button" class="btn btn-outline" id="applyAuditFiltersBtn">Aplicar</button>
+              <button type="button" class="btn btn-outline" id="clearAuditFiltersBtn">Limpiar</button>
+            </div>
+          </div>
+
+          <div class="roles-card">
+            <div class="roles-card-title">Eventos</div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width: 15%">Fecha</th>
+                    <th style="width: 18%">Actor</th>
+                    <th style="width: 15%">Acción</th>
+                    <th style="width: 30%">Objetivo</th>
+                    <th style="width: 10%">Categoría</th>
+                    <th style="width: 12%">Detalle</th>
+                  </tr>
+                </thead>
+                <tbody id="auditBody">
+                  <tr><td colspan="6" style="text-align:center; padding:20px;">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pagination-bar">
+              <div class="showing" id="auditPaginationInfo">Mostrando 0 registros</div>
+              <div class="pager" id="auditPaginationControls"></div>
+            </div>
+          </div>
+
+          <!-- La tabla de pedidos de todos los usuarios vivía acá adentro;
+               ahora es su propia página (pedidos_admin.html, orders.view_all). -->
+          <div class="roles-card" id="adminOrdersLinkCard" style="display:none;">
+            <div class="roles-card-title">Pedidos de todos los usuarios</div>
+            <p class="roles-loading" style="margin-bottom:12px;">
+              La lista de pedidos de todos los usuarios se movió a su propia pantalla.
+            </p>
+            <a class="btn btn-outline" href="pedidos_admin.html">Ver pedidos de todos los usuarios</a>
+          </div>
+        </section>
+      </main>
+
+      <!-- AUDIT CHANGES MODAL (solo lectura) -->
+      <div id="auditChangesModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:100; align-items:center; justify-content:center;">
+        <div style="background:#fff; border-radius:14px; width:460px; max-width:90%; max-height:85vh; padding:24px; box-shadow:0 20px 45px rgba(15,23,42,.25); display:flex; flex-direction:column;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-shrink:0;">
+            <h3 style="margin:0; font-size:17px; font-weight:700;">Detalle del cambio</h3>
+            <button id="closeAuditChangesModal" type="button" style="border:none; background:transparent; cursor:pointer; color:#64748b; font-size:20px; line-height:1;">&times;</button>
+          </div>
+          <div id="auditChangesContent" style="display:flex; flex-direction:column; gap:10px; overflow-y:auto;"></div>
+          <div style="display:flex; justify-content:flex-end; margin-top:20px; flex-shrink:0;">
+            <button id="closeAuditChangesModalBtn" type="button" class="btn btn-outline">Cerrar</button>
+          </div>
+        </div>
+      </div>
+
+      <script src="assets/js/config.js"></script>
+      <script src="assets/js/auth.js"></script>
+      <script src="assets/js/utils.js"></script>
+      <script src="assets/js/admin_common.js"></script>
+      <script src="assets/js/admin_sidebar.js"></script>
+      <script src="assets/js/auditoria.js"></script>
+    </div>
+  </body>
+</html>

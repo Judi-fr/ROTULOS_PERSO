@@ -17,3 +17,6 @@ anthropic==0.76.0
 # Render de QR y códigos de barras para las plantillas nuevas
 qrcode==8.2
 python-barcode==0.16.1
+
+# Integración con tiendas online: cifrado de los tokens OAuth guardados
+cryptography==50.0.1

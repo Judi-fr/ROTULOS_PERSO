@@ -17,3 +17,8 @@ staticfiles/
 .idea/
 Thumbs.db
 .DS_Store
+
+# Dependencias PHP del prototipo de login con Google (assets/apis/access.php).
+# Se regeneran con `composer install` desde composer.json/composer.lock: son
+# ~500 MB que no tienen por qué vivir en el repositorio.
+frontend/assets/apis/vendor/

@@ -21,46 +21,8 @@ let statusFilter = "";
 let searchDebounceTimer = null;
 let pollTimer = null;
 
-function showMessage(text, type = "error") {
-  const el = document.getElementById("pageMessage");
-  if (!el) return;
-  el.textContent = text;
-  el.className = `page-message ${type}`;
-  el.style.display = "block";
-}
-
-function getErrorMessage(data, fallback) {
-  if (typeof data === "string") return data;
-  if (!data || typeof data !== "object") return fallback;
-  if (typeof data.detail === "string") return data.detail;
-  for (const value of Object.values(data)) {
-    if (Array.isArray(value) && value.length) return String(value[0]);
-    if (typeof value === "string") return value;
-  }
-  return fallback;
-}
-
-// La API pagina (PageNumberPagination): {count, next, previous, results}.
-function extractResults(data) {
-  if (Array.isArray(data)) return data;
-  if (data && Array.isArray(data.results)) return data.results;
-  return [];
-}
-
-function formatDate(iso) {
-  if (!iso) return "-";
-  try {
-    return new Date(iso).toLocaleDateString("es-AR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
-}
+// showMessage, getErrorMessage, extractResults y formatDate salen de
+// assets/js/utils.js.
 
 function formatSize(bytes) {
   if (!bytes) return "-";
@@ -74,27 +36,10 @@ function formatSize(bytes) {
   return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
-function renderTopbar(user) {
-  const nameEl = document.getElementById("userName");
-  const emailEl = document.getElementById("userEmail");
-  const avatarEl = document.getElementById("userAvatar");
-  const email = user.email || "";
-  const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || email || "Usuario";
-
-  if (nameEl) nameEl.textContent = name;
-  if (emailEl) emailEl.textContent = email || "—";
-  if (avatarEl) {
-    const picture = getCurrentUser().picture;
-    avatarEl.src = picture
-      ? picture
-      : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email || "user")}`;
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Descarga: blob + object URL, porque el endpoint exige Authorization y un
 // <a href> plano no puede mandar ese header (mismo criterio que el PDF del
-// servidor en pedidos/diseñorotulos.html).
+// servidor en editor_rotulos.html).
 // ---------------------------------------------------------------------------
 // Un ZIP no se imprime (son varios PDFs sueltos, ver isPrintablePdf): ahí
 // solo tiene sentido "Descargar".
@@ -176,11 +121,11 @@ function buildItem(doc) {
   const info = document.createElement("div");
   info.className = "document-item-info";
   info.innerHTML = `
-    <p class="document-item-title">${doc.name}</p>
-    <p class="document-item-meta">${doc.kind_label || doc.kind} · ${doc.item_count} rótulo(s) · ${formatSize(doc.size_bytes)}</p>
+    <p class="document-item-title">${escapeHtml(doc.name)}</p>
+    <p class="document-item-meta">${escapeHtml(doc.kind_label || doc.kind)} · ${doc.item_count} rótulo(s) · ${formatSize(doc.size_bytes)}</p>
     <p class="document-item-meta">Creado: ${formatDate(doc.created_at)}</p>
-    ${doc.status === "failed" && doc.error_message ? `<p class="document-item-error">${doc.error_message}</p>` : ""}
-    ${doc.status === "ready" && doc.error_message ? `<p class="document-item-meta">${doc.error_message}</p>` : ""}
+    ${doc.status === "failed" && doc.error_message ? `<p class="document-item-error">${escapeHtml(doc.error_message)}</p>` : ""}
+    ${doc.status === "ready" && doc.error_message ? `<p class="document-item-meta">${escapeHtml(doc.error_message)}</p>` : ""}
   `;
 
   const actions = document.createElement("div");
@@ -278,7 +223,7 @@ document.getElementById("statusFilter")?.addEventListener("change", (e) => {
 });
 
 // ---------------------------------------------------------------------------
-// Logout: misma lógica que pedidos.js/rotulos.js (window.Auth.logout).
+// Logout: misma lógica que pedidos.js/saved_labels.js (window.Auth.logout).
 // ---------------------------------------------------------------------------
 const logoutBtn = document.getElementById("logoutBtn");
 if (logoutBtn) {
@@ -289,7 +234,7 @@ async function init() {
   try {
     const response = await apiFetch(ME_URL);
     if (response.ok) {
-      renderTopbar(await response.json());
+      window.AppTopbar.render(await response.json());
     }
   } catch (err) {
     if (err.isSessionExpired) return;

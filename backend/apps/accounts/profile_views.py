@@ -1,6 +1,6 @@
 """Perfil del usuario autenticado (self-service).
 
-Distinto del CRUD de admin (``apps.accounts.viewsets.UserAdminViewSet``): acá
+Distinto del CRUD de admin (``apps.accounts.user_admin_views.UserAdminViewSet``): acá
 el usuario opera sobre su PROPIA cuenta. Puede ver su perfil y editar solo su
 nombre y apellido; el email (identidad/username) y los campos sensibles
 quedan fuera de su alcance (ver ``ProfileSerializer``).

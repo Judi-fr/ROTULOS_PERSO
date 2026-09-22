@@ -162,6 +162,11 @@ REST_FRAMEWORK = {
         # tumbar la API. Configurable por .env porque el volumen esperado
         # varía mucho de un cliente a otro.
         "ingest": env("INGEST_THROTTLE_RATE", default="120/min"),
+        # Rótulos que pide la tienda (apps.integrations.store_labels): un
+        # lote masivo son hasta 50 etiquetas y la plataforma se baja UN PDF
+        # por etiqueta, así que el límite anónimo por defecto (60/min) la
+        # dejaría afuera a mitad de camino.
+        "store_labels": env("STORE_LABELS_THROTTLE_RATE", default="300/min"),
         # Lectura de rótulos con el modelo (apps.processing): cada llamada se
         # paga por token, así que se limita por usuario para que un bucle en el
         # frontend no gaste dinero antes de que nadie lo note.
@@ -174,6 +179,19 @@ REST_FRAMEWORK = {
 # ---------------------------------------------------------------------------
 
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
+
+# El navegador solo le deja leer al JavaScript de otro origen un puñado de
+# cabeceras estándar. Sin esta lista, el frontend (otro puerto que la API)
+# recibe el rótulo impreso pero no se entera de que a un campo le faltó el
+# dato, de que un domicilio se cortó o de que el QR quedó ilegible: el render
+# de ElementLayout informa eso en estas cabeceras (ver
+# ElementLayoutViewSet.render). Un domicilio recortado en silencio termina en
+# un paquete que no llega.
+CORS_EXPOSE_HEADERS = [
+    "X-Layout-Missing",
+    "X-Layout-Truncated",
+    "X-Layout-Warnings",
+]
 
 # ---------------------------------------------------------------------------
 # Google OAuth / Sign-In
@@ -237,16 +255,12 @@ PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT", default=60 * 60 * 24)
 ADMIN_CREATED_USER_PASSWORD = env("ADMIN_CREATED_USER_PASSWORD", default="")
 
 # ---------------------------------------------------------------------------
-# Rótulos (apps.labels) — datos del remitente para el render en servidor
+# Rótulos (apps.labels)
 # ---------------------------------------------------------------------------
 
-# El destinatario/domicilio/CP/localidad salen del Order/Address del envío
-# (ver apps.labels.rendering.build_label_context); el remitente es siempre
-# Buspack, así que sale de acá y no de cada rótulo.
-LABEL_SENDER_NAME = env("LABEL_SENDER_NAME", default="Buspack")
-LABEL_SENDER_ADDRESS = env(
-    "LABEL_SENDER_ADDRESS", default="Buspack - Encomiendas"
-)
+# Remitente, destinatario, domicilio, CP y localidad salen del pedido y de su
+# cliente/tienda (apps.labels.label_rendering.build_label_context): la app es
+# multi-cliente, así que no hay un remitente global configurable.
 
 # Tope de rótulos por lote (POST /api/v1/labels/batch/, ver
 # apps.labels.batch_views). El lote corre síncrono, en el mismo request:
@@ -269,6 +283,72 @@ ORDERS_IMPORT_MAX_FILE_SIZE_MB = env.int("ORDERS_IMPORT_MAX_FILE_SIZE_MB", defau
 # el estado del pedido. Un timeout corto evita que un endpoint del cliente
 # que no responde bloquee esa operación.
 WEBHOOK_DELIVERY_TIMEOUT_SECONDS = env.int("WEBHOOK_DELIVERY_TIMEOUT_SECONDS", default=3)
+
+# ---------------------------------------------------------------------------
+# Tiendas online conectadas (apps.integrations: StoreConnection / IntegrationEvent)
+# ---------------------------------------------------------------------------
+
+# Clave Fernet para cifrar los tokens OAuth de las tiendas (ver
+# apps.integrations.crypto). Vacía = se deriva de SECRET_KEY (solo para
+# desarrollo: en producción definir una propia).
+INTEGRATIONS_ENCRYPTION_KEY = env("INTEGRATIONS_ENCRYPTION_KEY", default="")
+
+# Cola de eventos (apps.integrations.events, manage.py run_integrations_worker).
+INTEGRATIONS_EVENT_MAX_ATTEMPTS = env.int("INTEGRATIONS_EVENT_MAX_ATTEMPTS", default=8)
+INTEGRATIONS_EVENT_RETRY_BASE_SECONDS = env.int("INTEGRATIONS_EVENT_RETRY_BASE_SECONDS", default=60)
+INTEGRATIONS_EVENT_RETRY_MAX_SECONDS = env.int("INTEGRATIONS_EVENT_RETRY_MAX_SECONDS", default=3600)
+# Un evento en "processing" por más que esto se considera abandonado (worker
+# caído) y se vuelve a encolar.
+INTEGRATIONS_EVENT_PROCESSING_TIMEOUT_SECONDS = env.int(
+    "INTEGRATIONS_EVENT_PROCESSING_TIMEOUT_SECONDS", default=600
+)
+
+# App de Tiendanube (Portal de Partners). El client secret también firma los
+# webhooks que manda Tiendanube (header x-linkedstore-hmac-sha256).
+TIENDANUBE_APP_ID = env("TIENDANUBE_APP_ID", default="")
+TIENDANUBE_CLIENT_SECRET = env("TIENDANUBE_CLIENT_SECRET", default="")
+# Versión de la API (https://api.tiendanube.com/<versión>/<store_id>/...).
+TIENDANUBE_API_VERSION = env("TIENDANUBE_API_VERSION", default="2025-03")
+# Obligatorio para Tiendanube (400 sin él): "NombreApp (email de contacto)".
+TIENDANUBE_USER_AGENT = env("TIENDANUBE_USER_AGENT", default="")
+TIENDANUBE_HTTP_TIMEOUT_SECONDS = env.int("TIENDANUBE_HTTP_TIMEOUT_SECONDS", default=10)
+
+# Instalación de tiendas (apps.integrations.stores): vida del "state" firmado
+# de la URL de autorización y del enlace para vincular una tienda instalada
+# desde la tienda de apps a una cuenta.
+INTEGRATIONS_OAUTH_STATE_MAX_AGE_SECONDS = env.int("INTEGRATIONS_OAUTH_STATE_MAX_AGE_SECONDS", default=900)
+INTEGRATIONS_STORE_CLAIM_MAX_AGE_SECONDS = env.int("INTEGRATIONS_STORE_CLAIM_MAX_AGE_SECONDS", default=1800)
+# Página del frontend (relativa a FRONTEND_URL) a la que vuelve el comerciante
+# después de instalar la app, con el resultado en la query string.
+STORE_CONNECT_FRONTEND_PATH = env("STORE_CONNECT_FRONTEND_PATH", default="tiendas.html")
+
+# URL pública HTTPS del backend, sin barra final. Con ella se registran los
+# webhooks de cada tienda ({base}/api/v1/integrations/tiendanube/webhooks/);
+# vacía = no se registran (la tienda queda con un aviso en last_error).
+INTEGRATIONS_PUBLIC_BASE_URL = env("INTEGRATIONS_PUBLIC_BASE_URL", default="")
+# Al conectar/vincular una tienda se importan los pedidos creados en los
+# últimos N días.
+INTEGRATIONS_INITIAL_IMPORT_DAYS = env.int("INTEGRATIONS_INITIAL_IMPORT_DAYS", default=30)
+# Pedidos por página al importar (máximo de la API de Tiendanube: 200).
+TIENDANUBE_ORDERS_PAGE_SIZE = env.int("TIENDANUBE_ORDERS_PAGE_SIZE", default=200)
+
+# Rótulos que pide la tienda desde su propio admin (apps.integrations.store_labels).
+# Plazo propio para resolver un rótulo: pasado esto se informa "falló" con el
+# motivo. Va con margen sobre los 30 minutos en que Tiendanube lo da por
+# vencido solo, para que el comerciante vea SIEMPRE por qué no le salió.
+STORE_LABEL_TIMEOUT_SECONDS = env.int("STORE_LABEL_TIMEOUT_SECONDS", default=1200)
+# Vida máxima de la URL pública del PDF. En la práctica se invalida mucho
+# antes (cuando la plataforma avisa que ya lo bajó); esto es el tope por si
+# ese aviso nunca llega.
+STORE_LABEL_DOWNLOAD_MAX_AGE_SECONDS = env.int("STORE_LABEL_DOWNLOAD_MAX_AGE_SECONDS", default=86400)
+# Nombre del medio de envío como lo ven el comerciante y el comprador en el
+# checkout de la tienda. La app es multi-cliente: no va un nombre de cliente.
+STORE_LABEL_CARRIER_NAME = env("STORE_LABEL_CARRIER_NAME", default="Rótulos")
+# Endpoint que le COTIZA los envíos a la tienda. Tiendanube lo exige para dar
+# de alta un medio de envío, y sin él no se puede recibir el pedido de rótulos
+# desde su admin (ver apps.integrations.store_labels.register_carrier). Todavía
+# no existe: es la decisión de producto pendiente, no un olvido.
+STORE_LABEL_RATES_URL = env("STORE_LABEL_RATES_URL", default="")
 
 # ---------------------------------------------------------------------------
 # JWT (djangorestframework-simplejwt)
@@ -323,7 +403,7 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ---------------------------------------------------------------------------
-# Claude (lectura de rótulos desde una foto) — apps.processing.agente
+# Claude (lectura de rótulos desde una foto) — apps.processing.agent
 # ---------------------------------------------------------------------------
 
 # Clave de la API de Anthropic. Sin ella, la app processing devuelve un error
@@ -345,7 +425,7 @@ ANTHROPIC_TIMEOUT = env.float("ANTHROPIC_TIMEOUT", default=120.0)
 # ---------------------------------------------------------------------------
 
 # Configuración de fuentes TTF para el render a PNG. Las rutas por defecto del
-# módulo render.fuentes cubren Linux/Windows/macOS; este diccionario permite
+# módulo render.fonts cubren Linux/Windows/macOS; este diccionario permite
 # anteponer rutas propias en un contenedor que empaqueta sus propias fuentes.
-#   RENDER_FUENTES_TTF = {"helvetica": ("/opt/fonts/Helvetica.ttf", ...)}
-RENDER_FUENTES_TTF = env.json("RENDER_FUENTES_TTF", default={})
+#   RENDER_FONTS_TTF = {"helvetica": ("/opt/fonts/Helvetica.ttf", ...)}
+RENDER_FONTS_TTF = env.json("RENDER_FONTS_TTF", default={})

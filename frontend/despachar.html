@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Despachar pedido</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/despachar.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
+      <header class="topbar" id="appTopbar" data-links='[{"href": "pedidos.html", "label": "Volver a mis pedidos"}]'></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1 id="pageTitle">Despachar pedido</h1>
+          <p>Cargá el estado del envío y su número de seguimiento.</p>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" hidden></p>
+
+        <!-- Resumen del pedido: lo completa despachar.js (renderSummary). -->
+        <section class="card" id="summaryCard" hidden>
+          <div class="card-title">Pedido</div>
+          <div class="card-body">
+            <dl class="summary">
+              <dt>Estado</dt>
+              <dd><span class="status-badge" id="summaryStatus">—</span></dd>
+              <dt>Destinatario</dt>
+              <dd id="summaryRecipient">—</dd>
+              <dt>Dirección</dt>
+              <dd id="summaryAddress">—</dd>
+              <dt>Contenido</dt>
+              <dd id="summaryDescription">—</dd>
+              <dt>Envío elegido</dt>
+              <dd id="summaryShippingOption">—</dd>
+            </dl>
+            <p class="store-notice" id="storeNotice" hidden></p>
+          </div>
+        </section>
+
+        <!-- Formulario de envío (POST /api/v1/orders/<id>/ship/). -->
+        <section class="card" id="shipCard" hidden>
+          <div class="card-title">Envío</div>
+          <form class="card-body" id="shipForm" novalidate>
+            <div class="field">
+              <label for="statusSelect">Estado del envío</label>
+              <select id="statusSelect" required></select>
+            </div>
+            <div class="field">
+              <label for="carrierInput">Transportista</label>
+              <input type="text" id="carrierInput" maxlength="100" placeholder="Ej.: Correo Argentino, Andreani, Buspack" />
+            </div>
+            <div class="field">
+              <label for="trackingNumberInput">Número de seguimiento</label>
+              <input type="text" id="trackingNumberInput" maxlength="100" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="trackingUrlInput">Link de seguimiento (opcional)</label>
+              <input type="url" id="trackingUrlInput" maxlength="200" placeholder="https://..." />
+            </div>
+            <p class="form-message" id="formMessage" hidden></p>
+            <div class="form-actions">
+              <a class="btn btn-outline" href="pedidos.html">Cancelar</a>
+              <button type="submit" class="btn btn-primary" id="saveShipBtn">Guardar envío</button>
+            </div>
+          </form>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/despachar.js"></script>
+  </body>
+</html>

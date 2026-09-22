@@ -30,8 +30,8 @@ from apps.accounts.pagination import UserAdminPagination
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
 
-from .models import Document, Documento
-from .serializers import AdminDocumentSerializer, DocumentoSerializer, DocumentSerializer
+from .models import Document, UploadedLabelFile
+from .serializers import AdminDocumentSerializer, DocumentSerializer, UploadedLabelFileSerializer
 
 
 class DocumentViewSet(
@@ -187,29 +187,29 @@ class AdminDocumentListView(ListAPIView):
 
         return queryset.order_by("-created_at")
 
-class DocumentoViewSet(
+class UploadedLabelFileViewSet(
     mixins.CreateModelMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Subida y consulta de archivos fuente (Documento) para importar.
+    """Subida y consulta de archivos fuente (UploadedLabelFile) para importar.
 
     No hay ``update``: un archivo subido no se edita. Cada usuario ve y obra
     únicamente sobre sus propios documentos.
     """
 
-    serializer_class = DocumentoSerializer
+    serializer_class = UploadedLabelFileSerializer
 
     def get_permissions(self):
         return [IsAuthenticated(), HasRolePermission("documents.upload")]
 
     def get_queryset(self):
-        return Documento.objects.filter(subido_por=self.request.user)
+        return UploadedLabelFile.objects.filter(uploaded_by=self.request.user)
 
     def perform_create(self, serializer):
-        documento = serializer.save(subido_por=self.request.user)
+        documento = serializer.save(uploaded_by=self.request.user)
         record(
             self.request,
             category="documents",

@@ -50,7 +50,10 @@ class OrderSerializer(serializers.ModelSerializer):
     )
     status_label = serializers.CharField(source="get_status_display", read_only=True)
     is_cancellable = serializers.BooleanField(read_only=True)
+    is_shippable = serializers.BooleanField(read_only=True)
     status_events = OrderStatusEventSerializer(many=True, read_only=True)
+    store_platform = serializers.CharField(source="store_connection.platform", read_only=True, default=None)
+    store_name = serializers.CharField(source="store_connection.name", read_only=True, default=None)
 
     class Meta:
         model = Order
@@ -62,11 +65,22 @@ class OrderSerializer(serializers.ModelSerializer):
             "status",
             "status_label",
             "is_cancellable",
+            "is_shippable",
             "carrier",
             "tracking_number",
             "tracking_url",
             "external_id",
             "source",
+            "store_connection",
+            "store_platform",
+            "store_name",
+            "external_number",
+            "contact_email",
+            "contact_phone",
+            "shipping_option",
+            "package_count",
+            "total_weight_kg",
+            "items",
             "status_events",
             "created_at",
             "updated_at",
@@ -79,6 +93,14 @@ class OrderSerializer(serializers.ModelSerializer):
             "tracking_url",
             "external_id",
             "source",
+            "store_connection",
+            "external_number",
+            "contact_email",
+            "contact_phone",
+            "shipping_option",
+            "package_count",
+            "total_weight_kg",
+            "items",
             "created_at",
             "updated_at",
         ]
@@ -91,6 +113,38 @@ class OrderSerializer(serializers.ModelSerializer):
             self.fields["address_id"].queryset = Address.objects.filter(user=request.user)
 
 
+class OrderShipSerializer(serializers.Serializer):
+    """Despacho / seguimiento de un pedido propio (``OrderViewSet.ship``).
+
+    El estado solo avanza (``Order.STATUS_PROGRESS``); repetir el estado
+    actual sirve para cargar o corregir el tracking sin cambiarlo.
+    Transportista y tracking se actualizan solo si vienen en el body.
+    """
+
+    status = serializers.ChoiceField(
+        choices=[
+            (Order.Status.DISPATCHED, Order.Status.DISPATCHED.label),
+            (Order.Status.IN_TRANSIT, Order.Status.IN_TRANSIT.label),
+            (Order.Status.DELIVERED, Order.Status.DELIVERED.label),
+        ]
+    )
+    carrier = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    tracking_number = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    tracking_url = serializers.URLField(max_length=200, required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        order = self.context["order"]
+        if not order.is_shippable:
+            raise serializers.ValidationError(
+                {"status": f"El pedido está «{order.get_status_display()}»: ya no se puede actualizar su envío."}
+            )
+        if Order.status_rank(attrs["status"]) < Order.status_rank(order.status):
+            raise serializers.ValidationError(
+                {"status": f"El pedido ya está «{order.get_status_display()}»: el estado del envío solo puede avanzar."}
+            )
+        return attrs
+
+
 class AdminOrderSerializer(serializers.ModelSerializer):
     """Lectura de pedidos de TODOS los usuarios para el panel admin
     (``orders.view_all``). Solo lectura: el admin no crea ni cancela
@@ -100,6 +154,8 @@ class AdminOrderSerializer(serializers.ModelSerializer):
     address = AddressSerializer(read_only=True)
     status_label = serializers.CharField(source="get_status_display", read_only=True)
     last_event = serializers.SerializerMethodField()
+    store_platform = serializers.CharField(source="store_connection.platform", read_only=True, default=None)
+    store_name = serializers.CharField(source="store_connection.name", read_only=True, default=None)
 
     class Meta:
         model = Order
@@ -116,6 +172,16 @@ class AdminOrderSerializer(serializers.ModelSerializer):
             "tracking_url",
             "external_id",
             "source",
+            "store_connection",
+            "store_platform",
+            "store_name",
+            "external_number",
+            "contact_email",
+            "contact_phone",
+            "shipping_option",
+            "package_count",
+            "total_weight_kg",
+            "items",
             "last_event",
             "created_at",
             "updated_at",

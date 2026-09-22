@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Document, Documento
+from .models import Document, UploadedLabelFile
 
 
 @admin.register(Document)
@@ -11,9 +11,9 @@ class DocumentAdmin(admin.ModelAdmin):
     search_fields = ("name", "user__email")
 
 
-@admin.register(Documento)
-class DocumentoAdmin(admin.ModelAdmin):
-    # Archivo fuente subido para importar (integración desde backend_echu).
-    list_display = ("nombre_original", "tipo_mime", "tamano_bytes", "subido_por", "subido_en")
-    list_filter = ("tipo_mime",)
-    search_fields = ("nombre_original", "subido_por__email")
+@admin.register(UploadedLabelFile)
+class UploadedLabelFileAdmin(admin.ModelAdmin):
+    # Archivo fuente subido para importar.
+    list_display = ("original_filename", "mime_type", "size_bytes", "uploaded_by", "uploaded_at")
+    list_filter = ("mime_type",)
+    search_fields = ("original_filename", "uploaded_by__email")

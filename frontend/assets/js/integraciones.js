@@ -16,68 +16,6 @@ const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 const getAccessToken = () => window.Auth.getAccessToken();
 const getCurrentUser = () => window.Auth.getCurrentUser();
 
-function escapeHtml(value) {
-  const div = document.createElement("div");
-  div.textContent = value == null ? "" : String(value);
-  return div.innerHTML;
-}
-
-function showMessage(text, type = "error") {
-  const el = document.getElementById("pageMessage");
-  if (!el) return;
-  el.textContent = text;
-  el.className = `page-message ${type}`;
-  el.style.display = "block";
-}
-
-function getErrorMessage(data, fallback) {
-  if (typeof data === "string") return data;
-  if (!data || typeof data !== "object") return fallback;
-  if (typeof data.detail === "string") return data.detail;
-  for (const value of Object.values(data)) {
-    if (Array.isArray(value) && value.length) return String(value[0]);
-    if (typeof value === "string") return value;
-  }
-  return fallback;
-}
-
-function extractResults(data) {
-  if (Array.isArray(data)) return data;
-  if (data && Array.isArray(data.results)) return data.results;
-  return [];
-}
-
-function formatDate(iso) {
-  if (!iso) return "-";
-  try {
-    return new Date(iso).toLocaleDateString("es-AR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
-}
-
-function renderTopbar(user) {
-  const nameEl = document.getElementById("userName");
-  const emailEl = document.getElementById("userEmail");
-  const avatarEl = document.getElementById("userAvatar");
-  const email = user.email || "";
-  const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || email || "Usuario";
-
-  if (nameEl) nameEl.textContent = name;
-  if (emailEl) emailEl.textContent = email || "—";
-  if (avatarEl) {
-    const picture = getCurrentUser().picture;
-    avatarEl.src = picture
-      ? picture
-      : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email || "user")}`;
-  }
-}
 
 document.getElementById("logoutBtn")?.addEventListener("click", () => window.Auth.logout());
 
@@ -626,7 +564,7 @@ async function init() {
     const response = await apiFetch(ME_URL);
     if (response.ok) {
       const user = await response.json();
-      renderTopbar(user);
+      window.AppTopbar.render(user);
       const permissions = Array.isArray(user.permissions) ? user.permissions : [];
       if (!permissions.includes("integrations.manage")) {
         window.location.replace("dashboard.html");

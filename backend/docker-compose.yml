@@ -37,5 +37,23 @@ services:
       db:
         condition: service_healthy
 
+  # Sin este proceso la integración con las tiendas no funciona sola: los
+  # webhooks solo encolan IntegrationEvent y es el worker el que los procesa
+  # (pedidos que entran, seguimiento que vuelve, reintentos). Mismo código y
+  # misma base que la API, sin puertos: no atiende HTTP.
+  worker:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-rotulos}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rotulos}
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+    command: python manage.py run_integrations_worker
+    volumes:
+      - .:/app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   pgdata:

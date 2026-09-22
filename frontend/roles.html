@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Roles y permisos</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.materialdesignicons.com/4.8.95/css/materialdesignicons.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
+    />
+
+    <link rel="stylesheet" href="assets/css/gestionuser.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- SIDEBAR: renderizado por assets/js/admin_sidebar.js -->
+      <div id="adminSidebar" data-active="roles"></div>
+
+      <!-- MAIN -->
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1 id="rolesTitle">Roles y permisos</h1>
+            <p>Administrá los permisos disponibles para cada rol del sistema.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn btn-outline" id="logoutAdminBtn" type="button">Cerrar sesión</button>
+          </div>
+        </div>
+
+        <section aria-labelledby="rolesTitle">
+          <div class="roles-create">
+            <input
+              type="text"
+              id="newRoleName"
+              placeholder="Nombre del nuevo rol"
+              autocomplete="off"
+            />
+            <button type="button" class="btn btn-primary" id="createRoleBtn">
+              Crear rol
+            </button>
+          </div>
+
+          <p id="rolesMessage" class="roles-message" role="status" aria-live="polite" style="display:none;"></p>
+
+          <div class="roles-card">
+            <div class="roles-card-title">Roles del sistema</div>
+            <div id="rolesList" class="roles-list" aria-label="Seleccionar rol">
+              <p class="roles-loading">Cargando roles...</p>
+            </div>
+          </div>
+
+          <div class="roles-card roles-permissions-card">
+            <div class="roles-card-title">Permisos asignados</div>
+            <div id="rolePermissionsContent" class="roles-card-body">
+              <p class="roles-loading">Cargando permisos...</p>
+            </div>
+            <div class="roles-card-actions">
+              <button type="button" class="btn btn-primary" id="saveRolePermissions" disabled>
+                Guardar cambios
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <script src="assets/js/config.js"></script>
+      <script src="assets/js/auth.js"></script>
+      <script src="assets/js/utils.js"></script>
+      <script src="assets/js/admin_common.js"></script>
+      <script src="assets/js/admin_sidebar.js"></script>
+      <script src="assets/js/roles.js"></script>
+    </div>
+  </body>
+</html>

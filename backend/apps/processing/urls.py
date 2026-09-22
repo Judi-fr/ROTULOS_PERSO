@@ -2,25 +2,25 @@
 
 Se montan bajo ``/api/v1/processing/``:
 
-    POST /api/v1/processing/importaciones/              -> procesar un documento
-    GET  /api/v1/processing/importaciones/              -> listar las propias
-    GET  /api/v1/processing/importaciones/<id>/         -> detalle
-    POST /api/v1/processing/importaciones/<id>/reintentar/ -> volver a leer
+    POST /api/v1/processing/label-imports/              -> procesar un documento
+    GET  /api/v1/processing/label-imports/               -> listar las propias
+    GET  /api/v1/processing/label-imports/<id>/          -> detalle
+    POST /api/v1/processing/label-imports/<id>/retry/    -> volver a leer
 
 El flujo completo de importar un rótulo son tres pasos:
 
-    1. POST /api/v1/documents/documentos/       (sube la foto)
-    2. POST /api/v1/processing/importaciones/   (la lee -> propuesta)
-    3. POST /api/v1/labels/plantillas/          (el usuario guarda lo revisado)
+    1. POST /api/v1/documents/documentos/        (sube la foto)
+    2. POST /api/v1/processing/label-imports/     (la lee -> propuesta)
+    3. POST /api/v1/labels/element-layouts/       (el usuario guarda lo revisado)
 """
 
 from rest_framework.routers import SimpleRouter
 
-from .views import ImportacionRotuloViewSet
+from .views import LabelImportViewSet
 
 router = SimpleRouter()
 router.register(
-    r"importaciones", ImportacionRotuloViewSet, basename="importacion-rotulo"
+    r"label-imports", LabelImportViewSet, basename="label-import"
 )
 
 urlpatterns = router.urls

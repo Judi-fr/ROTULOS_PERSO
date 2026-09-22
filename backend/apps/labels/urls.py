@@ -10,20 +10,20 @@ from rest_framework.routers import SimpleRouter
 from .batch_views import LabelBatchView
 from .views import (
     AdminLabelListView,
+    AvailableFontsView,
     BarcodeImageView,
-    FuentesView,
+    ElementLayoutViewSet,
     LabelTemplateViewSet,
     LabelViewSet,
-    PlantillaViewSet,
+    LayoutVariableViewSet,
     RenderLabelView,
-    VariableRotuloViewSet,
 )
 
 router = SimpleRouter()
 router.register(r"labels", LabelViewSet, basename="label")
 router.register(r"templates", LabelTemplateViewSet, basename="label-template")
-router.register(r"plantillas", PlantillaViewSet, basename="plantilla")
-router.register(r"variables", VariableRotuloViewSet, basename="variable-rotulo")
+router.register(r"element-layouts", ElementLayoutViewSet, basename="element-layout")
+router.register(r"layout-variables", LayoutVariableViewSet, basename="layout-variable")
 
 urlpatterns = [
     # Rótulos de TODOS los usuarios (panel admin, labels.view_all). Path
@@ -36,7 +36,7 @@ urlpatterns = [
     path("barcode/", BarcodeImageView.as_view(), name="label-barcode"),
     # Generación por lote: muchos rótulos -> un Document (apps.documents).
     path("batch/", LabelBatchView.as_view(), name="label-batch"),
-    # Familias tipográficas para el editor de plantillas nuevas (no es un
-    # recurso con CRUD, va como vista suelta).
-    path("fuentes/", FuentesView.as_view(), name="fuentes"),
+    # Familias tipográficas para el editor de plantillas de ElementLayout (no
+    # es un recurso con CRUD, va como vista suelta).
+    path("fonts/", AvailableFontsView.as_view(), name="fonts"),
 ] + router.urls

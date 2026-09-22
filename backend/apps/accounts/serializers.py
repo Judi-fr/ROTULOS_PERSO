@@ -26,7 +26,7 @@ from .models import PasswordChangeRequirement, user_email_verified
 from .permissions_map import VALID_ROLES as ROLE_CHOICES
 from .permissions_map import get_effective_role as get_user_role
 from .permissions_map import normalize_role as normalize_role_name
-from .views import normalize_email, validate_email_format, validate_password_strength
+from .auth_views import normalize_email, validate_email_format, validate_password_strength
 
 User = get_user_model()
 

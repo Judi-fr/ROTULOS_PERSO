@@ -2,63 +2,64 @@
 
 from rest_framework import serializers
 
-from apps.documents.models import Documento
+from apps.documents.models import UploadedLabelFile
 
-from .models import ImportacionRotulo
+from .models import LabelImport
 
 
-class ImportacionRotuloSerializer(serializers.ModelSerializer):
+class LabelImportSerializer(serializers.ModelSerializer):
     """Una lectura de rótulo.
 
-    Al crear solo se acepta ``documento``: todo lo demás lo produce el agente.
-    El queryset se filtra por el usuario de la petición para que nadie pueda
-    lanzar una importación —que cuesta tokens— sobre la foto de otra cuenta.
+    Al crear solo se acepta ``uploaded_file``: todo lo demás lo produce el
+    agente. El queryset se filtra por el usuario de la petición para que
+    nadie pueda lanzar una importación —que cuesta tokens— sobre la foto de
+    otra cuenta.
     """
 
-    documento = serializers.PrimaryKeyRelatedField(queryset=Documento.objects.none())
-    documento_nombre = serializers.CharField(
-        source="documento.nombre_original", read_only=True
+    uploaded_file = serializers.PrimaryKeyRelatedField(queryset=UploadedLabelFile.objects.none())
+    uploaded_file_name = serializers.CharField(
+        source="uploaded_file.original_filename", read_only=True
     )
-    confianza = serializers.FloatField(read_only=True)
+    confidence = serializers.FloatField(read_only=True)
 
     class Meta:
-        model = ImportacionRotulo
+        model = LabelImport
         fields = [
             "id",
-            "documento",
-            "documento_nombre",
-            "estado",
-            "modelo",
-            "confianza",
-            "propuesta",
+            "uploaded_file",
+            "uploaded_file_name",
+            "status",
+            "model_name",
+            "confidence",
+            "proposal",
             "error",
-            "tokens_entrada",
-            "tokens_salida",
+            "input_tokens",
+            "output_tokens",
             "request_id",
-            "creada_por",
-            "creada_en",
-            "finalizada_en",
+            "created_by",
+            "created_at",
+            "finished_at",
         ]
         read_only_fields = [
             "id",
-            "documento_nombre",
-            "estado",
-            "modelo",
-            "confianza",
-            "propuesta",
+            "uploaded_file_name",
+            "status",
+            "model_name",
+            "confidence",
+            "proposal",
             "error",
-            "tokens_entrada",
-            "tokens_salida",
+            "input_tokens",
+            "output_tokens",
             "request_id",
-            "creada_por",
-            "creada_en",
-            "finalizada_en",
+            "created_by",
+            "created_at",
+            "finished_at",
         ]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        peticion = self.context.get("request")
-        if peticion is not None and peticion.user.is_authenticated:
-            self.fields["documento"].queryset = Documento.objects.filter(
-                subido_por=peticion.user
+        request = self.context.get("request")
+        if request is not None and request.user.is_authenticated:
+            self.fields["uploaded_file"].queryset = UploadedLabelFile.objects.filter(
+                uploaded_by=request.user
             )

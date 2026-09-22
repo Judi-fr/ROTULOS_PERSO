@@ -5,7 +5,8 @@ idempotente por ``external_id``.
 Es el ÚNICO camino de creación para toda entrada operativa de pedidos:
 carga manual (``views.ManualOrderCreateView``), importación CSV/Excel
 (``import_views``), API de ingesta y webhook entrante
-(``apps.integrations``). El problema es siempre el mismo —"traducir
+(``apps.integrations``) vía ``create_order_from_data``, y pedidos de una
+tienda online conectada vía ``upsert_store_order``. El problema es siempre el mismo —"traducir
 campos ajenos a los propios" (ver el mapeo) y "no duplicar si ya existe"
 (ver ``create_order_from_data``)— así que se resuelve acá una sola vez.
 """
@@ -119,12 +120,19 @@ def create_order_from_data(user, data, *, source):
     """
     external_id = (data.get("external_id") or "").strip() or None
     if external_id:
-        existing = Order.objects.filter(user=user, external_id=external_id).first()
+        # Solo contra pedidos que NO vienen de una tienda conectada: esos
+        # tienen su propia idempotencia por tienda (upsert_store_order).
+        existing = Order.objects.filter(
+            user=user, external_id=external_id, store_connection__isnull=True
+        ).first()
         if existing is not None:
             return existing, False
 
     address = Address.objects.create(
         user=user,
+        # Dirección de un comprador, no de la agenda del usuario: no se lista
+        # en "Mis direcciones" (ver Address.Origin).
+        origin=Address.Origin.SHIPMENT,
         recipient_name=data.get("destinatario") or "",
         street=data.get("domicilio") or "",
         number=data.get("numero") or "",
@@ -141,3 +149,110 @@ def create_order_from_data(user, data, *, source):
         source=source,
     )
     return order, True
+
+
+def _fit(model, field_name, value):
+    """Recorta ``value`` al ``max_length`` del campo: un dato largo de una
+    tienda no puede hacer fallar el alta (Postgres sí aplica el límite)."""
+    value = "" if value is None else str(value)
+    max_length = model._meta.get_field(field_name).max_length
+    return value[:max_length] if max_length else value
+
+
+@transaction.atomic
+def upsert_store_order(connection, normalized):
+    """Crea o actualiza el pedido de una tienda conectada a partir de un
+    ``apps.integrations.providers.NormalizedOrder``. Devuelve
+    ``(order, result)`` con ``result`` en ``"created"``, ``"updated"`` o
+    ``"unchanged"``.
+
+    Idempotente por ``(connection, external_id)``: el mismo aviso repetido
+    no duplica. Si el pedido ya existe y el dato recibido no es más nuevo
+    que el guardado (``external_updated_at``), no se toca: los webhooks
+    pueden llegar desordenados.
+
+    Estado: se sincroniza con lo que diga la tienda (``normalized.status``)
+    solo hacia adelante (ver ``_synced_status``) y sin avisarle de vuelta a
+    la tienda, que es quien lo informó.
+    """
+    if connection.owner_id is None:
+        # Instalada pero todavía no vinculada a una cuenta (ver
+        # apps.integrations.stores.claim_store): no hay a nombre de quién
+        # crear el pedido.
+        raise ValueError("La tienda todavía no está vinculada a una cuenta.")
+
+    address_values = {
+        "recipient_name": _fit(Address, "recipient_name", normalized.recipient_name),
+        "street": _fit(Address, "street", normalized.street),
+        "number": _fit(Address, "number", normalized.number),
+        "city": _fit(Address, "city", normalized.city),
+        "state": _fit(Address, "state", normalized.state),
+        "postal_code": _fit(Address, "postal_code", normalized.postal_code),
+        "country": _fit(Address, "country", normalized.country or "Argentina"),
+        "reference": _fit(Address, "reference", normalized.reference),
+    }
+    order_values = {
+        "description": _fit(Order, "description", normalized.description),
+        "external_number": _fit(Order, "external_number", normalized.external_number),
+        "contact_email": _fit(Order, "contact_email", normalized.contact_email),
+        "contact_phone": _fit(Order, "contact_phone", normalized.contact_phone),
+        "shipping_option": _fit(Order, "shipping_option", normalized.shipping_option),
+        "package_count": max(int(normalized.package_count or 1), 1),
+        "total_weight_kg": normalized.total_weight_kg,
+        "items": normalized.items or [],
+        "raw_payload": normalized.raw or {},
+        "external_updated_at": normalized.external_updated_at,
+    }
+    external_id = _fit(Order, "external_id", normalized.external_id)
+
+    order = (
+        Order.objects.select_for_update()
+        .select_related("address")
+        .filter(store_connection=connection, external_id=external_id)
+        .first()
+    )
+    if order is None:
+        address = Address.objects.create(
+            user=connection.owner, origin=Address.Origin.SHIPMENT, **address_values
+        )
+        order = Order.objects.create(
+            user=connection.owner,
+            address=address,
+            store_connection=connection,
+            external_id=external_id,
+            source=Order.Source.STORE,
+            status=_synced_status(Order.Status.CREATED, normalized.status) or Order.Status.CREATED,
+            **order_values,
+        )
+        return order, "created"
+
+    incoming = normalized.external_updated_at
+    if incoming is not None and order.external_updated_at is not None and incoming <= order.external_updated_at:
+        return order, "unchanged"
+
+    for field_name, value in address_values.items():
+        setattr(order.address, field_name, value)
+    order.address.save()
+    for field_name, value in order_values.items():
+        setattr(order, field_name, value)
+    new_status = _synced_status(order.status, normalized.status)
+    if new_status:
+        order.status = new_status
+        # Lo informó la tienda: no hace falta avisarle de vuelta.
+        order._skip_store_notification = True
+    order.save()
+    return order, "updated"
+
+
+def _synced_status(current, incoming):
+    """Estado a aplicar según la tienda, o ``None`` si no corresponde
+    cambiarlo: una cancelación se aplica siempre (salvo que ya esté
+    cancelado); un estado de envío solo si avanza respecto del actual; un
+    pedido cancelado localmente no se reactiva."""
+    if not incoming or incoming == current or current == Order.Status.CANCELLED:
+        return None
+    if incoming == Order.Status.CANCELLED:
+        return incoming
+    if incoming in Order.SHIPPING_STATUSES and Order.status_rank(incoming) > Order.status_rank(current):
+        return incoming
+    return None

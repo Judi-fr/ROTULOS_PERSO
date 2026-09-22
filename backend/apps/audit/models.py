@@ -55,6 +55,7 @@ class AuditLog(models.Model):
         ORDER_CREATE = "order.create", "Pedido creado"
         ORDER_STATUS_CHANGE = "order.status_change", "Cambio de estado de pedido"
         ORDER_CANCEL = "order.cancel", "Pedido cancelado"
+        ORDER_SHIP = "order.ship", "Envío de pedido actualizado"
         ORDER_IMPORT = "order.import", "Importación de pedidos"
         ORDER_WEBHOOK_INGEST = "order.webhook_ingest", "Pedido recibido por webhook"
         # support
@@ -70,28 +71,37 @@ class AuditLog(models.Model):
         TEMPLATE_CREATE = "template.create", "Plantilla de rótulo creada"
         TEMPLATE_UPDATE = "template.update", "Plantilla de rótulo actualizada"
         TEMPLATE_DELETE = "template.delete", "Plantilla de rótulo eliminada"
-        # labels: plantillas por elementos + catálogo de variables (distintas
-        # de LabelTemplate/TEMPLATE_* de arriba: no son el mismo concepto,
-        # ver apps/labels/models.py).
-        PLANTILLA_CREATE = "plantilla.create", "Plantilla estructurada creada"
-        PLANTILLA_UPDATE = "plantilla.update", "Plantilla estructurada actualizada"
-        PLANTILLA_DELETE = "plantilla.delete", "Plantilla estructurada eliminada"
-        VARIABLE_ROTULO_CREATE = "variable_rotulo.create", "Variable de rótulo creada"
-        VARIABLE_ROTULO_UPDATE = "variable_rotulo.update", "Variable de rótulo actualizada"
-        VARIABLE_ROTULO_DELETE = "variable_rotulo.delete", "Variable de rótulo eliminada"
+        # labels: ElementLayout/LayoutElement/LayoutVariable, plantillas por
+        # elementos + catálogo de variables (distintas de LabelTemplate/
+        # TEMPLATE_* de arriba: no son el mismo concepto, ver
+        # apps/labels/models.py). Los VALORES guardados (columna izquierda)
+        # quedan igual que siempre: son datos ya escritos en AuditLog.
+        ELEMENT_LAYOUT_CREATE = "plantilla.create", "Plantilla estructurada creada"
+        ELEMENT_LAYOUT_UPDATE = "plantilla.update", "Plantilla estructurada actualizada"
+        ELEMENT_LAYOUT_DELETE = "plantilla.delete", "Plantilla estructurada eliminada"
+        LAYOUT_VARIABLE_CREATE = "variable_rotulo.create", "Variable de rótulo creada"
+        LAYOUT_VARIABLE_UPDATE = "variable_rotulo.update", "Variable de rótulo actualizada"
+        LAYOUT_VARIABLE_DELETE = "variable_rotulo.delete", "Variable de rótulo eliminada"
         # documents
         DOCUMENT_DELETE = "document.delete", "Documento eliminado"
-        # documents: archivo fuente subido para importar (Documento, distinto
-        # de Document/DOCUMENT_DELETE de arriba).
-        DOCUMENTO_CREATE = "documento.create", "Documento fuente subido"
-        DOCUMENTO_DELETE = "documento.delete", "Documento fuente eliminado"
-        # processing: lectura de un rótulo con Claude a partir de un Documento
-        IMPORTACION_ROTULO_CREATE = "importacion_rotulo.create", "Importación de rótulo lanzada"
+        # documents: archivo fuente subido para importar (UploadedLabelFile,
+        # distinto de Document/DOCUMENT_DELETE de arriba).
+        UPLOADED_FILE_CREATE = "documento.create", "Documento fuente subido"
+        UPLOADED_FILE_DELETE = "documento.delete", "Documento fuente eliminado"
+        # processing: lectura de un rótulo con Claude a partir de un UploadedLabelFile
+        LABEL_IMPORT_CREATE = "importacion_rotulo.create", "Importación de rótulo lanzada"
         # integrations (apps.integrations)
         INTEGRATION_KEY_CREATE = "integration_key.create", "Clave de integración creada"
         INTEGRATION_KEY_DELETE = "integration_key.delete", "Clave de integración eliminada"
         INCOMING_WEBHOOK_CREATE = "incoming_webhook.create", "Webhook entrante creado"
         WEBHOOK_ENDPOINT_CREATE = "webhook_endpoint.create", "Webhook saliente creado"
+        STORE_CONNECT = "store.connect", "Tienda online conectada"
+        STORE_CLAIM = "store.claim", "Tienda online vinculada a una cuenta"
+        STORE_DISCONNECT = "store.disconnect", "Tienda online desconectada"
+        STORE_UPDATE = "store.update", "Tienda online editada"
+        PRIVACY_STORE_REDACT = "privacy.store_redact", "Datos de una tienda eliminados (privacidad)"
+        PRIVACY_CUSTOMER_REDACT = "privacy.customer_redact", "Datos de un comprador eliminados (privacidad)"
+        PRIVACY_DATA_REQUEST = "privacy.data_request", "Reporte de datos de un comprador (privacidad)"
 
     # Cada acción pertenece a exactamente una categoría. Se guarda acá (en vez
     # de derivarla del prefijo de la acción) porque los nombres no son
@@ -117,6 +127,7 @@ class AuditLog(models.Model):
         Action.ORDER_CREATE: Category.ORDERS,
         Action.ORDER_STATUS_CHANGE: Category.ORDERS,
         Action.ORDER_CANCEL: Category.ORDERS,
+        Action.ORDER_SHIP: Category.ORDERS,
         Action.ORDER_IMPORT: Category.ORDERS,
         Action.ORDER_WEBHOOK_INGEST: Category.ORDERS,
         Action.SUPPORT_CREATE: Category.SUPPORT,
@@ -130,20 +141,27 @@ class AuditLog(models.Model):
         Action.TEMPLATE_CREATE: Category.LABELS,
         Action.TEMPLATE_UPDATE: Category.LABELS,
         Action.TEMPLATE_DELETE: Category.LABELS,
-        Action.PLANTILLA_CREATE: Category.LABELS,
-        Action.PLANTILLA_UPDATE: Category.LABELS,
-        Action.PLANTILLA_DELETE: Category.LABELS,
-        Action.VARIABLE_ROTULO_CREATE: Category.LABELS,
-        Action.VARIABLE_ROTULO_UPDATE: Category.LABELS,
-        Action.VARIABLE_ROTULO_DELETE: Category.LABELS,
+        Action.ELEMENT_LAYOUT_CREATE: Category.LABELS,
+        Action.ELEMENT_LAYOUT_UPDATE: Category.LABELS,
+        Action.ELEMENT_LAYOUT_DELETE: Category.LABELS,
+        Action.LAYOUT_VARIABLE_CREATE: Category.LABELS,
+        Action.LAYOUT_VARIABLE_UPDATE: Category.LABELS,
+        Action.LAYOUT_VARIABLE_DELETE: Category.LABELS,
         Action.DOCUMENT_DELETE: Category.DOCUMENTS,
-        Action.DOCUMENTO_CREATE: Category.DOCUMENTS,
-        Action.DOCUMENTO_DELETE: Category.DOCUMENTS,
-        Action.IMPORTACION_ROTULO_CREATE: Category.PROCESSING,
+        Action.UPLOADED_FILE_CREATE: Category.DOCUMENTS,
+        Action.UPLOADED_FILE_DELETE: Category.DOCUMENTS,
+        Action.LABEL_IMPORT_CREATE: Category.PROCESSING,
         Action.INTEGRATION_KEY_CREATE: Category.INTEGRATIONS,
         Action.INTEGRATION_KEY_DELETE: Category.INTEGRATIONS,
         Action.INCOMING_WEBHOOK_CREATE: Category.INTEGRATIONS,
         Action.WEBHOOK_ENDPOINT_CREATE: Category.INTEGRATIONS,
+        Action.STORE_CONNECT: Category.INTEGRATIONS,
+        Action.STORE_CLAIM: Category.INTEGRATIONS,
+        Action.STORE_DISCONNECT: Category.INTEGRATIONS,
+        Action.STORE_UPDATE: Category.INTEGRATIONS,
+        Action.PRIVACY_STORE_REDACT: Category.INTEGRATIONS,
+        Action.PRIVACY_CUSTOMER_REDACT: Category.INTEGRATIONS,
+        Action.PRIVACY_DATA_REQUEST: Category.INTEGRATIONS,
     }
 
     actor = models.ForeignKey(

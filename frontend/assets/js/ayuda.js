@@ -1,6 +1,6 @@
 // Ayuda / Soporte: form de contacto simple. Sesión y apiFetch salen de
 // assets/js/auth.js (window.Auth), compartido con el resto del frontend
-// (ver dashboard.js / perfil.js / admingestion_test.js).
+// (ver dashboard.js / perfil.js / usuarios.js).
 
 const API_BASE = `${window.APP_CONFIG.API_BASE}/auth`;
 const ME_URL = `${API_BASE}/me/`;
@@ -10,25 +10,6 @@ const getAccessToken = () => window.Auth.getAccessToken();
 const getCurrentUser = () => window.Auth.getCurrentUser();
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
-// Topbar: mismos datos que ya trae localStorage (evita otro round-trip solo
-// para pintar nombre/email/avatar), igual criterio que dashboard.html usa
-// antes del primer fetch.
-function renderTopbar() {
-  const user = getCurrentUser();
-  const nameEl = document.getElementById("userName");
-  const emailEl = document.getElementById("userEmail");
-  const avatarEl = document.getElementById("userAvatar");
-  const email = user.email || "";
-  const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || email || "Usuario";
-
-  if (nameEl) nameEl.textContent = name;
-  if (emailEl) emailEl.textContent = email || "—";
-  if (avatarEl && email) {
-    avatarEl.src = user.picture
-      ? user.picture
-      : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`;
-  }
-}
 
 const msg = document.getElementById("supportMsg");
 function showMsg(text, ok) {
@@ -70,17 +51,17 @@ function renderMyMessages(messages) {
       const responseBlock = message.response
         ? `<div class="support-msg-response">
              <div class="support-msg-response-label">Respuesta</div>
-             ${message.response}
+             ${escapeHtml(message.response)}
            </div>`
         : "";
       return `
         <div class="support-msg-item">
           <div class="support-msg-head">
-            <span class="support-msg-subject">${message.subject}</span>
-            <span class="support-msg-status ${statusKey}">${statusLabel}</span>
+            <span class="support-msg-subject">${escapeHtml(message.subject)}</span>
+            <span class="support-msg-status ${statusKey}">${escapeHtml(statusLabel)}</span>
           </div>
           <div class="support-msg-date">${formatMessageDate(message.created_at)}</div>
-          <p class="support-msg-body">${message.message}</p>
+          <p class="support-msg-body">${escapeHtml(message.message)}</p>
           ${responseBlock}
         </div>
       `;
@@ -158,6 +139,6 @@ if (logoutBtn) {
 if (!getAccessToken()) {
   window.location.replace("index.html");
 } else {
-  renderTopbar();
+  window.AppTopbar.render();
   loadMyMessages();
 }

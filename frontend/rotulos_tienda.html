@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Rótulos pedidos desde la tienda</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/rotulos_tienda.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
+      <header
+        class="topbar"
+        id="appTopbar"
+        data-links='[{"href": "tiendas.html", "label": "Mis tiendas"}, {"href": "dashboard.html", "label": "Volver al panel"}]'
+      ></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Rótulos pedidos desde la tienda</h1>
+          <p>
+            Cuando imprimís etiquetas desde el panel de tu tienda, los rótulos
+            se generan acá. Esta pantalla muestra en qué quedó cada uno y, si
+            algo falló, por qué.
+          </p>
+        </div>
+
+        <p
+          id="pageMessage"
+          class="page-message"
+          role="status"
+          aria-live="polite"
+          style="display: none"
+        ></p>
+
+        <section class="profile-card">
+          <div class="profile-card-title">
+            <span>Rótulos</span>
+          </div>
+          <div class="profile-card-body">
+            <div class="labels-toolbar">
+              <select id="storeFilter" class="status-filter">
+                <option value="">Todas mis tiendas</option>
+              </select>
+              <select id="statusFilter" class="status-filter">
+                <option value="">Todos los estados</option>
+                <option value="pending">Pendiente</option>
+                <option value="ready">Generado</option>
+                <option value="failed">Falló</option>
+                <option value="canceled">Cancelado</option>
+                <option value="suspended">Suspendido</option>
+              </select>
+              <button type="button" id="refreshBtn" class="btn btn-outline btn-small">
+                Actualizar
+              </button>
+            </div>
+
+            <div id="planWarning" class="plan-warning" style="display: none"></div>
+
+            <div id="labelList" class="label-list">
+              <p class="empty-state">Cargando rótulos...</p>
+            </div>
+
+            <div id="pager" class="pager" style="display: none">
+              <button type="button" id="prevBtn" class="btn btn-outline btn-small">
+                Anterior
+              </button>
+              <span id="pageInfo" class="pager-info"></span>
+              <button type="button" id="nextBtn" class="btn btn-outline btn-small">
+                Siguiente
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/rotulos_tienda.js"></script>
+  </body>
+</html>

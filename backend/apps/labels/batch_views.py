@@ -7,7 +7,7 @@ ANTES de generar nada, así el frontend ya tiene un id para mostrar (y un
 registro que sobrevive) aunque el proceso tarde o falle.
 
 Un solo camino de generación: cada rótulo pasa por
-``apps.labels.rendering.draw_label_page``/``render_label_pdf``, las
+``apps.labels.label_rendering.draw_label_page``/``render_label_pdf``, las
 mismas funciones que usa el endpoint individual — acá no se reimplementa
 el dibujo, solo se decide QUÉ rótulos entran y cómo se empaquetan
 (un PDF de muchas páginas, o un ZIP de un PDF por rótulo).
@@ -38,7 +38,7 @@ from apps.documents.serializers import DocumentSerializer
 from apps.orders.models import Order
 
 from .models import Label, LabelTemplate
-from .rendering import (
+from .label_rendering import (
     CM_TO_POINTS,
     build_computed_context,
     build_label_context,
@@ -80,11 +80,14 @@ def _render_params_for_item(item, template):
         name_hint = context.get("tracking") or f"rotulo-{item.pk}"
         return item.design, item.width_cm, item.height_cm, context, (item.logo or None), name_hint
 
-    # Order: el diseño sale de la plantilla del lote, sin logo propio
-    # (igual que RenderLabelView).
+    # Order: el diseño sale de la plantilla del lote. El logo, de la tienda
+    # del pedido si la cargó (cada tienda imprime el suyo); un pedido sin
+    # tienda, o una tienda sin logo, sale sin logo como antes.
     context = build_label_context(order=item)
     name_hint = context.get("tracking") or f"pedido-{item.pk}"
-    return template.design, template.width_cm, template.height_cm, context, None, name_hint
+    store = getattr(item, "store_connection", None)
+    logo_file = getattr(store, "logo", None) or None
+    return template.design, template.width_cm, template.height_cm, context, logo_file, name_hint
 
 
 def _safe_zip_name(name_hint, used_names):
@@ -338,7 +341,6 @@ class LabelBatchView(APIView):
         if selector == "label_ids":
             items = self._resolve_labels(request.user, data["label_ids"], can_view_all)
         else:
-            template = self._resolve_template(request.user, data.get("template_id"))
             if selector == "order_ids":
                 items, skipped_existing_count = self._resolve_orders(
                     request.user, data["order_ids"], can_view_all, skip_existing
@@ -347,6 +349,9 @@ class LabelBatchView(APIView):
                 items, skipped_existing_count = self._resolve_orders_by_filters(
                     request.user, data["filters"], can_view_all, skip_existing
                 )
+            # Después de los pedidos: sin template_id, la plantilla puede
+            # salir de la tienda de esos pedidos (ver _resolve_template).
+            template = self._resolve_template(request.user, data.get("template_id"), items)
 
         if not items:
             if skipped_existing_count:
@@ -400,8 +405,24 @@ class LabelBatchView(APIView):
 
     # --- Resolución de la selección ------------------------------------
 
-    def _resolve_template(self, user, template_id):
+    def _resolve_template(self, user, template_id, orders=None):
         if not template_id:
+            # Sin template_id: si todos los pedidos del lote son de tiendas
+            # que eligieron la MISMA plantilla preferida, se usa esa. Con
+            # tiendas distintas (o pedidos sin tienda) no se puede elegir por
+            # el usuario: cae a la pública por defecto, abajo.
+            store_templates = {
+                order.store_connection.default_template
+                for order in (orders or [])
+                if getattr(order, "store_connection", None) is not None
+                and order.store_connection.default_template_id is not None
+            }
+            if len(store_templates) == 1 and len(store_templates) == len(
+                [order for order in (orders or []) if getattr(order, "store_connection", None)]
+            ):
+                preferred = store_templates.pop()
+                if preferred.is_active and (preferred.is_public or preferred.owner_id == user.pk):
+                    return preferred
             # Sin template_id: cae a la plantilla pública "por defecto"
             # (la más antigua activa — normalmente la sembrada por
             # apps.labels.migrations.0003_seed_default_label_template) en

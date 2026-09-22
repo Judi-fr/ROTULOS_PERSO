@@ -182,7 +182,7 @@ function renderLastOrderSummary(order) {
   card.className = "summary-card";
   card.innerHTML = `
     <div class="summary-card-title">Último pedido</div>
-    <div class="summary-card-main">${order.description || `Pedido #${order.id}`} — ${order.status_label}</div>
+    <div class="summary-card-main">${escapeHtml(order.description || `Pedido #${order.id}`)} — ${escapeHtml(order.status_label)}</div>
     <div class="summary-card-sub">Creado el ${formatOrderDate(order.created_at)}</div>
     <a class="summary-card-link" href="pedidos.html">Ver mis pedidos →</a>
   `;
@@ -252,7 +252,7 @@ async function loadDashboard() {
 }
 
 // ---------------------------------------------------------------------------
-// Logout: misma lógica que admingestion_test.js (window.Auth.logout).
+// Logout: misma lógica que admin_common.js (window.Auth.logout).
 // ---------------------------------------------------------------------------
 const logoutBtn = document.getElementById("logoutBtn");
 if (logoutBtn) {

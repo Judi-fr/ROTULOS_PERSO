@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Imprimir rótulos</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/pedidos.css" />
+    <link rel="stylesheet" href="assets/css/imprimir_rotulos.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
+      <header class="topbar" id="appTopbar" data-links='[{"href": "pedidos.html", "label": "Mis pedidos"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Imprimir rótulos</h1>
+          <p>Elegí los pedidos y generá sus rótulos en un solo archivo.</p>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <!-- Filtros -->
+        <section class="profile-card">
+          <div class="profile-card-title">Qué pedidos ver</div>
+          <div class="profile-card-body">
+            <div class="filters-row">
+              <div class="field" id="storeFilterField" style="display:none;">
+                <label for="storeFilter">Tienda</label>
+                <select id="storeFilter">
+                  <option value="">Todas las tiendas</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="statusFilter">Estado</label>
+                <select id="statusFilter">
+                  <option value="created,preparing">Pendientes de despacho</option>
+                  <option value="">Todos</option>
+                  <option value="created">Creados</option>
+                  <option value="preparing">En preparación</option>
+                  <option value="dispatched">Despachados</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Pedidos -->
+        <section class="profile-card">
+          <div class="profile-card-title">
+            <span>Pedidos</span>
+            <span class="selection-count" id="selectionCount">0 seleccionados</span>
+          </div>
+          <div class="profile-card-body">
+            <div class="select-all-row">
+              <input type="checkbox" id="selectAll" />
+              <label for="selectAll">Seleccionar todos los de esta página</label>
+            </div>
+            <div id="orderList" class="print-order-list">
+              <p class="empty-state">Cargando pedidos...</p>
+            </div>
+            <div class="pager" id="pager" style="display:none;">
+              <button type="button" class="btn btn-outline btn-small" id="prevPageBtn">Anterior</button>
+              <span id="pageInfo"></span>
+              <button type="button" class="btn btn-outline btn-small" id="nextPageBtn">Siguiente</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Impresión -->
+        <section class="profile-card">
+          <div class="profile-card-title">Cómo imprimir</div>
+          <div class="profile-card-body">
+            <div class="filters-row">
+              <div class="field">
+                <label for="templateSelect">Plantilla</label>
+                <select id="templateSelect">
+                  <option value="">La de cada tienda</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="pageLayoutSelect">Formato</label>
+                <select id="pageLayoutSelect">
+                  <option value="label">Una hoja por rótulo</option>
+                  <option value="a4">Varios rótulos por hoja A4</option>
+                </select>
+              </div>
+            </div>
+            <div class="field-checkbox">
+              <input type="checkbox" id="skipExisting" checked />
+              <label for="skipExisting" style="margin:0;">Omitir los pedidos que ya tienen rótulo</label>
+            </div>
+            <div class="field-checkbox">
+              <input type="checkbox" id="markDispatched" />
+              <label for="markDispatched" style="margin:0;">
+                Marcar los pedidos como despachados después de imprimir
+              </label>
+            </div>
+            <p id="printMsg" class="form-message" style="display:none;"></p>
+            <div class="form-actions">
+              <button type="button" class="btn btn-primary" id="printBtn">Generar rótulos</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/print_labels.js"></script>
+  </body>
+</html>

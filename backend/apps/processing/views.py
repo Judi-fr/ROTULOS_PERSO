@@ -9,12 +9,12 @@ from rest_framework.throttling import UserRateThrottle
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
 
-from . import agente
-from .models import EstadoImportacion, ImportacionRotulo
-from .serializers import ImportacionRotuloSerializer
+from . import agent
+from .models import LabelImport, LabelImportStatus
+from .serializers import LabelImportSerializer
 
 
-class ImportacionThrottle(UserRateThrottle):
+class LabelImportThrottle(UserRateThrottle):
     """Límite propio para las lecturas.
 
     Cada importación es una llamada al modelo que se paga por token, así que el
@@ -24,7 +24,7 @@ class ImportacionThrottle(UserRateThrottle):
     scope = "importacion_rotulo"
 
 
-class ImportacionRotuloViewSet(
+class LabelImportViewSet(
     mixins.CreateModelMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
@@ -32,76 +32,76 @@ class ImportacionRotuloViewSet(
 ):
     """Lectura de un rótulo desde una foto o un PDF ya subido.
 
-    ``POST`` con ``{"documento": <id>}`` procesa el archivo y devuelve la
+    ``POST`` con ``{"uploaded_file": <id>}`` procesa el archivo y devuelve la
     plantilla **propuesta**. No la guarda: el usuario la revisa en el editor y
-    después la manda él mismo a ``POST /api/v1/labels/plantillas/``.
+    después la manda él mismo a ``POST /api/v1/labels/element-layouts/``.
 
     No hay ``update`` ni ``destroy``: una lectura es un hecho registrado, no
     algo que se edite.
     """
 
-    serializer_class = ImportacionRotuloSerializer
-    throttle_classes = [ImportacionThrottle]
+    serializer_class = LabelImportSerializer
+    throttle_classes = [LabelImportThrottle]
 
     def get_permissions(self):
         return [IsAuthenticated(), HasRolePermission("processing.import")]
 
     def get_queryset(self):
-        return ImportacionRotulo.objects.filter(
-            creada_por=self.request.user
-        ).select_related("documento")
+        return LabelImport.objects.filter(
+            created_by=self.request.user
+        ).select_related("uploaded_file")
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        importacion = serializer.save(creada_por=request.user)
+        label_import = serializer.save(created_by=request.user)
 
-        agente.interpretar(importacion)
+        agent.process(label_import)
 
         record(
             request,
             category="processing",
             action="importacion_rotulo.create",
-            target=importacion,
+            target=label_import,
             target_type="importacionrotulo",
-            target_repr=str(importacion),
-            changes={"documento": {"from": None, "to": importacion.documento_id}},
+            target_repr=str(label_import),
+            changes={"documento": {"from": None, "to": label_import.uploaded_file_id}},
         )
 
-        salida = self.get_serializer(importacion)
-        codigo = (
+        output = self.get_serializer(label_import)
+        code = (
             status.HTTP_201_CREATED
-            if importacion.estado == EstadoImportacion.COMPLETADA
+            if label_import.status == LabelImportStatus.COMPLETED
             else status.HTTP_502_BAD_GATEWAY
         )
-        return Response(salida.data, status=codigo)
+        return Response(output.data, status=code)
 
     @action(detail=True, methods=["post"])
-    def reintentar(self, request, pk=None):
+    def retry(self, request, pk=None):
         """Vuelve a procesar el mismo documento en una importación nueva."""
         original = self.get_object()
-        nueva = ImportacionRotulo.objects.create(
-            documento=original.documento, creada_por=request.user
+        new_import = LabelImport.objects.create(
+            uploaded_file=original.uploaded_file, created_by=request.user
         )
-        agente.interpretar(nueva)
+        agent.process(new_import)
 
         record(
             request,
             category="processing",
             action="importacion_rotulo.create",
-            target=nueva,
+            target=new_import,
             target_type="importacionrotulo",
-            target_repr=str(nueva),
+            target_repr=str(new_import),
             changes={
-                "documento": {"from": None, "to": nueva.documento_id},
+                "documento": {"from": None, "to": new_import.uploaded_file_id},
                 "reintento_de": {"from": None, "to": original.pk},
             },
         )
 
-        salida = self.get_serializer(nueva)
-        codigo = (
+        output = self.get_serializer(new_import)
+        code = (
             status.HTTP_201_CREATED
-            if nueva.estado == EstadoImportacion.COMPLETADA
+            if new_import.status == LabelImportStatus.COMPLETED
             else status.HTTP_502_BAD_GATEWAY
         )
-        return Response(salida.data, status=codigo)
+        return Response(output.data, status=code)

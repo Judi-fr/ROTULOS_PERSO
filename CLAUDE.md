@@ -4,18 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-ROTULOS_PERSO is a label/sign generation app for **Buspack**, a nationwide (Argentina) light-parcel
-delivery company (500+ points of sale, 600+ destinations, partnered long-distance bus companies as
-carriers). A "rótulo" here is a shipping/waybill LABEL that gets stuck on a parcel travelling on a bus —
-not a product tag — with sender, recipient, address, postal code, city/province, order number and a QR
-that gets scanned at the point of sale and at the terminal. The app is split into a Django REST API
-(`backend/`) and a static multi-page frontend (`frontend/`, plain HTML/CSS/JS, no build step). `accounts`
-(authentication, user administration, roles/permissions, support inbox), `orders` (addresses/orders,
-self-service + admin "all orders" view), `audit` (read-only audit trail) and `labels` (label templates +
-concrete labels, self-service + admin "all labels" view) are implemented; `documents` and `processing`
-are still scaffolded Django apps with empty models/views/urls, reserved for uploading files and
-converting them to a label format. There is no point-of-sale/destination catalog yet — `Address` stores
-city/state as free text and `Order.carrier` awaits the partner's tracking API — don't assume those exist.
+ROTULOS_PERSO is a **multi-client** shipping-label ("rótulo") app, distributed as an app installed in
+online stores (Tiendanube first, Shopify maybe later): each client connects their store, their orders
+arrive automatically, and the app generates the labels, dispatches and pushes tracking back. It is **not**
+built for a single company — never hardcode a client, sender or carrier name as a default. A "rótulo" is a
+shipping/waybill LABEL stuck on a parcel — not a product tag — with sender (the client/store that ships),
+recipient (the buyer), address, postal code, city/province, order number, QR and barcode.
+
+Backend: Django REST API (`backend/`), all routes under `/api/v1/` (`backend/config/urls.py`). Apps:
+`accounts` (auth, user admin, roles/permissions, support inbox), `orders` (addresses/orders, manual
+creation, CSV/Excel import, store sync, dispatch), `audit` (read-only trail), `labels` (two independent
+label-rendering systems, see below), `integrations` (store connections, webhooks, event queue),
+`documents` (generated batch output + uploaded source files) and `processing` (Claude vision agent that
+reads a photographed label). Frontend: static multi-page app (`frontend/`), plain HTML/CSS/JS, no build
+step.
+
+Don't assume: there is no point-of-sale/destination catalog (`Address` stores city/state as free text),
+there is no carrier API (`Order.carrier`/`tracking_number` are typed in when dispatching), and the app is
+not scoped to one client or one carrier.
 
 ## Commands
 
@@ -26,276 +32,329 @@ cd backend
 source venv/bin/activate
 ```
 
-- Run the dev server: `python manage.py runserver` (defaults to `config.settings.dev` via `manage.py`)
-- Run all tests: `python manage.py test`
-- Run one app's tests: `python manage.py test apps.accounts`
-- Run a single test case / method: `python manage.py test apps.accounts.tests.LoginTests.test_login_normaliza_email`
-- Make/apply migrations: `python manage.py makemigrations` / `python manage.py migrate`
+- Dev server: `python manage.py runserver` (defaults to `config.settings.dev` via `manage.py`)
+- All tests: `python manage.py test`
+- One app: `python manage.py test apps.accounts`
+- One test: `python manage.py test apps.accounts.tests.test_accounts.LoginTests.test_login_normaliza_email`
+- Migrations: `python manage.py makemigrations` / `python manage.py migrate`
 - Django shell: `python manage.py shell`
+- Store integrations worker (processes `IntegrationEvent`, retries): `python manage.py run_integrations_worker`
+  (`--once` for a single batch, `--limit`, `--sleep`)
 
-Settings module is selected via `DJANGO_SETTINGS_MODULE` (`config.settings.dev` or `config.settings.prod`);
-`manage.py` defaults to `dev`. Both import everything from `config/settings/base.py`.
+`DJANGO_SETTINGS_MODULE` selects `config.settings.dev` or `config.settings.prod`; both import from
+`config/settings/base.py`. `manage.py` defaults to `dev`.
 
-### Docker (Postgres + API)
+### Docker (Postgres + API + worker)
 
-```bash
-cd backend
-docker-compose up
-```
-
-Runs Postgres 17 plus the API with `runserver` and autoreload (code mounted as a volume). Requires a
-`.env` in `backend/` — copy `.env.example` and fill in `SECRET_KEY`, `POSTGRES_PASSWORD`, etc. Without
-`DATABASE_URL` set, Django falls back to local SQLite (`backend/db.sqlite3`), so tests/dev work without
-Docker or Postgres.
+`cd backend && docker-compose up` — Postgres 17, the API with `runserver`/autoreload, and the
+`run_integrations_worker` process (`restart: unless-stopped`, no ports). Without that worker running,
+store integrations do nothing on their own: webhooks only enqueue `IntegrationEvent` rows. Stuck or
+failed events are visible in the Django admin (`IntegrationEvent`, filters by status/event type). Needs `backend/.env`
+(copy `.env.example`). Without `DATABASE_URL`, Django falls back to local SQLite (`backend/db.sqlite3`) —
+tests/dev work without Docker or Postgres. `backend/db.sqlite3*` also has manual recovery snapshots
+checked in (`.backup-antes-de-reparar`, `-backup-crud`, `-con-admin-recuperado`) — only plain `db.sqlite3`
+is the live one; don't delete the others or treat them as fixtures.
 
 ### Frontend
 
-No build step. Open the HTML files directly or serve `frontend/` with any static server. Frontend JS
-files hardcode the API base URL as `http://127.0.0.1:8000/api/v1/...` (see `assets/js/*.js`) — there is
-no env-based config, so keep the backend on that host/port for the existing frontend to work as-is.
+No build step. Open the HTML files directly or serve `frontend/` with any static server. The API base URL
+lives only in `assets/js/config.js` (`window.APP_CONFIG.API_BASE`, `http://127.0.0.1:8000/api/v1`), loaded
+first on every page; every other script builds URLs on it.
 
 ## Architecture
 
-### Backend app layout
+### Backend URL map (`config/urls.py`)
 
-- `config/settings/base.py` — all shared settings (env vars via `django-environ`, reads `backend/.env`).
-  `dev.py` and `prod.py` layer on top (dev: `ALLOWED_HOSTS = ["*"]`, CORS wide open, browsable API,
-  console email backend by default; prod: HTTPS/HSTS/secure-cookie settings).
-- `config/urls.py` — all routes are versioned under `/api/v1/`. `apps.accounts.urls` mounts under
-  `/api/v1/auth/`, `apps.accounts.management_urls` (the admin user CRUD) mounts at `/api/v1/` (so its
-  router path resolves to `/api/v1/users/`), `apps.accounts.admin_urls` (admin support inbox) also
-  mounts at `/api/v1/` (`/api/v1/support-messages/`), `apps.orders.urls` mounts at `/api/v1/`
-  (`/api/v1/addresses/`, `/api/v1/orders/`, `/api/v1/admin/orders/`), `apps.audit.urls` mounts at
-  `/api/v1/audit/` (`/logs/`, `/actions/`), `apps.labels.urls` mounts at `/api/v1/labels/`
-  (`/labels/`, `/templates/`, `/admin/`), and `documents`/`processing` mount at their own
-  `/api/v1/<app>/` prefixes but currently expose empty `urlpatterns`.
-- REST Framework is closed by default: `DEFAULT_PERMISSION_CLASSES = [IsAuthenticated]` project-wide, so
-  any new endpoint needs `permission_classes = [AllowAny]` explicitly to be public. JWT auth only
-  (`djangorestframework-simplejwt`), access token in `Authorization: Bearer <token>`.
+- `api/v1/auth/` → `apps.accounts.urls` (login/register/Google/logout/password-reset/verify-email, `me/`,
+  `me/change-password/`, `support/`, `users/me/dashboard/`, `roles/`, `permissions/`, `refresh/`)
+- `api/v1/` → `apps.accounts.user_admin_urls` (`users/`, admin CRUD) and `apps.accounts.support_admin_urls`
+  (`support-messages/`, admin inbox)
+- `api/v1/` → `apps.orders.urls` (`addresses/`, `orders/` — list filters `?store=<id>|manual` and
+  `?status=created,preparing` —, `admin/orders/`, `orders/metrics/`,
+  `orders/manual/`, `orders/imports/...`, `orders/import-mappings/`)
+- `api/v1/audit/` → `apps.audit.urls` (`logs/`, `actions/`, `metrics/`)
+- `api/v1/documents/` → `apps.documents.urls` (generated batch output)
+- `api/v1/processing/` → `apps.processing.urls` (photo → label-layout agent)
+- `api/v1/labels/` → `apps.labels.urls` (`labels/`, `templates/`, `element-layouts/`, `layout-variables/`,
+  `admin/`, `render/`, `barcode/`, `batch/`, `fonts/`)
+- `api/v1/integrations/` → `apps.integrations.urls` (admin ABM + store connections)
+- `api/v1/ingest/` → `apps.integrations.ingest_urls` (API-key/webhook order ingest, separate auth)
+- `api/v1/integrations/` → `apps.integrations.label_urls` (Tiendanube Labels API callbacks + public PDF
+  download, separate auth — see "Labels the store asks for" below)
 
-### Auth & identity model
+REST Framework is closed by default (`DEFAULT_PERMISSION_CLASSES = [IsAuthenticated]`); a public endpoint
+needs `permission_classes = [AllowAny]` explicitly. JWT only (`djangorestframework-simplejwt`), access
+token in `Authorization: Bearer <token>`.
 
-- **Email is the username.** Every login path (Google, email/password, register) normalizes the email
-  (`views.normalize_email`) and uses it as `User.username`, so `Juan@Gmail.com` and `juan@gmail.com`
-  resolve to the same account regardless of how they signed up.
-- All login endpoints (`GoogleAuthView`, `LoginView`, `RegisterView`) return the same shape via
-  `views.auth_response` / `views.user_payload`: `{access, refresh, user: {..., role, permissions}}`, so
-  the frontend never branches on login method.
-- Refresh tokens rotate and get blacklisted on rotation/logout (`ROTATE_REFRESH_TOKENS` +
-  `BLACKLIST_AFTER_ROTATION` in `SIMPLE_JWT`, `rest_framework_simplejwt.token_blacklist` app). Password
-  reset also revokes *all* outstanding refresh tokens for the user (`blacklist_all_refresh_tokens`) in
-  case the account was compromised.
-- Password rules are enforced in two layers everywhere a password is set (register, admin-create,
-  change-password, reset-confirm): `views.validate_password_strength` (project rule: 6+ chars, one
-  uppercase, one digit) plus Django's own `AUTH_PASSWORD_VALIDATORS`.
+### Auth & identity (`apps/accounts`)
+
+- **Email is the username** — every login path (Google, email/password, register) normalizes the email
+  and uses it as `User.username`.
+- `auth_views.py` holds `LoginView`, `RegisterView`, `GoogleAuthView`, `LogoutView`,
+  `PasswordResetRequestView`/`Confirm`, `EmailVerificationConfirmView`/`Resend`, `ChangePasswordView`, plus
+  `user_payload()`/`auth_response()` — every login endpoint returns the same
+  `{access, refresh, user: {..., role, permissions}}` shape.
+- Refresh tokens rotate and get blacklisted on rotation/logout (`SIMPLE_JWT` + `token_blacklist` app);
+  password reset revokes all outstanding refresh tokens.
+- Password rules (`validate_password_strength`, `auth_views.py`): 6+ chars, one uppercase, one digit, plus
+  Django's own validators — enforced on register, admin-create, change-password, and reset-confirm.
+- `dashboard_views.DashboardView` (`GET users/me/dashboard/`) returns the role-based menu — the frontend
+  only renders it. `profile_views.ProfileView` is the self-service `me/` GET/PATCH.
 
 ### Roles & permissions (`apps/accounts`)
 
-There is **no `role` field on `User`** — the role is derived, never stored directly:
+There is **no `role` field on `User`** — it's derived, never stored directly:
 
-- The source of truth for "which role does this user have" is Django `Group` membership, resolved by
-  `permissions_map.get_effective_role()`: checks canonical groups (`admin`, `designer`, `operator`,
-  `subscriber`) first, falls back to a custom Group name (custom roles), then to `is_staff → admin`,
-  then to `subscriber`. `serializers.get_user_role` is just an alias of this function — do not
-  reimplement role resolution elsewhere.
-- The source of truth for "which atomic permissions does this role have" is the `GroupRolePermission`
-  DB table (Group ↔ `RolePermission`), managed under `/api/v1/auth/roles/` and
-  `/api/v1/auth/permissions/` (`role_permission_views.py`). `permissions_map.ROLE_PERMISSIONS` is only a
-  static fallback used if that table isn't queryable yet (e.g. mid-migration).
+- `permissions_map.get_effective_role()` is the source of truth for "which role": checks canonical Django
+  Groups (`admin`, `designer`, `operator`, `subscriber`) first, then falls back to a custom Group name
+  (custom roles), then `is_staff → admin`, then `subscriber` (`DEFAULT_ROLE`).
+- `GroupRolePermission` (Group ↔ `RolePermission`) is the source of truth for "which permissions", managed
+  under `/api/v1/auth/roles/` and `/api/v1/auth/permissions/` (`role_permission_views.py`).
+  `permissions_map.ROLE_PERMISSIONS` is only a static fallback for when that table isn't queryable yet.
 - `permissions_map.user_has_permission(user, key)` is the single check to call from views;
-  `role_permissions.HasRolePermission` wraps it as a DRF permission class. `UserAdminViewSet` instead
-  calls `user_has_permission` directly per-action (`_require_permission`,
-  `_required_update_permissions`) because different HTTP methods/fields require different permissions
-  (e.g. editing `status` needs `users.reactivate`/`users.deactivate`, not `users.edit`).
-- Legacy/alias role names (`"user"`, `"administrador"`, `"diseñador"`, ...) are normalized by
-  `permissions_map.normalize_role()`. Unrecognized roles are treated as valid custom roles and preserved
-  (not collapsed to the default) so custom-role permission assignment keeps working.
-- When adding a new permission-gated action: add the permission key to `permissions_map.PERMISSIONS`,
-  seed it via `RolePermission`, and gate the view/serializer field with `user_has_permission`. Don't add
-  a new source of role truth (no new `role` field, no separate group lookup).
-- Admin-only permissions (assigned **only** to the `admin` group, not to the self-service roles):
-  `audit.view`, `orders.view_all`, `support.view_all`, `support.manage` — seeded by
-  `accounts/migrations/0014_seed_admin_only_permissions.py` — plus `labels.view_all` and
-  `labels.manage_templates`, seeded (together with the self-service `labels.view`/`create`/`edit`/
-  `delete`) by `accounts/migrations/0015_seed_label_permissions.py`.
+  `role_permissions.HasRolePermission` wraps it as a DRF permission class. `user_admin_views.UserAdminViewSet`
+  calls `user_has_permission` directly per action instead, because different fields need different
+  permissions (editing `status` needs `users.reactivate`/`users.deactivate`, not `users.edit`).
+- `permissions_map.normalize_role()` maps legacy aliases (`"user"` → `subscriber`, `"administrador"` →
+  `admin`, ...); an unrecognized role is treated as a valid custom role and preserved.
+- When adding a permission-gated action: add the key to `permissions_map.PERMISSIONS`, seed it via
+  `RolePermission` in a migration, gate the view with `user_has_permission`/`HasRolePermission`. Don't add
+  a new source of role truth.
+- Admin-only permissions (assigned only to the `admin` group): `audit.view`, `orders.view_all`,
+  `support.view_all`, `support.manage`, `labels.view_all`, `labels.manage_templates`,
+  `documents.view_all` — each seeded by its own `apps/accounts/migrations/00NN_seed_*.py`.
 
-### Audit trail (`apps/audit`) and admin support inbox
+### Audit trail (`apps/audit`)
 
-- `apps.audit.AuditLog` is the single audit model: `actor` (FK, `SET_NULL`) + `actor_email` snapshot,
-  `category`/`action` (`TextChoices`), plain `target_type`/`target_id`/`target_repr` (no
-  `GenericForeignKey`/contenttypes — simpler to query/test), a `changes` JSON diff
-  (`{"field": {"from": ..., "to": ...}}`, **never** passwords/hashes/tokens), IP/user-agent, and
-  `created_at`. It's immutable: `save()` refuses to update an existing row and `delete()` always
-  raises — there's no write/delete endpoint, only `GET /api/v1/audit/logs/` (filters: `search`,
-  `category`, `action`, `actor`, `target_type`, `date_from`/`date_to`, `ordering`; permission
-  `audit.view`) and `GET /api/v1/audit/actions/` (catalog for the frontend selects).
+- `AuditLog` is the single, immutable model (`save()`/`delete()` refuse to touch an existing row): `actor`
+  (FK, `SET_NULL`) + `actor_email` snapshot, `category`/`action` (`TextChoices`, one category per action via
+  `ACTION_CATEGORIES`), `target_type`/`target_id`/`target_repr` (plain fields, no
+  `GenericForeignKey`/contenttypes), a `changes` diff (`{"field": {"from", "to"}}`, never
+  passwords/hashes/tokens), IP/user-agent, `created_at`.
+- `GET /audit/logs/` (filters: `search`, `category`, `action`, `actor`, `target_type`, `date_from`/`to`,
+  `ordering`; permission `audit.view`), `GET /audit/actions/` (catalog for frontend selects), `GET
+  /audit/metrics/` (admin activity + login events by month).
 - The only way to create a row is `apps.audit.services.record(request=None, *, actor=None, category,
-  action, target=None, ..., changes=None)`. It's called **explicitly** from the views that need it
-  (no signals): `accounts/views.py` (login success/failure/lockout, logout, password
-  change/reset), `accounts/viewsets.py` (`UserAdminViewSet` create/update/deactivate/reactivate/
-  unlock/role change — diff never includes `password`), `accounts/role_permission_views.py` (role
-  create/delete/permissions update), `accounts/support_views.py` (support create/status
-  change/reply), and `apps/orders` (order create/cancel from the view with a known actor;
-  `Order.save()` itself logs `order.status_change` with `actor=None` for edits with no request — e.g.
-  Django admin — using `instance._skip_status_audit = True` to avoid duplicating what the view already
-  logged). `record()` wraps the insert in `transaction.atomic()` and swallows/logs any exception —
-  a failed audit write must never break the calling request.
-- `SupportMessage` (in `apps.accounts.models`) grew `status` (`pending`/`in_progress`/`resolved`),
-  `response`, `responded_at`, `handled_by`, `updated_at`. `SupportMessageView`
-  (`/api/v1/auth/support/`) is now `ListCreateAPIView`: `GET` returns only the caller's own messages
-  (permission `support.create`), `POST` unchanged. The admin inbox is
-  `AdminSupportMessageViewSet` at `/api/v1/support-messages/` (list/retrieve need `support.view_all`,
-  `PATCH` — `status`/`response` only — needs `support.manage`); saving a non-empty `response` sets
-  `responded_at`/`handled_by` and auto-resolves a still-`pending` message unless `status` was sent
-  explicitly.
-- `GET /api/v1/admin/orders/` (`orders.view_all`, admin-only) lists every user's orders
-  (`AdminOrderListView`/`AdminOrderSerializer` in `apps/orders`); the self-service `OrderViewSet`
-  queryset is untouched.
-- `DashboardView` adds `audit` (`gestionuser.html#audit`) and `support_inbox`
-  (`gestionuser.html#support`) menu items only when the effective role is `admin`.
+  action, target=None, ..., changes=None)`, called explicitly from the views that need it (no signals).
+  It wraps the insert in `transaction.atomic()` and swallows/logs any exception — a failed audit write must
+  never break the calling request.
 
-### Reports metrics endpoints
+### Orders (`apps/orders`)
 
-Four read-only, `?months=` (default 6, capped at 12) metrics endpoints back `reportsSection` in
-`gestionuser.html`. Each domain computes its own metrics next to its models/permission, instead of one
-endpoint doing everything:
+- `Address` — free-text `city`/`state` (no catalog), one default per user. `origin` splits the user's own
+  address book (`own`) from addresses created by an incoming order (`shipment`: store sync, import, API —
+  they belong to a BUYER). `AddressViewSet` (`/api/v1/addresses/`) lists/serves only `own`, so a merchant's
+  address book isn't flooded with every buyer's address; the order keeps serving its own address.
+- `Order.Status`: created → preparing → dispatched → in_transit → delivered, or cancelled.
+  `STATUS_PROGRESS`/`status_rank()` define forward-only movement; `is_shippable`/`CANCELLABLE_STATUSES`
+  gate the ship/cancel actions. `source` (web/manual/import/api/webhook/store). Store-order fields:
+  `store_connection` (FK, `RESTRICT`), `external_id`/`external_number`, `contact_email`/`phone`,
+  `shipping_option`, `package_count`, `total_weight_kg`, `items`, `raw_payload`, `external_updated_at`.
+  Idempotency is two conditional unique constraints: `(user, external_id)` when `store_connection` is null,
+  `(store_connection, external_id)` otherwise — two stores can both have order "1001".
+- `Order.save()` creates an `OrderStatusEvent`, logs `order.status_change` via `apps.audit.services.record`
+  (skippable with `_skip_status_audit`, used when a view already logs its own action), dispatches an
+  outbound webhook, and calls `integrations.fulfillment.notify_store_shipping_change` for store orders.
+- `GET/POST /orders/`, `GET/PATCH /orders/<id>/`, `POST /orders/<id>/ship/` (`orders.create`, forward-only
+  status, optional `carrier`/`tracking_number`/`tracking_url`, audited as `order.ship`), `POST
+  /orders/<id>/cancel/`. `GET /admin/orders/` (`orders.view_all`) and `GET /orders/metrics/`
+  (`orders.view_all`: by month/status, cancellation rate, avg time between statuses, top users, orders by
+  city/state). `?store=<id>|manual` filters the caller's own orders by store.
+- Manual creation: `POST /orders/manual/` (`orders.create_manual`; `orders.create_for_others` to set
+  `user_id`), fields from `ingestion.TARGET_FIELDS`. CSV/Excel import (`orders.import`): `POST
+  /orders/imports/` (upload) → `POST /orders/imports/<id>/validate/` → `POST /orders/imports/<id>/confirm/`,
+  plus `GET /orders/imports/template/` and saved mappings at `/orders/import-mappings/`
+  (`orders.import_mappings`).
+- `ingestion.upsert_store_order(connection, normalized)` is the single store-order creation path: keyed on
+  `(store_connection, external_id)`, ignores updates older than `external_updated_at`, and
+  `_synced_status()` only ever moves a shipping status forward or cancels (never reactivates a locally
+  cancelled order) — sets `_skip_store_notification` so the change isn't pushed back to the store that
+  reported it.
 
-- `GET /api/v1/users/metrics/` (`UserAdminViewSet.metrics`, permission `users.view`) — the original
-  contract (`role_distribution`, `signups_by_month`, `auth_method`) is untouched, plus: Usuarios
-  (`active_vs_inactive_by_month`, `active_users`, `retention`, `lockouts_by_month`,
-  `top_failed_attempts`, `account_age`) and Seguridad (`email_verification`,
-  `pending_password_change`, `auth_method_email_verification`). `active_vs_inactive_by_month`
-  (deactivations) and `lockouts_by_month` read `apps.audit.AuditLog` (`user.deactivate` /
-  `auth.lockout`) because `User`/`LoginLockout` only hold *current* state, not history.
-- `GET /api/v1/orders/metrics/` (`apps.orders.views.OrderMetricsView`, permission `orders.view_all`) —
-  `orders_by_month`, `orders_by_status` (funnel + `cancelled` separately), `cancellation_rate` (rate +
-  prior-status breakdown, from the order's last `OrderStatusEvent` before cancelling),
-  `avg_time_between_statuses` (hours, from consecutive `OrderStatusEvent` pairs),
-  `top_users_by_orders`, `users_with_orders`, `orders_by_location` (`Address.city`/`state`).
-- `GET /api/v1/support-messages/metrics/` (`AdminSupportMessageViewSet.metrics`, permission
-  `support.view_all`) — `support_by_month`, `support_by_status`, `avg_response_time`.
-- `GET /api/v1/audit/metrics/` (`apps.audit.views.AuditMetricsView`, permission `audit.view`) —
-  `admin_activity` (`by_actor`/`by_action`), `login_events` (successful vs. failed logins by month).
+### Labels — two independent systems (`apps/labels`)
 
-Frontend: `admingestion_test.js` groups these into four blocks (Usuarios, Seguridad, Pedidos, Soporte y
-actividad) with a shared period selector (3/6/12 months, `#reportsMonthsSelect` + `#reportsRefreshBtn`).
-Pedidos/Soporte y actividad are fetched only when the user has the corresponding permission
-(`canUseUserPermission`) and hide themselves (not an error) otherwise; every renderer treats
-empty/`null` as "Sin datos todavía", never a fabricated number.
+**System 1 — `LabelTemplate`/`Label` + `label_rendering.py`.** The one with a frontend: the editor
+(`editor_rotulos.html`) defines the design, the backend validates and renders it. `design` is a dict keyed
+by field name (`remitente`, `destinatario`, `domicilio`, `cp`, `localidad`, `pedido`, plus `logo`/`qr`/
+`barcode`), each text value `{"left": 0-100, "top": 0-100, "text": optional}` — position in **percent**.
+Styled extras (backend-only, editor doesn't write them yet): `font_size`, `bold`, `align`, `width`,
+`hide_if_empty`, `shrink_to_fit`, plus decoration keys `texts`/`lines`/`border`.
+`label_rendering.build_label_context(order=None, label=None)` builds the print context: `remitente`
+(the store's `sender_name`, else its name, else the user), `remitente_domicilio`/`remitente_telefono`
+(the store's, empty when unset), `destinatario` (the address' `recipient_name`), `domicilio`, `referencia`,
+`localidad`, `cp`, `pais`, `pedido`, `fecha_pedido`, `envio`, `tracking`, `tracking_url`. **A label is stuck
+outside the parcel: never print products, prices, payment, or buyer email/phone on it** — only what's
+needed to deliver the package. `LabelTemplate` (`owner=None` = system template, `is_public`, `width_cm`/
+`height_cm`) and `Label` (`user`, `template`, `order` FK, `client` = recipient, `is_active` soft-delete) are
+both served under `/api/v1/labels/` (`labels/`, `templates/`, `admin/` for `labels.view_all`, `render/` for
+a one-off PDF, `batch/` for many labels → one `apps.documents.Document`).
 
-### Labels / rótulos (`apps/labels`)
+**System 2 — `ElementLayout`/`LayoutElement`/`LayoutVariable` + `element_layout_render/`.** A separate,
+non-overlapping concept (same file, `models.py`, clearly banner-separated): positions in **millimeters**
+(`width_mm`/`x_mm`/...) against a `LayoutVariable` catalog, with its own render pipeline
+(`element_layout_render/pdf.py`, `png.py`, `fonts.py`, ...) and its own full CRUD+render API
+(`/api/v1/labels/element-layouts/`, `/layout-variables/`) — but **no frontend screen yet**. It exists to
+receive the output of the photo-import pipeline below.
 
-A "rótulo" is the waybill label stuck on a Buspack parcel — sender, recipient (`Label.client`),
-address, postal code, city/province, order number and a QR — not a product label. The frontend editor
-(`frontend/pedidos/diseñorotulos.html`) already defines the design format and the backend just
-validates and persists it, it doesn't reinvent it: `design` is a dict keyed by the editor's field names
-(`logo`, `qr`, `remitente`, `destinatario`, `domicilio`, `cp`, `localidad`, `pedido`), each value
-`{"left": <0-100>, "top": <0-100>, "text": <optional str>}` — position in **percent** of the label so it
-survives a size change. There's no point-of-sale/destination catalog yet (see Project overview) — don't
-add `PickupPoint`/`Destination` models here.
+### Photo import → label layout (`apps/documents` + `apps/processing`)
 
-- `LabelTemplate` — reusable base design: `owner` (`SET_NULL`, `None` = system template),
-  `is_public`, `width_cm`/`height_cm` (5-30 / 5-40, validated in the serializer, not the model),
-  `design`, `preview` image.
-- `Label` — a concrete, printable label: `user` (`CASCADE`), `template` (`SET_NULL`, optional),
-  `order` (`SET_NULL`, optional FK to `apps.orders.Order` — the central case: a label normally belongs
-  to a real shipment), `client` (the recipient), `width_cm`/`height_cm`, `design`, `logo`/`thumbnail`
-  images, `is_active` (**soft-delete**, same as users — a label is never hard-deleted).
-- Serializers validate `design` for real (`serializers.validate_design`: unknown keys or out-of-range
-  `left`/`top` return 400) and accept `logo`/`thumbnail` either as a real file (`multipart/form-data`)
-  or as the base64 data URL the editor already produces (`ImageOrDataUrlField` decodes+verifies with
-  Pillow, rejects non-images, caps size at 2 MB for `logo` / 300 KB for `thumbnail`/`preview`). If
-  `order` is set it must belong to the requesting user (admin bypasses this, per
-  `permissions_map.get_effective_role`); `template` must be public or owned. Image URLs come back
-  absolute because the serializer context carries `request` (DRF's `ImageField.to_representation`
-  builds the absolute URI automatically).
-- Permissions: self-service `labels.view`/`create`/`edit`/`delete` (all four canonical roles) plus
-  admin-only `labels.view_all`/`labels.manage_templates` — see Roles & permissions above.
-  `LabelViewSet.get_permissions()` maps action → permission the same way `OrderViewSet` does.
-- `GET/POST /api/v1/labels/labels/`, `GET/PATCH/DELETE /api/v1/labels/labels/<id>/` — CRUD of the
-  caller's own labels (`LabelViewSet`, queryset always `user=request.user, is_active=True`); `DELETE`
-  is a soft-delete (`is_active=False`), never a real row delete. `POST
-  /api/v1/labels/labels/<id>/duplicate/` clones a label (`name + " (copia)"`) as an independent row —
-  "start from a previous one".
-- `GET/POST /api/v1/labels/templates/` — `LabelTemplateViewSet`: list/retrieve is open to any
-  authenticated user (public templates + the caller's own), create/update/delete requires
-  `labels.manage_templates`.
-- `GET /api/v1/labels/admin/` (`labels.view_all`, admin-only, paginated) — every user's labels
-  (`AdminLabelListView`/`AdminLabelSerializer`), filters `search`/`user`/`template`/`is_active`/
-  `date_from`/`date_to`; the self-service `LabelViewSet` queryset is untouched, same pattern as
-  `AdminOrderListView`.
-- Audit: `label.create`/`label.update`/`label.delete` and `template.create`/`update`/`delete` are
-  logged via `apps.audit.services.record` (added to `AuditLog.Category`/`Action` as a `labels`
-  category).
-- `Pillow` (in `backend/requirements.txt`) is required for `ImageField` and for verifying uploaded/
-  decoded images.
+Three-step flow (`apps/processing/urls.py` docstring):
+
+1. `POST /api/v1/documents/documentos/` — upload the photo/PDF (`UploadedLabelFile`, `documents.upload`).
+2. `POST /api/v1/processing/label-imports/` — `LabelImportViewSet.create` runs `agent.process()`
+   synchronously: sends the file to Claude (structured output built from the `LayoutVariable` catalog,
+   `schema.py`) asking for element positions as percentages, converts them to mm, and stores the result as
+   a reviewable `proposal` JSON on the new `LabelImport` row (`processing.import`; `POST
+   /label-imports/<id>/retry/` re-reads the same file).
+3. `POST /api/v1/labels/element-layouts/` — the user reviews the proposal and saves it as real
+   `ElementLayout`/`LayoutElement` rows. The agent never writes to `apps.labels` directly.
+
+`apps.documents.Document` is a different model: the generated *output* of a label batch (PDF/ZIP), created
+by `apps.labels.batch_views.LabelBatchView`, with `status` (processing/ready/failed), `error_message`,
+`item_count`, `size_bytes`. `GET/DELETE /api/v1/documents/` (own, soft-delete), `GET .../download/`, `GET
+/api/v1/documents/admin/` (`documents.view_all`).
+
+### Store integrations (`apps/integrations`)
+
+The product is an app installed in Tiendanube (Shopify later).
+
+- `StoreConnection` (`platform` + `external_store_id` unique together) is owned by a user (`owner`,
+  nullable until claimed), token stored encrypted (`access_token` property, Fernet in `crypto.py`).
+  `providers/` has one `StoreProvider` per platform (`get_provider(platform)`); `TiendanubeProvider`
+  implements OAuth, `api_request`, webhook signature verification, and order normalization to
+  `NormalizedOrder`. Errors: `ProviderError` (retryable) / `ProviderAuthError` / `ProviderNotFoundError` /
+  `ProviderRejectedError` (no retry).
+- Install: logged-in merchant calls `GET tiendanube/install-url/`; the Partner Portal redirect URL is `GET
+  tiendanube/callback/` (public). Installed from the app store (no session), the store lands with
+  `owner=None` and the callback redirects with a short-lived `store_claim` token, exchanged via `POST
+  stores/claim/`; already-owned stores redirect with `store_connected=<id>`, failures with
+  `store_error=<code>`. `POST stores/<id>/disconnect/` revokes (never deletes). `PATCH stores/<id>/settings/` saves how that store's
+  labels print — `sender_name`/`sender_address`/`sender_phone`, `logo` (file or the editor's base64 data
+  URL, 2 MB cap) and `default_template` (must be public or the caller's) — never token/status; audited as
+  `store.update` (the logo logs its filename, not the bytes). Edited per store in `tiendas.html`.
+  `batch_views` uses them when printing: the store's logo goes on its orders' labels, and with no
+  `template_id` the batch falls back to the store's `default_template` when every order shares it, else
+  to the oldest public template. The system template "Etiqueta de envío estándar" prints
+  `remitente_domicilio`/`remitente_telefono` with `hide_if_empty`, so a store without them looks exactly
+  as before (migration `labels/0010`). All gated by `orders.create`.
+- `IntegrationEvent` + `events.py` is a persistent DB queue (no Celery/Redis): webhook receivers only
+  verify, `enqueue_event(...)`, and return; `run_integrations_worker` runs handlers registered with
+  `@register_handler(platform, event_type)` (`handlers.py`). Exponential backoff up to
+  `INTEGRATIONS_EVENT_MAX_ATTEMPTS`; `PermanentEventError` fails without retry; events stuck in
+  `processing` past a timeout get requeued.
+- `POST tiendanube/webhooks/` (public) verifies the HMAC signature and enqueues; `internal/*` types are
+  handler-only, never real webhooks. `order/*` events (`ORDER_SYNC_EVENTS`) fetch the full order and
+  `upsert_store_order` it — all orders, not only paid ones. `app/uninstalled` revokes the store.
+  `internal/store_setup` registers webhooks then enqueues `internal/import_orders`, which pages through
+  the store's recent orders.
+- Status sync from the store is forward-only (see `_synced_status` above). Push-back:
+  `Order.save()` → `fulfillment.notify_store_shipping_change` → enqueues `internal/push_fulfillment` →
+  `TiendanubeProvider.push_fulfillment` PATCHes each fulfillment order's status (forward-only) and
+  `tracking_info` only when the tracking code changed.
+**Labels the store asks for (`store_labels.py`, `label_views.py`, `label_urls.py`).** The mirror image of
+the print flow: instead of the merchant picking orders in *our* app, they tick orders in *their* store
+admin and Tiendanube asks us for the labels (Labels API). `POST .../tiendanube/labels/<token>/generate`
+(bulk and single are the same endpoint — only the array size changes) has 5 seconds to answer, so it only
+stores a `StoreLabelRequest` and enqueues `internal/generate_label`; the worker draws the PDF with the
+same `build_shipment_context`/`render_label_pdf` path as everything else and PATCHes the platform back
+with `READY_TO_DOWNLOAD` + a `download_url_from_app`. `<token>` is a signed value carrying the connection
+id — the callback payload never says which store it is, and it's also the only thing authenticating the
+call (Tiendanube documents no signature for these endpoints). The PDF is served without a session at
+`.../tiendanube/labels/download/<token>` with a random per-label token, cleared as soon as
+`fulfillment_order/label_status_updated` reports `READY_TO_USE`. A label that can't be drawn is reported
+as `FAILED` with a reason, and `expire_stale_requests()` (run by the worker each loop) does the same for
+anything still pending after `STORE_LABEL_TIMEOUT_SECONDS`, with margin over the 30 minutes Tiendanube
+waits before failing it silently. `/cancel` is required by Tiendanube; `/suspension` and `/reactivate`
+are optional and share the same contract (`StoreLabelDecisionView`) — for us all three mean "stop serving
+the PDF".
+- **Carrier registration is manual, on purpose.** `python manage.py register_store_carrier [<store id>]`
+  calls `store_labels.register_carrier`, which needs `STORE_LABEL_RATES_URL` — Tiendanube requires a
+  *rate-quoting* `callback_url` alongside the labels one, so from the moment the carrier exists the store
+  asks us for shipping prices at every checkout. That endpoint does not exist yet (it is the open product
+  decision), so nothing registers a carrier automatically at connect time.
+- **Plan gating.** `connect_store` saves the store's `features` into `StoreConnection.preferences`, and
+  `store_labels.supports_label_api()` reads `fulfillment_order_label_api` off it (`None` = unknown, for
+  stores connected before this existed). Surfaced as `label_api_enabled` on the store serializer.
+- **The merchant's view.** `GET /api/v1/integrations/store-labels/` (`orders.create`, read-only, filters
+  `?store=` and `?status=`) lists the caller's own store label requests with the failure reason — never
+  the stored `payload` (buyer data) nor the download token. `rotulos_tienda.html` +
+  `assets/js/rotulos_tienda.js` render it, linked from `tiendas.html` and the `store_labels` menu item.
+
+- Privacy webhooks (`privacy.py`, work for revoked stores too): `customers/redact` anonymizes the matched
+  orders, `store/redact` revokes the store and anonymizes everything, `customers/data_request` emails a
+  JSON report to the store owner (no owner → fails without retry, report stays in `event.result`). Orders
+  are anonymized, never deleted.
 
 ### Frontend
 
-Plain multi-page app, one HTML file per screen, no framework/bundler:
+Plain multi-page app, one HTML file per screen, no framework/bundler. Admin pages
+(`gestionuser.html`/`roles.html`/`reportes.html`/`auditoria.html`/`pedidos_admin.html`/`soporte_admin.html`)
+share the same script order — `config.js`, `auth.js`, `utils.js`, `admin_common.js`, `admin_sidebar.js`,
+then the page's own script — and each redirects to `dashboard.html` if the caller lacks that page's
+permission (UI-only gating; the backend re-checks every permission server-side).
 
-- `index.html` — login/register (email+password and Google Sign-In). `assets/js/google.js` /
-  `google_test.js` and `assets/apis/access.php` are leftover PHP-era prototypes for Google login that
-  are **not** part of the current flow — the real Google auth goes through `GoogleAuthView` in Django.
-- `dashboard.html` + `assets/js/dashboard.js` — landing screen after login (admins can also land here
-  via the "Panel" sidebar link in `gestionuser.html`, or return to it after logging in from
-  `index.html`). The menu items and whether the "users" section is enabled come entirely from the
-  backend (`DashboardView` / `/api/v1/auth/users/me/dashboard/`), based on the user's effective role —
-  the frontend just renders whatever it's given, it doesn't decide visibility by role itself. When
-  `user.is_admin` is true, a "Volver al panel de administración" link (→ `gestionuser.html`) appears
-  in the topbar.
-- `gestionuser.html` + `assets/js/admingestion_test.js` — admin user CRUD + roles/permissions panel,
-  plus (same show/hide-section pattern as Roles/Reportes, gated by `canUseUserPermission()`) an
-  auditoría section (`#auditSection`, `navAudit`: paginated `AuditLog` table with filters + a "changes"
-  detail modal, and — inside the same section — the admin "all orders" table) and a support inbox
-  section (`#supportSection`, `navSupport`: status counters, paginated list + a detail panel to change
-  `status`/write `response`). Talks to `/api/v1/users/`, `/api/v1/auth/me/`, `/api/v1/auth/roles/`,
-  `/api/v1/auth/permissions/`, `/api/v1/audit/logs/`, `/api/v1/audit/actions/`,
-  `/api/v1/admin/orders/`, `/api/v1/support-messages/`. `isAdminMode()` / `canUseUserPermission()`
-  there are UI-only gating — the backend is always the real authority and re-checks every permission
-  server-side.
-- `ayuda.html` + `assets/js/ayuda.js` — support contact form; below it, "Mis mensajes" lists the
-  user's own messages (`GET /api/v1/auth/support/`) with their status and the admin's response, if any.
-- Every page's fetch wrapper (`apiFetch`) attaches `Authorization: Bearer <access>` from
-  `localStorage`, and on a 401 clears `access`/`refresh`/`user` from `localStorage` and redirects to
-  `index.html`.
-- `plantillas_rotulos.html` + `assets/js/dashboard_rotulos.js` + `assets/css/gestionrotulos.css` —
-  grid of the user's own labels (thumbnail, recipient, date), search, a preview modal, and
-  Editar/Duplicar/Eliminar actions. `frontend/pedidos/diseñorotulos.html` — the label editor (drag
-  fields, logo, QR, size in cm, PNG/PDF export); its `saveBtn` builds the payload in the EDITOR's own
-  shape (`{nombre, cliente, thumbnail, size:{widthCm,heightCm}, logo, fields, order}`).
-  `frontend/pedidos/api.js` is the thin adapter both pages import: it translates that shape to/from
-  the `apps.labels` API shape (`name`/`client`/`width_cm`/`height_cm`/`design`/...), and carries the
-  same `apiFetch`/401/403 handling as the rest of the frontend. Because `api.js` lives at
-  `frontend/pedidos/api.js` but is imported from pages at different depths (the editor itself, and
-  `dashboard_rotulos.js` for the root-level `plantillas_rotulos.html`), its session-redirect URLs are
-  built from `import.meta.url` rather than a hardcoded relative path — don't replace that with a plain
-  `"../index.html"` string, it would break for whichever page is at the other depth. `DashboardView`'s
-  `labels` menu item now points at `plantillas_rotulos.html` (`enabled: true`); `documents`/
-  `processing` are still `enabled: false` with no URL.
-
-### Multiple sqlite files
-
-`backend/db.sqlite3*` — there are several backup copies checked into the working tree
-(`db.sqlite3.backup-antes-de-reparar`, `db.sqlite3-backup-crud`, `db.sqlite3-con-admin-recuperado`).
-Only `db.sqlite3` is the live dev database; the others are manual recovery snapshots — don't delete them
-without checking with the user, and don't treat them as fixtures.
+- `assets/js/utils.js` — shared helpers loaded as a classic script (global functions, not an ES module):
+  `escapeHtml`, `getErrorMessage`, `showMessage`, `formatDate`, `extractResults`.
+- `assets/js/topbar.js` — the shared top bar for the non-admin pages (avatar, name, email, per-page links
+  and the `logoutBtn` button). The page declares only
+  `<header class="topbar" id="appTopbar" data-links='[{"href":"…","label":"…"}]'></header>`; the script
+  fills it from the stored session on load, and a page holding a fresh user calls
+  `window.AppTopbar.render(user)`. Each page still wires its own `logoutBtn` listener. `dashboard.html` and
+  the admin pages keep their own header (admin ones come from `admin_sidebar.js`).
+- `assets/css/base.css` — reset, `body`/`.layout`/`.main`, top bar and buttons, loaded BEFORE the page's own
+  stylesheet by the pages whose CSS had these rules byte-identical (`documentos`/`importar`/`integraciones`/
+  `labels_shared`/`pedidos`/`perfil`). Color tokens (`:root`) stay per file — not every screen uses the same
+  palette, and `tiendas.css`/`despachar.css`/`gestionuser.css` keep their own variants and don't load it.
+- `pedidos.html` paginates its order history (`?page=`, Anterior/Siguiente driven by the API's `next`).
+- `assets/js/admin_common.js` — permission/formatting helpers for admin pages: `isAdminMode()`,
+  `canUseUserPermission()`, `canViewUsers()`, `translateRole()`, `actionLabel()`, `formatDateTime()`,
+  `renderSimplePager()`, `loadAuditActionsCatalog()`.
+- `assets/js/auth.js` — `window.Auth` (`apiFetch`, `getAccessToken`, `getCurrentUser`, `logout`).
+  `apiFetch` attaches the Bearer token, retries once through a single shared refresh on 401, and on
+  failure clears the session and redirects to `index.html` (throwing an error with `.isSessionExpired`).
+- `assets/js/labels_api.js` — the only CRUD client for `apps.labels` (System 1): a real ES module,
+  dynamically `import()`-ed from `saved_labels.js`/`templates.js` and used directly by `editor_rotulos.html`.
+- `imprimir_rotulos.html` + `assets/js/print_labels.js` — the merchant's print flow: filter the caller's
+  orders by store and status, tick them (the selection survives paging and filter changes), pick a
+  template (default: each store's own) and layout, then `POST /api/v1/labels/batch/` with `order_ids`
+  and land on `documentos.html` to download. `skip_existing` is on by default; an optional
+  "mark as dispatched" runs `POST /orders/<id>/ship/` per order afterwards, and orders that can't be
+  shipped are reported without breaking the rest. Linked from `pedidos.html` and from the
+  `labels_print` menu item (`labels.batch`).
+- Orders that come from a store carry third-party text (buyer name/address, store name): any value
+  inserted with `innerHTML`/`insertAdjacentHTML` must go through `escapeHtml` or use `textContent` instead.
+- `google.js`/`google_test.js`/`assets/apis/access.php`/`index_test.html` are unused leftovers from a PHP-era
+  Google-login prototype — not part of the real flow (`index.html` calls `GoogleAuthView` directly). Don't
+  delete them. Their dependencies (`assets/apis/vendor/`, ~500 MB) are gitignored and regenerate with
+  `composer install` from `assets/apis/composer.json`.
+- No frontend screen exists yet for System 2 (`ElementLayout`) or the photo-import pipeline
+  (`apps.processing`) — `documents`/`processing` menu items stay disabled in `DashboardView`.
 
 ## Reglas
 
+- **Idioma**: todo lo que es programación va en inglés — archivos `.py`/`.js`/`.css`, clases, funciones,
+  variables, endpoints, tests. Lo que ve el usuario va en español — textos, mensajes de error, labels de
+  choices. Los `.html` pueden tener nombre en español pero sin ñ ni acentos. **Nunca se renombran datos ya
+  guardados**: claves del JSON `design` (`remitente`/`destinatario`/...), variables `{{...}}`, valores de
+  choices (`"documento.create"`), claves de permiso (`plantillas.view`) quedan como están aunque no sigan
+  esta regla.
+- **Frontend: una página por función.** Cada pantalla/función nueva va en su propio `.html` con su propio
+  `assets/js/<pagina>.js`, nunca como otra sección oculta dentro de una página existente. No reorganizar
+  las páginas grandes existentes sin pedirlo.
+- **Funciones compartidas del frontend van en `assets/js/utils.js`** — no copiarlas en cada página.
+- Después de crear una migración, correr `python manage.py migrate` sobre la base local además de probarla.
 - Nunca ejecutar `git pull`, `git push` ni `git commit`. Solo copia local.
 - Nunca modificar tests para que pasen: corregir la implementación.
-- Nunca usar URLs placeholder. La API real es http://127.0.0.1:8000/api/v1/
-- No borrar archivos de Google/OAuth (google.js, google_test.js, access.php,
-  oauth-test/index.html, index_test.html) aunque parezcan código muerto.
-- Antes de modificar: inspeccionar el código, identificar la causa exacta, cambio mínimo.
-  Nada de refactors grandes para problemas chicos.
+- Nunca usar URLs placeholder. La API real es `http://127.0.0.1:8000/api/v1/`.
+- No borrar archivos de Google/OAuth (`google.js`, `google_test.js`, `access.php`, `oauth-test/`,
+  `index_test.html`) aunque parezcan código muerto.
+- Antes de modificar: inspeccionar el código, identificar la causa exacta, cambio mínimo. Nada de
+  refactors grandes para problemas chicos.
 - Si el problema es de backend no tocar el frontend, y viceversa.
 
 ## Arquitectura
 
-- Validación, permisos, reglas de negocio y autorización van en el backend.
-  El frontend solo presenta.
-- Identidad siempre desde request.user (JWT), nunca desde un ID que manda el cliente.
-- Roles: admin, designer, operator, subscriber. Legacy "user" = "subscriber".
-  Admin = grupo admin + is_staff.
+- Validación, permisos, reglas de negocio y autorización van en el backend. El frontend solo presenta.
+- Identidad siempre desde `request.user` (JWT), nunca desde un ID que manda el cliente.
+- Roles: admin, designer, operator, subscriber. Legacy `"user"` = `"subscriber"`. Admin = grupo `admin` +
+  `is_staff`.

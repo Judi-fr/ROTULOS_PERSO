@@ -16,7 +16,19 @@ from django.db import models
 
 
 class Address(models.Model):
-    """Dirección de envío guardada por un usuario para sus pedidos."""
+    """Dirección de envío guardada por un usuario para sus pedidos.
+
+    Dos orígenes distintos conviven acá (``origin``): las que el usuario
+    guarda a mano en su agenda (``own``) y las que se crean solas al entrar
+    un pedido de una tienda, de una importación o de la API (``shipment``),
+    que son la dirección de UN COMPRADOR. Solo las primeras se listan como
+    "Mis direcciones" (ver ``AddressViewSet``): si no, un comerciante con
+    cien pedidos de su tienda tendría cien direcciones ajenas en su agenda.
+    """
+
+    class Origin(models.TextChoices):
+        OWN = "own", "Agenda del usuario"
+        SHIPMENT = "shipment", "Dirección de un envío"
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -39,6 +51,7 @@ class Address(models.Model):
     # Ej: "timbre azul", "portón negro" — ayuda al repartidor a encontrar el lugar.
     reference = models.CharField(max_length=255, blank=True, default="")
     is_default = models.BooleanField(default=False)
+    origin = models.CharField(max_length=20, choices=Origin.choices, default=Origin.OWN)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -76,12 +89,32 @@ class Order(models.Model):
     # queda fuera de su alcance.
     CANCELLABLE_STATUSES = {Status.CREATED, Status.PREPARING}
 
+    # Avance normal de un envío. Todo cambio de estado de envío (despacho
+    # desde la web, sincronización con la tienda online) solo avanza en esta
+    # lista; "cancelled" queda afuera a propósito.
+    STATUS_PROGRESS = [Status.CREATED, Status.PREPARING, Status.DISPATCHED, Status.IN_TRANSIT, Status.DELIVERED]
+    SHIPPING_STATUSES = {Status.DISPATCHED, Status.IN_TRANSIT, Status.DELIVERED}
+    # Estados desde los que todavía se puede cargar/actualizar el envío.
+    SHIPPABLE_STATUSES = {Status.CREATED, Status.PREPARING, Status.DISPATCHED, Status.IN_TRANSIT}
+
+    @classmethod
+    def status_rank(cls, status):
+        try:
+            return cls.STATUS_PROGRESS.index(status)
+        except ValueError:
+            return -1
+
+    @property
+    def is_shippable(self):
+        return self.status in self.SHIPPABLE_STATUSES
+
     class Source(models.TextChoices):
         WEB = "web", "Autoservicio (web)"
         MANUAL = "manual", "Carga manual"
         IMPORT = "import", "Importación de archivo"
         API = "api", "API de ingesta"
         WEBHOOK = "webhook", "Webhook entrante"
+        STORE = "store", "Tienda online conectada"
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -116,6 +149,34 @@ class Order(models.Model):
     tracking_number = models.CharField(max_length=100, blank=True, default="")
     tracking_url = models.URLField(blank=True, default="")
 
+    # --- Pedidos de una tienda online conectada (apps.integrations) ---
+    # RESTRICT: una conexión no se borra, se desconecta; si se pudiera
+    # borrar, sus pedidos perderían la clave de idempotencia (ver
+    # Meta.constraints). A diferencia de PROTECT, deja borrar en cascada al
+    # usuario dueño de ambos.
+    store_connection = models.ForeignKey(
+        "integrations.StoreConnection",
+        on_delete=models.RESTRICT,
+        null=True,
+        blank=True,
+        related_name="orders",
+    )
+    # Número visible del pedido en la tienda (#1001): es lo que reconoce el
+    # comerciante, distinto de su id interno (external_id).
+    external_number = models.CharField(max_length=50, blank=True, default="")
+    contact_email = models.EmailField(blank=True, default="")
+    contact_phone = models.CharField(max_length=50, blank=True, default="")
+    shipping_option = models.CharField(max_length=150, blank=True, default="")
+    package_count = models.PositiveIntegerField(default=1)
+    total_weight_kg = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
+    # [{"name", "sku", "quantity", "weight_kg"}] tal como vino de la tienda.
+    items = models.JSONField(default=list, blank=True)
+    # Pedido crudo de la tienda, para depurar un mapeo sin volver a pedirlo.
+    raw_payload = models.JSONField(default=dict, blank=True)
+    # Última modificación EN LA TIENDA: un aviso viejo que llega tarde no
+    # pisa datos más nuevos (ver ingestion.upsert_store_order).
+    external_updated_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -124,9 +185,20 @@ class Order(models.Model):
         verbose_name_plural = "pedidos"
         ordering = ["-created_at"]
         constraints = [
+            # Idempotencia por external_id. Pedidos cargados a mano,
+            # importados o de la API/webhook genéricos: dentro del usuario.
+            # Pedidos de una tienda conectada: dentro de ESA tienda (dos
+            # tiendas del mismo cliente pueden tener las dos un "1001").
             models.UniqueConstraint(
-                fields=["user", "external_id"], name="unique_order_external_id_per_user"
-            )
+                fields=["user", "external_id"],
+                condition=models.Q(store_connection__isnull=True),
+                name="unique_order_external_id_per_user",
+            ),
+            models.UniqueConstraint(
+                fields=["store_connection", "external_id"],
+                condition=models.Q(store_connection__isnull=False),
+                name="unique_order_external_id_per_store",
+            ),
         ]
 
     def __str__(self):
@@ -135,6 +207,14 @@ class Order(models.Model):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._previous_status = self.status
+        # Con campos diferidos (.only(), p. ej. el Collector al borrar una
+        # dirección) leer el atributo dispara una query que crea otra
+        # instancia, que vuelve a leerlo: recursión. Sin el dato cargado no se
+        # puede saber si cambió, así que se registra como "desconocido".
+        if {"tracking_number", "tracking_url"} & self.get_deferred_fields():
+            self._previous_tracking = None
+        else:
+            self._previous_tracking = (self.tracking_number, self.tracking_url)
 
     @property
     def is_cancellable(self):
@@ -199,8 +279,22 @@ class Order(models.Model):
                     "cp": address.postal_code,
                 },
             )
+        tracking = (self.tracking_number, self.tracking_url)
+        if not is_new and self.store_connection_id:
+            # Pedido de una tienda online que se despachó/entregó (o al que se
+            # le cargó el tracking): avisarle a la tienda. Solo encola, nunca
+            # rompe el save (ver apps.integrations.fulfillment).
+            from apps.integrations.fulfillment import notify_store_shipping_change
+
+            notify_store_shipping_change(
+                self,
+                status_changed=self.status != self._previous_status,
+                tracking_changed=self._previous_tracking is not None and tracking != self._previous_tracking,
+            )
         self._previous_status = self.status
+        self._previous_tracking = tracking
         self._skip_status_audit = False
+        self._skip_store_notification = False
 
 
 class OrderStatusEvent(models.Model):

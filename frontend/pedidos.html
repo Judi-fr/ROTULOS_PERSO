@@ -12,30 +12,13 @@
       rel="stylesheet"
     />
 
+    <link rel="stylesheet" href="assets/css/base.css" />
     <link rel="stylesheet" href="assets/css/pedidos.css" />
   </head>
   <body>
     <div class="layout">
-      <header class="topbar">
-        <div class="topbar-user">
-          <img
-            class="avatar"
-            id="userAvatar"
-            src="https://api.dicebear.com/7.x/avataaars/svg?seed=user"
-            alt=""
-          />
-          <div class="topbar-user-info">
-            <span class="topbar-user-name" id="userName">—</span>
-            <span class="topbar-user-email" id="userEmail">—</span>
-          </div>
-        </div>
-        <div class="topbar-actions">
-          <a class="btn btn-outline" href="dashboard.html">Volver al panel</a>
-          <button class="btn btn-outline" id="logoutBtn" type="button">
-            Cerrar sesión
-          </button>
-        </div>
-      </header>
+      <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
+      <header class="topbar" id="appTopbar" data-links='[{"href": "imprimir_rotulos.html", "label": "Imprimir rótulos"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
 
       <main class="main">
         <div class="main-heading">
@@ -134,8 +117,20 @@
         <section class="profile-card">
           <div class="profile-card-title">Historial de pedidos</div>
           <div class="profile-card-body">
+            <!-- Solo se muestra si el usuario tiene alguna tienda conectada. -->
+            <div class="field" id="orderStoreFilterField" style="display:none;">
+              <label for="orderStoreFilter">Tienda</label>
+              <select id="orderStoreFilter">
+                <option value="">Todas las tiendas</option>
+              </select>
+            </div>
             <div id="orderList" class="order-list">
               <p class="empty-state">Cargando pedidos...</p>
+            </div>
+            <div class="orders-pager" id="ordersPager" style="display:none;">
+              <button type="button" class="btn btn-outline btn-small" id="ordersPrevBtn">Anterior</button>
+              <span id="ordersPageInfo"></span>
+              <button type="button" class="btn btn-outline btn-small" id="ordersNextBtn">Siguiente</button>
             </div>
           </div>
         </section>
@@ -144,6 +139,8 @@
 
     <script src="assets/js/config.js"></script>
     <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
     <script src="assets/js/pedidos.js"></script>
   </body>
 </html>

@@ -1,6 +1,6 @@
 """Serializers de plantillas y rótulos.
 
-El ``design``/``fields`` del editor (``frontend/pedidos/diseñorotulos.html``)
+El ``design``/``fields`` del editor (``frontend/editor_rotulos.html``)
 se valida de verdad acá, no se acepta crudo: ver ``KNOWN_DESIGN_FIELDS`` y
 ``validate_design``. Logo y miniatura llegan hoy del editor como data URL
 base64 (``ImageOrDataUrlField`` los decodifica a ``ImageField``), pero
@@ -26,8 +26,8 @@ from rest_framework import serializers
 from apps.accounts.permissions_map import get_effective_role
 from apps.orders.models import Order
 
-from .estilos import validar_estilo
-from .models import ElementoPlantilla, Label, LabelTemplate, Plantilla, VariableRotulo
+from .styles import validate_style
+from .models import ElementLayout, Label, LabelTemplate, LayoutElement, LayoutVariable
 
 # Campos de texto simple del diseño: solo left/top + un "text" opcional.
 TEXT_DESIGN_FIELDS = {
@@ -45,7 +45,7 @@ KNOWN_DESIGN_FIELDS = TEXT_DESIGN_FIELDS | {"logo", "qr", "barcode"}
 DATA_URL_RE = re.compile(r"^data:image/(?P<ext>[a-zA-Z0-9.+-]+);base64,(?P<data>.+)$")
 
 # Rangos válidos de tamaño de código, en CENTÍMETROS (ver
-# apps.labels.rendering: un código escaneable necesita un tamaño físico
+# apps.labels.label_rendering: un código escaneable necesita un tamaño físico
 # mínimo, por eso no se mide en porcentaje del rótulo como left/top).
 QR_SIZE_MIN, QR_SIZE_MAX = 1, 10
 BARCODE_WIDTH_MIN, BARCODE_WIDTH_MAX = 2, 20
@@ -53,7 +53,7 @@ BARCODE_HEIGHT_MIN, BARCODE_HEIGHT_MAX = 0.5, 5
 VALID_BARCODE_SYMBOLOGIES = {"code128", "ean13"}
 
 # Reglas condicionales de contenido (Historia 28, ver
-# apps.labels.rendering.apply_design_rules, que las EVALÚA con esta misma
+# apps.labels.label_rendering.apply_design_rules, que las EVALÚA con esta misma
 # forma).
 VALID_RULE_OPS = {
     "equals",
@@ -68,6 +68,79 @@ VALID_RULE_OPS = {
 }
 VALID_RULE_ACTIONS = {"hide", "show", "set_text", "move"}
 MAX_DESIGN_RULES = 50
+
+# Estilo opcional de un texto (ver apps.labels.label_rendering._draw_text_entry).
+FONT_SIZE_MIN, FONT_SIZE_MAX = 5, 40
+VALID_TEXT_ALIGNS = {"left", "center", "right"}
+MAX_EXTRA_TEXTS = 30
+MAX_DESIGN_LINES = 20
+
+# Decoración del diseño: no son campos posicionados, así que una regla no
+# puede apuntarles.
+DECORATION_KEYS = {"texts", "lines", "border"}
+
+
+def _validate_text_style(label, entry):
+    text = entry.get("text")
+    if text is not None and not isinstance(text, str):
+        raise serializers.ValidationError(f"'{label}.text' debe ser un texto.")
+    if "font_size" in entry:
+        _validate_number_range(entry["font_size"], f"{label}.font_size", FONT_SIZE_MIN, FONT_SIZE_MAX)
+    if "width" in entry:
+        _validate_number_range(entry["width"], f"{label}.width", 1, 100)
+    for flag in ("bold", "hide_if_empty", "shrink_to_fit"):
+        if flag in entry and not isinstance(entry[flag], bool):
+            raise serializers.ValidationError(f"'{label}.{flag}' debe ser verdadero/falso.")
+    if "align" in entry and entry["align"] not in VALID_TEXT_ALIGNS:
+        raise serializers.ValidationError(
+            f"'{label}.align' debe ser uno de: {', '.join(sorted(VALID_TEXT_ALIGNS))}."
+        )
+
+
+def _validate_position(label, entry):
+    for coord in ("left", "top"):
+        _validate_number_range(entry.get(coord), f"{label}.{coord}", 0, 100)
+
+
+def _validate_extra_texts(value):
+    if not isinstance(value, list):
+        raise serializers.ValidationError("'texts' debe ser una lista.")
+    if len(value) > MAX_EXTRA_TEXTS:
+        raise serializers.ValidationError(f"'texts' admite como máximo {MAX_EXTRA_TEXTS} textos.")
+    for index, entry in enumerate(value):
+        label = f"texts[{index}]"
+        if not isinstance(entry, dict):
+            raise serializers.ValidationError(f"'{label}' debe ser un objeto.")
+        _validate_position(label, entry)
+        if not isinstance(entry.get("text"), str):
+            raise serializers.ValidationError(f"'{label}.text' es obligatorio y debe ser un texto.")
+        _validate_text_style(label, entry)
+
+
+def _validate_lines(value):
+    if not isinstance(value, list):
+        raise serializers.ValidationError("'lines' debe ser una lista.")
+    if len(value) > MAX_DESIGN_LINES:
+        raise serializers.ValidationError(f"'lines' admite como máximo {MAX_DESIGN_LINES} líneas.")
+    for index, entry in enumerate(value):
+        label = f"lines[{index}]"
+        if not isinstance(entry, dict):
+            raise serializers.ValidationError(f"'{label}' debe ser un objeto.")
+        _validate_number_range(entry.get("top"), f"{label}.top", 0, 100)
+        left, right = entry.get("left", 4), entry.get("right", 96)
+        _validate_number_range(left, f"{label}.left", 0, 100)
+        _validate_number_range(right, f"{label}.right", 0, 100)
+        if left >= right:
+            raise serializers.ValidationError(f"'{label}.left' debe ser menor que '{label}.right'.")
+        if "dashed" in entry and not isinstance(entry["dashed"], bool):
+            raise serializers.ValidationError(f"'{label}.dashed' debe ser verdadero/falso.")
+
+
+def _validate_border(value):
+    if not isinstance(value, dict):
+        raise serializers.ValidationError("'border' debe ser un objeto.")
+    if "dashed" in value and not isinstance(value["dashed"], bool):
+        raise serializers.ValidationError("'border.dashed' debe ser verdadero/falso.")
 
 
 def _validate_number_range(value, field_label, minimum, maximum):
@@ -184,13 +257,20 @@ def validate_design(value):
     - ``logo``: nada más (left/top).
     - ``qr``: ``"size"`` opcional en cm (1-10) y ``"data"`` opcional (texto,
       admite marcadores ``{{...}}``) — un diseño viejo sin esas dos claves
-      sigue siendo válido, ``apps.labels.rendering`` aplica los defaults.
+      sigue siendo válido, ``apps.labels.label_rendering`` aplica los defaults.
     - ``barcode``: ``"width"``/``"height"`` opcionales en cm (2-20 / 0.5-5),
       ``"symbology"`` opcional (``code128``/``ean13``), ``"data"`` opcional
       y ``"show_text"`` opcional (booleano).
 
+    Estilo opcional de los textos: ``font_size`` (pt), ``bold``, ``align``
+    (left/center/right), ``width`` (% del rótulo), ``hide_if_empty`` y
+    ``shrink_to_fit``.
+    Decoración opcional: ``texts`` (textos extra con la misma forma),
+    ``lines`` (separadores horizontales ``{top, left, right, dashed}``) y
+    ``border`` (``{dashed}``, borde de corte). El editor no las usa todavía.
+
     Además, ``"rules"`` (opcional, lista, Historia 28) — reglas
-    condicionales que ``apps.labels.rendering.apply_design_rules`` evalúa
+    condicionales que ``apps.labels.label_rendering.apply_design_rules`` evalúa
     en el render: cada ítem necesita ``when``/``then`` con las claves
     obligatorias, ``when.op``/``then.action`` dentro de los valores
     permitidos, ``then.target`` una clave que exista en este mismo
@@ -209,10 +289,19 @@ def validate_design(value):
         raise serializers.ValidationError(
             f"'rules' admite como máximo {MAX_DESIGN_RULES} reglas."
         )
-    known_targets = set(value.keys()) - {"rules"}
+    known_targets = set(value.keys()) - {"rules"} - DECORATION_KEYS
 
     for key, entry in value.items():
         if key == "rules":
+            continue
+        if key == "texts":
+            _validate_extra_texts(entry)
+            continue
+        if key == "lines":
+            _validate_lines(entry)
+            continue
+        if key == "border":
+            _validate_border(entry)
             continue
         if key not in KNOWN_DESIGN_FIELDS:
             raise serializers.ValidationError(f"'{key}' no es un campo de rótulo reconocido.")
@@ -230,9 +319,7 @@ def validate_design(value):
                 )
 
         if key in TEXT_DESIGN_FIELDS:
-            text = entry.get("text")
-            if text is not None and not isinstance(text, str):
-                raise serializers.ValidationError(f"'{key}.text' debe ser un texto.")
+            _validate_text_style(key, entry)
         elif key == "qr":
             _validate_qr_entry(key, entry)
         elif key == "barcode":
@@ -408,194 +495,195 @@ class AdminLabelSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 # ---------------------------------------------------------------------------
-# Plantillas por elementos / catálogo de variables (integradas desde
-# backend_echu). Conviven con los serializers de Label/LabelTemplate.
+# ElementLayout/LayoutElement/LayoutVariable: plantillas por elementos +
+# catálogo de variables. Conviven con los serializers de Label/LabelTemplate
+# (concepto distinto, no se reemplazan entre sí — ver apps/labels/models.py).
 # ---------------------------------------------------------------------------
 
 
-class VariableRotuloSerializer(serializers.ModelSerializer):
+class LayoutVariableSerializer(serializers.ModelSerializer):
     """Una variable del catálogo.
 
-    ``es_sistema`` es de solo lectura: las variables del sistema las siembra
-    una migración, no se crean por API. ``creada_por`` lo fija la vista con el
-    usuario autenticado.
+    ``is_system`` es de solo lectura: las variables del sistema las siembra
+    una migración, no se crean por API. ``created_by`` lo fija la vista con
+    el usuario autenticado.
     """
 
-    creada_por_email = serializers.EmailField(
-        source="creada_por.email", read_only=True, default=None
+    created_by_email = serializers.EmailField(
+        source="created_by.email", read_only=True, default=None
     )
 
     class Meta:
-        model = VariableRotulo
+        model = LayoutVariable
         fields = [
             "id",
-            "codigo",
-            "etiqueta",
-            "descripcion",
-            "tipo_dato",
-            "activa",
-            "es_sistema",
-            "orden",
-            "creada_por",
-            "creada_por_email",
-            "creada_en",
+            "code",
+            "label",
+            "description",
+            "data_type",
+            "is_active",
+            "is_system",
+            "order",
+            "created_by",
+            "created_by_email",
+            "created_at",
         ]
         read_only_fields = [
             "id",
-            "es_sistema",
-            "creada_por",
-            "creada_por_email",
-            "creada_en",
+            "is_system",
+            "created_by",
+            "created_by_email",
+            "created_at",
         ]
 
     def validate(self, attrs):
-        if self.instance and self.instance.es_sistema:
-            nuevo = attrs.get("codigo", self.instance.codigo)
-            if nuevo != self.instance.codigo:
+        if self.instance and self.instance.is_system:
+            new_code = attrs.get("code", self.instance.code)
+            if new_code != self.instance.code:
                 raise serializers.ValidationError(
-                    {"codigo": "No se puede cambiar el código de una "
-                               "variable del sistema."}
+                    {"code": "No se puede cambiar el código de una "
+                             "variable del sistema."}
                 )
         return attrs
 
 
-class ElementoPlantillaSerializer(serializers.ModelSerializer):
+class LayoutElementSerializer(serializers.ModelSerializer):
     """Un elemento posicionado dentro de una plantilla."""
 
     variable = serializers.SlugRelatedField(
-        slug_field="codigo",
-        queryset=VariableRotulo.objects.all(),
+        slug_field="code",
+        queryset=LayoutVariable.objects.all(),
         allow_null=True,
         required=False,
     )
     variable_display = serializers.SerializerMethodField()
-    variable_tipo_dato = serializers.SerializerMethodField()
+    variable_data_type = serializers.SerializerMethodField()
 
     class Meta:
-        model = ElementoPlantilla
+        model = LayoutElement
         fields = [
             "id",
-            "tipo",
+            "element_type",
             "variable",
             "variable_display",
-            "variable_tipo_dato",
-            "contenido",
+            "variable_data_type",
+            "content",
             "x_mm",
             "y_mm",
-            "ancho_mm",
-            "alto_mm",
-            "estilo",
-            "orden",
+            "width_mm",
+            "height_mm",
+            "style",
+            "order",
         ]
 
     def get_variable_display(self, obj):
         """Etiqueta legible de la variable, o ``None`` si el elemento no usa una."""
-        return obj.variable.etiqueta if obj.variable_id else None
+        return obj.variable.label if obj.variable_id else None
 
-    def get_variable_tipo_dato(self, obj):
+    def get_variable_data_type(self, obj):
         """Cómo debe dibujarse la variable (texto, qr, imagen…)."""
-        return obj.variable.tipo_dato if obj.variable_id else None
+        return obj.variable.data_type if obj.variable_id else None
 
-    def validate_estilo(self, value):
+    def validate_style(self, value):
         try:
-            validar_estilo(value)
+            validate_style(value)
         except DjangoValidationError as exc:
             raise serializers.ValidationError(exc.messages) from exc
         return value
 
     def validate(self, attrs):
         try:
-            ElementoPlantilla(**attrs).clean()
+            LayoutElement(**attrs).clean()
         except DjangoValidationError as exc:
             raise serializers.ValidationError(exc.message_dict) from exc
         return attrs
 
 
-class PlantillaSerializer(serializers.ModelSerializer):
+class ElementLayoutSerializer(serializers.ModelSerializer):
     """Plantilla con sus elementos anidados."""
 
-    elementos = ElementoPlantillaSerializer(many=True, required=False)
-    creada_por_email = serializers.EmailField(
-        source="creada_por.email", read_only=True, default=None
+    elements = LayoutElementSerializer(many=True, required=False)
+    created_by_email = serializers.EmailField(
+        source="created_by.email", read_only=True, default=None
     )
-    ancho_px = serializers.IntegerField(read_only=True)
-    alto_px = serializers.IntegerField(read_only=True)
+    width_px = serializers.IntegerField(read_only=True)
+    height_px = serializers.IntegerField(read_only=True)
 
     class Meta:
-        model = Plantilla
+        model = ElementLayout
         fields = [
             "id",
-            "nombre",
-            "descripcion",
-            "ancho_mm",
-            "alto_mm",
+            "name",
+            "description",
+            "width_mm",
+            "height_mm",
             "dpi",
-            "orientacion",
-            "metadatos",
-            "activa",
-            "elementos",
-            "ancho_px",
-            "alto_px",
-            "creada_por",
-            "creada_por_email",
-            "creada_en",
-            "actualizada_en",
+            "orientation",
+            "metadata",
+            "is_active",
+            "elements",
+            "width_px",
+            "height_px",
+            "created_by",
+            "created_by_email",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = [
             "id",
-            "creada_por",
-            "creada_por_email",
-            "ancho_px",
-            "alto_px",
-            "creada_en",
-            "actualizada_en",
+            "created_by",
+            "created_by_email",
+            "width_px",
+            "height_px",
+            "created_at",
+            "updated_at",
         ]
 
-    def _crear_elementos(self, plantilla, elementos):
-        ElementoPlantilla.objects.bulk_create(
-            [ElementoPlantilla(plantilla=plantilla, **elem) for elem in elementos]
+    def _create_elements(self, layout, elements):
+        LayoutElement.objects.bulk_create(
+            [LayoutElement(layout=layout, **elem) for elem in elements]
         )
 
     @transaction.atomic
     def create(self, validated_data):
-        elementos = validated_data.pop("elementos", [])
-        plantilla = Plantilla.objects.create(**validated_data)
-        self._crear_elementos(plantilla, elementos)
-        return plantilla
+        elements = validated_data.pop("elements", [])
+        layout = ElementLayout.objects.create(**validated_data)
+        self._create_elements(layout, elements)
+        return layout
 
     @transaction.atomic
     def update(self, instance, validated_data):
-        elementos = validated_data.pop("elementos", None)
+        elements = validated_data.pop("elements", None)
 
-        for campo, valor in validated_data.items():
-            setattr(instance, campo, valor)
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
         instance.save()
 
-        if elementos is not None:
-            instance.elementos.all().delete()
-            self._crear_elementos(instance, elementos)
+        if elements is not None:
+            instance.elements.all().delete()
+            self._create_elements(instance, elements)
 
         return instance
 
 
-class RenderizarSerializer(serializers.Serializer):
-    """Cuerpo de ``POST /plantillas/<id>/renderizar/``."""
+class RenderElementLayoutSerializer(serializers.Serializer):
+    """Cuerpo de ``POST /element-layouts/<id>/render/``."""
 
-    formato = serializers.ChoiceField(choices=["pdf", "png"], default="pdf")
-    datos = serializers.DictField(required=False, allow_null=True)
-    lote = serializers.ListField(
+    format = serializers.ChoiceField(choices=["pdf", "png"], default="pdf")
+    data = serializers.DictField(required=False, allow_null=True)
+    batch = serializers.ListField(
         child=serializers.DictField(), required=False, allow_empty=False
     )
     dpi = serializers.IntegerField(required=False, min_value=10, max_value=1200)
 
     def validate(self, attrs):
-        if attrs.get("lote") and attrs.get("datos"):
+        if attrs.get("batch") and attrs.get("data"):
             raise serializers.ValidationError(
-                "Mandá 'datos' para un rótulo o 'lote' para varios, no ambos."
+                "Mandá 'data' para un rótulo o 'batch' para varios, no ambos."
             )
-        if attrs.get("lote") and attrs.get("formato", "pdf") != "pdf":
+        if attrs.get("batch") and attrs.get("format", "pdf") != "pdf":
             raise serializers.ValidationError(
-                {"lote": "Un lote solo se puede generar en PDF: un PNG es una "
-                         "sola imagen y no tiene páginas."}
+                {"batch": "Un lote solo se puede generar en PDF: un PNG es una "
+                          "sola imagen y no tiene páginas."}
             )
         return attrs

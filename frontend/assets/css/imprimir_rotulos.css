@@ -1,0 +1,82 @@
+/* Impresión de rótulos por lote: lista de pedidos con selección.
+   Hereda colores, tarjetas y botones de pedidos.css. */
+
+.filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.filters-row .field {
+  flex: 1 1 200px;
+  margin: 0;
+}
+
+.selection-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--blue);
+}
+
+.select-all-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--border);
+  margin: 0 0 10px;
+  font-size: 13.5px;
+  color: var(--text-muted);
+}
+
+.print-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 460px;
+  overflow-y: auto;
+}
+
+.print-order {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.print-order:hover {
+  border-color: var(--blue);
+}
+
+.print-order input {
+  margin: 3px 0 0;
+}
+
+.print-order-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.print-order-title {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.print-order-meta {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 14px 0 0;
+  font-size: 13.5px;
+  color: var(--text-muted);
+}

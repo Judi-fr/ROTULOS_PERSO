@@ -3,9 +3,9 @@
 // una ventana/pestaña directo a su URL: hay que pedirlo con apiFetch,
 // quedarse con el blob, y desde ahí imprimir.
 //
-// ÚNICA implementación compartida por diseñorotulos.html, rotulos.html y
-// documentos.html (ver assets/js/rotulos.js, assets/js/documentos.js y el
-// script de diseñorotulos.html): todos cargan este archivo como script
+// ÚNICA implementación compartida por editor_rotulos.html, mis_rotulos.html y
+// documentos.html (ver assets/js/saved_labels.js, assets/js/documentos.js y el
+// script de editor_rotulos.html): todos cargan este archivo como script
 // clásico (después de config.js/auth.js) y llaman a
 // window.PrintHelper.printFromBlobFn.
 window.PrintHelper = (function () {

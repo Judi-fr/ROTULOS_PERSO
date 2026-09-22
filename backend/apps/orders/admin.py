@@ -21,9 +21,9 @@ class AddressAdmin(admin.ModelAdmin):
 class OrderAdmin(admin.ModelAdmin):
     # El estado se cambia acá mientras no exista la integración con el
     # courier: al guardar, Order.save() registra el evento en el timeline.
-    list_display = ("id", "user", "address", "status", "source", "external_id", "created_at")
+    list_display = ("id", "user", "address", "status", "source", "store_connection", "external_id", "created_at")
     list_filter = ("status", "source")
-    search_fields = ("user__email", "description", "tracking_number", "external_id")
+    search_fields = ("user__email", "description", "tracking_number", "external_id", "external_number")
     inlines = [OrderStatusEventInline]
 
 

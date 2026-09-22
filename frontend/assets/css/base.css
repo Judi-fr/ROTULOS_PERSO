@@ -1,0 +1,114 @@
+/* Base compartida por las pantallas del frontend.
+   Estas reglas estaban copiadas idénticas en documentos.css, importar.css,
+   integraciones.css, labels_shared.css, pedidos.css y perfil.css: acá se
+   escriben una sola vez. Se carga ANTES del .css propio de cada página, que
+   sigue mandando sobre lo suyo.
+   Los colores (:root) siguen en cada archivo: no todos usan la misma paleta. */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Karla", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text-dark);
+}
+
+.layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--blue-light);
+}
+
+.topbar-user-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.topbar-user-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.topbar-user-email {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.btn-outline {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-dark);
+}
+
+.btn-outline:hover {
+  background: var(--bg);
+}
+
+.btn-primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.05);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.main-heading h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+}
+
+.main-heading p {
+  margin: 0 0 24px;
+  color: var(--text-muted);
+}
+
+.page-message {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.profile-card-body {
+  padding: 20px 22px 22px;
+}
+
+.topbar {
+    flex-wrap: wrap;
+    padding: 14px 18px;
+  }
+
+.main {
+    padding: 24px 18px 40px;
+  }

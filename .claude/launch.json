@@ -6,6 +6,23 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "3000", "--directory", "oauth-test"],
       "port": 3000
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd backend && exec venv/bin/python manage.py runserver 127.0.0.1:8000"],
+      "port": 8000
+    },
+    {
+      "name": "worker",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd backend && exec venv/bin/python manage.py run_integrations_worker"]
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8001", "--bind", "127.0.0.1", "--directory", "frontend"],
+      "port": 8001
     }
   ]
 }

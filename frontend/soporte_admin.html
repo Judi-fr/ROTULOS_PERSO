@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Mensajes de soporte</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.materialdesignicons.com/4.8.95/css/materialdesignicons.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
+    />
+
+    <link rel="stylesheet" href="assets/css/gestionuser.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- SIDEBAR: renderizado por assets/js/admin_sidebar.js -->
+      <div id="adminSidebar" data-active="support"></div>
+
+      <!-- MAIN -->
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1 id="supportTitle">Mensajes de soporte</h1>
+            <p>Mensajes enviados desde "Ayuda / Soporte" por los usuarios.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn btn-outline" id="logoutAdminBtn" type="button">Cerrar sesión</button>
+          </div>
+        </div>
+
+        <section aria-labelledby="supportTitle">
+          <div class="stats">
+            <div class="stat-card">
+              <div class="stat-top">
+                <div>
+                  <div class="stat-label">Pendientes</div>
+                  <div class="stat-value" id="supportPendingCount">—</div>
+                </div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-top">
+                <div>
+                  <div class="stat-label">En curso</div>
+                  <div class="stat-value" id="supportInProgressCount">—</div>
+                </div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-top">
+                <div>
+                  <div class="stat-label">Resueltos</div>
+                  <div class="stat-value" id="supportResolvedCount">—</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="roles-card">
+            <div class="roles-card-title">Filtros</div>
+            <div class="filter-bar">
+              <input type="text" id="supportSearchInput" placeholder="Buscar por email, asunto o mensaje..." />
+              <select id="supportStatusFilter">
+                <option value="">Todos los estados</option>
+                <option value="pending">Pendiente</option>
+                <option value="in_progress">En curso</option>
+                <option value="resolved">Resuelto</option>
+              </select>
+              <label>Desde <input type="date" id="supportDateFrom" /></label>
+              <label>Hasta <input type="date" id="supportDateTo" /></label>
+              <button type="button" class="btn btn-outline" id="applySupportFiltersBtn">Aplicar</button>
+              <button type="button" class="btn btn-outline" id="clearSupportFiltersBtn">Limpiar</button>
+            </div>
+          </div>
+
+          <div class="support-layout">
+            <div class="roles-card support-list-card">
+              <div class="roles-card-title">Mensajes</div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style="width: 26%">Usuario</th>
+                      <th style="width: 30%">Asunto</th>
+                      <th style="width: 18%">Estado</th>
+                      <th style="width: 26%">Recibido</th>
+                    </tr>
+                  </thead>
+                  <tbody id="supportBody">
+                    <tr><td colspan="4" style="text-align:center; padding:20px;">Cargando...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="pagination-bar">
+                <div class="showing" id="supportPaginationInfo">Mostrando 0 mensajes</div>
+                <div class="pager" id="supportPaginationControls"></div>
+              </div>
+            </div>
+
+            <div class="roles-card support-detail-card" id="supportDetailCard">
+              <div class="roles-card-title">Detalle</div>
+              <div id="supportDetailEmpty" class="roles-loading">Elegí un mensaje de la lista.</div>
+              <div id="supportDetailContent" style="display:none;">
+                <p><strong>Usuario:</strong> <span id="supportDetailUser"></span></p>
+                <p><strong>Asunto:</strong> <span id="supportDetailSubject"></span></p>
+                <p><strong>Mensaje:</strong></p>
+                <p id="supportDetailMessage" class="support-detail-message"></p>
+                <p id="supportDetailHandled" class="support-detail-handled" style="display:none;"></p>
+                <div class="field">
+                  <label for="supportDetailStatus">Estado</label>
+                  <select id="supportDetailStatus">
+                    <option value="pending">Pendiente</option>
+                    <option value="in_progress">En curso</option>
+                    <option value="resolved">Resuelto</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="supportDetailResponse">Respuesta</label>
+                  <textarea id="supportDetailResponse" rows="5" placeholder="Escribí la respuesta para el usuario..."></textarea>
+                </div>
+                <p id="supportDetailMsg" class="roles-message" role="status" aria-live="polite" style="display:none;"></p>
+                <div class="roles-card-actions">
+                  <button type="button" class="btn btn-primary" id="saveSupportDetailBtn">Guardar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <script src="assets/js/config.js"></script>
+      <script src="assets/js/auth.js"></script>
+      <script src="assets/js/utils.js"></script>
+      <script src="assets/js/admin_common.js"></script>
+      <script src="assets/js/admin_sidebar.js"></script>
+      <script src="assets/js/soporte_admin.js"></script>
+    </div>
+  </body>
+</html>

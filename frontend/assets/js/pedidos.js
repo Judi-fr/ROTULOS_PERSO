@@ -1,12 +1,13 @@
 // Direcciones y pedidos propios (self-service) para usuarios no administradores.
 // Sesión y apiFetch salen de assets/js/auth.js (window.Auth), compartido con
-// el resto del frontend (ver dashboard.js / perfil.js / admingestion_test.js).
+// el resto del frontend (ver dashboard.js / perfil.js / usuarios.js).
 
 const AUTH_BASE = `${window.APP_CONFIG.API_BASE}/auth`;
 const API_BASE = window.APP_CONFIG.API_BASE;
 const ME_URL = `${AUTH_BASE}/me/`;
 const ADDRESSES_URL = `${API_BASE}/addresses/`;
 const ORDERS_URL = `${API_BASE}/orders/`;
+const STORES_URL = `${API_BASE}/integrations/stores/`;
 
 const STATUS_LABELS = {
   created: "Creado",
@@ -18,17 +19,18 @@ const STATUS_LABELS = {
 };
 
 let addresses = [];
+// Paginación del historial: el backend pagina (PageNumberPagination) y antes
+// se mostraba solo la primera página, así que un pedido viejo no aparecía por
+// ningún lado. Se navega con next/previous, que es lo que manda el backend.
+let ordersPage = 1;
+let ordersHasNext = false;
 
 const getAccessToken = () => window.Auth.getAccessToken();
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
-function showMessage(text, type = "error") {
-  const el = document.getElementById("pageMessage");
-  if (!el) return;
-  el.textContent = text;
-  el.className = `page-message ${type}`;
-  el.style.display = "block";
-}
+// showMessage, getErrorMessage y extractResults salen de assets/js/utils.js.
+// formatDate queda propia acá abajo: esta página no muestra la hora, solo
+// la fecha (a diferencia de la versión de utils.js).
 
 function showFieldMessage(id, text, ok) {
   const el = document.getElementById(id);
@@ -36,25 +38,6 @@ function showFieldMessage(id, text, ok) {
   el.textContent = text;
   el.style.color = ok ? "#16a34a" : "#dc2626";
   el.style.display = "block";
-}
-
-function getErrorMessage(data, fallback) {
-  if (typeof data === "string") return data;
-  if (!data || typeof data !== "object") return fallback;
-  if (typeof data.detail === "string") return data.detail;
-  for (const value of Object.values(data)) {
-    if (Array.isArray(value) && value.length) return String(value[0]);
-    if (typeof value === "string") return value;
-  }
-  return fallback;
-}
-
-// La API pagina (PageNumberPagination): {count, next, previous, results}.
-// Se soporta también una lista simple por las dudas.
-function extractResults(data) {
-  if (Array.isArray(data)) return data;
-  if (data && Array.isArray(data.results)) return data.results;
-  return [];
 }
 
 function formatDate(iso) {
@@ -71,24 +54,6 @@ function formatDate(iso) {
 }
 
 const getCurrentUser = () => window.Auth.getCurrentUser();
-
-function renderTopbar(user) {
-  const nameEl = document.getElementById("userName");
-  const emailEl = document.getElementById("userEmail");
-  const avatarEl = document.getElementById("userAvatar");
-
-  const name = user.display_name || user.email || "Usuario";
-  const email = user.email || "—";
-
-  if (nameEl) nameEl.textContent = name;
-  if (emailEl) emailEl.textContent = email;
-  if (avatarEl) {
-    const picture = getCurrentUser().picture;
-    avatarEl.src = picture
-      ? picture
-      : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // DIRECCIONES
@@ -115,13 +80,13 @@ function renderAddressList() {
     item.className = "address-item";
     item.innerHTML = `
       <div class="address-item-info">
-        <strong>${address.label || "Dirección"}${address.is_default ? '<span class="badge-default">Predeterminada</span>' : ""}</strong>
-        <p>${addressSummary(address)}</p>
-        ${address.reference ? `<p>${address.reference}</p>` : ""}
+        <strong>${escapeHtml(address.label || "Dirección")}${address.is_default ? '<span class="badge-default">Predeterminada</span>' : ""}</strong>
+        <p>${escapeHtml(addressSummary(address))}</p>
+        ${address.reference ? `<p>${escapeHtml(address.reference)}</p>` : ""}
       </div>
       <div class="address-item-actions">
-        ${address.is_default ? "" : `<button type="button" class="btn btn-outline btn-small" data-set-default="${address.id}">Predeterminada</button>`}
-        <button type="button" class="btn-danger-text" data-delete-address="${address.id}">Eliminar</button>
+        ${address.is_default ? "" : `<button type="button" class="btn btn-outline btn-small" data-set-default="${escapeHtml(address.id)}">Predeterminada</button>`}
+        <button type="button" class="btn-danger-text" data-delete-address="${escapeHtml(address.id)}">Eliminar</button>
       </div>
     `;
     container.appendChild(item);
@@ -147,7 +112,7 @@ function renderAddressSelect() {
   select.innerHTML = addresses
     .map(
       (address) =>
-        `<option value="${address.id}">${address.label || "Dirección"} — ${addressSummary(address)}</option>`
+        `<option value="${escapeHtml(address.id)}">${escapeHtml(address.label || "Dirección")} — ${escapeHtml(addressSummary(address))}</option>`
     )
     .join("");
 }
@@ -263,12 +228,19 @@ async function deleteAddress(id) {
 // PEDIDOS
 // ---------------------------------------------------------------------------
 
+// Los pedidos que vienen de una tienda online traen texto escrito por
+// terceros (productos, direcciones del comprador): todo valor que va a
+// innerHTML se escapa. escapeHtml sale de assets/js/utils.js.
+
 function renderOrderList(orders) {
   const container = document.getElementById("orderList");
   if (!container) return;
 
   if (orders.length === 0) {
-    container.innerHTML = '<p class="empty-state">Todavía no hiciste ningún pedido.</p>';
+    const filtered = document.getElementById("orderStoreFilter")?.value;
+    container.innerHTML = filtered
+      ? '<p class="empty-state">No hay pedidos para esta tienda.</p>'
+      : '<p class="empty-state">Todavía no hiciste ningún pedido.</p>';
     return;
   }
 
@@ -277,41 +249,106 @@ function renderOrderList(orders) {
     const statusKey = order.status;
     const statusLabel = order.status_label || STATUS_LABELS[statusKey] || statusKey;
     const timeline = (order.status_events || [])
-      .map((event) => `<span class="order-timeline-step">${event.status_label || STATUS_LABELS[event.status] || event.status}</span>`)
+      .map((event) => `<span class="order-timeline-step">${escapeHtml(event.status_label || STATUS_LABELS[event.status] || event.status)}</span>`)
       .join("");
+
+    // Acciones: despacho/seguimiento en su propia página (despachar.html).
+    const actions = [];
+    if (order.is_shippable) {
+      actions.push(
+        `<a class="btn btn-outline btn-small" href="despachar.html?pedido=${encodeURIComponent(order.id)}">Despachar / seguimiento</a>`
+      );
+    }
+    if (order.is_cancellable) {
+      actions.push(
+        `<button type="button" class="btn btn-outline btn-small" data-cancel-order="${escapeHtml(order.id)}">Cancelar pedido</button>`
+      );
+    }
+
+    // Pedido de tienda: se muestra el número que ve el comerciante en su
+    // tienda (#1001) y de qué tienda viene; los manuales, su id propio.
+    const number = order.external_number || order.id;
+    const storeTag = order.store_connection
+      ? `<span class="store-tag">${escapeHtml(order.store_name || "Tienda")}</span>`
+      : "";
 
     const item = document.createElement("div");
     item.className = "order-item";
     item.innerHTML = `
       <div class="order-item-header">
         <div>
-          <div class="order-item-title">Pedido #${order.id}${order.description ? ` — ${order.description}` : ""}</div>
-          <p class="order-item-address">${order.address ? addressSummary(order.address) : "-"} · ${formatDate(order.created_at)}</p>
+          <div class="order-item-title">Pedido #${escapeHtml(number)}${order.description ? ` — ${escapeHtml(order.description)}` : ""}${storeTag}</div>
+          <p class="order-item-address">${order.address ? escapeHtml(addressSummary(order.address)) : "-"} · ${escapeHtml(formatDate(order.created_at))}</p>
         </div>
-        <span class="status-badge ${statusKey}"><span class="dot"></span>${statusLabel}</span>
+        <span class="status-badge ${escapeHtml(statusKey)}"><span class="dot"></span>${escapeHtml(statusLabel)}</span>
       </div>
       ${timeline ? `<div class="order-timeline">${timeline}</div>` : ""}
-      ${
-        order.is_cancellable
-          ? `<div class="order-item-footer"><button type="button" class="btn btn-outline btn-small" data-cancel-order="${order.id}">Cancelar pedido</button></div>`
-          : ""
-      }
+      ${actions.length ? `<div class="order-item-footer">${actions.join("")}</div>` : ""}
     `;
     container.appendChild(item);
   });
 }
 
+function renderOrdersPager(data) {
+  ordersHasNext = Boolean(data.next);
+  const pager = document.getElementById("ordersPager");
+  if (!pager) return;
+  pager.style.display = ordersHasNext || ordersPage > 1 ? "flex" : "none";
+  document.getElementById("ordersPageInfo").textContent = `Página ${ordersPage}`;
+  document.getElementById("ordersPrevBtn").disabled = ordersPage <= 1;
+  document.getElementById("ordersNextBtn").disabled = !ordersHasNext;
+}
+
 async function loadOrders() {
   try {
-    const response = await apiFetch(ORDERS_URL);
+    const store = document.getElementById("orderStoreFilter")?.value;
+    const params = new URLSearchParams({ page: String(ordersPage) });
+    if (store) params.set("store", store);
+    const response = await apiFetch(`${ORDERS_URL}?${params.toString()}`);
     if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
     const data = await response.json();
     renderOrderList(extractResults(data));
+    renderOrdersPager(data);
   } catch (err) {
     if (err.isSessionExpired) return;
     console.error("Error al cargar pedidos:", err);
     document.getElementById("orderList").innerHTML =
       '<p class="empty-state">No se pudieron cargar tus pedidos.</p>';
+  }
+}
+
+// Filtro por tienda: se arma con las tiendas conectadas del usuario (incluye
+// desconectadas, porque sus pedidos siguen en el historial). Sin tiendas, o
+// si el usuario no puede verlas, el filtro queda oculto.
+async function loadStoreFilter() {
+  const field = document.getElementById("orderStoreFilterField");
+  const select = document.getElementById("orderStoreFilter");
+  if (!field || !select) return;
+  try {
+    const response = await apiFetch(STORES_URL);
+    if (!response.ok) return;
+    const stores = extractResults(await response.json());
+    if (stores.length === 0) return;
+
+    stores.forEach((store) => {
+      const option = document.createElement("option");
+      option.value = store.id;
+      option.textContent = store.status === "revoked" ? `${store.name} (desconectada)` : store.name;
+      select.appendChild(option);
+    });
+    const manual = document.createElement("option");
+    manual.value = "manual";
+    manual.textContent = "Pedidos cargados a mano";
+    select.appendChild(manual);
+
+    select.addEventListener("change", () => {
+      ordersPage = 1;
+      loadOrders();
+    });
+    field.style.display = "";
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    console.error("Error al cargar tiendas:", err);
   }
 }
 
@@ -400,6 +437,18 @@ document.getElementById("cancelAddressFormBtn")?.addEventListener("click", () =>
 });
 document.getElementById("saveAddressBtn")?.addEventListener("click", saveNewAddress);
 document.getElementById("createOrderBtn")?.addEventListener("click", createOrder);
+document.getElementById("ordersPrevBtn")?.addEventListener("click", () => {
+  if (ordersPage > 1) {
+    ordersPage -= 1;
+    loadOrders();
+  }
+});
+document.getElementById("ordersNextBtn")?.addEventListener("click", () => {
+  if (ordersHasNext) {
+    ordersPage += 1;
+    loadOrders();
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Logout: misma lógica que dashboard.js / perfil.js (window.Auth.logout).
@@ -413,12 +462,13 @@ async function init() {
   try {
     const response = await apiFetch(ME_URL);
     if (response.ok) {
-      renderTopbar(await response.json());
+      window.AppTopbar.render(await response.json());
     }
   } catch (err) {
     if (err.isSessionExpired) return;
   }
   await loadAddresses();
+  await loadStoreFilter();
   await loadOrders();
 }
 

@@ -58,8 +58,8 @@ class Document(models.Model):
         return f"{self.name} ({self.user.email})"
 
 # ---------------------------------------------------------------------------
-# Documento: archivo fuente subido para importar/procesar (integrado desde
-# backend_echu). Convive con Document (documento generado por el sistema).
+# UploadedLabelFile: archivo fuente subido para importar/procesar. Convive
+# con Document (documento generado por el sistema) — son conceptos distintos.
 # ---------------------------------------------------------------------------
 
 # Formatos que la API de Claude acepta como imagen. Se rechaza en la subida y
@@ -122,37 +122,37 @@ def validar_archivo(archivo):
     return tipo
 
 
-class Documento(models.Model):
+class UploadedLabelFile(models.Model):
     """Una foto o un PDF de rótulo subido por un usuario para importar."""
 
-    archivo = models.FileField("archivo", upload_to="rotulos/%Y/%m/")
-    nombre_original = models.CharField(
+    file = models.FileField("archivo", upload_to="rotulos/%Y/%m/")
+    original_filename = models.CharField(
         "nombre original",
         max_length=255,
         help_text="Nombre que tenía el archivo en la máquina del usuario.",
     )
-    tipo_mime = models.CharField(
+    mime_type = models.CharField(
         "tipo MIME", max_length=50, choices=[(t, t) for t in TIPOS_ACEPTADOS]
     )
-    tamano_bytes = models.PositiveIntegerField("tamaño (bytes)")
+    size_bytes = models.PositiveIntegerField("tamaño (bytes)")
 
-    subido_por = models.ForeignKey(
+    uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name="documentos_fuente",
+        related_name="uploaded_label_files",
         verbose_name="subido por",
     )
-    subido_en = models.DateTimeField("subido en", auto_now_add=True)
+    uploaded_at = models.DateTimeField("subido en", auto_now_add=True)
 
     class Meta:
-        verbose_name = "documento"
-        verbose_name_plural = "documentos"
-        ordering = ["-subido_en"]
+        verbose_name = "archivo subido"
+        verbose_name_plural = "archivos subidos"
+        ordering = ["-uploaded_at"]
 
     def __str__(self):
-        return f"{self.nombre_original} ({self.tipo_mime})"
+        return f"{self.original_filename} ({self.mime_type})"
 
     @property
-    def es_imagen(self):
+    def is_image(self):
         """¿Va como bloque ``image`` (True) o como bloque ``document`` (False)?"""
-        return self.tipo_mime in TIPOS_IMAGEN
+        return self.mime_type in TIPOS_IMAGEN

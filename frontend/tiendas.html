@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Tiendas conectadas</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/tiendas.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
+      <header class="topbar" id="appTopbar" data-links='[{"href": "rotulos_tienda.html", "label": "Rótulos de la tienda"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Tiendas conectadas</h1>
+          <p>Conectá tu tienda online para que sus pedidos entren solos y puedas generar sus rótulos.</p>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" hidden></p>
+
+        <!-- Conectar: pide la URL de autorización al backend y lleva al
+             comerciante a Tiendanube (ver tiendas.js / connectTiendanube). -->
+        <section class="card">
+          <div class="card-title">Conectar una tienda</div>
+          <div class="card-body connect-row">
+            <div>
+              <p class="connect-platform">Tiendanube</p>
+              <p class="connect-help">
+                Te vamos a llevar a Tiendanube para que autorices la app. Al volver empezamos a
+                importar tus pedidos recientes y los nuevos van a entrar solos.
+              </p>
+            </div>
+            <button type="button" class="btn btn-primary" id="connectTiendanubeBtn">
+              Conectar Tiendanube
+            </button>
+          </div>
+        </section>
+
+        <!-- Tiendas del usuario: las arma tiendas.js (renderStoreCard). -->
+        <section class="card">
+          <div class="card-title card-title-row">
+            <span>Mis tiendas</span>
+            <button type="button" class="btn btn-outline btn-small" id="refreshStoresBtn">
+              Actualizar
+            </button>
+          </div>
+          <div class="card-body" id="storesList">
+            <p class="muted-text">Cargando tiendas…</p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/tiendas.js"></script>
+  </body>
+</html>

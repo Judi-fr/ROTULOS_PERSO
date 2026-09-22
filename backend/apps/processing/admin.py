@@ -1,19 +1,19 @@
 from django.contrib import admin
 
-from .models import ImportacionRotulo
+from .models import LabelImport
 
 
-@admin.register(ImportacionRotulo)
-class ImportacionRotuloAdmin(admin.ModelAdmin):
+@admin.register(LabelImport)
+class LabelImportAdmin(admin.ModelAdmin):
     list_display = (
-        "documento",
-        "estado",
-        "modelo",
-        "confianza",
-        "tokens_entrada",
-        "tokens_salida",
-        "creada_por",
-        "creada_en",
+        "uploaded_file",
+        "status",
+        "model_name",
+        "confidence",
+        "input_tokens",
+        "output_tokens",
+        "created_by",
+        "created_at",
     )
-    list_filter = ("estado", "modelo")
-    search_fields = ("creada_por__email", "documento__nombre_original")
+    list_filter = ("status", "model_name")
+    search_fields = ("created_by__email", "uploaded_file__original_filename")

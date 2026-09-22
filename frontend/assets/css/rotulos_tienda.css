@@ -1,0 +1,230 @@
+/* Rótulos pedidos desde el admin de la tienda (rotulos_tienda.html).
+   Mismo sistema visual que documentos.css: base.css trae reset, topbar y
+   botones; acá van la paleta, el shell de tarjeta y lo propio de esta
+   lista (label-item, badges de estado, aviso de plan). */
+
+:root {
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --border: #e7eaf1;
+  --text-dark: #0f172a;
+  --text-muted: #64748b;
+  --blue: #f97316;
+  --blue-light: #ffedd5;
+  --green: #16a34a;
+  --green-light: #e9f9ee;
+  --amber: #d97706;
+  --amber-light: #fef6e6;
+  --red: #dc2626;
+  --red-light: #fdeeee;
+  --slate: #475569;
+  --slate-light: #eef2f7;
+}
+
+.btn {
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+/* base.css ya define .btn-outline, pero viene ANTES que este archivo: el
+   borde transparente de .btn de acá arriba le ganaría el color. Se repite
+   para que el botón se vea como en el resto de las pantallas. */
+.btn-outline {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-dark);
+}
+
+.btn-outline:hover {
+  background: var(--bg);
+}
+
+.main {
+  flex: 1;
+  padding: 32px 28px 48px;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.page-message.error {
+  background: var(--red-light);
+  color: var(--red);
+  border: 1px solid #f6c9c9;
+}
+
+.page-message.success {
+  background: var(--green-light);
+  color: var(--green);
+  border: 1px solid #bfe8cc;
+}
+
+.profile-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 22px;
+  overflow: hidden;
+}
+
+.profile-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  font-size: 15.5px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.empty-state {
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 8px 0;
+}
+
+/* Filtros */
+.labels-toolbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.status-filter {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text-dark);
+  background: #fff;
+}
+
+.status-filter:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+/* Aviso de plan: la tienda no tiene habilitada la API de rótulos. */
+.plan-warning {
+  background: var(--amber-light);
+  color: var(--amber);
+  border: 1px solid #f3dfae;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13.5px;
+  margin-bottom: 16px;
+}
+
+/* Lista */
+.label-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.label-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.label-item-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.label-item-title {
+  font-weight: 700;
+  font-size: 14.5px;
+  margin: 0 0 4px;
+}
+
+.label-item-meta {
+  margin: 2px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.label-item-error {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--red);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.status-badge .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.status-badge.pending { background: var(--amber-light); color: var(--amber); }
+.status-badge.pending .dot { background: var(--amber); animation: pulse 1.2s infinite; }
+.status-badge.ready { background: var(--green-light); color: var(--green); }
+.status-badge.ready .dot { background: var(--green); }
+.status-badge.failed { background: var(--red-light); color: var(--red); }
+.status-badge.failed .dot { background: var(--red); }
+.status-badge.canceled,
+.status-badge.suspended { background: var(--slate-light); color: var(--slate); }
+.status-badge.canceled .dot,
+.status-badge.suspended .dot { background: var(--slate); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* Paginado (mismo criterio que pedidos.html) */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 14px 0 0;
+  font-size: 13.5px;
+  color: var(--text-muted);
+}
+
+@media (max-width: 640px) {
+  .main {
+    padding: 24px 16px 40px;
+  }
+
+  .label-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

@@ -11,7 +11,7 @@ from __future__ import annotations
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
-from .models import Document, Documento, validar_archivo
+from .models import Document, UploadedLabelFile, validar_archivo
 
 
 class DocumentSerializer(serializers.ModelSerializer):
@@ -55,57 +55,57 @@ class AdminDocumentSerializer(DocumentSerializer):
         ]
         read_only_fields = fields
 
-class DocumentoSerializer(serializers.ModelSerializer):
+class UploadedLabelFileSerializer(serializers.ModelSerializer):
     """Un archivo fuente subido (para importar), distinto de ``Document``.
 
-    Todo lo que describe al archivo (``tipo_mime``, ``tamano_bytes``,
-    ``nombre_original``) es de solo lectura y se deriva del contenido en
-    ``validate_archivo``: aceptarlos del cuerpo permitiría que el cliente
+    Todo lo que describe al archivo (``mime_type``, ``size_bytes``,
+    ``original_filename``) es de solo lectura y se deriva del contenido en
+    ``validate_file``: aceptarlos del cuerpo permitiría que el cliente
     declare un tipo que no se corresponde con lo que mandó.
     """
 
-    archivo_url = serializers.SerializerMethodField()
+    file_url = serializers.SerializerMethodField()
 
     class Meta:
-        model = Documento
+        model = UploadedLabelFile
         fields = [
             "id",
-            "archivo",
-            "archivo_url",
-            "nombre_original",
-            "tipo_mime",
-            "tamano_bytes",
-            "subido_por",
-            "subido_en",
+            "file",
+            "file_url",
+            "original_filename",
+            "mime_type",
+            "size_bytes",
+            "uploaded_by",
+            "uploaded_at",
         ]
         read_only_fields = [
             "id",
-            "archivo_url",
-            "nombre_original",
-            "tipo_mime",
-            "tamano_bytes",
-            "subido_por",
-            "subido_en",
+            "file_url",
+            "original_filename",
+            "mime_type",
+            "size_bytes",
+            "uploaded_by",
+            "uploaded_at",
         ]
 
-    def get_archivo_url(self, obj):
+    def get_file_url(self, obj):
         """URL absoluta del archivo, para que el frontend pueda previsualizarlo."""
-        if not obj.archivo:
+        if not obj.file:
             return None
         peticion = self.context.get("request")
-        url = obj.archivo.url
+        url = obj.file.url
         return peticion.build_absolute_uri(url) if peticion else url
 
-    def validate_archivo(self, archivo):
+    def validate_file(self, file):
         try:
-            validar_archivo(archivo)
+            validar_archivo(file)
         except DjangoValidationError as exc:
             raise serializers.ValidationError(exc.messages) from exc
-        return archivo
+        return file
 
     def create(self, validated_data):
-        archivo = validated_data["archivo"]
-        validated_data["tipo_mime"] = validar_archivo(archivo)
-        validated_data["nombre_original"] = archivo.name[:255]
-        validated_data["tamano_bytes"] = archivo.size
+        file = validated_data["file"]
+        validated_data["mime_type"] = validar_archivo(file)
+        validated_data["original_filename"] = file.name[:255]
+        validated_data["size_bytes"] = file.size
         return super().create(validated_data)

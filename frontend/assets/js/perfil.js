@@ -2,7 +2,7 @@
 // Carga y guarda siempre contra /api/v1/auth/me/ (nunca localStorage como
 // fuente de verdad). Sesión y apiFetch salen de assets/js/auth.js
 // (window.Auth), compartido con el resto del frontend (ver dashboard.js /
-// admingestion_test.js).
+// usuarios.js).
 
 const API_BASE = `${window.APP_CONFIG.API_BASE}/auth`;
 const ME_URL = `${API_BASE}/me/`;
@@ -12,13 +12,7 @@ const VERIFY_EMAIL_RESEND_URL = `${API_BASE}/verify-email/resend/`;
 const getAccessToken = () => window.Auth.getAccessToken();
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
-function showMessage(text, type = "error") {
-  const el = document.getElementById("pageMessage");
-  if (!el) return;
-  el.textContent = text;
-  el.className = `page-message ${type}`;
-  el.style.display = "block";
-}
+// showMessage y getErrorMessage salen de assets/js/utils.js.
 
 function showFieldMessage(id, text, ok) {
   const el = document.getElementById(id);
@@ -26,17 +20,6 @@ function showFieldMessage(id, text, ok) {
   el.textContent = text;
   el.style.color = ok ? "#16a34a" : "#dc2626";
   el.style.display = "block";
-}
-
-function getErrorMessage(data, fallback) {
-  if (typeof data === "string") return data;
-  if (!data || typeof data !== "object") return fallback;
-  if (typeof data.detail === "string") return data.detail;
-  for (const value of Object.values(data)) {
-    if (Array.isArray(value) && value.length) return String(value[0]);
-    if (typeof value === "string") return value;
-  }
-  return fallback;
 }
 
 const ROLE_LABELS = {
@@ -52,24 +35,6 @@ function roleLabel(role) {
 }
 
 const getCurrentUser = () => window.Auth.getCurrentUser();
-
-function renderTopbar(user) {
-  const nameEl = document.getElementById("userName");
-  const emailEl = document.getElementById("userEmail");
-  const avatarEl = document.getElementById("userAvatar");
-
-  const name = user.display_name || user.email || "Usuario";
-  const email = user.email || "—";
-
-  if (nameEl) nameEl.textContent = name;
-  if (emailEl) emailEl.textContent = email;
-  if (avatarEl) {
-    const picture = getCurrentUser().picture;
-    avatarEl.src = picture
-      ? picture
-      : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`;
-  }
-}
 
 // Aviso de verificación suave: solo se muestra cuando el backend informa
 // email_verified === false (ver EMAIL_VERIFICATION_URL / RegisterView en
@@ -103,7 +68,7 @@ async function loadProfile() {
       throw new Error(`Error HTTP: ${response.status}`);
     }
     const user = await response.json();
-    renderTopbar(user);
+    window.AppTopbar.render(user);
     renderProfile(user);
     renderVerificationNotice(user);
   } catch (err) {
@@ -131,7 +96,7 @@ async function saveProfile() {
     if (!response.ok) {
       throw new Error(getErrorMessage(data, "No se pudo actualizar tu perfil."));
     }
-    renderTopbar(data);
+    window.AppTopbar.render(data);
     renderProfile(data);
     renderVerificationNotice(data);
     showFieldMessage("profileMsg", "Perfil actualizado correctamente.", true);
@@ -213,7 +178,7 @@ document.getElementById("resendVerificationBtn")?.addEventListener("click", asyn
 });
 
 // ---------------------------------------------------------------------------
-// Logout: misma lógica que dashboard.js / admingestion_test.js (window.Auth.logout).
+// Logout: misma lógica que dashboard.js / admin_common.js (window.Auth.logout).
 // ---------------------------------------------------------------------------
 const logoutBtn = document.getElementById("logoutBtn");
 if (logoutBtn) {

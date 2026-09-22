@@ -1,12 +1,12 @@
 from django.contrib import admin
 
 from .models import (
-    ElementoPlantilla,
+    ElementLayout,
     Label,
     LabelSequence,
     LabelTemplate,
-    Plantilla,
-    VariableRotulo,
+    LayoutElement,
+    LayoutVariable,
 )
 
 
@@ -34,22 +34,22 @@ class LabelSequenceAdmin(admin.ModelAdmin):
     search_fields = ("owner__email", "key")
 
 
-@admin.register(VariableRotulo)
-class VariableRotuloAdmin(admin.ModelAdmin):
-    list_display = ("codigo", "etiqueta", "tipo_dato", "activa", "es_sistema", "orden")
-    list_filter = ("activa", "es_sistema", "tipo_dato")
-    search_fields = ("codigo", "etiqueta")
+@admin.register(LayoutVariable)
+class LayoutVariableAdmin(admin.ModelAdmin):
+    list_display = ("code", "label", "data_type", "is_active", "is_system", "order")
+    list_filter = ("is_active", "is_system", "data_type")
+    search_fields = ("code", "label")
 
 
-@admin.register(Plantilla)
-class PlantillaAdmin(admin.ModelAdmin):
-    list_display = ("nombre", "ancho_mm", "alto_mm", "dpi", "orientacion", "activa", "creada_en")
-    list_filter = ("orientacion", "activa")
-    search_fields = ("nombre", "creada_por__email")
+@admin.register(ElementLayout)
+class ElementLayoutAdmin(admin.ModelAdmin):
+    list_display = ("name", "width_mm", "height_mm", "dpi", "orientation", "is_active", "created_at")
+    list_filter = ("orientation", "is_active")
+    search_fields = ("name", "created_by__email")
 
 
-@admin.register(ElementoPlantilla)
-class ElementoPlantillaAdmin(admin.ModelAdmin):
-    list_display = ("plantilla", "tipo", "variable", "orden")
-    list_filter = ("tipo",)
-    search_fields = ("plantilla__nombre", "variable__etiqueta")
+@admin.register(LayoutElement)
+class LayoutElementAdmin(admin.ModelAdmin):
+    list_display = ("layout", "element_type", "variable", "order")
+    list_filter = ("element_type",)
+    search_fields = ("layout__name", "variable__label")

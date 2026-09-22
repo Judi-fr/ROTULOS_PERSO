@@ -28,7 +28,7 @@ from apps.audit.services import record
 
 from .ingestion import TARGET_FIELDS, create_order_from_data, validate_mapped_row
 from .models import Address, Order
-from .serializers import AddressSerializer, AdminOrderSerializer, OrderSerializer
+from .serializers import AddressSerializer, AdminOrderSerializer, OrderSerializer, OrderShipSerializer
 
 User = get_user_model()
 
@@ -42,7 +42,11 @@ class AddressViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated(), HasRolePermission("addresses.manage")]
 
     def get_queryset(self):
-        return Address.objects.filter(user=self.request.user)
+        # Solo la agenda propia: las direcciones creadas por un pedido de
+        # tienda/importación son de terceros (ver Address.Origin).
+        return Address.objects.filter(
+            user=self.request.user, origin=Address.Origin.OWN
+        )
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -77,16 +81,49 @@ class OrderViewSet(
             permission = "orders.create"
         elif self.action == "cancel":
             permission = "orders.cancel"
+        elif self.action == "ship":
+            # Despachar un pedido propio: mismo permiso que crearlo o conectar
+            # la tienda de la que viene (no hay uno propio: los tests de
+            # accounts fijan el conjunto exacto de permisos por rol).
+            permission = "orders.create"
         else:
             permission = "orders.view"
         return [IsAuthenticated(), HasRolePermission(permission)]
 
     def get_queryset(self):
-        return (
+        queryset = (
             Order.objects.filter(user=self.request.user)
-            .select_related("address")
+            .select_related("address", "store_connection")
             .prefetch_related("status_events")
         )
+        # ?store=<id> recorta a una tienda conectada, ?store=manual a los
+        # pedidos sin tienda. Como el queryset ya es del usuario, un id de
+        # tienda ajena simplemente devuelve una lista vacía.
+        store = self.request.query_params.get("store") if self.action == "list" else None
+        if store:
+            if store == "manual":
+                queryset = queryset.filter(store_connection__isnull=True)
+            elif store.isdigit():
+                queryset = queryset.filter(store_connection_id=int(store))
+            else:
+                raise ValidationError(
+                    {"store": "Debe ser el id de una tienda o 'manual'."}
+                )
+        # ?status=created,preparing — uno o varios estados separados por coma
+        # (la pantalla de impresión trabaja sobre los pedidos pendientes).
+        status_param = (
+            self.request.query_params.get("status") if self.action == "list" else None
+        )
+        if status_param:
+            wanted = [value.strip() for value in status_param.split(",") if value.strip()]
+            valid = {choice for choice, _ in Order.Status.choices}
+            unknown = [value for value in wanted if value not in valid]
+            if unknown:
+                raise ValidationError(
+                    {"status": f"Estado desconocido: {', '.join(unknown)}."}
+                )
+            queryset = queryset.filter(status__in=wanted)
+        return queryset
 
     def perform_create(self, serializer):
         order = serializer.save(user=self.request.user)
@@ -126,11 +163,54 @@ class OrderViewSet(
         )
         return Response(self.get_serializer(order).data)
 
+    @action(detail=True, methods=["post"])
+    def ship(self, request, pk=None):
+        """POST /api/v1/orders/<id>/ship/
+
+        ``{"status": "dispatched"|"in_transit"|"delivered", "carrier",
+        "tracking_number", "tracking_url"}``. Si el pedido vino de una tienda
+        conectada, ``Order.save`` encola el aviso a la tienda (estado +
+        seguimiento, ver apps.integrations.fulfillment)."""
+        order = self.get_object()
+        serializer = OrderShipSerializer(data=request.data, context={"order": order})
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        tracked_fields = ("status", "carrier", "tracking_number", "tracking_url")
+        previous = {field: getattr(order, field) for field in tracked_fields}
+        order.status = data["status"]
+        for field in ("carrier", "tracking_number", "tracking_url"):
+            if field in data:
+                setattr(order, field, data[field].strip())
+        changes = {
+            field: {"from": previous[field], "to": getattr(order, field)}
+            for field in tracked_fields
+            if previous[field] != getattr(order, field)
+        }
+
+        if changes:
+            # Mismo criterio que cancel: esta vista registra su propia
+            # auditoría con actor (order.ship).
+            order._skip_status_audit = True
+            order.save(update_fields=[*tracked_fields, "updated_at"])
+            record(
+                request,
+                category="orders",
+                action="order.ship",
+                target=order,
+                target_type="order",
+                target_repr=str(order),
+                changes=changes,
+            )
+        # Se relee para que el timeline (status_events, prefetched) incluya
+        # el estado nuevo.
+        return Response(self.get_serializer(self.get_queryset().get(pk=order.pk)).data)
+
 
 class ManualOrderCreateView(APIView):
     """POST /api/v1/orders/manual/
 
-    Carga OPERATIVA de un envío (story 20): alguien de Buspack escribe los
+    Carga OPERATIVA de un envío (story 20): alguien del cliente escribe los
     datos del destinatario a mano —no está guardado en ninguna dirección
     propia, a diferencia del alta self-service de ``OrderViewSet.create``,
     que elige entre las direcciones YA guardadas del propio cliente—.

@@ -17,54 +17,6 @@ const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 const getAccessToken = () => window.Auth.getAccessToken();
 const getCurrentUser = () => window.Auth.getCurrentUser();
 
-function escapeHtml(value) {
-  const div = document.createElement("div");
-  div.textContent = value == null ? "" : String(value);
-  return div.innerHTML;
-}
-
-function showMessage(text, type = "error") {
-  const el = document.getElementById("pageMessage");
-  if (!el) return;
-  el.textContent = text;
-  el.className = `page-message ${type}`;
-  el.style.display = "block";
-}
-
-function getErrorMessage(data, fallback) {
-  if (typeof data === "string") return data;
-  if (!data || typeof data !== "object") return fallback;
-  if (typeof data.detail === "string") return data.detail;
-  if (Array.isArray(data.detail)) return data.detail.join(" ");
-  for (const value of Object.values(data)) {
-    if (Array.isArray(value) && value.length) return String(value[0]);
-    if (typeof value === "string") return value;
-  }
-  return fallback;
-}
-
-function extractResults(data) {
-  if (Array.isArray(data)) return data;
-  if (data && Array.isArray(data.results)) return data.results;
-  return [];
-}
-
-function renderTopbar(user) {
-  const nameEl = document.getElementById("userName");
-  const emailEl = document.getElementById("userEmail");
-  const avatarEl = document.getElementById("userAvatar");
-  const email = user.email || "";
-  const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || email || "Usuario";
-
-  if (nameEl) nameEl.textContent = name;
-  if (emailEl) emailEl.textContent = email || "—";
-  if (avatarEl) {
-    const picture = getCurrentUser().picture;
-    avatarEl.src = picture
-      ? picture
-      : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email || "user")}`;
-  }
-}
 
 const logoutBtn = document.getElementById("logoutBtn");
 if (logoutBtn) logoutBtn.addEventListener("click", () => window.Auth.logout());
@@ -451,7 +403,7 @@ async function init() {
     const response = await apiFetch(ME_URL);
     if (response.ok) {
       const user = await response.json();
-      renderTopbar(user);
+      window.AppTopbar.render(user);
       currentPermissions = Array.isArray(user.permissions) ? user.permissions : [];
     }
   } catch (err) {

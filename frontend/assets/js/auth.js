@@ -3,17 +3,16 @@
 // usuario en cualquier 401) y logout. Se carga como script CLÁSICO antes que
 // el script propio de cada página, porque casi todo el frontend son scripts
 // clásicos (no módulos) — expone su API en window.Auth.
-// pedidos/api.js es un módulo ES y no puede "cargarse antes" en el mismo
-// sentido, pero lee window.Auth igual (ver ese archivo).
+// assets/js/labels_api.js es un módulo ES y no puede "cargarse antes" en el
+// mismo sentido, pero lee window.Auth igual (ver ese archivo).
 //
 // Requiere que assets/js/config.js se haya cargado antes (window.APP_CONFIG).
 (function () {
   "use strict";
 
   // Rutas de redirección resueltas relativas a la ubicación de ESTE
-  // archivo (no a la página que lo carga), mismo criterio que
-  // pedidos/api.js con import.meta.url: así funciona igual sin importar si
-  // la página está en la raíz de frontend/ o un nivel más abajo (pedidos/).
+  // archivo (no a la página que lo carga): así funciona igual sin importar
+  // desde qué profundidad de frontend/ se cargue la página.
   const SCRIPT_URL = document.currentScript && document.currentScript.src;
   const INDEX_URL = SCRIPT_URL
     ? new URL("../../index.html", SCRIPT_URL).href
@@ -135,7 +134,7 @@
 
   // Invalida el refresh token en el backend (best-effort), limpia la sesión
   // local y redirige al login. Mismo flujo que estaba duplicado en cada
-  // página (dashboard.js, pedidos.js, admingestion_test.js, ...).
+  // página (dashboard.js, pedidos.js, usuarios.js, ...).
   async function logout() {
     const refresh = getRefreshToken();
     if (refresh) {
