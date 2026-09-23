@@ -69,8 +69,9 @@ first on every page; every other script builds URLs on it.
   `me/change-password/`, `support/`, `users/me/dashboard/`, `roles/`, `permissions/`, `refresh/`)
 - `api/v1/` → `apps.accounts.user_admin_urls` (`users/`, admin CRUD) and `apps.accounts.support_admin_urls`
   (`support-messages/`, admin inbox)
-- `api/v1/` → `apps.orders.urls` (`addresses/`, `orders/` — list filters `?store=<id>|manual` and
-  `?status=created,preparing` —, `admin/orders/`, `orders/metrics/`,
+- `api/v1/` → `apps.orders.urls` (`addresses/`, `orders/` — list filters `?store=<id>|manual`,
+  `?status=created,preparing` and `?date_from=`/`?date_to=` (YYYY-MM-DD, both inclusive, by creation
+  date) —, `admin/orders/`, `orders/metrics/`,
   `orders/manual/`, `orders/imports/...`, `orders/import-mappings/`)
 - `api/v1/audit/` → `apps.audit.urls` (`logs/`, `actions/`, `metrics/`)
 - `api/v1/documents/` → `apps.documents.urls` (generated batch output)
@@ -174,7 +175,31 @@ There is **no `role` field on `User`** — it's derived, never stored directly:
 ### Labels — two independent systems (`apps/labels`)
 
 **System 1 — `LabelTemplate`/`Label` + `label_rendering.py`.** The one with a frontend: the editor
-(`editor_rotulos.html`) defines the design, the backend validates and renders it. `design` is a dict keyed
+(`editor_rotulos.html`) defines the design, the backend validates and renders it.
+
+**The editor canvas mirrors the renderer, and the renderer has the last word.** The canvas used to be CSS
+in fixed pixels (`font-size: 11px`, logo 64px, QR 72px) while `render_label_pdf` scales with the label, so
+printed text came out ~1.8× the size shown on a 10×15cm label — and the gap grew with the label. Now
+`applyRenderMetrics()` computes the same numbers as `draw_label_page`: `max(6, height_cm * (72/2.54) *
+0.035)` pt for text, `max(1, min(w,h) * 0.22)` cm for the logo box, 3cm for the QR and 8×1.5cm for the
+barcode (both shrunk by the `_fit_size_cm` rule), fields anchored with no padding (outline, not border),
+`line-height: 1`, and no wrapping because the renderer truncates with an ellipsis. **If those constants
+change in `label_rendering.py`, change them in the editor too.** `renderDecorations()` also draws the
+`border`/`lines`/`texts` the renderer adds, and `applyRenderMetrics` honours per-field `font_size`/`bold`/
+`align`/`width` — the seeded template uses all of them, and none of it used to show.
+- The safety net is `POST /api/v1/labels/preview/` (`PreviewLabelView`, `labels.render`): it renders a
+  design that has **not been saved** — `{design, width_cm, height_cm, template_id?}` — with
+  `build_preview_context()`'s deliberately long sample values, and returns the PDF. The editor's "Ver cómo
+  sale impreso" shows it in a modal. When the canvas and the PDF disagree, the PDF is right.
+- The **field properties panel** (`fieldPropsGroup`) edits those per-field styles: click a text field on
+  the canvas and set `font_size`, `bold`, `align`, `width`, `hide_if_empty`, `shrink_to_fit`. It follows
+  the same select-then-configure pattern as the QR/barcode panel beside it. An empty or unchecked control
+  **deletes** the key instead of storing a falsy value, so the design keeps only what the user actually
+  chose and the renderer's defaults (proportional size, full width to the right edge) stay in force.
+- `collectFields()` re-emits the styles and the decorations. Before, opening a template and saving it
+  silently stripped its border, rules and fixed texts.
+- Still not editable from the UI: the decorations themselves (`border`/`lines`/`texts`) are drawn and
+  preserved, but there is no way to move a rule or add a fixed text from the editor. `design` is a dict keyed
 by field name (`remitente`, `destinatario`, `domicilio`, `cp`, `localidad`, `pedido`, plus `logo`/`qr`/
 `barcode`), each text value `{"left": 0-100, "top": 0-100, "text": optional}` — position in **percent**.
 Styled extras (backend-only, editor doesn't write them yet): `font_size`, `bold`, `align`, `width`,
@@ -267,11 +292,31 @@ anything still pending after `STORE_LABEL_TIMEOUT_SECONDS`, with margin over the
 waits before failing it silently. `/cancel` is required by Tiendanube; `/suspension` and `/reactivate`
 are optional and share the same contract (`StoreLabelDecisionView`) — for us all three mean "stop serving
 the PDF".
+**Quoting shipping at checkout (`shipping_rates.py`, `rate_views.py`, `rate_urls.py`).** The other half of
+being a carrier: `store_labels` resolves the label *after* the sale, this resolves the price *before* it.
+`POST .../tiendanube/rates/<token>` receives the cart and answers `{"rates": [...]}` — the options the buyer
+sees at checkout. Same signed per-store token as the labels callbacks (the cart's `store_id` is body data,
+not proof). It touches nothing but the DB: no API calls, no queue, because **it sits in the middle of
+someone else's sale**. Tiendanube runs a circuit breaker (500 requests / 30 min window, 50% failure rate →
+5 minutes of no traffic), and while it's open our shipping option simply vanishes from the checkout. That
+is why the view **never returns 5xx**: an unreadable cart or an unexpected exception answers `{"rates": []}`
+(logged), which means "I don't ship there" and leaves the buyer's other options intact.
+- **Prices come from a per-store table** (`ShippingRate`), decided 2026-09-23: destination postal code ×
+  weight bracket → price. `postal_code_from`/`_to` cover a zone or a single code (equal values), normalized
+  to the 4 comparable digits (`normalize_postal_code`, so a CPA `C1602ABC` matches `1602`).
+  `weight_up_to_kg` is the bracket ceiling (`null` = no ceiling); per `option_code`, the tightest bracket
+  that fits the cart wins, and if none fits that option isn't offered. **A postal code outside the table is
+  not quoted** — an empty list, never an invented price. Per store and not global: each client ships from
+  their own origin with their own negotiated rates.
+- **The merchant's table.** `/api/v1/integrations/shipping-rates/` (`orders.create`, full CRUD, `?store=`)
+  with `tarifas_envio.html` + `assets/js/tarifas_envio.js`, linked from `tiendas.html` and the
+  `shipping_rates` menu item. Audited as `store.update`.
 - **Carrier registration is manual, on purpose.** `python manage.py register_store_carrier [<store id>]`
-  calls `store_labels.register_carrier`, which needs `STORE_LABEL_RATES_URL` — Tiendanube requires a
-  *rate-quoting* `callback_url` alongside the labels one, so from the moment the carrier exists the store
-  asks us for shipping prices at every checkout. That endpoint does not exist yet (it is the open product
-  decision), so nothing registers a carrier automatically at connect time.
+  calls `store_labels.register_carrier`, which registers both callbacks (`callback_url` =
+  `shipping_rates.rates_callback_url`, `callback_labels_url` = `store_labels.callback_base_url`) and
+  **refuses if the store has no active rates** — a carrier with no table would offer a shipping method that
+  never answers a price. It is manual because registering flips that store's checkout on: it is turned on
+  client by client, never as a side effect of installing the app.
 - **Plan gating.** `connect_store` saves the store's `features` into `StoreConnection.preferences`, and
   `store_labels.supports_label_api()` reads `fulfillment_order_label_api` off it (`None` = unknown, for
   stores connected before this existed). Surfaced as `label_api_enabled` on the store serializer.
@@ -314,21 +359,41 @@ permission (UI-only gating; the backend re-checks every permission server-side).
   failure clears the session and redirects to `index.html` (throwing an error with `.isSessionExpired`).
 - `assets/js/labels_api.js` — the only CRUD client for `apps.labels` (System 1): a real ES module,
   dynamically `import()`-ed from `saved_labels.js`/`templates.js` and used directly by `editor_rotulos.html`.
-- `imprimir_rotulos.html` + `assets/js/print_labels.js` — the merchant's print flow: filter the caller's
-  orders by store and status, tick them (the selection survives paging and filter changes), pick a
-  template (default: each store's own) and layout, then `POST /api/v1/labels/batch/` with `order_ids`
+- `imprimir_rotulos.html` + `assets/js/print_labels.js` — **the** batch printing screen, and the only one:
+  filter the caller's orders by store, status and creation-date range, tick them (the selection survives
+  paging and filter changes), pick a template (default: each store's own) and layout, then
+  `POST /api/v1/labels/batch/` with `order_ids`
   and land on `documentos.html` to download. `skip_existing` is on by default; an optional
   "mark as dispatched" runs `POST /orders/<id>/ship/` per order afterwards, and orders that can't be
-  shipped are reported without breaking the rest. Linked from `pedidos.html` and from the
-  `labels_print` menu item (`labels.batch`).
+  shipped are reported without breaking the rest. Linked from `pedidos.html`, from `mis_rotulos.html` and
+  from the `labels_print` menu item (`labels.batch`).
+  `mis_rotulos.html` used to carry a second, collapsible batch panel of its own (`filters` selector: date
+  range + status). It was removed so each page has one function: its date-range capability moved here as
+  the `?date_from=`/`?date_to=` list filter, which is strictly better because the store filter keeps
+  applying — the backend's `filters` selector has no notion of store. `mis_rotulos.html` is now only the
+  catalogue of saved `Label` rows (list, preview, edit, duplicate, delete).
 - Orders that come from a store carry third-party text (buyer name/address, store name): any value
   inserted with `innerHTML`/`insertAdjacentHTML` must go through `escapeHtml` or use `textContent` instead.
 - `google.js`/`google_test.js`/`assets/apis/access.php`/`index_test.html` are unused leftovers from a PHP-era
   Google-login prototype — not part of the real flow (`index.html` calls `GoogleAuthView` directly). Don't
   delete them. Their dependencies (`assets/apis/vendor/`, ~500 MB) are gitignored and regenerate with
   `composer install` from `assets/apis/composer.json`.
-- No frontend screen exists yet for System 2 (`ElementLayout`) or the photo-import pipeline
-  (`apps.processing`) — `documents`/`processing` menu items stay disabled in `DashboardView`.
+- `importar_rotulo.html` + `assets/js/importar_rotulo.js` drive the three-step photo import
+  (`apps.processing`): upload the photo, read it into a proposal, review it (scaled preview drawn from the
+  proposal's mm coordinates, detected values, confidence, discarded elements) and only then save it as an
+  `ElementLayout`. The `_revision` key is stripped before POSTing — it exists for the reviewer, not for the
+  serializer. Gated by `processing.import`; the menu entry used to read "Generar rótulo" (disabled), which
+  named something else entirely — generating labels is what `mis_rotulos.html` does.
+- `editor_layout.html` + `assets/js/editor_layout.js` is System 2's editor (`plantillas.edit`): drag
+  elements on a canvas, edit the selected one's type/variable/content/mm box, add and delete elements,
+  save with `PATCH /element-layouts/<id>/`. **Its preview is the server's own render**
+  (`POST /element-layouts/<id>/render/` with `format: "png"`), shown as an image next to the canvas, and
+  the `X-Layout-Missing`/`X-Layout-Truncated` headers surface as warnings. That is deliberate: the canvas
+  places things (one mm→px factor for everything), the server says what comes out — so this screen cannot
+  drift from the print output the way `editor_rotulos.html` does (see below).
+- **Addresses are not a menu entry.** They live inside `pedidos.html` (its own section, full CRUD); a
+  separate `addresses` entry pointing at `pedidos.html#addressesSection` was a second door to the same
+  screen and was removed.
 
 ## Reglas
 

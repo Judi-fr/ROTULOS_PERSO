@@ -41,6 +41,7 @@ from .authentication import ApiKeyAuthentication
 from .models import (
     IncomingWebhook,
     IntegrationKey,
+    ShippingRate,
     StoreConnection,
     StoreLabelRequest,
     WebhookDelivery,
@@ -51,6 +52,7 @@ from .providers.base import ProviderAuthError, ProviderError
 from .serializers import (
     IncomingWebhookSerializer,
     IntegrationKeySerializer,
+    ShippingRateSerializer,
     StoreClaimSerializer,
     StoreLabelRequestSerializer,
     StoreSettingsSerializer,
@@ -331,6 +333,56 @@ def _store_frontend_redirect(params):
     base = str(settings.FRONTEND_URL).rstrip("/")
     path = str(getattr(settings, "STORE_CONNECT_FRONTEND_PATH", "integraciones.html")).lstrip("/")
     return HttpResponseRedirect(f"{base}/{path}?{urlencode(params)}")
+
+
+class ShippingRateViewSet(viewsets.ModelViewSet):
+    """ABM de la tabla de tarifas de las tiendas del usuario
+    (``/api/v1/integrations/shipping-rates/``, permiso ``orders.create``).
+
+    Es lo que contesta el checkout de esas tiendas, así que lo edita el
+    dueño y nadie más: el queryset sale de ``request.user`` y el
+    serializer revalida la tienda que manda el cliente.
+
+    Filtro ``?store=<id>`` para editar una tienda por vez.
+    """
+
+    serializer_class = ShippingRateSerializer
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission(STORE_CONNECT_PERMISSION)]
+
+    def get_queryset(self):
+        queryset = ShippingRate.objects.filter(
+            connection__owner=self.request.user
+        ).select_related("connection")
+        store = str(self.request.query_params.get("store") or "").strip()
+        if store.isdigit():
+            queryset = queryset.filter(connection_id=int(store))
+        return queryset
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        record(
+            self.request,
+            category="integrations",
+            action="store.update",
+            target=instance.connection,
+            target_type="storeconnection",
+            target_repr=str(instance.connection),
+            changes={"tarifa": {"from": "", "to": str(instance)}},
+        )
+
+    def perform_destroy(self, instance):
+        record(
+            self.request,
+            category="integrations",
+            action="store.update",
+            target=instance.connection,
+            target_type="storeconnection",
+            target_repr=str(instance.connection),
+            changes={"tarifa": {"from": str(instance), "to": ""}},
+        )
+        instance.delete()
 
 
 class StoreLabelRequestViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):

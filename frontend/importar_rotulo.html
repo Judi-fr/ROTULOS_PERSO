@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Importar rótulo desde una foto</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/importar_rotulo.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
+      <header
+        class="topbar"
+        id="appTopbar"
+        data-links='[{"href": "editor_layout.html", "label": "Editor de diseños"}, {"href": "mis_plantillas.html", "label": "Mis plantillas"}, {"href": "dashboard.html", "label": "Volver al panel"}]'
+      ></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Importar rótulo desde una foto</h1>
+          <p>
+            Sacale una foto a un rótulo que ya usás y lo leemos para armarte el
+            diseño: dónde va cada dato, el tamaño y la orientación. Vos revisás
+            la propuesta antes de guardarla — no se guarda nada solo.
+          </p>
+        </div>
+
+        <p
+          id="pageMessage"
+          class="page-message"
+          role="status"
+          aria-live="polite"
+          style="display: none"
+        ></p>
+
+        <!-- Paso 1: la foto -->
+        <section class="profile-card" id="uploadCard">
+          <div class="profile-card-title">
+            <span>1. Elegí la foto</span>
+          </div>
+          <div class="profile-card-body">
+            <input type="file" id="fileInput" accept="image/*,application/pdf" />
+            <p class="field-hint">
+              Una foto derecha, con el rótulo entero y bien iluminado. También
+              acepta PDF.
+            </p>
+            <div class="form-actions">
+              <button type="button" class="btn btn-primary btn-small" id="readBtn" disabled>
+                Leer el rótulo
+              </button>
+            </div>
+            <p class="field-hint" id="costHint">
+              Cada lectura consulta al modelo de Claude, así que tiene un costo:
+              evitá repetirla de gusto.
+            </p>
+          </div>
+        </section>
+
+        <!-- Paso 2: la propuesta -->
+        <section class="profile-card" id="reviewCard" style="display: none">
+          <div class="profile-card-title">
+            <span>2. Revisá lo que leyó</span>
+            <button type="button" class="btn btn-outline btn-small" id="retryBtn">
+              Volver a leer
+            </button>
+          </div>
+          <div class="profile-card-body">
+            <div id="readingSummary" class="reading-summary"></div>
+
+            <h2 class="section-title">Cómo quedaría</h2>
+            <p class="field-hint">
+              Vista a escala del rótulo propuesto. Cada caja es un elemento que
+              leyó; pasá el mouse para ver qué dato es.
+            </p>
+            <div id="preview" class="preview"></div>
+
+            <h2 class="section-title">Elementos detectados</h2>
+            <div id="elementList" class="element-list"></div>
+
+            <div id="discardedBox" class="discarded-box" style="display: none"></div>
+          </div>
+        </section>
+
+        <!-- Paso 3: guardar -->
+        <section class="profile-card" id="saveCard" style="display: none">
+          <div class="profile-card-title">
+            <span>3. Guardala como plantilla</span>
+          </div>
+          <div class="profile-card-body">
+            <form id="saveForm" class="save-form">
+              <div class="field">
+                <label for="layoutName">Nombre</label>
+                <input type="text" id="layoutName" maxlength="150" required />
+              </div>
+              <div class="field">
+                <label for="layoutDescription">Descripción</label>
+                <textarea id="layoutDescription" rows="2" maxlength="500"></textarea>
+              </div>
+              <div class="field-row">
+                <div class="field">
+                  <label for="layoutWidth">Ancho (mm)</label>
+                  <input type="number" id="layoutWidth" step="0.01" min="1" required />
+                </div>
+                <div class="field">
+                  <label for="layoutHeight">Alto (mm)</label>
+                  <input type="number" id="layoutHeight" step="0.01" min="1" required />
+                </div>
+              </div>
+              <span class="field-hint">
+                Si el rótulo real mide distinto, corregí las medidas acá: las
+                posiciones se reacomodan solas porque son proporcionales.
+              </span>
+
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary btn-small" id="saveBtn">
+                  Guardar plantilla
+                </button>
+                <button type="button" class="btn btn-outline btn-small" id="startOverBtn">
+                  Empezar de nuevo
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/importar_rotulo.js"></script>
+  </body>
+</html>

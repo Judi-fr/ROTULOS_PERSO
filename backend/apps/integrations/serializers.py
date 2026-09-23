@@ -11,6 +11,7 @@ from . import store_labels
 from .models import (
     IncomingWebhook,
     IntegrationKey,
+    ShippingRate,
     StoreConnection,
     StoreLabelRequest,
     WebhookDelivery,
@@ -114,6 +115,75 @@ class StoreLabelRequestSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = fields
+
+
+class ShippingRateSerializer(serializers.ModelSerializer):
+    """Una fila de la tabla de tarifas de una tienda del usuario.
+
+    ``connection`` se valida contra las tiendas de quien llama: el id lo
+    manda el cliente, así que no alcanza con que exista.
+    """
+
+    store_name = serializers.CharField(source="connection.name", read_only=True)
+
+    class Meta:
+        model = ShippingRate
+        fields = [
+            "id",
+            "connection",
+            "store_name",
+            "option_code",
+            "option_name",
+            "postal_code_from",
+            "postal_code_to",
+            "weight_up_to_kg",
+            "price",
+            "currency",
+            "delivery_days_min",
+            "delivery_days_max",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "store_name", "created_at", "updated_at"]
+
+    def validate_connection(self, connection):
+        if connection.owner_id != self.context["request"].user.pk:
+            raise serializers.ValidationError("Esa tienda no es tuya.")
+        return connection
+
+    def validate(self, attrs):
+        # Los CP se guardan normalizados para poder compararlos como texto
+        # en la consulta del checkout (ver shipping_rates.matching_rates).
+        from .shipping_rates import normalize_postal_code
+
+        for field in ("postal_code_from", "postal_code_to"):
+            if field in attrs:
+                normalized = normalize_postal_code(attrs[field])
+                if not normalized:
+                    raise serializers.ValidationError(
+                        {field: "Poné un código postal con números, por ejemplo 1602."}
+                    )
+                attrs[field] = normalized
+
+        start = attrs.get("postal_code_from", getattr(self.instance, "postal_code_from", ""))
+        end = attrs.get("postal_code_to", getattr(self.instance, "postal_code_to", ""))
+        if start and end and start > end:
+            raise serializers.ValidationError(
+                {"postal_code_to": "El código postal final tiene que ser mayor o igual al inicial."}
+            )
+
+        price = attrs.get("price", getattr(self.instance, "price", None))
+        if price is not None and price < 0:
+            raise serializers.ValidationError({"price": "El precio no puede ser negativo."})
+
+        days_min = attrs.get("delivery_days_min", getattr(self.instance, "delivery_days_min", None))
+        days_max = attrs.get("delivery_days_max", getattr(self.instance, "delivery_days_max", None))
+        if days_min is not None and days_max is not None and days_min > days_max:
+            raise serializers.ValidationError(
+                {"delivery_days_max": "El plazo máximo no puede ser menor que el mínimo."}
+            )
+        return attrs
 
 
 class StoreClaimSerializer(serializers.Serializer):

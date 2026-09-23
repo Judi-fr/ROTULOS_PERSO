@@ -1,8 +1,11 @@
 """Tests del filtro ``GET /api/v1/orders/?store=``: un vendedor con varias
 tiendas conectadas ve los pedidos de una sola, o solo los cargados a mano."""
 
+from datetime import datetime
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from apps.integrations.models import StoreConnection
@@ -101,3 +104,74 @@ class OrderStatusFilterTests(APITestCase):
             "/api/v1/orders/?status=inventado", **auth_headers_for(self.user)
         )
         self.assertEqual(response.status_code, 400)
+
+
+class OrderDateFilterTests(APITestCase):
+    """``?date_from=``/``?date_to=`` en la lista de pedidos.
+
+    Lo usa la pantalla de impresión para juntar "los pedidos de esta
+    semana" sin tildarlos de a uno."""
+
+    URL = "/api/v1/orders/"
+
+    def setUp(self):
+        subscriber, _ = Group.objects.get_or_create(name="subscriber")
+        self.user = User.objects.create_user(
+            username="fechas@example.com", email="fechas@example.com", password="Clave123!"
+        )
+        self.user.groups.add(subscriber)
+        self.client.force_authenticate(user=self.user)
+        self.address = Address.objects.create(
+            user=self.user,
+            recipient_name="Juan",
+            street="Av. Siempre Viva",
+            number="742",
+            city="CABA",
+            state="CABA",
+            postal_code="1602",
+        )
+        self.orders = {}
+        for day in (10, 15, 20):
+            order = Order.objects.create(user=self.user, address=self.address)
+            # created_at es auto_now_add: se reescribe con update() para no
+            # depender de cuándo corre el test.
+            Order.objects.filter(pk=order.pk).update(
+                created_at=timezone.make_aware(datetime(2026, 9, day, 12, 0))
+            )
+            self.orders[day] = order
+
+    def ids(self, response):
+        results = response.data["results"] if "results" in response.data else response.data
+        return {row["id"] for row in results}
+
+    def test_desde_incluye_el_dia_indicado(self):
+        response = self.client.get(self.URL, {"date_from": "2026-09-15"})
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self.ids(response), {self.orders[15].pk, self.orders[20].pk})
+
+    def test_hasta_incluye_el_dia_indicado(self):
+        response = self.client.get(self.URL, {"date_to": "2026-09-15"})
+
+        self.assertEqual(self.ids(response), {self.orders[10].pk, self.orders[15].pk})
+
+    def test_rango_cerrado(self):
+        response = self.client.get(
+            self.URL, {"date_from": "2026-09-15", "date_to": "2026-09-15"}
+        )
+
+        self.assertEqual(self.ids(response), {self.orders[15].pk})
+
+    def test_una_fecha_mal_escrita_se_rechaza(self):
+        response = self.client.get(self.URL, {"date_from": "15/09/2026"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("date_from", response.data)
+
+    def test_un_rango_al_reves_se_rechaza(self):
+        response = self.client.get(
+            self.URL, {"date_from": "2026-09-20", "date_to": "2026-09-10"}
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("date_to", response.data)

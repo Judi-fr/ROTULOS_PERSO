@@ -102,9 +102,16 @@ async function loadOrders() {
   const container = document.getElementById("orderList");
   const store = document.getElementById("storeFilter").value;
   const status = document.getElementById("statusFilter").value;
+  const dateFrom = document.getElementById("dateFrom").value;
+  const dateTo = document.getElementById("dateTo").value;
   const params = new URLSearchParams({ page: String(currentPage) });
   if (store) params.set("store", store);
   if (status) params.set("status", status);
+  // El rango acota la LISTA; lo que se manda al lote siguen siendo los
+  // pedidos tildados (order_ids). Así el filtro por tienda sigue valiendo,
+  // que es algo que el selector "filters" del backend no contempla.
+  if (dateFrom) params.set("date_from", dateFrom);
+  if (dateTo) params.set("date_to", dateTo);
 
   try {
     const response = await apiFetch(`${ORDERS_URL}?${params.toString()}`);
@@ -250,6 +257,13 @@ document.getElementById("storeFilter").addEventListener("change", () => {
   currentPage = 1;
   loadOrders();
 });
+["dateFrom", "dateTo"].forEach((id) => {
+  document.getElementById(id).addEventListener("change", () => {
+    currentPage = 1;
+    loadOrders();
+  });
+});
+
 document.getElementById("statusFilter").addEventListener("change", () => {
   currentPage = 1;
   loadOrders();

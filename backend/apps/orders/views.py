@@ -123,6 +123,35 @@ class OrderViewSet(
                     {"status": f"Estado desconocido: {', '.join(unknown)}."}
                 )
             queryset = queryset.filter(status__in=wanted)
+        # ?date_from=/&date_to= (YYYY-MM-DD, inclusive los dos) acota por
+        # fecha de alta. Lo usa la pantalla de impresión para juntar "los
+        # pedidos de esta semana" sin tener que tildarlos de a uno.
+        if self.action == "list":
+            queryset = self._filter_by_dates(queryset)
+        return queryset
+
+    def _filter_by_dates(self, queryset):
+        bounds = {}
+        for param in ("date_from", "date_to"):
+            raw = (self.request.query_params.get(param) or "").strip()
+            if not raw:
+                continue
+            try:
+                # Mismo parseo que _parse_date_param del panel admin, más
+                # abajo en este archivo.
+                bounds[param] = datetime.strptime(raw, "%Y-%m-%d").date()
+            except ValueError:
+                raise ValidationError({param: "Debe tener el formato AAAA-MM-DD."})
+
+        start, end = bounds.get("date_from"), bounds.get("date_to")
+        if start and end and start > end:
+            raise ValidationError(
+                {"date_to": "La fecha final no puede ser anterior a la inicial."}
+            )
+        if start:
+            queryset = queryset.filter(created_at__date__gte=start)
+        if end:
+            queryset = queryset.filter(created_at__date__lte=end)
         return queryset
 
     def perform_create(self, serializer):

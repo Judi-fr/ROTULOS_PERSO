@@ -108,6 +108,16 @@ class DashboardView(APIView):
                     "enabled": True,
                 }
             )
+            # La tabla CP -> precio con la que cotizamos el envío en el
+            # checkout de esa tienda (ver apps.integrations.shipping_rates).
+            menu.append(
+                {
+                    "key": "shipping_rates",
+                    "label": "Tarifas de envío",
+                    "url": "tarifas_envio.html",
+                    "enabled": True,
+                }
+            )
         menu.append(
             {"key": "orders", "label": "Mis pedidos", "url": "pedidos.html", "enabled": True}
         )
@@ -122,20 +132,9 @@ class DashboardView(APIView):
                     "enabled": True,
                 }
             )
-        menu.append(
-            {
-                "key": "addresses",
-                "label": "Direcciones guardadas",
-                "url": "pedidos.html#addressesSection",
-                "enabled": True,
-            }
-        )
-
-        # Processing todavía no tiene pantalla propia (su app backend
-        # expone urlpatterns vacíos): se lista deshabilitado en vez de
-        # omitirse o apuntar a una URL inventada. Labels y documents ya
-        # tienen pantalla propia (mis_rotulos.html / editor_rotulos.html,
-        # documentos.html).
+        # Las direcciones NO son una entrada aparte: pedidos.html ya tiene
+        # su propia sección con el CRUD completo, y listarlas también acá
+        # era ofrecer dos puertas al mismo lugar.
         menu.extend(
             [
                 {"key": "labels", "label": "Mis rótulos", "url": "mis_rotulos.html", "enabled": True},
@@ -151,7 +150,34 @@ class DashboardView(APIView):
                     "url": "documentos.html",
                     "enabled": True,
                 },
-                {"key": "processing", "label": "Generar rótulo", "url": "", "enabled": False},
+            ]
+        )
+        # Leer un rótulo de papel con el modelo y proponer la plantilla
+        # (apps.processing). Se llamaba "Generar rótulo", que describía otra
+        # cosa —generar rótulos ya se hace en mis_rotulos.html— y encima
+        # estaba deshabilitado teniendo el backend listo.
+        if user_has_permission(user, "processing.import"):
+            menu.append(
+                {
+                    "key": "processing",
+                    "label": "Importar rótulo desde una foto",
+                    "url": "importar_rotulo.html",
+                    "enabled": True,
+                }
+            )
+        # Editor de los diseños por elementos (ElementLayout): lo que produce
+        # la importación se puede corregir a mano acá.
+        if user_has_permission(user, "plantillas.edit"):
+            menu.append(
+                {
+                    "key": "element_layouts",
+                    "label": "Editor de diseños",
+                    "url": "editor_layout.html",
+                    "enabled": True,
+                }
+            )
+        menu.extend(
+            [
                 {"key": "profile", "label": "Mi perfil", "url": "perfil.html", "enabled": True},
                 {"key": "support", "label": "Ayuda / Soporte", "url": "ayuda.html", "enabled": True},
             ]

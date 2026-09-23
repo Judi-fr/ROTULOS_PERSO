@@ -12,9 +12,11 @@ from django.utils import timezone
 from apps.labels.label_rendering import build_shipment_context
 from apps.labels.models import LabelTemplate
 
-from .. import store_labels
+from decimal import Decimal
+
+from .. import shipping_rates, store_labels
 from ..events import process_due_events
-from ..models import IntegrationEvent, StoreConnection, StoreLabelRequest
+from ..models import IntegrationEvent, ShippingRate, StoreConnection, StoreLabelRequest
 from ..providers import get_provider
 from ..stores import GENERATE_LABEL_EVENT
 from .test_tiendanube_oauth import TEST_SETTINGS, auth_headers_for, make_user
@@ -464,14 +466,20 @@ class StoreLabelDecisionTests(StoreLabelTestCase):
 class StoreCarrierTests(StoreLabelTestCase):
     """Alta del medio de envío en la tienda (``register_store_carrier``)."""
 
-    CARRIER_SETTINGS = dict(
-        LABEL_SETTINGS,
-        STORE_LABEL_RATES_URL="https://rotulos.example.com/api/v1/integrations/tiendanube/rates",
-        STORE_LABEL_CARRIER_NAME="Rótulos",
-    )
+    CARRIER_SETTINGS = dict(LABEL_SETTINGS, STORE_LABEL_CARRIER_NAME="Rótulos")
+
+    def _load_rates(self):
+        """Una tabla mínima: sin tarifas el alta se niega a propósito."""
+        return ShippingRate.objects.create(
+            connection=self.connection,
+            postal_code_from="1000",
+            postal_code_to="1999",
+            price=Decimal("4500"),
+        )
 
     @override_settings(**CARRIER_SETTINGS)
-    def test_se_da_de_alta_con_el_callback_de_rotulos_de_esa_tienda(self):
+    def test_se_da_de_alta_con_los_dos_callbacks_de_esa_tienda(self):
+        self._load_rates()
         self.api.set("GET", "shipping_carriers", 200, [])
         self.api.set("POST", "shipping_carriers", 201, {"id": 4242, "name": "Rótulos"})
 
@@ -480,7 +488,9 @@ class StoreCarrierTests(StoreLabelTestCase):
         body = self.api.calls_to("POST", "shipping_carriers")[0]["json"]
         self.assertEqual(body["name"], "Rótulos")
         self.assertEqual(body["callback_labels_url"], store_labels.callback_base_url(self.connection))
-        self.assertTrue(body["callback_url"])
+        # El de cotización también es propio de esta tienda: el carrito del
+        # checkout no dice de quién es.
+        self.assertEqual(body["callback_url"], shipping_rates.rates_callback_url(self.connection))
         self.assertEqual(carrier["id"], 4242)
         self.connection.refresh_from_db()
         self.assertEqual(
@@ -489,6 +499,7 @@ class StoreCarrierTests(StoreLabelTestCase):
 
     @override_settings(**CARRIER_SETTINGS)
     def test_reinstalar_actualiza_el_carrier_en_vez_de_duplicarlo(self):
+        self._load_rates()
         self.api.set("GET", "shipping_carriers", 200, [{"id": 99, "name": "Rótulos"}])
         self.api.set("PUT", "shipping_carriers/99", 200, {"id": 99, "name": "Rótulos"})
 
@@ -497,15 +508,24 @@ class StoreCarrierTests(StoreLabelTestCase):
         self.assertEqual(len(self.api.calls_to("POST", "shipping_carriers")), 0)
         self.assertEqual(len(self.api.calls_to("PUT", "shipping_carriers/99")), 1)
 
-    @override_settings(**dict(LABEL_SETTINGS, STORE_LABEL_RATES_URL=""))
-    def test_sin_endpoint_de_cotizacion_no_se_da_de_alta(self):
-        # Tiendanube lo exige junto con el de rótulos: darlo de alta sin eso
-        # le dejaría a la tienda un medio de envío que no contesta.
+    @override_settings(**CARRIER_SETTINGS)
+    def test_sin_tarifas_cargadas_no_se_da_de_alta(self):
+        # Darlo de alta sin tabla dejaría a la tienda ofreciendo un medio de
+        # envío que nunca contesta un precio.
         with self.assertRaises(store_labels.LabelGenerationError) as ctx:
             store_labels.register_carrier(self.connection)
 
-        self.assertIn("STORE_LABEL_RATES_URL", str(ctx.exception))
+        self.assertIn("tarifas", str(ctx.exception))
         self.assertEqual(len(self.api.calls_to("POST", "shipping_carriers")), 0)
+
+    @override_settings(**dict(LABEL_SETTINGS, INTEGRATIONS_PUBLIC_BASE_URL=""))
+    def test_sin_url_publica_no_se_da_de_alta(self):
+        self._load_rates()
+
+        with self.assertRaises(store_labels.LabelGenerationError) as ctx:
+            store_labels.register_carrier(self.connection)
+
+        self.assertIn("INTEGRATIONS_PUBLIC_BASE_URL", str(ctx.exception))
 
     def test_el_alta_no_pasa_sola_al_conectar_la_tienda(self):
         # La conexión ya ocurrió en setUp (ver TiendanubeTestCase).

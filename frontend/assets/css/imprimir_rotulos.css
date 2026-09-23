@@ -80,3 +80,27 @@
   font-size: 13.5px;
   color: var(--text-muted);
 }
+
+/* Los campos de fecha comparten el alto y el borde de los selects de la
+   fila de filtros (ver .filters-row .field). */
+.filters-row input[type="date"] {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text-dark);
+  background: #fff;
+  width: 100%;
+}
+
+.filters-row input[type="date"]:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+.filters-hint {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}

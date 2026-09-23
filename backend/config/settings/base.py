@@ -167,6 +167,10 @@ REST_FRAMEWORK = {
         # por etiqueta, así que el límite anónimo por defecto (60/min) la
         # dejaría afuera a mitad de camino.
         "store_labels": env("STORE_LABELS_THROTTLE_RATE", default="300/min"),
+        # La cotización entra una vez por checkout de cada tienda: mucho
+        # más seguido que los rótulos, y frenarla saca nuestra opción de
+        # envío del carrito.
+        "store_rates": env("STORE_RATES_THROTTLE_RATE", default="1200/min"),
         # Lectura de rótulos con el modelo (apps.processing): cada llamada se
         # paga por token, así que se limita por usuario para que un bucle en el
         # frontend no gaste dinero antes de que nadie lo note.
@@ -344,11 +348,6 @@ STORE_LABEL_DOWNLOAD_MAX_AGE_SECONDS = env.int("STORE_LABEL_DOWNLOAD_MAX_AGE_SEC
 # Nombre del medio de envío como lo ven el comerciante y el comprador en el
 # checkout de la tienda. La app es multi-cliente: no va un nombre de cliente.
 STORE_LABEL_CARRIER_NAME = env("STORE_LABEL_CARRIER_NAME", default="Rótulos")
-# Endpoint que le COTIZA los envíos a la tienda. Tiendanube lo exige para dar
-# de alta un medio de envío, y sin él no se puede recibir el pedido de rótulos
-# desde su admin (ver apps.integrations.store_labels.register_carrier). Todavía
-# no existe: es la decisión de producto pendiente, no un olvido.
-STORE_LABEL_RATES_URL = env("STORE_LABEL_RATES_URL", default="")
 
 # ---------------------------------------------------------------------------
 # JWT (djangorestframework-simplejwt)

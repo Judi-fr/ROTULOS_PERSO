@@ -32,6 +32,7 @@ urlpatterns = [
     path("api/v1/labels/", include("apps.labels.urls")),
     path("api/v1/integrations/", include("apps.integrations.urls")),  # ABM de claves/webhooks (admin)
     path("api/v1/integrations/", include("apps.integrations.label_urls")),  # rótulos pedidos por la tienda
+    path("api/v1/integrations/", include("apps.integrations.rate_urls")),  # cotización de envíos en el checkout
     path("api/v1/ingest/", include("apps.integrations.ingest_urls")),  # entradas automáticas (API key / webhook)
 ]
 

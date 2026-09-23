@@ -40,6 +40,7 @@ from .label_rendering import (
     build_barcode_drawing,
     build_computed_context,
     build_label_context,
+    build_preview_context,
     build_qr_drawing,
     render_code_svg,
     render_label_pdf,
@@ -419,6 +420,72 @@ class AdminLabelListView(ListAPIView):
             queryset = queryset.filter(created_at__date__lte=date_to)
 
         return queryset.order_by("-created_at")
+
+
+class PreviewLabelView(APIView):
+    """POST /api/v1/labels/preview/
+
+    Devuelve el PDF de un diseño que TODAVÍA NO SE GUARDÓ, con datos de
+    muestra: ``{"design": {...}, "width_cm": 10, "height_cm": 15}``.
+
+    Existe para que el editor (``editor_rotulos.html``) pueda mostrar lo que
+    realmente va a salir impreso en vez de su propia interpretación en CSS.
+    El lienzo del editor dibuja con píxeles y el render con medidas
+    proporcionales al rótulo, así que cualquier aproximación en el navegador
+    se desincroniza tarde o temprano: la única fuente de verdad es este
+    render, el mismo que usan la impresión individual y el lote.
+
+    No persiste nada y no necesita un pedido: por eso es un endpoint aparte
+    de ``RenderLabelView``, que rinde una plantilla guardada con un pedido
+    real.
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission("labels.render")]
+
+    def post(self, request):
+        design = request.data.get("design")
+        if not isinstance(design, dict):
+            raise ValidationError({"design": "Mandá el diseño como un objeto."})
+
+        dimensions = {}
+        for field, default in (("width_cm", 10), ("height_cm", 15)):
+            raw = request.data.get(field)
+            # Con "or default" un 0 se convertía en el default en vez de
+            # rechazarse: 0 es falsy pero es un valor que el cliente mandó.
+            if raw in (None, ""):
+                raw = default
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                raise ValidationError({field: "Debe ser un número."})
+            # Mismo rango que acepta LabelTemplate: un rótulo de 0 cm no se
+            # imprime y uno de 200 cm no es un rótulo.
+            if not 1 <= value <= 100:
+                raise ValidationError({field: "Debe estar entre 1 y 100 cm."})
+            dimensions[field] = value
+
+        logo_file = None
+        template_id = request.data.get("template_id")
+        if template_id:
+            # El logo es un archivo del servidor, no viaja en el diseño: si
+            # el editor está trabajando sobre una plantilla guardada, se usa
+            # el de esa plantilla para que la vista previa lo incluya.
+            template = LabelTemplate.objects.filter(
+                Q(is_public=True) | Q(owner=request.user), pk=template_id
+            ).first()
+            logo_file = getattr(template, "logo", None) or None
+
+        pdf_bytes = render_label_pdf(
+            design,
+            dimensions["width_cm"],
+            dimensions["height_cm"],
+            context=build_preview_context(),
+            logo_file=logo_file,
+        )
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = 'inline; filename="vista-previa.pdf"'
+        return response
 
 
 class RenderLabelView(APIView):

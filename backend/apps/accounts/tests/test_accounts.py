@@ -2368,12 +2368,20 @@ class DashboardTests(AuthTestCase):
         resp = self.client.get(self.URL)
         self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    def test_subscriber_recibe_direcciones_y_soporte_habilitados(self):
+    def test_las_direcciones_no_son_una_entrada_aparte(self):
+        # Vivían en el menú apuntando a pedidos.html#addressesSection, o sea
+        # una segunda puerta a la misma pantalla. El CRUD sigue estando
+        # dentro de Mis pedidos; lo que se sacó es la entrada duplicada.
         self.client.force_authenticate(user=self.subscriber)
         resp = self.client.get(self.URL)
         by_key = {item["key"]: item for item in resp.data["menu"]}
-        self.assertTrue(by_key["addresses"]["enabled"])
-        self.assertEqual(by_key["addresses"]["url"], "pedidos.html#addressesSection")
+        self.assertNotIn("addresses", by_key)
+        self.assertEqual(by_key["orders"]["url"], "pedidos.html")
+
+    def test_subscriber_recibe_soporte_habilitado(self):
+        self.client.force_authenticate(user=self.subscriber)
+        resp = self.client.get(self.URL)
+        by_key = {item["key"]: item for item in resp.data["menu"]}
         self.assertTrue(by_key["support"]["enabled"])
         self.assertEqual(by_key["support"]["url"], "ayuda.html")
 
@@ -2393,13 +2401,17 @@ class DashboardTests(AuthTestCase):
         self.assertTrue(by_key["documents"]["enabled"])
         self.assertEqual(by_key["documents"]["url"], "documentos.html")
 
-    def test_processing_sigue_deshabilitado(self):
-        # No hay backend de processing todavía: el tile se lista
-        # deshabilitado en vez de apuntar a una pantalla inexistente.
+    def test_importar_rotulo_desde_una_foto_habilitado(self):
+        # Ya tiene pantalla (importar_rotulo.html) sobre el backend de
+        # apps.processing, que estaba hecho. Antes figuraba deshabilitado y
+        # con el nombre "Generar rótulo", que describía otra cosa: generar
+        # rótulos es lo que hace mis_rotulos.html.
         self.client.force_authenticate(user=self.subscriber)
         resp = self.client.get(self.URL)
         by_key = {item["key"]: item for item in resp.data["menu"]}
-        self.assertFalse(by_key["processing"]["enabled"])
+        self.assertTrue(by_key["processing"]["enabled"])
+        self.assertEqual(by_key["processing"]["url"], "importar_rotulo.html")
+        self.assertEqual(by_key["processing"]["label"], "Importar rótulo desde una foto")
 
 
 class SupportMessageTests(AuthTestCase):

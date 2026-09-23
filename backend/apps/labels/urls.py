@@ -16,6 +16,7 @@ from .views import (
     LabelTemplateViewSet,
     LabelViewSet,
     LayoutVariableViewSet,
+    PreviewLabelView,
     RenderLabelView,
 )
 
@@ -32,6 +33,9 @@ urlpatterns = [
     path("admin/", AdminLabelListView.as_view(), name="admin-label-list"),
     # Render sin persistir (plantilla + pedido -> PDF), semilla del lote.
     path("render/", RenderLabelView.as_view(), name="label-render"),
+    # Vista previa de un diseño sin guardar, con datos de muestra: es lo que
+    # hace que el editor muestre lo mismo que se imprime.
+    path("preview/", PreviewLabelView.as_view(), name="label-preview"),
     # SVG suelto de un QR/código de barras (preview del editor + debug).
     path("barcode/", BarcodeImageView.as_view(), name="label-barcode"),
     # Generación por lote: muchos rótulos -> un Document (apps.documents).

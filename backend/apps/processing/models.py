@@ -37,11 +37,13 @@ class LabelImport(models.Model):
 
     model_name = models.CharField("modelo", max_length=60, blank=True, default="")
 
-    # JSONField: sus claves de nivel superior (nombre, descripcion, ancho_mm,
-    # alto_mm, dpi, orientacion, elementos...) reflejan los campos de
-    # ElementLayout/LayoutElement; lo que va dentro de cada "estilo" queda en
-    # español a propósito (ver apps.labels.styles). Se manda tal cual a
-    # POST /api/v1/labels/element-layouts/ una vez revisada.
+    # JSONField con el cuerpo que acepta ElementLayoutSerializer: sus claves
+    # de nivel superior (name, description, width_mm, height_mm, dpi,
+    # orientation, elements...) son las del modelo, en inglés. Lo que va
+    # dentro de cada "style" queda en español a propósito (ver
+    # apps.labels.styles). Se manda tal cual a
+    # POST /api/v1/labels/element-layouts/ una vez revisada, salvo la clave
+    # "_revision", que es solo para que el usuario controle la lectura.
     proposal = models.JSONField("propuesta", blank=True, null=True)
 
     raw_response = models.JSONField(

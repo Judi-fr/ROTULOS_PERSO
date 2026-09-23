@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Editor de diseños por elementos</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/editor_layout.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
+      <header
+        class="topbar"
+        id="appTopbar"
+        data-links='[{"href": "importar_rotulo.html", "label": "Importar desde una foto"}, {"href": "dashboard.html", "label": "Volver al panel"}]'
+      ></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Editor de diseños</h1>
+          <p>
+            Acomodá los elementos de un diseño arrastrándolos. La vista previa
+            la genera el servidor con el mismo código que imprime, así que lo
+            que ves acá es exactamente lo que va a salir.
+          </p>
+        </div>
+
+        <p
+          id="pageMessage"
+          class="page-message"
+          role="status"
+          aria-live="polite"
+          style="display: none"
+        ></p>
+
+        <section class="profile-card">
+          <div class="profile-card-title">
+            <span>Diseño</span>
+          </div>
+          <div class="profile-card-body">
+            <select id="layoutSelect" class="control">
+              <option value="">Elegí un diseño...</option>
+            </select>
+            <p class="field-hint">
+              Los diseños salen de
+              <a href="importar_rotulo.html">importar un rótulo desde una foto</a>.
+            </p>
+          </div>
+        </section>
+
+        <div id="workspace" style="display: none">
+          <section class="profile-card">
+            <div class="profile-card-title">
+              <span>Acomodá los elementos</span>
+              <span class="hint-inline">Arrastrá dentro del rótulo</span>
+            </div>
+            <div class="profile-card-body">
+              <div class="editor-split">
+                <div class="canvas-column">
+                  <div id="canvas" class="canvas"></div>
+                  <p class="field-hint" id="canvasHint"></p>
+                </div>
+
+                <aside class="props-column">
+                  <h2 class="section-title">Elemento seleccionado</h2>
+                  <div id="noSelection" class="empty-state">
+                    Tocá un elemento del rótulo para editarlo.
+                  </div>
+
+                  <form id="elementForm" class="props-form" style="display: none">
+                    <div class="field">
+                      <label for="elType">Tipo</label>
+                      <select id="elType" class="control">
+                        <option value="variable">Dato del pedido</option>
+                        <option value="texto_estatico">Texto fijo</option>
+                        <option value="linea">Línea</option>
+                        <option value="recuadro">Recuadro</option>
+                      </select>
+                    </div>
+
+                    <div class="field" id="variableField">
+                      <label for="elVariable">Qué dato</label>
+                      <select id="elVariable" class="control"></select>
+                    </div>
+
+                    <div class="field" id="contentField">
+                      <label for="elContent">Texto</label>
+                      <input type="text" id="elContent" class="control" maxlength="200" />
+                    </div>
+
+                    <div class="field-row">
+                      <div class="field">
+                        <label for="elX">X (mm)</label>
+                        <input type="number" id="elX" class="control" step="0.1" min="0" />
+                      </div>
+                      <div class="field">
+                        <label for="elY">Y (mm)</label>
+                        <input type="number" id="elY" class="control" step="0.1" min="0" />
+                      </div>
+                    </div>
+                    <div class="field-row">
+                      <div class="field">
+                        <label for="elW">Ancho (mm)</label>
+                        <input type="number" id="elW" class="control" step="0.1" min="0.1" />
+                      </div>
+                      <div class="field">
+                        <label for="elH">Alto (mm)</label>
+                        <input type="number" id="elH" class="control" step="0.1" min="0.1" />
+                      </div>
+                    </div>
+
+                    <div class="props-actions">
+                      <button type="button" class="btn-danger-text" id="deleteElementBtn">
+                        Eliminar elemento
+                      </button>
+                    </div>
+                  </form>
+
+                  <h2 class="section-title">Agregar</h2>
+                  <div class="add-actions">
+                    <button type="button" class="btn btn-outline btn-small" data-add="variable">
+                      + Dato
+                    </button>
+                    <button type="button" class="btn btn-outline btn-small" data-add="texto_estatico">
+                      + Texto fijo
+                    </button>
+                    <button type="button" class="btn btn-outline btn-small" data-add="linea">
+                      + Línea
+                    </button>
+                    <button type="button" class="btn btn-outline btn-small" data-add="recuadro">
+                      + Recuadro
+                    </button>
+                  </div>
+                </aside>
+              </div>
+            </div>
+          </section>
+
+          <section class="profile-card">
+            <div class="profile-card-title">
+              <span>El diseño</span>
+            </div>
+            <div class="profile-card-body">
+              <div class="field">
+                <label for="layoutName">Nombre</label>
+                <input type="text" id="layoutName" class="control" maxlength="150" />
+              </div>
+              <div class="field-row">
+                <div class="field">
+                  <label for="layoutWidth">Ancho (mm)</label>
+                  <input type="number" id="layoutWidth" class="control" step="0.01" min="1" />
+                </div>
+                <div class="field">
+                  <label for="layoutHeight">Alto (mm)</label>
+                  <input type="number" id="layoutHeight" class="control" step="0.01" min="1" />
+                </div>
+              </div>
+
+              <div class="form-actions">
+                <button type="button" class="btn btn-primary btn-small" id="saveBtn">
+                  Guardar cambios
+                </button>
+                <button type="button" class="btn btn-outline btn-small" id="previewBtn">
+                  Ver cómo sale impreso
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section class="profile-card" id="previewCard" style="display: none">
+            <div class="profile-card-title">
+              <span>Cómo sale impreso</span>
+              <span class="hint-inline">Generado por el servidor</span>
+            </div>
+            <div class="profile-card-body">
+              <div id="previewWarnings" class="preview-warnings" style="display: none"></div>
+              <div id="serverPreview" class="server-preview"></div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/editor_layout.js"></script>
+  </body>
+</html>

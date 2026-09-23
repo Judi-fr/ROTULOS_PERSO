@@ -257,6 +257,35 @@ def build_label_context(order=None, label=None):
     return context
 
 
+def build_preview_context():
+    """Contexto de MUESTRA para la vista previa del editor.
+
+    Son valores inventados pero realistas: lo que hace falta ver al diseñar
+    no es el dato verdadero sino cuánto ocupa. Un nombre corto de prueba
+    haría pasar un diseño que después recorta apellidos reales, así que
+    estos tiran a largos.
+
+    No sale de ningún pedido: el editor previsualiza un diseño que todavía
+    no se guardó, sin pedido asociado.
+    """
+    return {
+        "remitente": "Distribuidora del Sur S.R.L.",
+        "remitente_domicilio": "Av. Rivadavia 8764, CABA",
+        "remitente_telefono": "11 4555-8890",
+        "destinatario": "María Fernanda Gutiérrez",
+        "domicilio": "Av. Cabildo 4781 Piso 3 Depto B",
+        "cp": "1602",
+        "localidad": "Vicente López, Buenos Aires",
+        "pais": "Argentina",
+        "referencia": "Timbre 3B, portería hasta las 18",
+        "pedido": "Pedido #10452",
+        "fecha_pedido": "22/09/2026",
+        "envio": "Envío estándar a domicilio",
+        "tracking": "010452",
+        "tracking_url": "https://example.com/seguimiento.html?codigo=010452",
+    }
+
+
 def build_shipment_context(shipment, store=None):
     """Igual que ``build_label_context``, pero para un envío que NO es un
     ``Order`` nuestro: el rótulo que pidió la tienda desde su propio admin

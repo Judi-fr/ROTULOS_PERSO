@@ -404,3 +404,61 @@ class StoreLabelRequest(models.Model):
 
     def __str__(self):
         return f"{self.connection} · etiqueta {self.external_label_id} ({self.status})"
+
+
+class ShippingRate(models.Model):
+    """Una fila de la tabla de tarifas de una tienda: cuánto sale mandar un
+    paquete a cierto rango de códigos postales, hasta cierto peso.
+
+    Es lo que contestamos cuando la plataforma nos pregunta el precio del
+    envío en el checkout (ver ``shipping_rates``). Existe por TIENDA y no
+    global: cada cliente despacha desde su propio origen y tiene sus
+    tarifas negociadas — la app es multi-cliente.
+
+    El rango de CP cubre los dos casos con un solo modelo: una zona
+    (``1000``-``1999``) o un CP suelto (``from`` igual a ``to``). Se guarda
+    normalizado a los 4 dígitos del CP argentino clásico, porque es lo que
+    se puede comparar; un CPA (``C1602ABC``) entra igual y se le toman los
+    dígitos.
+
+    ``weight_up_to_kg`` es el TECHO de la franja: la fila que se aplica es
+    la de menor techo que alcance el peso del carrito. ``null`` = sin
+    tope, la franja final.
+    """
+
+    connection = models.ForeignKey(
+        StoreConnection,
+        on_delete=models.CASCADE,
+        related_name="shipping_rates",
+    )
+    # Cómo se llama esta modalidad en el checkout del comprador. El código
+    # es lo que la plataforma usa para casar la tarifa con la opción del
+    # carrier, y no se puede repetir entre tarifas de tipo "ship".
+    option_code = models.CharField(max_length=40, default="standard")
+    option_name = models.CharField(max_length=100, default="Envío estándar")
+    postal_code_from = models.CharField(max_length=8)
+    postal_code_to = models.CharField(max_length=8)
+    weight_up_to_kg = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True
+    )
+    price = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=3, default="ARS")
+    # Plazo prometido, en días hábiles. Se traduce a las fechas ISO que
+    # espera la plataforma recién al contestar.
+    delivery_days_min = models.PositiveSmallIntegerField(null=True, blank=True)
+    delivery_days_max = models.PositiveSmallIntegerField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "tarifa de envío"
+        verbose_name_plural = "tarifas de envío"
+        ordering = ["connection", "option_code", "postal_code_from", "weight_up_to_kg"]
+        indexes = [
+            models.Index(fields=["connection", "option_code", "is_active"]),
+        ]
+
+    def __str__(self):
+        weight = f" hasta {self.weight_up_to_kg} kg" if self.weight_up_to_kg else ""
+        return f"{self.option_name} {self.postal_code_from}-{self.postal_code_to}{weight}: {self.price}"

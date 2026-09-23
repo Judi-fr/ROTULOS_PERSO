@@ -44,9 +44,9 @@
                 class="search-input"
                 placeholder="Buscar por nombre o destinatario..."
               />
-              <button type="button" class="btn btn-outline" id="openBatchPanelBtn">
-                Generar por lote
-              </button>
+              <a class="btn btn-outline" href="imprimir_rotulos.html">
+                Imprimir por lote
+              </a>
               <a class="btn btn-primary" href="editor_rotulos.html">
                 + Nuevo rótulo
               </a>
@@ -58,91 +58,6 @@
           </div>
         </section>
 
-        <!-- Generación por lote: plantilla + selección de pedidos (por id o
-             por rango de fechas) -> POST /api/v1/labels/batch/. Con el 202
-             en mano, redirige a documentos.html para seguir el progreso. -->
-        <section class="profile-card batch-panel" id="batchPanel">
-          <div class="profile-card-title">
-            <span>Generar rótulos por lote</span>
-            <button type="button" class="btn btn-outline btn-small" id="closeBatchPanelBtn">
-              Cerrar
-            </button>
-          </div>
-          <div class="profile-card-body">
-            <div class="batch-field">
-              <label for="batchTemplateSelect">Plantilla</label>
-              <select id="batchTemplateSelect">
-                <option value="">Cargando plantillas...</option>
-              </select>
-            </div>
-
-            <div class="batch-field">
-              <label>¿Qué pedidos incluye?</label>
-              <label style="font-weight: 400; display: inline-flex; align-items: center; gap: 6px; margin-right: 16px;">
-                <input type="radio" name="batchMode" id="batchModeOrders" value="orders" checked />
-                Elegir pedidos
-              </label>
-              <label style="font-weight: 400; display: inline-flex; align-items: center; gap: 6px;">
-                <input type="radio" name="batchMode" id="batchModeFilters" value="filters" />
-                Por rango de fechas / estado
-              </label>
-            </div>
-
-            <div class="batch-field" id="batchOrdersField">
-              <div id="batchOrdersList" class="batch-orders-list">
-                <p class="empty-state">Cargando pedidos...</p>
-              </div>
-            </div>
-
-            <div class="batch-field" id="batchFiltersField" style="display: none">
-              <label for="batchDateFrom">Desde</label>
-              <input type="date" id="batchDateFrom" />
-              <label for="batchDateTo" style="margin-top: 10px">Hasta</label>
-              <input type="date" id="batchDateTo" />
-              <label for="batchStatusSelect" style="margin-top: 10px">
-                Estado del pedido (opcional)
-              </label>
-              <select id="batchStatusSelect">
-                <option value="">Cualquiera</option>
-                <option value="created">Creado</option>
-                <option value="preparing">En preparación</option>
-                <option value="dispatched">Despachado</option>
-                <option value="in_transit">En tránsito</option>
-                <option value="delivered">Entregado</option>
-              </select>
-            </div>
-
-            <div class="batch-field">
-              <label for="batchOutputSelect">Formato de salida</label>
-              <select id="batchOutputSelect">
-                <option value="pdf">Un solo PDF (una página por rótulo)</option>
-                <option value="zip">ZIP (un PDF por rótulo)</option>
-              </select>
-            </div>
-
-            <div class="batch-field" id="batchPageLayoutField">
-              <label for="batchPageLayoutSelect">Diseño de página (solo PDF)</label>
-              <select id="batchPageLayoutSelect">
-                <option value="label">Una página del tamaño del rótulo (impresora de etiquetas)</option>
-                <option value="a4">Varios rótulos por hoja A4 (impresora de oficina)</option>
-              </select>
-            </div>
-
-            <div class="batch-field">
-              <label style="font-weight: 400; display: inline-flex; align-items: center; gap: 6px;">
-                <input type="checkbox" id="batchSkipExistingInput" />
-                Saltear pedidos que ya tienen un rótulo generado
-              </label>
-            </div>
-
-            <p id="batchMsg" class="form-message" style="display: none"></p>
-            <div class="form-actions">
-              <button type="button" class="btn btn-primary" id="generateBatchBtn">
-                Generar
-              </button>
-            </div>
-          </div>
-        </section>
       </main>
     </div>
 

@@ -167,21 +167,101 @@
         /* width/height set dynamically in cm via JS */
       }
 
+      /* Estas reglas están calibradas contra apps/labels/label_rendering.py
+         (draw_label_page). Tres detalles importan para que lo que se ve sea
+         lo que se imprime:
+         - sin padding ni border: left/top anclan el TEXTO, como hace
+           percent_to_canvas_xy; el recuadro punteado va por outline, que no
+           ocupa lugar;
+         - line-height 1: el render dibuja una línea a font_size del borde;
+         - sin envoltura: el render recorta con "…" (_truncate_to_width), no
+           pasa a la línea siguiente.
+         El tamaño de letra y el ancho los pone applyRenderMetrics() en JS,
+         porque dependen del tamaño del rótulo. */
       .field {
         position: absolute;
-        padding: 4px 8px;
-        border: 1px dashed rgba(124, 92, 255, 0.5);
+        padding: 0;
+        outline: 1px dashed rgba(124, 92, 255, 0.5);
         background: rgba(124, 92, 255, 0.06);
-        font-size: 11px;
-        line-height: 1.35;
-        max-width: 75%;
-        white-space: pre-wrap;
+        line-height: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
         cursor: grab;
-        border-radius: 3px;
       }
+      /* Mientras se escribe se muestra todo: recortar lo que el usuario está
+         tipeando sería pelear con él. Al salir del campo vuelve el "…", que
+         es lo que va a pasar en el papel. */
+      .field[contenteditable="true"]:focus {
+        overflow: visible;
+        text-overflow: clip;
+        z-index: 40;
+      }
+      /* Capa de decoraciones: se ve, no se toca (el editor todavía no las
+         edita). pointer-events none para no robarle el arrastre a los campos. */
+      .preview-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 200;
+        padding: 20px;
+      }
+      .preview-overlay[hidden] {
+        display: none;
+      }
+      .preview-dialog {
+        background: #fff;
+        border-radius: 12px;
+        width: min(760px, 100%);
+        height: min(85vh, 900px);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .preview-dialog-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 18px;
+        border-bottom: 1px solid #e7eaf1;
+        flex-wrap: wrap;
+      }
+      .preview-dialog-head button {
+        margin-left: auto;
+      }
+      #serverPreviewFrame {
+        flex: 1;
+        width: 100%;
+        border: 0;
+      }
+
+      .decoration-layer {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 1;
+      }
+      .deco-border {
+        position: absolute;
+        border-color: #111;
+      }
+      .deco-line {
+        position: absolute;
+        border-top-width: 1px;
+        border-top-color: #111;
+      }
+      .deco-text {
+        position: absolute;
+        line-height: 1;
+        white-space: nowrap;
+        color: #111;
+      }
+
       .field:focus {
-        outline: none;
-        border-color: var(--accent);
+        outline-color: var(--accent);
         background: rgba(124, 92, 255, 0.1);
       }
       .field.dragging {
@@ -192,8 +272,6 @@
       }
 
       #logoField {
-        width: 64px;
-        height: 64px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -212,9 +290,7 @@
       }
 
       #qrField {
-        width: 72px;
-        height: 72px;
-        padding: 2px;
+        padding: 0;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -226,9 +302,7 @@
       }
 
       #barcodeField {
-        width: 150px;
-        height: 46px;
-        padding: 2px;
+        padding: 0;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -374,6 +448,61 @@
             </select>
           </label>
         </div>
+
+        <!-- Propiedades del campo de texto seleccionado. Mismo patrón que el
+             panel del QR/código de barras de acá arriba: se elige el elemento
+             en el lienzo y su configuración aparece acá. Estos estilos ya los
+             dibujaba el lienzo y los aplicaba el render; lo que faltaba era
+             poder editarlos sin tocar la base. -->
+        <div class="tool-group" id="fieldPropsGroup" hidden>
+          <span class="code-config-label"
+            >Campo: <strong id="fieldPropsTitle"></strong></span
+          >
+          <label>
+            Tamaño (pt)
+            <input
+              type="number"
+              id="propFontSize"
+              min="6"
+              max="72"
+              step="0.5"
+              placeholder="auto"
+              style="width: 70px"
+            />
+          </label>
+          <label>
+            <input type="checkbox" id="propBold" />
+            Negrita
+          </label>
+          <label>
+            Alineación
+            <select id="propAlign">
+              <option value="left">Izquierda</option>
+              <option value="center">Centro</option>
+              <option value="right">Derecha</option>
+            </select>
+          </label>
+          <label>
+            Ancho (%)
+            <input
+              type="number"
+              id="propWidth"
+              min="5"
+              max="100"
+              step="1"
+              placeholder="hasta el borde"
+              style="width: 80px"
+            />
+          </label>
+          <label title="Si todos sus datos vienen vacíos, no se imprime nada (ni la etiqueta)">
+            <input type="checkbox" id="propHideIfEmpty" />
+            Ocultar si queda vacío
+          </label>
+          <label title="Antes de recortar con puntos suspensivos, achica la letra hasta 6 pt">
+            <input type="checkbox" id="propShrink" />
+            Achicar para que entre
+          </label>
+        </div>
         <div class="tool-group">
           <label
             >Nombre
@@ -418,6 +547,9 @@
         <div class="tool-group">
           <button id="saveBtn" class="primary">Guardar rótulo</button>
           <button id="saveAsTemplateBtn">Guardar como plantilla</button>
+          <button id="previewServerBtn" title="Muestra el PDF que genera el servidor, que es lo que sale impreso">
+            Ver cómo sale impreso
+          </button>
           <button id="exportPngBtn">Exportar PNG</button>
           <button id="exportPdfBtn">Exportar PDF</button>
           <!-- Vista previa rápida (arriba) vs. rótulo definitivo (acá): el
@@ -482,6 +614,17 @@
       </p>
     </main>
 
+    <div class="preview-overlay" id="serverPreviewOverlay" hidden>
+      <div class="preview-dialog">
+        <div class="preview-dialog-head">
+          <strong>Así sale impreso</strong>
+          <span class="hint">Generado por el servidor, con datos de muestra</span>
+          <button id="closeServerPreviewBtn">Cerrar</button>
+        </div>
+        <iframe id="serverPreviewFrame" title="Vista previa del rótulo"></iframe>
+      </div>
+    </div>
+
     <script>
       const label = document.getElementById("label");
       const widthCmInput = document.getElementById("widthCm");
@@ -511,9 +654,208 @@
       }
       applyDefaultPositions();
 
+      // --- Espejo de apps/labels/label_rendering.py ------------------------
+      // El lienzo dibuja con CSS y el papel lo dibuja ReportLab. Para que
+      // coincidan, estas constantes y fórmulas son las MISMAS que las del
+      // render; si allá cambian, acá también. La verdad final igual la da el
+      // botón "Ver cómo sale impreso", que pide el render de verdad.
+      const TEXT_FIELDS = [
+        "remitente",
+        "destinatario",
+        "domicilio",
+        "cp",
+        "localidad",
+        "pedido",
+      ];
+
+      // Configuración del QR/código de barras. Vive en el script clásico
+      // (y no en el módulo) porque applyRenderMetrics necesita los tamaños
+      // para dibujar el lienzo a escala; el módulo la sigue leyendo y
+      // mutando, que es la dirección que sí funciona entre los dos ámbitos.
+      const CODE_DEFAULTS = {
+        qr: { size: 3, data: "{{tracking_url}}" },
+        barcode: {
+          width: 8,
+          height: 1.5,
+          symbology: "code128",
+          data: "{{tracking}}",
+          show_text: true,
+        },
+      };
+      const codeConfig = {
+        qr: { ...CODE_DEFAULTS.qr },
+        barcode: { ...CODE_DEFAULTS.barcode },
+      };
+
+      // Estilos por campo del diseño cargado (font_size, bold, align,
+      // width, hide_if_empty). El editor todavía no los edita, pero ahora
+      // al menos los DIBUJA: antes un diseño con "bold" o "font_size" se
+      // veía igual que uno sin ellos y salía distinto impreso.
+      let fieldStyles = {};
+
+      const CM_TO_POINTS = 72 / 2.54;
+      const MIN_FONT_SIZE_PT = 6; // max(6.0, ...) en draw_label_page
+      const FONT_SIZE_RATIO = 0.035; // height_pt * 0.035
+      const LOGO_BOX_RATIO = 0.22; // _box_size_cm: min(w,h) * 0.22
+      const LOGO_BOX_MIN_CM = 1.0;
+      const DEFAULT_QR_SIZE_CM = 3.0;
+      const DEFAULT_BARCODE_WIDTH_CM = 8.0;
+      const DEFAULT_BARCODE_HEIGHT_CM = 1.5;
+
+      function labelSizeCm() {
+        return {
+          widthCm: parseFloat(widthCmInput.value) || 10,
+          heightCm: parseFloat(heightCmInput.value) || 15,
+        };
+      }
+
+      // Píxeles por centímetro REALES del lienzo: se mide en vez de asumir
+      // 96 dpi, así el cálculo aguanta el zoom del navegador.
+      function pxPerCm() {
+        const { widthCm } = labelSizeCm();
+        const measured = label.getBoundingClientRect().width;
+        return measured > 0 ? measured / widthCm : 37.795;
+      }
+
+      // _fit_size_cm: achica proporcionalmente para que entre, nunca estira.
+      function fitCm(wCm, hCm, availWCm, availHCm) {
+        const scale = Math.min(
+          1,
+          wCm ? availWCm / wCm : 1,
+          hCm ? availHCm / hCm : 1,
+        );
+        return [wCm * scale, hCm * scale];
+      }
+
+      function fieldPercent(key, side) {
+        const el = document.querySelector(`.field[data-field="${key}"]`);
+        return parseFloat(el && el.style[side]) || 0;
+      }
+
+      // Aplica al lienzo las medidas con las que va a imprimir el backend.
+      function applyRenderMetrics() {
+        const { widthCm, heightCm } = labelSizeCm();
+        const perCm = pxPerCm();
+
+        // Tamaño de letra proporcional al alto del rótulo.
+        const fontPt = Math.max(
+          MIN_FONT_SIZE_PT,
+          heightCm * CM_TO_POINTS * FONT_SIZE_RATIO,
+        );
+        const fontPx = (fontPt / 72) * 2.54 * perCm;
+        document.querySelectorAll(".field").forEach((el) => {
+          const key = el.dataset.field;
+          if (!TEXT_FIELDS.includes(key)) return;
+          const style = (fieldStyles && fieldStyles[key]) || {};
+          const ownPt = parseFloat(style.font_size);
+          el.style.fontSize =
+            ((ownPt > 0 ? ownPt : fontPt) / 72) * 2.54 * perCm + "px";
+          el.style.fontWeight = style.bold ? "700" : "400";
+          el.style.textAlign = style.align || "left";
+          // El render mide el ancho desde la X del campo hasta el borde
+          // derecho, salvo que el diseño acote con "width" (en %).
+          const left = parseFloat(el.style.left) || 0;
+          el.style.width =
+            style.width != null
+              ? Math.min(parseFloat(style.width), 100 - left) + "%"
+              : 100 - left + "%";
+        });
+
+        // Logo: caja cuadrada proporcional al lado más corto.
+        const logoCm = Math.max(LOGO_BOX_MIN_CM, Math.min(widthCm, heightCm) * LOGO_BOX_RATIO);
+        const logoField = document.getElementById("logoField");
+        logoField.style.width = logoCm * perCm + "px";
+        logoField.style.height = logoCm * perCm + "px";
+
+        // QR: tamaño del diseño (default 3 cm), achicado si no entra.
+        const qrCm = parseFloat((codeConfig.qr && codeConfig.qr.size) || DEFAULT_QR_SIZE_CM);
+        const qrLeft = fieldPercent("qr", "left");
+        const qrTop = fieldPercent("qr", "top");
+        const [qrFit] = fitCm(
+          qrCm,
+          qrCm,
+          widthCm * (1 - qrLeft / 100),
+          heightCm * (1 - qrTop / 100),
+        );
+        const qrField = document.getElementById("qrField");
+        qrField.style.width = qrFit * perCm + "px";
+        qrField.style.height = qrFit * perCm + "px";
+
+        // Código de barras: 8 x 1,5 cm por defecto, también achicado si no entra.
+        const barcode = codeConfig.barcode || {};
+        const bcLeft = fieldPercent("barcode", "left");
+        const bcTop = fieldPercent("barcode", "top");
+        const [bcW, bcH] = fitCm(
+          parseFloat(barcode.width) || DEFAULT_BARCODE_WIDTH_CM,
+          parseFloat(barcode.height) || DEFAULT_BARCODE_HEIGHT_CM,
+          widthCm * (1 - bcLeft / 100),
+          heightCm * (1 - bcTop / 100),
+        );
+        const barcodeField = document.getElementById("barcodeField");
+        barcodeField.style.width = bcW * perCm + "px";
+        barcodeField.style.height = bcH * perCm + "px";
+
+        renderDecorations(perCm, widthCm, heightCm, fontPt);
+      }
+
+      // Decoraciones del diseño: recuadro, líneas y textos fijos. El backend
+      // las dibuja (_draw_decorations) y el editor no las dibujaba NUNCA, así
+      // que la plantilla del sistema salía impresa con un marco, rayas y
+      // textos que no estaban en pantalla. Se dibujan como una capa aparte y
+      // no se pueden arrastrar: el editor todavía no las edita, solo las
+      // muestra para que no haya sorpresas.
+      let decorations = { border: null, lines: null, texts: null };
+
+      function renderDecorations(perCm, widthCm, heightCm, defaultFontPt) {
+        document.getElementById("decorationLayer")?.remove();
+        const layer = document.createElement("div");
+        layer.id = "decorationLayer";
+        layer.className = "decoration-layer";
+
+        const border = decorations.border;
+        if (border) {
+          const box = document.createElement("div");
+          box.className = "deco-border";
+          const marginPct = parseFloat(border.margin) || 0;
+          box.style.inset = marginPct + "%";
+          box.style.borderWidth = ((parseFloat(border.width) || 1) / 72) * 2.54 * perCm + "px";
+          box.style.borderStyle = border.dashed ? "dashed" : "solid";
+          layer.appendChild(box);
+        }
+
+        (decorations.lines || []).forEach((line) => {
+          const el = document.createElement("div");
+          el.className = "deco-line";
+          const left = parseFloat(line.left) || 0;
+          const top = parseFloat(line.top) || 0;
+          el.style.left = left + "%";
+          el.style.top = top + "%";
+          el.style.width = (line.width != null ? parseFloat(line.width) : 100 - left) + "%";
+          el.style.height = ((parseFloat(line.thickness) || 1) / 72) * 2.54 * perCm + "px";
+          el.style.borderTopStyle = line.dashed ? "dashed" : "solid";
+          layer.appendChild(el);
+        });
+
+        (decorations.texts || []).forEach((item) => {
+          const el = document.createElement("div");
+          el.className = "deco-text";
+          el.style.left = (parseFloat(item.left) || 0) + "%";
+          el.style.top = (parseFloat(item.top) || 0) + "%";
+          const pt = parseFloat(item.font_size) || defaultFontPt;
+          el.style.fontSize = (pt / 72) * 2.54 * perCm + "px";
+          el.style.fontWeight = item.bold ? "700" : "400";
+          el.style.textAlign = item.align || "left";
+          el.textContent = item.text || "";
+          layer.appendChild(el);
+        });
+
+        label.appendChild(layer);
+      }
+
       function updateLabelSize() {
         label.style.width = (parseFloat(widthCmInput.value) || 10) + "cm";
         label.style.height = (parseFloat(heightCmInput.value) || 15) + "cm";
+        applyRenderMetrics();
       }
       updateLabelSize();
       widthCmInput.addEventListener("input", updateLabelSize);
@@ -711,15 +1053,6 @@
         }
       });
 
-      const TEXT_FIELDS = [
-        "remitente",
-        "destinatario",
-        "domicilio",
-        "cp",
-        "localidad",
-        "pedido",
-      ];
-
       function showStatus(msg) {
         saveStatus.textContent = msg;
         saveStatus.style.display = "block";
@@ -732,20 +1065,6 @@
       // (tamaño/simbología/contenido) y se muestran pidiendo el SVG real al
       // backend (fetchCodePreview -> GET /api/v1/labels/barcode/), el mismo
       // código que arma el PDF definitivo.
-      const CODE_DEFAULTS = {
-        qr: { size: 3, data: "{{tracking_url}}" },
-        barcode: {
-          width: 8,
-          height: 1.5,
-          symbology: "code128",
-          data: "{{tracking}}",
-          show_text: true,
-        },
-      };
-      const codeConfig = {
-        qr: { ...CODE_DEFAULTS.qr },
-        barcode: { ...CODE_DEFAULTS.barcode },
-      };
       let selectedCodeField = null; // "qr" | "barcode" | null
 
       const codeConfigGroup = document.getElementById("codeConfigGroup");
@@ -784,6 +1103,92 @@
         }
         codeDataInput.value = cfg.data;
       }
+
+      // --- Propiedades del campo de texto seleccionado ---------------------
+      // Escriben en fieldStyles, que es lo que applyRenderMetrics usa para
+      // dibujar y lo que collectFields devuelve al guardar. Así lo que se
+      // edita, lo que se ve y lo que se imprime son el mismo dato.
+      const fieldPropsGroup = document.getElementById("fieldPropsGroup");
+      const fieldPropsTitle = document.getElementById("fieldPropsTitle");
+      const propInputs = {
+        font_size: document.getElementById("propFontSize"),
+        bold: document.getElementById("propBold"),
+        align: document.getElementById("propAlign"),
+        width: document.getElementById("propWidth"),
+        hide_if_empty: document.getElementById("propHideIfEmpty"),
+        shrink_to_fit: document.getElementById("propShrink"),
+      };
+      const FIELD_LABELS = {
+        remitente: "Remitente",
+        destinatario: "Destinatario",
+        domicilio: "Domicilio",
+        cp: "CP",
+        localidad: "Localidad/Provincia",
+        pedido: "N° de pedido",
+      };
+      let selectedTextField = null;
+
+      function selectTextField(key) {
+        selectedTextField = key;
+        const style = fieldStyles[key] || {};
+        fieldPropsGroup.hidden = false;
+        fieldPropsTitle.textContent = FIELD_LABELS[key] || key;
+        // Vacío = "lo que decida el render": tamaño proporcional al rótulo y
+        // ancho hasta el borde derecho. No se rellenan con el valor
+        // calculado para no convertir un default en un valor fijo sin que
+        // el usuario lo pida.
+        propInputs.font_size.value = style.font_size != null ? style.font_size : "";
+        propInputs.width.value = style.width != null ? style.width : "";
+        propInputs.bold.checked = Boolean(style.bold);
+        propInputs.align.value = style.align || "left";
+        propInputs.hide_if_empty.checked = Boolean(style.hide_if_empty);
+        propInputs.shrink_to_fit.checked = Boolean(style.shrink_to_fit);
+      }
+
+      function updateSelectedFieldStyle(key, value) {
+        if (!selectedTextField) return;
+        const style = { ...(fieldStyles[selectedTextField] || {}) };
+        // Un valor vacío o apagado BORRA la clave en vez de guardarla en
+        // falso: el diseño queda con lo que el usuario puso y nada más.
+        if (value === "" || value === null || value === false) {
+          delete style[key];
+        } else {
+          style[key] = value;
+        }
+        fieldStyles[selectedTextField] = style;
+        applyRenderMetrics();
+      }
+
+      propInputs.font_size.addEventListener("input", (event) => {
+        const value = parseFloat(event.target.value);
+        updateSelectedFieldStyle("font_size", Number.isFinite(value) ? value : "");
+      });
+      propInputs.width.addEventListener("input", (event) => {
+        const value = parseFloat(event.target.value);
+        updateSelectedFieldStyle("width", Number.isFinite(value) ? value : "");
+      });
+      propInputs.bold.addEventListener("change", (event) =>
+        updateSelectedFieldStyle("bold", event.target.checked),
+      );
+      propInputs.align.addEventListener("change", (event) =>
+        // "left" es el default del render: no hace falta guardarlo.
+        updateSelectedFieldStyle("align", event.target.value === "left" ? "" : event.target.value),
+      );
+      propInputs.hide_if_empty.addEventListener("change", (event) =>
+        updateSelectedFieldStyle("hide_if_empty", event.target.checked),
+      );
+      propInputs.shrink_to_fit.addEventListener("change", (event) =>
+        updateSelectedFieldStyle("shrink_to_fit", event.target.checked),
+      );
+
+      document.querySelectorAll(".field").forEach((el) => {
+        const key = el.dataset.field;
+        if (!TEXT_FIELDS.includes(key)) return;
+        // El campo es contenteditable: el click lo enfoca para escribir y
+        // además abre sus propiedades. Las dos cosas conviven.
+        el.addEventListener("click", () => selectTextField(key));
+        el.addEventListener("focus", () => selectTextField(key));
+      });
 
       document
         .getElementById("qrField")
@@ -911,6 +1316,21 @@
         // defaults, nunca se pisa lo que sí vino.
         if (fields.qr) codeConfig.qr = { ...CODE_DEFAULTS.qr, ...fields.qr };
         if (fields.barcode) codeConfig.barcode = { ...CODE_DEFAULTS.barcode, ...fields.barcode };
+
+        // Estilos por campo y decoraciones: el editor no los editaba y
+        // tampoco los mostraba, así que un diseño con negrita, tamaños
+        // propios o un recuadro salía impreso distinto de lo diseñado.
+        fieldStyles = {};
+        TEXT_FIELDS.forEach((key) => {
+          const entry = fields[key];
+          if (entry && typeof entry === "object") fieldStyles[key] = entry;
+        });
+        decorations = {
+          border: fields.border || null,
+          lines: Array.isArray(fields.lines) ? fields.lines : null,
+          texts: Array.isArray(fields.texts) ? fields.texts : null,
+        };
+        applyRenderMetrics();
       }
 
       // --- Cargar una plantilla como punto de partida (?template=<id>),
@@ -991,6 +1411,67 @@
         };
       }
 
+      // --- Vista previa REAL -----------------------------------------------
+      // El lienzo de arriba es una aproximación calibrada; esto es el render
+      // de verdad. Si alguna vez se separan, manda esto (ver
+      // apps/labels/views.py, PreviewLabelView).
+      const PREVIEW_URL = `${window.APP_CONFIG.API_BASE}/labels/preview/`;
+      const serverPreviewOverlay = document.getElementById("serverPreviewOverlay");
+      const serverPreviewFrame = document.getElementById("serverPreviewFrame");
+      let serverPreviewUrl = null;
+
+      function closeServerPreview() {
+        serverPreviewOverlay.hidden = true;
+        serverPreviewFrame.removeAttribute("src");
+        if (serverPreviewUrl) {
+          URL.revokeObjectURL(serverPreviewUrl);
+          serverPreviewUrl = null;
+        }
+      }
+
+      document
+        .getElementById("closeServerPreviewBtn")
+        .addEventListener("click", closeServerPreview);
+      serverPreviewOverlay.addEventListener("click", (event) => {
+        if (event.target === serverPreviewOverlay) closeServerPreview();
+      });
+
+      document
+        .getElementById("previewServerBtn")
+        .addEventListener("click", async () => {
+          const button = document.getElementById("previewServerBtn");
+          button.disabled = true;
+          try {
+            const response = await window.Auth.apiFetch(PREVIEW_URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                design: collectFields(),
+                width_cm: parseFloat(widthCmInput.value) || 10,
+                height_cm: parseFloat(heightCmInput.value) || 15,
+                template_id: currentTemplateId || null,
+              }),
+            });
+            if (!response.ok) {
+              const data = await response.json().catch(() => ({}));
+              throw new Error(
+                (data && (data.detail || data.design)) ||
+                  "No se pudo generar la vista previa.",
+              );
+            }
+            if (serverPreviewUrl) URL.revokeObjectURL(serverPreviewUrl);
+            serverPreviewUrl = URL.createObjectURL(await response.blob());
+            serverPreviewFrame.src = serverPreviewUrl;
+            serverPreviewOverlay.hidden = false;
+          } catch (err) {
+            if (err && err.isSessionExpired) return;
+            console.error("Error en la vista previa:", err);
+            showStatus(err.message || "No se pudo generar la vista previa.");
+          } finally {
+            button.disabled = false;
+          }
+        });
+
       function collectFields() {
         const fields = {};
         document.querySelectorAll(".field").forEach((el) => {
@@ -999,7 +1480,15 @@
           // (tamaño/simbología/data) en vez de leer el DOM.
           if (key === "qr" || key === "barcode") return;
           fields[key] = fieldPosition(el);
-          if (TEXT_FIELDS.includes(key)) fields[key].text = el.textContent;
+          if (TEXT_FIELDS.includes(key)) {
+            // Los estilos que el editor todavía no edita (font_size, bold,
+            // align, width, hide_if_empty, shrink_to_fit) se devuelven tal
+            // como vinieron. Sin esto, abrir una plantilla y guardarla le
+            // borraba el formato.
+            const previous = fieldStyles[key] || {};
+            const { left, top, text, ...keep } = previous;
+            fields[key] = { ...keep, ...fields[key], text: el.textContent };
+          }
         });
         fields.qr = {
           ...fieldPosition(document.getElementById("qrField")),
@@ -1014,6 +1503,12 @@
           data: codeConfig.barcode.data,
           show_text: codeConfig.barcode.show_text,
         };
+        // Decoraciones: mismo criterio que los estilos. El editor las
+        // dibuja pero no las edita, así que se conservan intactas en vez de
+        // perderse al guardar.
+        if (decorations.border) fields.border = decorations.border;
+        if (decorations.lines) fields.lines = decorations.lines;
+        if (decorations.texts) fields.texts = decorations.texts;
         return fields;
       }
 

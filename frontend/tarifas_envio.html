@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Tarifas de envío</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/tarifas_envio.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
+      <header
+        class="topbar"
+        id="appTopbar"
+        data-links='[{"href": "tiendas.html", "label": "Mis tiendas"}, {"href": "dashboard.html", "label": "Volver al panel"}]'
+      ></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Tarifas de envío</h1>
+          <p>
+            Cuánto sale mandar un paquete a cada zona. Es lo que ve el comprador
+            como opción de envío en el checkout de tu tienda, así que un código
+            postal que no esté acá no se cotiza.
+          </p>
+        </div>
+
+        <p
+          id="pageMessage"
+          class="page-message"
+          role="status"
+          aria-live="polite"
+          style="display: none"
+        ></p>
+
+        <section class="profile-card">
+          <div class="profile-card-title">
+            <span>Tienda</span>
+          </div>
+          <div class="profile-card-body">
+            <select id="storeSelect" class="status-filter">
+              <option value="">Elegí una tienda...</option>
+            </select>
+            <p class="field-hint" id="storeHint">
+              Cada tienda tiene su propia tabla: se despacha desde otro lugar y
+              con otras tarifas.
+            </p>
+          </div>
+        </section>
+
+        <section class="profile-card" id="formCard" style="display: none">
+          <div class="profile-card-title">
+            <span id="formTitle">Agregar una tarifa</span>
+          </div>
+          <div class="profile-card-body">
+            <form id="rateForm" class="rate-form">
+              <div class="field">
+                <label for="optionName">Nombre que ve el comprador</label>
+                <input type="text" id="optionName" maxlength="100" required />
+              </div>
+              <div class="field">
+                <label for="optionCode">Código interno</label>
+                <input type="text" id="optionCode" maxlength="40" required />
+                <span class="field-hint">
+                  Sin espacios ni acentos, por ejemplo <code>standard</code> o
+                  <code>express</code>. Distingue una modalidad de otra.
+                </span>
+              </div>
+              <div class="field-row">
+                <div class="field">
+                  <label for="postalFrom">CP desde</label>
+                  <input type="text" id="postalFrom" maxlength="8" required />
+                </div>
+                <div class="field">
+                  <label for="postalTo">CP hasta</label>
+                  <input type="text" id="postalTo" maxlength="8" required />
+                </div>
+              </div>
+              <span class="field-hint">
+                Para un solo código postal, poné el mismo en los dos.
+              </span>
+              <div class="field-row">
+                <div class="field">
+                  <label for="weightUpTo">Hasta cuántos kg</label>
+                  <input type="number" id="weightUpTo" step="0.001" min="0" />
+                  <span class="field-hint">Vacío = sin tope de peso.</span>
+                </div>
+                <div class="field">
+                  <label for="price">Precio</label>
+                  <input type="number" id="price" step="0.01" min="0" required />
+                </div>
+              </div>
+              <div class="field-row">
+                <div class="field">
+                  <label for="daysMin">Entrega en (días, mínimo)</label>
+                  <input type="number" id="daysMin" min="0" />
+                </div>
+                <div class="field">
+                  <label for="daysMax">Entrega en (días, máximo)</label>
+                  <input type="number" id="daysMax" min="0" />
+                </div>
+              </div>
+              <span class="field-hint">
+                Si los dejás vacíos no le prometemos ninguna fecha al comprador.
+              </span>
+
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary btn-small" id="saveBtn">
+                  Guardar tarifa
+                </button>
+                <button type="button" class="btn btn-outline btn-small" id="cancelBtn" style="display: none">
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section class="profile-card" id="listCard" style="display: none">
+          <div class="profile-card-title">
+            <span>Tabla cargada</span>
+          </div>
+          <div class="profile-card-body">
+            <div id="rateList" class="rate-list">
+              <p class="empty-state">Cargando tarifas...</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/tarifas_envio.js"></script>
+  </body>
+</html>

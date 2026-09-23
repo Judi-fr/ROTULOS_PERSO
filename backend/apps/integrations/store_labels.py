@@ -454,15 +454,15 @@ def register_carrier(connection):
     """Da de alta nuestro medio de envío en la tienda, con el callback de
     rótulos ya apuntado a esta conexión.
 
-    NO corre solo al conectar una tienda, y es a propósito. Tiendanube
-    exige un ``callback_url`` de COTIZACIÓN junto con el de rótulos: desde
-    que el carrier existe, la tienda nos pregunta precios en cada checkout.
-    Mientras ese endpoint no esté escrito, darlo de alta le rompería el
-    checkout al comerciante.
+    NO corre solo al conectar una tienda, y es a propósito: desde que el
+    carrier existe, esa tienda nos pregunta el precio del envío en cada
+    checkout y nos muestra como opción de envío a sus compradores. Eso se
+    enciende cliente por cliente y a conciencia, no como efecto secundario
+    de instalar la app.
 
-    Por eso se dispara a mano (``manage.py register_store_carrier``) o con
-    ``STORE_LABEL_REGISTER_CARRIER=true`` una vez que la cotización exista.
-    Devuelve el carrier de la plataforma.
+    Exige que la tienda tenga tarifas cargadas: darla de alta sin tabla la
+    dejaría ofreciendo un medio de envío que nunca cotiza (ver
+    ``shipping_rates.quote``). Devuelve el carrier de la plataforma.
     """
     labels_url = callback_base_url(connection)
     if not labels_url:
@@ -470,11 +470,17 @@ def register_carrier(connection):
             "No se puede dar de alta el medio de envío: falta INTEGRATIONS_PUBLIC_BASE_URL "
             "(la URL pública HTTPS del backend)."
         )
-    rates_url = str(_setting("STORE_LABEL_RATES_URL", "") or "")
+    from .shipping_rates import rates_callback_url
+
+    rates_url = rates_callback_url(connection)
     if not rates_url:
         raise LabelGenerationError(
-            "No se puede dar de alta el medio de envío: falta STORE_LABEL_RATES_URL, el endpoint "
-            "que le cotiza los envíos a la tienda. Tiendanube lo exige junto con el de rótulos."
+            "No se puede dar de alta el medio de envío: falta INTEGRATIONS_PUBLIC_BASE_URL."
+        )
+    if not connection.shipping_rates.filter(is_active=True).exists():
+        raise LabelGenerationError(
+            "Esta tienda no tiene tarifas de envío cargadas. Sin tabla no podemos cotizar, y el "
+            "medio de envío aparecería en el checkout sin precio. Cargalas antes de darlo de alta."
         )
 
     carrier = get_provider(connection.platform).register_shipping_carrier(
