@@ -1,0 +1,41 @@
+# Puerta de entrada del servidor: termina TLS y reparte.
+#
+# Caddy y no nginx acá porque saca y renueva el certificado de Let's Encrypt
+# solo, sin certbot ni cron. Tiendanube NO acepta callbacks por HTTP, así que
+# el HTTPS no es opcional: sin certificado no hay integración.
+#
+# DOMINIO sale del .env. Para probar en una máquina sin dominio real, poner
+# DOMINIO=localhost y Caddy usa un certificado propio (el navegador va a
+# avisar, y Tiendanube no lo va a aceptar — es solo para probar el ruteo).
+
+{$DOMINIO} {
+	encode gzip
+
+	# La API y el admin de Django.
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+	handle /admin/* {
+		reverse_proxy api:8000
+	}
+
+	# Archivos subidos y generados (logos de tiendas, PDFs de los lotes).
+	# Los sirve Caddy directo desde el volumen compartido: hacerlos pasar por
+	# Django sería gastar un worker de gunicorn en mandar un archivo.
+	handle /media/* {
+		root * /srv
+		file_server
+	}
+
+	# Estáticos de Django (los del admin, básicamente): los deja
+	# `collectstatic` en el mismo volumen al arrancar la API.
+	handle /static/* {
+		root * /srv
+		file_server
+	}
+
+	# Todo lo demás es el frontend.
+	handle {
+		reverse_proxy web:8080
+	}
+}

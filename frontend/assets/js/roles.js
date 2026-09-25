@@ -11,30 +11,84 @@ const ROLE_DEFINITIONS = [
   { key: "operator", label: "Operador" },
   { key: "subscriber", label: "Suscriptor" },
 ];
-const PERMISSION_GROUPS = [
-  {
-    label: "USUARIOS",
-    permissions: [
-      ["users.view", "Ver usuarios"],
-      ["users.create", "Crear usuarios"],
-      ["users.edit", "Editar usuarios"],
-      ["users.deactivate", "Desactivar usuarios"],
-      ["users.reactivate", "Reactivar usuarios"],
-    ],
-  },
-  {
-    label: "PERFIL PROPIO",
-    permissions: [
-      ["users.me.view", "Ver perfil propio"],
-      ["users.me.edit", "Editar perfil propio"],
-      ["users.me.change_password", "Cambiar contraseña propia"],
-    ],
-  },
+// La pantalla NO tiene lista de permisos: los muestra TODOS los que devuelve
+// /auth/permissions/, agrupados por la categoría que trae cada uno y con el
+// nombre en español que ya guarda el backend (RolePermission.name).
+//
+// Antes había acá una lista blanca de ocho permisos y el catálogo de la API
+// se filtraba contra ella: el backend controlaba 41 permisos y un admin solo
+// podía asignar 8. Los otros 33 existían, se aplicaban, y no había forma de
+// tocarlos desde ningún lado. Armar la pantalla con lo que manda el servidor
+// evita que eso vuelva a pasar: un permiso nuevo en el backend aparece acá
+// solo, sin tocar este archivo.
+
+// Título de cada categoría. Una categoría que no esté acá igual se muestra,
+// con su nombre crudo en mayúsculas: preferible una sección fea a un permiso
+// invisible.
+const CATEGORY_LABELS = {
+  perfil: "PERFIL PROPIO",
+  users: "USUARIOS",
+  orders: "PEDIDOS Y ENVÍOS",
+  labels: "RÓTULOS",
+  plantillas: "PLANTILLAS Y VARIABLES",
+  documents: "DOCUMENTOS",
+  processing: "IMPORTACIÓN POR FOTO",
+  support: "SOPORTE",
+  integrations: "INTEGRACIONES",
+  audit: "AUDITORÍA",
+};
+
+// Orden de las secciones: de lo más cotidiano a lo más administrativo. Lo que
+// no esté listado va al final, alfabético.
+const CATEGORY_ORDER = [
+  "perfil",
+  "orders",
+  "labels",
+  "plantillas",
+  "documents",
+  "processing",
+  "support",
+  "users",
+  "integrations",
+  "audit",
 ];
+
+// Algunos permisos comparten categoría en el backend pero son otra cosa para
+// quien los asigna: el perfil propio no es administrar usuarios, y las
+// plantillas no son los rótulos. Se reagrupan por prefijo de la clave, que es
+// un dato y no una lista de permisos, así que sigue sin haber nada que
+// actualizar cuando se agrega uno.
+const CATEGORY_BY_PREFIX = [
+  ["users.me.", "perfil"],
+  ["plantillas.", "plantillas"],
+  ["variables.", "plantillas"],
+];
+
 const MANAGEABLE_ROLE_KEYS = new Set(ROLE_DEFINITIONS.map((role) => role.key));
-const AVAILABLE_PERMISSION_CODES = new Set(
-  PERMISSION_GROUPS.flatMap((group) => group.permissions.map(([code]) => code))
-);
+
+// El catálogo llega a veces como strings y a veces como objetos (ver
+// loadPermissionCatalog): estas tres funciones son el único lugar que sabe
+// de esa diferencia.
+function permissionCode(permission) {
+  if (typeof permission === "string") return permission;
+  return permission.code || permission.key || permission.name;
+}
+
+function permissionLabel(permission) {
+  if (typeof permission === "string") return permission;
+  // Sin nombre se muestra la clave: un permiso sin etiqueta se sigue pudiendo
+  // asignar, que es lo que importa.
+  return permission.name || permissionCode(permission);
+}
+
+function permissionCategory(permission) {
+  const code = permissionCode(permission) || "";
+  const porPrefijo = CATEGORY_BY_PREFIX.find(([prefijo]) => code.startsWith(prefijo));
+  if (porPrefijo) return porPrefijo[1];
+  if (typeof permission !== "string" && permission.category) return permission.category;
+  // Sin categoría, la primera parte de la clave ("orders.create" -> "orders").
+  return code.split(".")[0] || "otros";
+}
 let roles = [];
 let permissionCatalog = [];
 let selectedRole = null;
@@ -115,35 +169,51 @@ function renderRolePermissions(permissionCodes = []) {
   const saveButton = document.getElementById("saveRolePermissions");
   if (!content) return;
 
-  const assigned = new Set(
-    permissionCodes.map((permission) =>
-      typeof permission === "string" ? permission : permission.code || permission.key || permission.name
-    )
-  );
-  const catalogCodes = new Set(
-    permissionCatalog.map((permission) =>
-      typeof permission === "string" ? permission : permission.code || permission.key || permission.name
-    )
-  );
+  const assigned = new Set(permissionCodes.map(permissionCode));
+  // Agrupar el catálogo por categoría, conservando el orden de CATEGORY_ORDER
+  // y mandando al final, alfabéticamente, cualquier categoría desconocida.
+  const porCategoria = new Map();
+  permissionCatalog.forEach((permission) => {
+    const categoria = permissionCategory(permission);
+    if (!porCategoria.has(categoria)) porCategoria.set(categoria, []);
+    porCategoria.get(categoria).push(permission);
+  });
+
+  const categorias = [...porCategoria.keys()].sort((a, b) => {
+    const ia = CATEGORY_ORDER.indexOf(a);
+    const ib = CATEGORY_ORDER.indexOf(b);
+    if (ia !== -1 && ib !== -1) return ia - ib;
+    if (ia !== -1) return -1;
+    if (ib !== -1) return 1;
+    return a.localeCompare(b, "es");
+  });
 
   content.innerHTML = "";
-  PERMISSION_GROUPS.forEach((group) => {
+  categorias.forEach((categoria) => {
     const groupEl = document.createElement("section");
     groupEl.className = "permission-group";
     const title = document.createElement("h3");
-    title.textContent = group.label;
+    title.textContent = CATEGORY_LABELS[categoria] || categoria.toUpperCase();
     groupEl.appendChild(title);
 
-    group.permissions.forEach(([code, label]) => {
-      if (!catalogCodes.has(code)) return;
+    const items = porCategoria
+      .get(categoria)
+      .slice()
+      .sort((a, b) => permissionLabel(a).localeCompare(permissionLabel(b), "es"));
+
+    items.forEach((permission) => {
+      const code = permissionCode(permission);
       const option = document.createElement("label");
       option.className = "permission-option";
+      // La clave va en el title: dos permisos pueden leerse parecido y quien
+      // administra roles necesita saber cuál es cuál.
+      option.title = code;
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.value = code;
       checkbox.checked = assigned.has(code);
       const text = document.createElement("span");
-      text.textContent = label;
+      text.textContent = permissionLabel(permission);
       option.append(checkbox, text);
       groupEl.appendChild(option);
     });
@@ -160,11 +230,10 @@ async function loadPermissionCatalog() {
   if (response.status === 403) throw new Error("No tenés permisos para administrar roles.");
   if (!response.ok) throw new Error(getErrorMessage(data, "No se pudo cargar el catálogo de permisos."));
 
+  // Sin filtro: se muestra TODO lo que el backend dice que existe. Lo único
+  // que se descarta es una entrada sin clave, que no se podría asignar.
   const catalog = Array.isArray(data) ? data : data.results || data.permissions || [];
-  permissionCatalog = catalog.filter((permission) => {
-    const code = typeof permission === "string" ? permission : permission.code || permission.key || permission.name;
-    return AVAILABLE_PERMISSION_CODES.has(code);
-  });
+  permissionCatalog = catalog.filter((permission) => Boolean(permissionCode(permission)));
   permissionsLoaded = true;
 }
 

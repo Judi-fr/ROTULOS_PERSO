@@ -54,6 +54,40 @@ so Python fell back to `lastResort` — every `INFO` was dropped in silence, inc
 `shipping_rates`' "no rate for this postal code", which is the diagnostic for why a store's shipping
 option never appeared.
 
+### Health probes (`config/health.py`)
+
+Two, not one, and the split is the point. `GET /api/v1/health/` is **liveness**: it touches nothing and
+answers "the process is up" — that is what an orchestrator polls to decide whether to restart the
+container, so putting a DB query in it would restart the API on every Postgres hiccup, exactly when the
+API is not the problem. `GET /api/v1/health/ready/` is **readiness**: it runs a real `SELECT 1` and
+returns **503** when the database is unreachable, which is the one worth monitoring. Before, a single
+probe returned `{"status": "ok"}` without touching anything, so it kept reporting healthy with the
+database down.
+
+### Deploying (`docker-compose.prod.yml` + `Caddyfile`, repo root)
+
+Brought up **by hand** — there is no pipeline and none is needed yet; deploying and automating the deploy
+are different things, and the second only earns its keep after doing the first a few times. Five
+services: Postgres, the API (migrations + `collectstatic` then gunicorn), the integrations worker, the
+frontend, and Caddy, which terminates TLS with an automatic Let's Encrypt certificate — Tiendanube
+refuses HTTP callbacks, so the certificate is not optional. Only Caddy publishes ports; the database is
+not exposed at all, unlike the dev compose.
+- Because Caddy serves the frontend and the API under **one domain**, nothing is cross-origin and CORS
+  stops mattering in this layout.
+- **The API healthcheck sends `X-Forwarded-Proto: https`** on purpose: `prod.py` forces
+  `SECURE_SSL_REDIRECT`, and the probe goes over plain HTTP to the container itself, so without that
+  header Django answers 301 and the container would be marked unhealthy while being perfectly fine.
+- `frontend/Dockerfile` is nginx with no build step (there is nothing to compile). Its entrypoint
+  **generates `assets/js/config.js` from `API_BASE`** at container start: that file hardcodes
+  `127.0.0.1:8000` for dev, which on a server would make the merchant's browser call *their own*
+  machine. `.dockerignore` leaves out `assets/apis/` — 502 MB of the 504 the folder weighs, and nginx
+  does not run PHP anyway — so the image is ~50 MB.
+- Media (`MEDIA_ROOT`) is a real volume: the generated batch PDFs and store logos live on disk, so a
+  platform with an ephemeral filesystem would lose them on every redeploy.
+- The images use fully-qualified names (`docker.io/library/...`) so Podman resolves them too. Note the
+  laptop has `docker-compose` 1.29.2, which is too old for these files (and for `backend/docker-compose.yml`
+  as well) — Compose v2 (`docker compose`, no hyphen) is required.
+
 ### Docker (Postgres + API + worker)
 
 `cd backend && docker-compose up` — Postgres 17, the API with `runserver`/autoreload, and the
@@ -433,6 +467,16 @@ permission (UI-only gating; the backend re-checks every permission server-side).
   (`{FRONTEND_URL}/reset-password`) matches nothing in `frontend/` and the link 404s. The login's
   "Olvidaste tu clave?" used to be `href="#!"`: the screen was promised and did not exist. Reused
   `index_test.html` still has the dead link and is left alone (PHP-era leftover).
+- **`roles.html` renders the whole permission catalog, and holds no list of its own.** It builds the
+  sections from `RolePermission.category` and labels each checkbox with `RolePermission.name`, both of
+  which the seed migrations already populate in Spanish. It used to carry a hardcoded whitelist of eight
+  keys and *filter the API catalog against it*, so the backend enforced 41 permissions while an admin
+  could see and assign 8 — the other 33 applied but were unreachable from any screen. Two regrouping
+  rules by key prefix survive (`users.me.` → "Perfil propio", `plantillas.`/`variables.` → their own
+  section) because those read as a different thing to whoever assigns them; they key off the data, not a
+  list, so a new permission still needs no change here. An unknown category renders under its raw name
+  rather than disappearing, and each checkbox carries its key in `title=` since two permissions can read
+  alike.
 - `assets/js/labels_api.js` — the only CRUD client for `apps.labels` (System 1): a real ES module,
   dynamically `import()`-ed from `saved_labels.js`/`templates.js` and used directly by `editor_rotulos.html`.
 - `imprimir_rotulos.html` + `assets/js/print_labels.js` — **the** batch printing screen, and the only one:

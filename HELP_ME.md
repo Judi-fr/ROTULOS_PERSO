@@ -6,6 +6,7 @@ técnico del código vive en `CLAUDE.md`.
 - [Levantar todo para probar](#levantar-todo-para-probar)
 - [Conectar una tienda de Tiendanube](#conectar-una-tienda-de-tiendanube)
 - [Conectar un cliente que NO tiene Tiendanube](#conectar-un-cliente-que-no-tiene-tiendanube)
+- [Poner la app en un servidor](#poner-la-app-en-un-servidor)
 
 ---
 
@@ -295,3 +296,90 @@ Es independiente de A y B: podés tener entrada por API y salida por webhook.
   piezas, menos cosas que romper.
 - ¿No puede o no quiere? → **Camino B**.
 - ¿El cliente tiene Tiendanube? → **ninguno de los dos**: eso es `tiendas.html`.
+
+---
+
+## Poner la app en un servidor
+
+Esto es lo que convierte "anda en mi notebook" en algo que tu jefe o un
+cliente pueden abrir. **Se hace a mano y es una tarde**, no hace falta ningún
+pipeline: desplegar y automatizar el despliegue son dos cosas distintas, y la
+segunda recién tiene sentido después de haber hecho la primera unas cuantas
+veces.
+
+### Lo que hace falta antes de empezar
+
+- **Un servidor con disco propio.** Uno de 5 dólares al mes alcanza. Tiene que
+  tener disco de verdad y no efímero: los PDFs generados y los logos de las
+  tiendas se guardan en el disco (`MEDIA_ROOT`), y en servicios tipo Railway o
+  Render eso se borra en cada despliegue.
+- **Un dominio apuntando a ese servidor.** Tiendanube **no acepta callbacks por
+  HTTP**, así que el certificado no es opcional. Caddy lo saca solo, pero
+  necesita un dominio real.
+- **Docker con Compose v2.** Ojo: la laptop tiene `docker-compose` 1.29.2, de
+  2021, que no entiende estos archivos (ni el de desarrollo que ya estaba). En
+  Debian/Ubuntu se instala con `apt install docker-compose-plugin` y después se
+  usa `docker compose` (sin guión).
+
+### Los pasos
+
+**1.** Clonar el repo en el servidor.
+
+**2.** Crear un `.env` en la raíz, al lado de `docker-compose.prod.yml`. Las
+variables mínimas están listadas en el encabezado de ese archivo. Las que más
+se olvidan:
+
+```
+DOMINIO=rotulos.tudominio.com
+ALLOWED_HOSTS=rotulos.tudominio.com
+FRONTEND_URL=https://rotulos.tudominio.com
+INTEGRATIONS_PUBLIC_BASE_URL=https://rotulos.tudominio.com
+```
+
+> Las cuatro tienen que ser el dominio real. `ALLOWED_HOSTS` **no puede ser
+> `*`**: `prod.py` se niega a arrancar, a propósito.
+
+**3.** Levantar todo:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Eso arranca cinco cosas: Postgres, la API (que corre las migraciones y junta
+los estáticos antes de atender), el worker de integraciones, el frontend y
+Caddy, que saca el certificado solo la primera vez.
+
+**4.** Crear el usuario administrador:
+
+```bash
+docker compose -f docker-compose.prod.yml exec api python manage.py createsuperuser
+```
+
+**5.** **Cambiar la redirect URL en el Portal de Partners de Tiendanube** para
+que apunte a `https://tudominio.com/api/v1/integrations/tiendanube/callback/`
+en vez del túnel. Sin esto, conectar una tienda sigue mandando el navegador a
+tu laptop.
+
+### Comprobar que quedó bien
+
+```bash
+curl https://tudominio.com/api/v1/health/ready/
+```
+
+Tiene que decir `{"status":"ok","checks":{"database":"ok"}}`. Si la base está
+caída, devuelve **503** y no un 200 mintiendo — para eso están las dos sondas:
+`/api/v1/health/` dice solo si el proceso vive (no toca la base, así que un
+hipo de Postgres no hace reiniciar la API en loop), y `/health/ready/` dice si
+puede atender de verdad. La segunda es la que conviene monitorear.
+
+### Si algo sale mal
+
+```bash
+docker compose -f docker-compose.prod.yml logs -f api      # la API
+docker compose -f docker-compose.prod.yml logs -f caddy    # el certificado
+docker compose -f docker-compose.prod.yml ps               # qué está sano
+```
+
+El error más común la primera vez es que el certificado no sale porque el
+dominio todavía no resuelve al servidor. Se ve en los logs de Caddy.
+

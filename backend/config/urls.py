@@ -4,24 +4,15 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-from rest_framework.views import APIView
 
-
-class HealthCheckView(APIView):
-    """Endpoint mínimo para verificar que la API responde."""
-
-    # Público: se usa para health checks del balanceador/monitor, sin auth.
-    permission_classes = [AllowAny]
-
-    def get(self, request):
-        return Response({"status": "ok", "service": "rotulos-perso-api"})
-
+from .health import LivenessView, ReadinessView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/v1/health/", HealthCheckView.as_view(), name="health"),
+    # Dos sondas, con jobs distintos: liveness no toca nada y readiness
+    # consulta la base (ver config/health.py).
+    path("api/v1/health/", LivenessView.as_view(), name="health"),
+    path("api/v1/health/ready/", ReadinessView.as_view(), name="health-ready"),
     path("api/v1/auth/", include("apps.accounts.urls")),
     path("api/v1/", include("apps.accounts.user_admin_urls")),  # CRUD de usuarios (admin)
     path("api/v1/", include("apps.accounts.support_admin_urls")),  # bandeja de soporte (admin)

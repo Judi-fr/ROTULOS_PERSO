@@ -1,0 +1,130 @@
+# Despliegue de ROTULOS_PERSO en un servidor.
+#
+# Se levanta A MANO, con `docker compose -f docker-compose.prod.yml up -d`.
+# No hay pipeline y no hace falta: desplegar y automatizar el despliegue son
+# dos cosas distintas, y la segunda recién tiene sentido cuando la primera se
+# hizo unas cuantas veces.
+#
+# Diferencias con backend/docker-compose.yml (que es el de desarrollo):
+#   - settings de prod (DEBUG=False, hosts explícitos, cookies seguras)
+#   - gunicorn en vez de runserver, sin el código montado como volumen
+#   - el frontend y Caddy, que en desarrollo no hacen falta
+#   - la base NO expone el puerto al exterior
+#
+# Antes de levantar hace falta un .env en esta carpeta con, como mínimo:
+#   DOMINIO=rotulos.tudominio.com
+#   SECRET_KEY=...
+#   POSTGRES_PASSWORD=...
+#   ALLOWED_HOSTS=rotulos.tudominio.com
+#   FRONTEND_URL=https://rotulos.tudominio.com
+#   INTEGRATIONS_PUBLIC_BASE_URL=https://rotulos.tudominio.com
+#   PASSWORD_RESET_URL=https://rotulos.tudominio.com/reset-password.html
+#   EMAIL_VERIFICATION_URL=https://rotulos.tudominio.com/verify-email.html
+#   TIENDANUBE_APP_ID=...  TIENDANUBE_CLIENT_SECRET=...  FERNET_KEY=...
+
+name: rotulos-perso-prod
+
+services:
+  db:
+    image: docker.io/library/postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rotulos}
+      POSTGRES_USER: ${POSTGRES_USER:-rotulos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?definir POSTGRES_PASSWORD en .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Sin `ports`: a diferencia del compose de desarrollo, la base NO se
+    # expone al exterior. Se llega a ella por la red interna de Compose.
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rotulos} -d ${POSTGRES_DB:-rotulos}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./backend
+    env_file: .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+      DATABASE_URL: postgres://${POSTGRES_USER:-rotulos}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rotulos}
+    # Migraciones y estáticos antes de atender: si la imagen es nueva pero la
+    # base quedó en la versión anterior, la app arranca rota. Esto vale con UN
+    # solo contenedor de API; con varias réplicas, las migraciones pasan a ser
+    # un paso aparte para que no corran en paralelo.
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --access-logfile -"
+    volumes:
+      - media:/app/media
+      - static:/app/staticfiles
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # La sonda que consulta la base (ver config/health.py): si Postgres se
+      # cae, este contenedor se marca unhealthy en vez de seguir figurando
+      # como sano mientras devuelve errores.
+      # La cabecera X-Forwarded-Proto no es adorno: prod.py fuerza HTTPS
+      # (SECURE_SSL_REDIRECT), y esta consulta va por HTTP plano contra el
+      # propio contenedor. Sin la cabecera, Django contesta 301 y el
+      # contenedor quedaría marcado como caído estando perfecto.
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; r=urllib.request.Request('http://127.0.0.1:8000/api/v1/health/ready/', headers={'X-Forwarded-Proto':'https','Host':'127.0.0.1'}); sys.exit(0 if urllib.request.urlopen(r, timeout=5).status==200 else 1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Sin este proceso las tiendas no sincronizan solas: los webhooks encolan
+  # IntegrationEvent y es el worker quien los procesa (ver CLAUDE.md).
+  worker:
+    build: ./backend
+    env_file: .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+      DATABASE_URL: postgres://${POSTGRES_USER:-rotulos}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rotulos}
+    command: python manage.py run_integrations_worker
+    volumes:
+      - media:/app/media
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: ./frontend
+    environment:
+      # Lo que termina dentro de config.js al arrancar el contenedor.
+      API_BASE: https://${DOMINIO:?definir DOMINIO en .env}/api/v1
+    restart: unless-stopped
+
+  caddy:
+    image: docker.io/library/caddy:2-alpine
+    environment:
+      DOMINIO: ${DOMINIO}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Los mismos volúmenes que la API, en solo lectura: Caddy los sirve,
+      # Django los escribe.
+      - media:/srv/media:ro
+      - static:/srv/static:ro
+      # Los certificados: sin esto Caddy vuelve a pedirlos en cada reinicio y
+      # Let's Encrypt tiene límite de emisiones.
+      - caddydata:/data
+      - caddyconfig:/config
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+
+volumes:
+  pgdata:
+  media:
+  static:
+  caddydata:
+  caddyconfig:

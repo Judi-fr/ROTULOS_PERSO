@@ -1,0 +1,11 @@
+# El prototipo PHP de Google OAuth y sus dependencias de Composer: 502 MB de
+# los 504 que pesa la carpeta, y nginx ni siquiera ejecuta PHP. No se borran
+# del repo (ver CLAUDE.md), solo no entran a la imagen.
+assets/apis/
+
+# Ruido del entorno
+.git
+.gitignore
+Dockerfile
+.dockerignore
+*.md
