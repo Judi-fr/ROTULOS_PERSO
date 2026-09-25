@@ -55,6 +55,12 @@
   border: 1px solid #f6c9c9;
 }
 
+.page-message.success {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
 /* CARDS */
 .profile-card {
   background: var(--card);

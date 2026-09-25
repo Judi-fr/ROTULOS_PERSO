@@ -3,7 +3,7 @@ de escritura/borrado (ver ``models.AuditLog``, inmutable por diseño)."""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from django.db.models import Count, Q
 from django.db.models.functions import TruncMonth
@@ -16,6 +16,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.pagination import UserAdminPagination
 from apps.accounts.role_permissions import HasRolePermission
+from apps.common.date_filters import date_range_q
 
 from .models import AuditLog
 from .serializers import AuditLogSerializer
@@ -39,17 +40,6 @@ class AuditLogListView(ListAPIView):
 
     def get_permissions(self):
         return [IsAuthenticated(), HasRolePermission("audit.view")]
-
-    def _parse_date_param(self, param_name):
-        raw = self.request.query_params.get(param_name, "").strip()
-        if not raw:
-            return None
-        try:
-            return datetime.strptime(raw, "%Y-%m-%d").date()
-        except ValueError:
-            raise ValidationError(
-                {param_name: f"Formato de fecha inválido (usar YYYY-MM-DD): {raw!r}."}
-            )
 
     def get_queryset(self):
         queryset = AuditLog.objects.select_related("actor").all()
@@ -82,16 +72,7 @@ class AuditLogListView(ListAPIView):
                 | Q(action__icontains=search)
             )
 
-        date_from = self._parse_date_param("date_from")
-        date_to = self._parse_date_param("date_to")
-        if date_from and date_to and date_from > date_to:
-            raise ValidationError(
-                {"date_to": "'date_to' no puede ser anterior a 'date_from'."}
-            )
-        if date_from:
-            queryset = queryset.filter(created_at__date__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(created_at__date__lte=date_to)
+        queryset = queryset.filter(date_range_q(params))
 
         ordering = params.get("ordering", "-created_at").strip() or "-created_at"
         if ordering not in {"created_at", "-created_at"}:

@@ -5,9 +5,15 @@ Cubren el "Bloque 1" de endurecimiento: no dependen del frontend ni de
 cookies (eso es una fase posterior); ejercitan el contrato JSON actual.
 """
 
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.contrib.auth.tokens import default_token_generator
+from django.core import mail
 from django.core.cache import cache
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -3365,3 +3371,153 @@ class DashboardAdminMenuTests(AuthTestCase):
         keys = {item["key"] for item in resp.data["menu"]}
         self.assertNotIn("audit", keys)
         self.assertNotIn("support_inbox", keys)
+
+
+class PasswordResetRequestTests(AuthTestCase):
+    """POST /api/v1/auth/password-reset/ — paso 1 de "olvidé mi contraseña"."""
+
+    URL = "/api/v1/auth/password-reset/"
+
+    def setUp(self):
+        super().setUp()
+        self.user = User.objects.create_user(
+            username="olvidadizo@example.com",
+            email="olvidadizo@example.com",
+            password=STRONG_PASSWORD,
+        )
+
+    def test_cuenta_existente_recibe_el_correo(self):
+        resp = self.client.post(self.URL, {"email": self.user.email}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn(self.user.email, mail.outbox[0].to)
+
+    def test_cuenta_inexistente_responde_igual_y_no_manda_nada(self):
+        """La respuesta no puede delatar si el email está registrado."""
+        existente = self.client.post(self.URL, {"email": self.user.email}, format="json")
+        mail.outbox.clear()
+
+        inexistente = self.client.post(self.URL, {"email": "nadie@example.com"}, format="json")
+
+        self.assertEqual(inexistente.status_code, existente.status_code)
+        self.assertEqual(inexistente.data["detail"], existente.data["detail"])
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_email_se_normaliza_antes_de_buscar_la_cuenta(self):
+        resp = self.client.post(self.URL, {"email": "  Olvidadizo@Example.COM "}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_sin_email_devuelve_400(self):
+        resp = self.client.post(self.URL, {}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_un_fallo_de_smtp_no_delata_que_la_cuenta_existe(self):
+        """Si el correo no sale, la respuesta tiene que seguir siendo el 200
+        genérico: un 500 solo ocurre cuando la cuenta existe, así que sería
+        exactamente el oráculo que el mensaje único quiere evitar."""
+        with patch(
+            "apps.accounts.auth_views.send_mail", side_effect=OSError("SMTP caído")
+        ):
+            caido = self.client.post(self.URL, {"email": self.user.email}, format="json")
+        sano = self.client.post(self.URL, {"email": "nadie@example.com"}, format="json")
+
+        self.assertEqual(caido.status_code, status.HTTP_200_OK)
+        self.assertEqual(caido.data["detail"], sano.data["detail"])
+
+    def test_la_cuenta_inactiva_no_recibe_correo(self):
+        self.user.is_active = False
+        self.user.save()
+        resp = self.client.post(self.URL, {"email": self.user.email}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 0)
+
+
+class PasswordResetConfirmTests(AuthTestCase):
+    """POST /api/v1/auth/password-reset/confirm/ — paso 2."""
+
+    URL = "/api/v1/auth/password-reset/confirm/"
+    NUEVA = "Rotulos2027"
+
+    def setUp(self):
+        super().setUp()
+        self.user = User.objects.create_user(
+            username="confirmar@example.com",
+            email="confirmar@example.com",
+            password=STRONG_PASSWORD,
+        )
+        self.uid = urlsafe_base64_encode(force_bytes(self.user.pk))
+        self.token = default_token_generator.make_token(self.user)
+
+    def _post(self, **overrides):
+        payload = {"uid": self.uid, "token": self.token, "new_password": self.NUEVA}
+        payload.update(overrides)
+        return self.client.post(self.URL, payload, format="json")
+
+    def test_enlace_valido_cambia_la_contrasenia(self):
+        resp = self._post()
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(self.NUEVA))
+        self.assertFalse(self.user.check_password(STRONG_PASSWORD))
+
+    def test_el_mismo_enlace_no_sirve_dos_veces(self):
+        """El token se deriva del hash de la contraseña, así que cambiarla lo
+        invalida solo: un link filtrado después de usarse ya no abre nada."""
+        self.assertEqual(self._post().status_code, status.HTTP_200_OK)
+
+        segundo = self._post(new_password="Rotulos2028")
+        self.assertEqual(segundo.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(self.NUEVA))
+
+    def test_token_invalido_devuelve_400(self):
+        resp = self._post(token="no-es-el-token")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_uid_de_otro_usuario_no_abre_con_este_token(self):
+        otro = User.objects.create_user(
+            username="ajeno@example.com",
+            email="ajeno@example.com",
+            password=STRONG_PASSWORD,
+        )
+        resp = self._post(uid=urlsafe_base64_encode(force_bytes(otro.pk)))
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+        otro.refresh_from_db()
+        self.assertTrue(otro.check_password(STRONG_PASSWORD))
+
+    def test_uid_ilegible_devuelve_400(self):
+        resp = self._post(uid="no-es-base64-de-un-id")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_contrasenia_debil_se_rechaza_y_no_consume_el_enlace(self):
+        debil = self._post(new_password="hola")
+        self.assertEqual(debil.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # El enlace sigue vivo: el usuario puede reintentar con una mejor.
+        self.assertEqual(self._post().status_code, status.HTTP_200_OK)
+
+    def test_faltan_campos_devuelve_400(self):
+        self.assertEqual(self._post(uid="").status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self._post(token="").status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            self._post(new_password="").status_code, status.HTTP_400_BAD_REQUEST
+        )
+
+    def test_cambiar_la_contrasenia_revoca_las_sesiones_abiertas(self):
+        """Quien te robó la cuenta tiene que quedar afuera; si sus refresh
+        siguieran vivos, recuperar la clave no serviría de nada."""
+        login = self.client.post(
+            "/api/v1/auth/login/",
+            {"email": self.user.email, "password": STRONG_PASSWORD},
+            format="json",
+        )
+        refresh = login.data["refresh"]
+
+        self.assertEqual(self._post().status_code, status.HTTP_200_OK)
+
+        usado = self.client.post("/api/v1/auth/refresh/", {"refresh": refresh}, format="json")
+        self.assertEqual(usado.status_code, status.HTTP_401_UNAUTHORIZED)

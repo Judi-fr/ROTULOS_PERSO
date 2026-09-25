@@ -102,9 +102,19 @@
               </div>
               <div class="field">
                 <label for="pageLayoutSelect">Formato</label>
+                <!-- Una sola pregunta, "sobre qué imprimís", en vez de
+                     separar salida, layout y densidad: el comerciante sabe
+                     qué impresora tiene, no qué es un dpmm. -->
                 <select id="pageLayoutSelect">
-                  <option value="label">Una hoja por rótulo</option>
-                  <option value="a4">Varios rótulos por hoja A4</option>
+                  <optgroup label="Impresora común (PDF)">
+                    <option value="label">Una hoja por rótulo</option>
+                    <option value="a4">Varios rótulos por hoja A4</option>
+                  </optgroup>
+                  <optgroup label="Térmica Zebra (ZPL)">
+                    <option value="zpl">La impresora de la tienda</option>
+                    <option value="zpl-203">Forzar 203 dpi</option>
+                    <option value="zpl-300">Forzar 300 dpi</option>
+                  </optgroup>
                 </select>
               </div>
             </div>

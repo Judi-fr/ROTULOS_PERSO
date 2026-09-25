@@ -15,13 +15,11 @@ from __future__ import annotations
 
 import mimetypes
 import os
-from datetime import datetime
 
 from django.db.models import Q
 from django.http import FileResponse, Http404
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -29,6 +27,7 @@ from rest_framework.response import Response
 from apps.accounts.pagination import UserAdminPagination
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
+from apps.common.date_filters import date_range_q
 
 from .models import Document, UploadedLabelFile
 from .serializers import AdminDocumentSerializer, DocumentSerializer, UploadedLabelFileSerializer
@@ -68,25 +67,9 @@ class DocumentViewSet(
         if status_param:
             queryset = queryset.filter(status=status_param)
 
-        date_from = self._parse_date_param("date_from")
-        date_to = self._parse_date_param("date_to")
-        if date_from:
-            queryset = queryset.filter(created_at__date__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(created_at__date__lte=date_to)
+        queryset = queryset.filter(date_range_q(params))
 
         return queryset
-
-    def _parse_date_param(self, param_name):
-        raw = self.request.query_params.get(param_name, "").strip()
-        if not raw:
-            return None
-        try:
-            return datetime.strptime(raw, "%Y-%m-%d").date()
-        except ValueError:
-            raise ValidationError(
-                {param_name: f"Formato de fecha inválido (usar YYYY-MM-DD): {raw!r}."}
-            )
 
     def destroy(self, request, *args, **kwargs):
         document = self.get_object()
@@ -140,17 +123,6 @@ class AdminDocumentListView(ListAPIView):
     def get_permissions(self):
         return [IsAuthenticated(), HasRolePermission("documents.view_all")]
 
-    def _parse_date_param(self, param_name):
-        raw = self.request.query_params.get(param_name, "").strip()
-        if not raw:
-            return None
-        try:
-            return datetime.strptime(raw, "%Y-%m-%d").date()
-        except ValueError:
-            raise ValidationError(
-                {param_name: f"Formato de fecha inválido (usar YYYY-MM-DD): {raw!r}."}
-            )
-
     def get_queryset(self):
         queryset = Document.objects.select_related("user").all()
         params = self.request.query_params
@@ -174,16 +146,7 @@ class AdminDocumentListView(ListAPIView):
             else:
                 queryset = queryset.filter(user__email__icontains=user_param)
 
-        date_from = self._parse_date_param("date_from")
-        date_to = self._parse_date_param("date_to")
-        if date_from and date_to and date_from > date_to:
-            raise ValidationError(
-                {"date_to": "'date_to' no puede ser anterior a 'date_from'."}
-            )
-        if date_from:
-            queryset = queryset.filter(created_at__date__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(created_at__date__lte=date_to)
+        queryset = queryset.filter(date_range_q(params))
 
         return queryset.order_by("-created_at")
 

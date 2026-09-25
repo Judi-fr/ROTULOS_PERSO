@@ -53,6 +53,7 @@ class StoreConnectionSerializer(serializers.ModelSerializer):
             "logo",
             "default_template",
             "default_template_name",
+            "label_printer_dpmm",
             "scopes",
             "label_api_enabled",
             "last_error",
@@ -65,8 +66,9 @@ class StoreConnectionSerializer(serializers.ModelSerializer):
 
 class StoreSettingsSerializer(serializers.ModelSerializer):
     """Lo único que el comerciante edita de su tienda: cómo salen los
-    rótulos de ESA tienda (remitente, logo, plantilla preferida). El resto
-    (token, estado, scopes) lo maneja la plataforma, no el usuario.
+    rótulos de ESA tienda (remitente, logo, plantilla preferida y la
+    densidad de su impresora térmica). El resto (token, estado, scopes) lo
+    maneja la plataforma, no el usuario.
 
     El logo acepta un archivo real (multipart) o el data URL base64 que ya
     produce el editor de rótulos, con el mismo tope de 2 MB
@@ -76,7 +78,14 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = StoreConnection
-        fields = ["sender_name", "sender_address", "sender_phone", "logo", "default_template"]
+        fields = [
+            "sender_name",
+            "sender_address",
+            "sender_phone",
+            "logo",
+            "default_template",
+            "label_printer_dpmm",
+        ]
 
     def validate_default_template(self, template):
         # Misma regla que apps.labels: una plantilla propia o pública. El

@@ -6,7 +6,7 @@ así que un cliente nunca puede ver, editar ni cancelar direcciones o
 pedidos ajenos.
 """
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Max, ProtectedError, Q
@@ -25,6 +25,7 @@ from apps.accounts.pagination import UserAdminPagination
 from apps.accounts.permissions_map import user_has_permission
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
+from apps.common.date_filters import date_range_q
 
 from .ingestion import TARGET_FIELDS, create_order_from_data, validate_mapped_row
 from .models import Address, Order
@@ -131,28 +132,7 @@ class OrderViewSet(
         return queryset
 
     def _filter_by_dates(self, queryset):
-        bounds = {}
-        for param in ("date_from", "date_to"):
-            raw = (self.request.query_params.get(param) or "").strip()
-            if not raw:
-                continue
-            try:
-                # Mismo parseo que _parse_date_param del panel admin, más
-                # abajo en este archivo.
-                bounds[param] = datetime.strptime(raw, "%Y-%m-%d").date()
-            except ValueError:
-                raise ValidationError({param: "Debe tener el formato AAAA-MM-DD."})
-
-        start, end = bounds.get("date_from"), bounds.get("date_to")
-        if start and end and start > end:
-            raise ValidationError(
-                {"date_to": "La fecha final no puede ser anterior a la inicial."}
-            )
-        if start:
-            queryset = queryset.filter(created_at__date__gte=start)
-        if end:
-            queryset = queryset.filter(created_at__date__lte=end)
-        return queryset
+        return queryset.filter(date_range_q(self.request.query_params))
 
     def perform_create(self, serializer):
         order = serializer.save(user=self.request.user)
@@ -309,17 +289,6 @@ class AdminOrderListView(ListAPIView):
     def get_permissions(self):
         return [IsAuthenticated(), HasRolePermission("orders.view_all")]
 
-    def _parse_date_param(self, param_name):
-        raw = self.request.query_params.get(param_name, "").strip()
-        if not raw:
-            return None
-        try:
-            return datetime.strptime(raw, "%Y-%m-%d").date()
-        except ValueError:
-            raise ValidationError(
-                {param_name: f"Formato de fecha inválido (usar YYYY-MM-DD): {raw!r}."}
-            )
-
     def get_queryset(self):
         queryset = (
             Order.objects.select_related("user", "address")
@@ -345,16 +314,7 @@ class AdminOrderListView(ListAPIView):
             else:
                 queryset = queryset.filter(user__email__icontains=user_param)
 
-        date_from = self._parse_date_param("date_from")
-        date_to = self._parse_date_param("date_to")
-        if date_from and date_to and date_from > date_to:
-            raise ValidationError(
-                {"date_to": "'date_to' no puede ser anterior a 'date_from'."}
-            )
-        if date_from:
-            queryset = queryset.filter(created_at__date__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(created_at__date__lte=date_to)
+        queryset = queryset.filter(date_range_q(params))
 
         return queryset.order_by("-created_at")
 

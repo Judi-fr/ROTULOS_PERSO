@@ -193,6 +193,27 @@ async function markDispatched(orderIds) {
   return { done, failed };
 }
 
+// El selector de "Formato" mezcla dos cosas que el backend recibe por
+// separado: el tipo de salida y, para una térmica, su densidad. Se traduce
+// acá para no hacerle elegir tres cosas al comerciante — sabe qué impresora
+// tiene, no qué es un dpmm. Lo normal es no mandar dpmm y que salga de la
+// configuración de la tienda; las opciones de "forzar" son para el que
+// todavía no la cargó o imprime en otra. Una Zebra ignora page_layout: no
+// hay hoja que aprovechar, el rollo ya viene troquelado.
+const OUTPUT_OPTIONS = {
+  label: { output: "pdf", page_layout: "label" },
+  a4: { output: "pdf", page_layout: "a4" },
+  // Sin dpmm: el backend usa la impresora configurada en la tienda de esos
+  // pedidos, y 203 dpi si no configuró ninguna (ver _resolve_dpmm).
+  zpl: { output: "zpl" },
+  "zpl-203": { output: "zpl", dpmm: 8 },
+  "zpl-300": { output: "zpl", dpmm: 12 },
+};
+
+function outputOptions(value) {
+  return OUTPUT_OPTIONS[value] || OUTPUT_OPTIONS.label;
+}
+
 async function printLabels() {
   const orderIds = Array.from(selectedIds);
   if (!orderIds.length) {
@@ -202,9 +223,8 @@ async function printLabels() {
 
   const payload = {
     order_ids: orderIds,
-    output: "pdf",
-    page_layout: document.getElementById("pageLayoutSelect").value,
     skip_existing: document.getElementById("skipExisting").checked,
+    ...outputOptions(document.getElementById("pageLayoutSelect").value),
   };
   const templateId = document.getElementById("templateSelect").value;
   if (templateId) payload.template_id = Number(templateId);

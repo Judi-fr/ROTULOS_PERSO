@@ -64,19 +64,12 @@ SECURE_PROXY_SSL_HEADER = (
 )
 
 # ---------------------------------------------------------------------------
-# Logging: a consola (la captura el proceso del servidor — gunicorn/systemd/
-# docker), nivel WARNING para no ensuciar con ruido de INFO/DEBUG.
+# Logging: la configuración vive en base.py (a consola, que es lo que captura
+# el proceso del servidor — gunicorn/systemd/docker). Acá solo cambia el
+# nivel de NUESTRO código: en producción arranca en WARNING para no pagar el
+# ruido de cada INFO, pero se puede bajar a INFO desde el entorno sin
+# redeployar cuando hay algo que seguir de cerca.
 # ---------------------------------------------------------------------------
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-        },
-    },
-    "root": {
-        "handlers": ["console"],
-        "level": "WARNING",
-    },
-}
+_PROD_LOG_LEVEL = env("LOG_LEVEL", default="WARNING")  # noqa: F405
+LOGGING["loggers"]["apps"]["level"] = _PROD_LOG_LEVEL  # noqa: F405
+LOGGING["loggers"]["django"]["level"] = _PROD_LOG_LEVEL  # noqa: F405

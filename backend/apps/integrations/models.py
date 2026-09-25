@@ -243,6 +243,22 @@ class StoreConnection(models.Model):
         blank=True,
         related_name="stores",
     )
+    # Densidad de la impresora térmica de ESTA tienda, en dots por
+    # milímetro (ver apps.labels.zpl). Es una columna y no una preferencia
+    # del JSON porque la edita el comerciante y tiene que validarse; el
+    # JSON guarda lo que informa la plataforma, no lo que elige él.
+    # Null = sin configurar: el lote usa la densidad por defecto (203 dpi),
+    # igual que default_template cae a la plantilla pública.
+    label_printer_dpmm = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        choices=[
+            (6, "152 dpi"),
+            (8, "203 dpi (la mayoría)"),
+            (12, "300 dpi"),
+            (24, "600 dpi"),
+        ],
+    )
     # Preferencias por tienda (p. ej. qué pedidos importar). JSON y no
     # columnas porque se van a ir definiendo con cada plataforma.
     preferences = models.JSONField(default=dict, blank=True)

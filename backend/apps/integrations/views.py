@@ -469,15 +469,23 @@ class StoreConnectionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, v
         """PATCH /api/v1/integrations/stores/<id>/settings/
 
         Cómo salen los rótulos de ESTA tienda: remitente
-        (``sender_name``/``sender_address``/``sender_phone``), ``logo`` y
-        ``default_template``. Solo el dueño de la tienda: el queryset ya está
-        recortado a ``request.user``."""
+        (``sender_name``/``sender_address``/``sender_phone``), ``logo``,
+        ``default_template`` y ``label_printer_dpmm`` (la densidad de su
+        impresora térmica, ver apps.labels.zpl). Solo el dueño de la tienda:
+        el queryset ya está recortado a ``request.user``."""
         connection = self.get_object()
         serializer = StoreSettingsSerializer(
             connection, data=request.data, partial=True, context=self.get_serializer_context()
         )
         serializer.is_valid(raise_exception=True)
-        tracked = ("sender_name", "sender_address", "sender_phone", "logo", "default_template_id")
+        tracked = (
+            "sender_name",
+            "sender_address",
+            "sender_phone",
+            "logo",
+            "default_template_id",
+            "label_printer_dpmm",
+        )
         previous = {field: getattr(connection, field) for field in tracked}
         connection = serializer.save()
         changes = {

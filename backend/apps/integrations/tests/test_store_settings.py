@@ -207,3 +207,88 @@ class StoreLogoAndTemplateTests(APITestCase):
         self.store.refresh_from_db()
         self.assertIsNone(self.store.default_template)
         self.assertEqual(self.store.status, StoreConnection.Status.ACTIVE)
+
+
+class StorePrinterDensityTests(APITestCase):
+    """Densidad de la impresora térmica de la tienda (``label_printer_dpmm``).
+
+    Se guarda acá y no se pregunta en cada impresión: un comerciante con una
+    Zebra de 300 dpi la configura una vez (ver apps.labels.zpl y
+    ``LabelBatchView._resolve_dpmm``).
+    """
+
+    def setUp(self):
+        subscriber, _ = Group.objects.get_or_create(name="subscriber")
+        self.user = User.objects.create_user(
+            username="impresora@example.com", email="impresora@example.com", password="Clave123!"
+        )
+        self.user.groups.add(subscriber)
+        self.store = StoreConnection.objects.create(
+            owner=self.user,
+            platform=StoreConnection.Platform.TIENDANUBE,
+            external_store_id="777",
+            name="Tienda con térmica",
+        )
+
+    def _patch(self, payload):
+        return self.client.patch(
+            f"/api/v1/integrations/stores/{self.store.pk}/settings/",
+            payload,
+            format="json",
+            **auth_headers_for(self.user),
+        )
+
+    def test_arranca_sin_configurar(self):
+        """Null = sin configurar, igual que default_template: el lote cae a
+        203 dpi en vez de a un valor que nadie eligió."""
+        self.assertIsNone(self.store.label_printer_dpmm)
+
+    def test_guarda_la_densidad(self):
+        response = self._patch({"label_printer_dpmm": 12})
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.store.refresh_from_db()
+        self.assertEqual(self.store.label_printer_dpmm, 12)
+        self.assertEqual(response.data["label_printer_dpmm"], 12)
+
+    def test_se_puede_volver_a_dejar_sin_configurar(self):
+        self.store.label_printer_dpmm = 12
+        self.store.save()
+
+        response = self._patch({"label_printer_dpmm": None})
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.store.refresh_from_db()
+        self.assertIsNone(self.store.label_printer_dpmm)
+
+    def test_rechaza_una_densidad_que_no_existe(self):
+        response = self._patch({"label_printer_dpmm": 7})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("label_printer_dpmm", response.data)
+        self.store.refresh_from_db()
+        self.assertIsNone(self.store.label_printer_dpmm)
+
+    def test_queda_en_la_auditoria(self):
+        from apps.audit.models import AuditLog
+
+        self._patch({"label_printer_dpmm": 12})
+
+        entrada = AuditLog.objects.filter(action="store.update").latest("created_at")
+        self.assertIn("label_printer_dpmm", entrada.changes)
+        self.assertEqual(entrada.changes["label_printer_dpmm"]["to"], "12")
+
+    def test_no_se_puede_configurar_la_tienda_de_otro(self):
+        otro = User.objects.create_user(
+            username="ajeno3@example.com", email="ajeno3@example.com", password="Clave123!"
+        )
+        otro.groups.add(Group.objects.get(name="subscriber"))
+        response = self.client.patch(
+            f"/api/v1/integrations/stores/{self.store.pk}/settings/",
+            {"label_printer_dpmm": 12},
+            format="json",
+            **auth_headers_for(otro),
+        )
+        self.assertEqual(response.status_code, 404)
+        self.store.refresh_from_db()
+        self.assertIsNone(self.store.label_printer_dpmm)

@@ -16,7 +16,6 @@ el dibujo, solo se decide QUÉ rótulos entran y cómo se empaquetan
 from __future__ import annotations
 
 import zipfile
-from datetime import datetime
 from io import BytesIO
 
 from django.conf import settings
@@ -33,11 +32,13 @@ from rest_framework.views import APIView
 from apps.accounts.permissions_map import user_has_permission
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
+from apps.common.date_filters import date_range_q
 from apps.documents.models import Document
 from apps.documents.serializers import DocumentSerializer
 from apps.orders.models import Order
 
 from .models import Label, LabelTemplate
+from .zpl import DEFAULT_DPMM, SUPPORTED_DPMM, render_label_zpl
 from .label_rendering import (
     CM_TO_POINTS,
     build_computed_context,
@@ -47,18 +48,9 @@ from .label_rendering import (
     render_label_pdf,
 )
 
-VALID_OUTPUTS = {"pdf", "zip"}
+VALID_OUTPUTS = {"pdf", "zip", "zpl"}
 VALID_PAGE_LAYOUTS = {"label", "a4"}
 SELECTOR_KEYS = ("order_ids", "label_ids", "filters")
-
-
-def _parse_date(raw, field_label):
-    try:
-        return datetime.strptime(raw, "%Y-%m-%d").date()
-    except (TypeError, ValueError):
-        raise ValidationError(
-            {field_label: f"Formato de fecha inválido (usar YYYY-MM-DD): {raw!r}."}
-        )
 
 
 def _as_int_list(value, field_label):
@@ -99,6 +91,62 @@ def _safe_zip_name(name_hint, used_names):
         n += 1
     used_names.add(candidate)
     return candidate
+
+
+def _parse_dpmm(raw, default=DEFAULT_DPMM):
+    """La densidad de la impresora térmica, validada. ``default`` es lo que
+    se devuelve si no vino nada: en el lote es ``None``, porque ahí el
+    siguiente paso es mirar la tienda antes de caer al valor por defecto."""
+    if raw in (None, ""):
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ValidationError({"dpmm": "'dpmm' debe ser un número entero."})
+    if value not in SUPPORTED_DPMM:
+        raise ValidationError(
+            {
+                "dpmm": "Densidad no soportada: %s (válidas: %s)."
+                % (value, ", ".join(str(item) for item in SUPPORTED_DPMM))
+            }
+        )
+    return value
+
+
+def _render_combined_zpl(items, template, owner=None, dpmm=DEFAULT_DPMM):
+    """Un solo archivo ZPL con todas las etiquetas, una atrás de otra.
+
+    No hay equivalente del layout A4: una térmica no tiene hoja que
+    aprovechar, el rollo ya viene troquelado a la medida de la etiqueta y
+    cada ``^XA..^XZ`` avanza una. Un ítem que falla se salta y se informa,
+    igual que en el PDF — acá es más simple todavía porque cada etiqueta es
+    un texto independiente y no hay nada a medio dibujar que descartar.
+    """
+    partes = []
+    skipped = []
+    total = len(items)
+
+    for bulto, item in enumerate(items, start=1):
+        design, width_cm, height_cm, context, logo_file, name_hint = _render_params_for_item(
+            item, template
+        )
+        computed = build_computed_context(owner=owner, bulto=bulto, bultos=total)
+        try:
+            partes.append(
+                render_label_zpl(
+                    design=design,
+                    width_cm=width_cm,
+                    height_cm=height_cm,
+                    context=context,
+                    logo_file=logo_file,
+                    computed=computed,
+                    dpmm=dpmm,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - un ítem roto no tumba el lote
+            skipped.append(f"{name_hint}: {exc}")
+
+    return "\n".join(partes).encode("utf-8"), len(partes), skipped
 
 
 def _render_combined_pdf(items, template, owner=None):
@@ -301,6 +349,12 @@ class LabelBatchView(APIView):
     ``{"template_id": N, "order_ids": [...], "output": "pdf"}`` (o
     ``label_ids``/``filters`` en vez de ``order_ids`` — exactamente una de
     las tres). Devuelve 202 con el ``Document`` recién creado.
+
+    ``output``: ``"pdf"`` (uno solo, una página por rótulo), ``"zip"`` (un
+    PDF por rótulo) o ``"zpl"`` (un archivo para mandarle crudo a una
+    térmica Zebra). Con ``zpl``, ``dpmm`` es la densidad de la impresora
+    (8 = 203 dpi por defecto, 12 = 300) y ``page_layout`` se ignora: no hay
+    hoja que aprovechar, el rollo ya viene troquelado.
     """
 
     def get_permissions(self):
@@ -310,7 +364,11 @@ class LabelBatchView(APIView):
         data = request.data
         output = str(data.get("output") or "pdf").strip().lower()
         if output not in VALID_OUTPUTS:
-            raise ValidationError({"output": "Debe ser 'pdf' o 'zip'."})
+            raise ValidationError({"output": "Debe ser 'pdf', 'zip' o 'zpl'."})
+        # Solo se usa con output="zpl"; se valida igual si vino, para no
+        # aceptar en silencio un valor que el usuario creía que aplicaba.
+        # None = no lo pidió: más abajo puede salir de la tienda.
+        requested_dpmm = _parse_dpmm(data.get("dpmm"), default=None)
 
         page_layout = str(data.get("page_layout") or "label").strip().lower()
         if page_layout not in VALID_PAGE_LAYOUTS:
@@ -365,6 +423,10 @@ class LabelBatchView(APIView):
                 )
             raise ValidationError({"detail": "No hay elementos para generar."})
 
+        # Igual que la plantilla: sin dpmm explícito, puede salir de la
+        # tienda de los pedidos del lote (ver _resolve_dpmm).
+        dpmm = self._resolve_dpmm(requested_dpmm, items)
+
         max_items = getattr(settings, "LABELS_BATCH_MAX_ITEMS", 200)
         if len(items) > max_items:
             raise ValidationError(
@@ -396,7 +458,9 @@ class LabelBatchView(APIView):
             },
         )
 
-        self._run_batch(document, items, template, output, page_layout, skipped_existing_count)
+        self._run_batch(
+            document, items, template, output, page_layout, skipped_existing_count, dpmm
+        )
 
         return Response(
             DocumentSerializer(document, context={"request": request}).data,
@@ -404,6 +468,29 @@ class LabelBatchView(APIView):
         )
 
     # --- Resolución de la selección ------------------------------------
+
+    def _resolve_dpmm(self, requested, items):
+        """La densidad a usar para el lote.
+
+        Misma regla que ``_resolve_template``: lo que pidió el usuario manda;
+        si no pidió nada y TODOS los pedidos son de tiendas que configuraron
+        la MISMA densidad, se usa esa. Con tiendas que configuraron
+        densidades distintas no hay una respuesta correcta, así que cae al
+        valor por defecto (203 dpi) en vez de elegir una al azar.
+        """
+        if requested is not None:
+            return requested
+        con_tienda = [
+            item for item in items if getattr(item, "store_connection", None) is not None
+        ]
+        densidades = {
+            item.store_connection.label_printer_dpmm
+            for item in con_tienda
+            if item.store_connection.label_printer_dpmm
+        }
+        if len(densidades) == 1 and len(con_tienda) == len(items):
+            return densidades.pop()
+        return DEFAULT_DPMM
 
     def _resolve_template(self, user, template_id, orders=None):
         if not template_id:
@@ -519,23 +606,25 @@ class LabelBatchView(APIView):
         if status_param:
             queryset = queryset.filter(status=status_param)
 
-        date_from = filters.get("date_from")
-        date_to = filters.get("date_to")
-        if date_from and date_to and _parse_date(date_from, "date_from") > _parse_date(
-            date_to, "date_to"
-        ):
-            raise ValidationError({"date_to": "'date_to' no puede ser anterior a 'date_from'."})
-        if date_from:
-            queryset = queryset.filter(created_at__date__gte=_parse_date(date_from, "date_from"))
-        if date_to:
-            queryset = queryset.filter(created_at__date__lte=_parse_date(date_to, "date_to"))
+        # `filters` llega en el body JSON y no en la query string, pero el
+        # contrato de las fechas es el mismo que el de los listados.
+        queryset = queryset.filter(date_range_q(filters))
 
         orders = list(queryset.order_by("id"))
         return self._filter_skip_existing(orders, skip_existing)
 
     # --- Generación ------------------------------------------------------
 
-    def _run_batch(self, document, items, template, output, page_layout, skipped_existing_count=0):
+    def _run_batch(
+        self,
+        document,
+        items,
+        template,
+        output,
+        page_layout,
+        skipped_existing_count=0,
+        dpmm=DEFAULT_DPMM,
+    ):
         # Dueño de la numeración secuencial del lote (Historia 29): el
         # ``Document`` ya se creó con ``user=request.user`` (ver ``post``),
         # así que sale de ahí en vez de threadear ``request`` hasta acá.
@@ -548,6 +637,11 @@ class LabelBatchView(APIView):
                 # usuario.
                 file_bytes, item_count, skipped = _render_zip(items, template, owner=owner)
                 filename = f"rotulos-{document.pk}.zip"
+            elif output == "zpl":
+                file_bytes, item_count, skipped = _render_combined_zpl(
+                    items, template, owner=owner, dpmm=dpmm
+                )
+                filename = f"rotulos-{document.pk}.zpl"
             elif page_layout == "a4":
                 file_bytes, item_count, skipped = _render_combined_pdf_a4(items, template, owner=owner)
                 filename = f"rotulos-{document.pk}.pdf"

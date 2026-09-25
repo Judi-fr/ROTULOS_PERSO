@@ -1,5 +1,5 @@
 import csv
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import UNUSABLE_PASSWORD_PREFIX
@@ -14,6 +14,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
 from apps.audit.services import record
+from apps.common.date_filters import date_range_q
 
 from .models import LoginLockout
 from .pagination import UserAdminPagination
@@ -145,40 +146,15 @@ class UserAdminViewSet(viewsets.ModelViewSet):
 
     # --- Filtros de actividad (fechas / inactividad) ------------------------
 
-    def _parse_date_param(self, param_name):
-        """Parsea un query param de fecha (YYYY-MM-DD). None si no vino,
-        400 (ValidationError) si el formato es inválido."""
-        raw = self.request.query_params.get(param_name, "").strip()
-        if not raw:
-            return None
-        try:
-            return datetime.strptime(raw, "%Y-%m-%d").date()
-        except ValueError:
-            raise ValidationError(
-                {param_name: f"Formato de fecha inválido (usar YYYY-MM-DD): {raw!r}."}
-            )
-
-    def _get_date_range_filter(self, field, from_param, to_param):
-        """Filtro de rango genérico sobre un DateTimeField, comparando por
-        fecha (``__date``) para que 'to' incluya el día completo."""
-        date_from = self._parse_date_param(from_param)
-        date_to = self._parse_date_param(to_param)
-        if date_from and date_to and date_from > date_to:
-            raise ValidationError(
-                {to_param: f"'{to_param}' no puede ser anterior a '{from_param}'."}
-            )
-        q = Q()
-        if date_from:
-            q &= Q(**{f"{field}__date__gte": date_from})
-        if date_to:
-            q &= Q(**{f"{field}__date__lte": date_to})
-        return q
-
     def _get_date_joined_filter(self):
-        return self._get_date_range_filter("date_joined", "date_joined_from", "date_joined_to")
+        return date_range_q(
+            self.request.query_params, "date_joined", "date_joined_from", "date_joined_to"
+        )
 
     def _get_last_login_range_filter(self):
-        return self._get_date_range_filter("last_login", "last_login_from", "last_login_to")
+        return date_range_q(
+            self.request.query_params, "last_login", "last_login_from", "last_login_to"
+        )
 
     def _get_never_logged_in_filter(self):
         if self.request.query_params.get("never_logged_in", "").strip().lower() == "true":

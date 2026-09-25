@@ -44,6 +44,16 @@ source venv/bin/activate
 `DJANGO_SETTINGS_MODULE` selects `config.settings.dev` or `config.settings.prod`; both import from
 `config/settings/base.py`. `manage.py` defaults to `dev`.
 
+**Logging** is configured in `base.py`, not only in prod. Everything under the `apps.` namespace goes to
+a formatted console handler at `LOG_LEVEL` (default `INFO`; `prod.py` starts it at `WARNING`), and the
+`django` logger is declared with `propagate: False` so its records don't come out twice — once bare from
+Django's own handler and once formatted from the root one. This matters because `apps.integrations` is
+written to **log instead of raising** (an error there must not break a buyer's checkout), and that choice
+is only safe if someone can read the logs: before, outside production there was no configuration at all,
+so Python fell back to `lastResort` — every `INFO` was dropped in silence, including
+`shipping_rates`' "no rate for this postal code", which is the diagnostic for why a store's shipping
+option never appeared.
+
 ### Docker (Postgres + API + worker)
 
 `cd backend && docker-compose up` — Postgres 17, the API with `runserver`/autoreload, and the
@@ -86,6 +96,18 @@ first on every page; every other script builds URLs on it.
 REST Framework is closed by default (`DEFAULT_PERMISSION_CLASSES = [IsAuthenticated]`); a public endpoint
 needs `permission_classes = [AllowAny]` explicitly. JWT only (`djangorestframework-simplejwt`), access
 token in `Authorization: Bearer <token>`.
+
+### Shared across apps (`apps/common`)
+
+A plain package, not a Django app (no models, not in `INSTALLED_APPS`). `date_filters.py` holds the
+`?date_from=`/`?date_to=` contract (AAAA-MM-DD, **both inclusive**): `parse_date_param`,
+`parse_date_range` and `date_range_q(query_params, field="created_at", ...)`, which returns a `Q` — empty
+when no dates came, so a caller filters with it unconditionally. Seven views across six apps each carried
+their own copy, five of them identical character for character, with two different error messages and one
+endpoint that silently accepted a reversed range. The comparison is always `__date__gte`/`__date__lte` on
+a `DateTimeField`: with a plain `__lte`, "up to the 24th" would exclude everything on the 24th except
+exact midnight. It reads `.get()`, so it takes query params or a JSON body dict (`batch_views` passes
+`filters` from the body).
 
 ### Auth & identity (`apps/accounts`)
 
@@ -198,11 +220,20 @@ change in `label_rendering.py`, change them in the editor too.** `renderDecorati
   chose and the renderer's defaults (proportional size, full width to the right edge) stay in force.
 - `collectFields()` re-emits the styles and the decorations. Before, opening a template and saving it
   silently stripped its border, rules and fixed texts.
-- Still not editable from the UI: the decorations themselves (`border`/`lines`/`texts`) are drawn and
-  preserved, but there is no way to move a rule or add a fixed text from the editor. `design` is a dict keyed
+- The **decorations panel** (`decoGroup` + `decoPropsGroup`) creates them: a "Recuadro" checkbox (plus
+  "Punteado"), `+ Línea` and `+ Texto fijo`. A line or a fixed text is selected by clicking it on the canvas
+  and dragged from there — the drag writes into `decorations` and re-renders, because the decoration layer
+  is rebuilt on every render and a position left in the DOM would be lost. A line only moves vertically:
+  its horizontal extent is `left`/`right`, typed in so two rules line up exactly rather than nearly.
+  `syncDecoToolbar()` ticks the border boxes from the design when a template is opened.
+- **The decoration preview used to lie.** The editor drew the border from `margin`/`width` and the lines
+  from `width`/`thickness` — keys `_draw_decorations` ignores. It uses a fixed `BORDER_INSET_CM` (0.2 cm),
+  `setLineWidth(0.6)` for both, and `left`/`right` (defaults 4 and 96) for lines. So a 10×15 label showed a
+  border flush against the edge and rules 4% too long. `renderDecorations()` now mirrors those constants;
+  **if they change in `label_rendering.py`, change them here too.** `design` is a dict keyed
 by field name (`remitente`, `destinatario`, `domicilio`, `cp`, `localidad`, `pedido`, plus `logo`/`qr`/
 `barcode`), each text value `{"left": 0-100, "top": 0-100, "text": optional}` — position in **percent**.
-Styled extras (backend-only, editor doesn't write them yet): `font_size`, `bold`, `align`, `width`,
+Styled extras: `font_size`, `bold`, `align`, `width`,
 `hide_if_empty`, `shrink_to_fit`, plus decoration keys `texts`/`lines`/`border`.
 `label_rendering.build_label_context(order=None, label=None)` builds the print context: `remitente`
 (the store's `sender_name`, else its name, else the user), `remitente_domicilio`/`remitente_telefono`
@@ -213,6 +244,40 @@ needed to deliver the package. `LabelTemplate` (`owner=None` = system template, 
 `height_cm`) and `Label` (`user`, `template`, `order` FK, `client` = recipient, `is_active` soft-delete) are
 both served under `/api/v1/labels/` (`labels/`, `templates/`, `admin/` for `labels.view_all`, `render/` for
 a one-off PDF, `batch/` for many labels → one `apps.documents.Document`).
+
+**ZPL for thermal Zebra printers (`zpl.py`).** The same `design`, emitted as the printer's native
+language instead of a rasterized page — a second drawing path, not just another export, which is why it
+is its own module. Text and codes become firmware commands (`^A0`/`^FB`, `^BQ`, `^BC`/`^BE`), so output
+is crisp and fast and needs no driver. **The PDF stays the path that always works**: a printer this
+doesn't cover prints the PDF and nobody is left unable to ship.
+- **Coordinates are dots from the top-left**, which is the editor's own `left`/`top` model, so unlike
+  `percent_to_canvas_xy` there is no Y inversion. How many dots fit in a centimetre depends on the model
+  (`dpmm`: 8 = 203 dpi, the bulk of the fleet; 12 = 300 dpi), so it is a parameter, defaulting to 8.
+  `^MU` (Zebra's command for rescaling a format written for another resolution) is deliberately **not**
+  used: the ZPL is generated per request, so the right dots are computed directly. `^MU` is for fixed
+  templates that can't be regenerated.
+- **The printer measures the text, not us** (`^FB` with one line): ZPL font 0's metrics aren't
+  Helvetica's, so any width we computed would be a guess. `shrink_to_fit` is the exception and is
+  explicitly an approximation. **`bold` is faked by printing the field twice one dot apart** — font 0 has
+  no bold variant, and ignoring it would silently flatten the design's hierarchy.
+- `^CI28` (UTF-8) is mandatory, or "María" prints as garbage — the failure that never shows up in an
+  English test. `^` and `~` in the data are escaped as hex through `^FH`, since a tracking URL with a `~`
+  would otherwise turn into commands.
+- **A dash is drawn as a run of short `^GB`s**: ZPL has no dashed stroke. The logo becomes a 1-bit
+  dithered `^GF`; an RGBA image is composited onto white first, or the transparent background burns as a
+  black rectangle.
+- **Exposed at** `POST /labels/render/` (`format: "pdf"|"zpl"`, `dpmm`) and `POST /labels/batch/`
+  (`output: "pdf"|"zip"|"zpl"`), where `page_layout` is ignored — there is no sheet to fill, the roll is
+  already die-cut, so nothing like the A4 grid applies. `imprimir_rotulos.html` folds all of it into one
+  "Formato" select, because a merchant knows their printer, not what a dpmm is.
+- **The density is a per-store setting**, not a question asked on every print: `_resolve_dpmm` mirrors
+  `_resolve_template` — an explicit `dpmm` wins, otherwise the store's `label_printer_dpmm` when *every*
+  order in the batch comes from that same store, otherwise 203 dpi. A batch mixing stores with different
+  densities has no right answer, so it falls back rather than picking one and printing half the labels at
+  the wrong scale.
+- **Verified against a real ZPL engine**: `test_zpl.LabelaryRenderTests` renders through
+  api.labelary.com at both densities, and is skipped unless `ZPL_LABELARY_TESTS=1` — the suite can't
+  depend on someone else's service, but it means a printer isn't needed to check the output.
 
 **System 2 — `ElementLayout`/`LayoutElement`/`LayoutVariable` + `element_layout_render/`.** A separate,
 non-overlapping concept (same file, `models.py`, clearly banner-separated): positions in **millimeters**
@@ -255,8 +320,10 @@ The product is an app installed in Tiendanube (Shopify later).
   stores/claim/`; already-owned stores redirect with `store_connected=<id>`, failures with
   `store_error=<code>`. `POST stores/<id>/disconnect/` revokes (never deletes). `PATCH stores/<id>/settings/` saves how that store's
   labels print — `sender_name`/`sender_address`/`sender_phone`, `logo` (file or the editor's base64 data
-  URL, 2 MB cap) and `default_template` (must be public or the caller's) — never token/status; audited as
-  `store.update` (the logo logs its filename, not the bytes). Edited per store in `tiendas.html`.
+  URL, 2 MB cap), `default_template` (must be public or the caller's) and `label_printer_dpmm` (its
+  thermal printer's density, a column rather than a `preferences` key because the merchant edits it and
+  it has to be validated; `null` = not configured) — never token/status; audited as `store.update` (the
+  logo logs its filename, not the bytes). Edited per store in `tiendas.html`.
   `batch_views` uses them when printing: the store's logo goes on its orders' labels, and with no
   `template_id` the batch falls back to the store's `default_template` when every order shares it, else
   to the oldest public template. The system template "Etiqueta de envío estándar" prints
@@ -357,6 +424,15 @@ permission (UI-only gating; the backend re-checks every permission server-side).
 - `assets/js/auth.js` — `window.Auth` (`apiFetch`, `getAccessToken`, `getCurrentUser`, `logout`).
   `apiFetch` attaches the Bearer token, retries once through a single shared refresh on 401, and on
   failure clears the session and redirects to `index.html` (throwing an error with `.isSessionExpired`).
+- **"Olvidé mi contraseña" (two pages, both public).** `recuperar-password.html` +
+  `assets/js/recuperar_password.js` asks for the email (`POST /auth/password-reset/`);
+  `reset-password.html` + `assets/js/reset_password.js` takes `uid`/`token` off the query string — the
+  link in the email — and posts the new one (`POST /auth/password-reset/confirm/`). Neither loads
+  `auth.js`: there is no session to attach, which is the whole point. `PASSWORD_RESET_URL` in `.env` is
+  what the email links to, and it must name the real file (`.../reset-password.html`) — its default
+  (`{FRONTEND_URL}/reset-password`) matches nothing in `frontend/` and the link 404s. The login's
+  "Olvidaste tu clave?" used to be `href="#!"`: the screen was promised and did not exist. Reused
+  `index_test.html` still has the dead link and is left alone (PHP-era leftover).
 - `assets/js/labels_api.js` — the only CRUD client for `apps.labels` (System 1): a real ES module,
   dynamically `import()`-ed from `saved_labels.js`/`templates.js` and used directly by `editor_rotulos.html`.
 - `imprimir_rotulos.html` + `assets/js/print_labels.js` — **the** batch printing screen, and the only one:

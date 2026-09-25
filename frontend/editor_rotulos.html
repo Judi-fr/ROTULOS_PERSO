@@ -259,6 +259,31 @@
         white-space: nowrap;
         color: #111;
       }
+      /* La capa entera era pointer-events:none porque solo se miraba. Ahora
+         las líneas y los textos se seleccionan y se arrastran, así que ellos
+         (y solo ellos: el recuadro no se mueve, el render lo fija) vuelven a
+         recibir el puntero. */
+      .deco-line,
+      .deco-text {
+        pointer-events: auto;
+        cursor: grab;
+      }
+      /* Una línea de 0.6 pt es casi imposible de agarrar con el mouse: el
+         área sensible se agranda con un pseudo-elemento sin mover el pixel
+         que se ve, que es el que tiene que coincidir con el PDF. */
+      .deco-line::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: -5px;
+        bottom: -5px;
+      }
+      .deco-line.selected,
+      .deco-text.selected {
+        outline: 1px dashed var(--accent);
+        outline-offset: 2px;
+      }
 
       .field:focus {
         outline-color: var(--accent);
@@ -503,6 +528,78 @@
             Achicar para que entre
           </label>
         </div>
+        <!-- Decoraciones: recuadro de corte, líneas separadoras y textos
+             fijos. El render las dibujaba desde siempre y el editor pasó a
+             mostrarlas; esto es lo que faltaba para poder crearlas. -->
+        <div class="tool-group" id="decoGroup">
+          <span class="code-config-label">Decoraciones</span>
+          <label title="Marco de corte a 0,2 cm del borde, como lo dibuja el render">
+            <input type="checkbox" id="decoBorder" />
+            Recuadro
+          </label>
+          <label>
+            <input type="checkbox" id="decoBorderDashed" />
+            Punteado
+          </label>
+          <button type="button" class="btn btn-outline" id="addLineBtn">
+            + Línea
+          </button>
+          <button type="button" class="btn btn-outline" id="addDecoTextBtn">
+            + Texto fijo
+          </button>
+        </div>
+
+        <!-- Propiedades de la línea o el texto fijo seleccionado. Mismo patrón
+             que los dos paneles de arriba: se elige en el lienzo y aparece. -->
+        <div class="tool-group" id="decoPropsGroup" hidden>
+          <span class="code-config-label"
+            >Seleccionado: <strong id="decoPropsTitle"></strong></span
+          >
+          <label id="decoTextLabel" hidden>
+            Contenido
+            <input type="text" id="decoText" style="width: 190px" />
+          </label>
+          <label id="decoFontSizeLabel" hidden>
+            Tamaño (pt)
+            <input
+              type="number"
+              id="decoFontSize"
+              min="6"
+              max="72"
+              step="0.5"
+              placeholder="auto"
+              style="width: 70px"
+            />
+          </label>
+          <label id="decoBoldLabel" hidden>
+            <input type="checkbox" id="decoBold" />
+            Negrita
+          </label>
+          <label id="decoAlignLabel" hidden>
+            Alineación
+            <select id="decoAlign">
+              <option value="left">Izquierda</option>
+              <option value="center">Centro</option>
+              <option value="right">Derecha</option>
+            </select>
+          </label>
+          <label id="decoLeftLabel" hidden>
+            Desde (%)
+            <input type="number" id="decoLeft" min="0" max="100" step="1" style="width: 70px" />
+          </label>
+          <label id="decoRightLabel" hidden>
+            Hasta (%)
+            <input type="number" id="decoRight" min="0" max="100" step="1" style="width: 70px" />
+          </label>
+          <label id="decoDashedLabel" hidden>
+            <input type="checkbox" id="decoDashed" />
+            Punteada
+          </label>
+          <button type="button" class="btn btn-outline" id="decoDeleteBtn">
+            Eliminar
+          </button>
+        </div>
+
         <div class="tool-group">
           <label
             >Nombre
@@ -801,10 +898,26 @@
       // Decoraciones del diseño: recuadro, líneas y textos fijos. El backend
       // las dibuja (_draw_decorations) y el editor no las dibujaba NUNCA, así
       // que la plantilla del sistema salía impresa con un marco, rayas y
-      // textos que no estaban en pantalla. Se dibujan como una capa aparte y
-      // no se pueden arrastrar: el editor todavía no las edita, solo las
-      // muestra para que no haya sorpresas.
+      // textos que no estaban en pantalla. Ahora además se editan: se crean
+      // desde la barra, se arrastran y se configuran en decoPropsGroup.
       let decorations = { border: null, lines: null, texts: null };
+
+      // Las mismas constantes que label_rendering.py. El editor dibujaba el
+      // recuadro con un `margin` y un `width` propios y las líneas con
+      // `width`/`thickness`, claves que el render IGNORA: usa un inset fijo,
+      // setLineWidth(0.6) y `left`/`right`. La pantalla prometía una cosa y
+      // el PDF hacía otra. Si estas cambian allá, cambian acá.
+      const BORDER_INSET_CM = 0.2;
+      const DECO_LINE_WIDTH_PT = 0.6;
+      const LINE_DEFAULT_LEFT = 4;
+      const LINE_DEFAULT_RIGHT = 96;
+
+      // {type: "line"|"text", index} del elemento elegido, o null.
+      let selectedDeco = null;
+
+      function ptToPx(pt, perCm) {
+        return (pt / 72) * 2.54 * perCm;
+      }
 
       function renderDecorations(perCm, widthCm, heightCm, defaultFontPt) {
         document.getElementById("decorationLayer")?.remove();
@@ -816,41 +929,111 @@
         if (border) {
           const box = document.createElement("div");
           box.className = "deco-border";
-          const marginPct = parseFloat(border.margin) || 0;
-          box.style.inset = marginPct + "%";
-          box.style.borderWidth = ((parseFloat(border.width) || 1) / 72) * 2.54 * perCm + "px";
+          // Inset fijo en cm, no un porcentaje: el render usa BORDER_INSET_CM
+          // y por eso el marco no se escala con el tamaño del rótulo.
+          box.style.inset = BORDER_INSET_CM * perCm + "px";
+          box.style.borderWidth = ptToPx(DECO_LINE_WIDTH_PT, perCm) + "px";
           box.style.borderStyle = border.dashed ? "dashed" : "solid";
           layer.appendChild(box);
         }
 
-        (decorations.lines || []).forEach((line) => {
+        (decorations.lines || []).forEach((line, index) => {
           const el = document.createElement("div");
           el.className = "deco-line";
-          const left = parseFloat(line.left) || 0;
-          const top = parseFloat(line.top) || 0;
+          const left = line.left != null ? parseFloat(line.left) : LINE_DEFAULT_LEFT;
+          const right = line.right != null ? parseFloat(line.right) : LINE_DEFAULT_RIGHT;
           el.style.left = left + "%";
-          el.style.top = top + "%";
-          el.style.width = (line.width != null ? parseFloat(line.width) : 100 - left) + "%";
-          el.style.height = ((parseFloat(line.thickness) || 1) / 72) * 2.54 * perCm + "px";
+          el.style.top = (parseFloat(line.top) || 0) + "%";
+          el.style.width = Math.max(0, right - left) + "%";
+          el.style.borderTopWidth = ptToPx(DECO_LINE_WIDTH_PT, perCm) + "px";
           el.style.borderTopStyle = line.dashed ? "dashed" : "solid";
+          if (selectedDeco?.type === "line" && selectedDeco.index === index) {
+            el.classList.add("selected");
+          }
+          attachDecoPointer(el, "line", index);
           layer.appendChild(el);
         });
 
-        (decorations.texts || []).forEach((item) => {
+        (decorations.texts || []).forEach((item, index) => {
           const el = document.createElement("div");
           el.className = "deco-text";
           el.style.left = (parseFloat(item.left) || 0) + "%";
           el.style.top = (parseFloat(item.top) || 0) + "%";
           const pt = parseFloat(item.font_size) || defaultFontPt;
-          el.style.fontSize = (pt / 72) * 2.54 * perCm + "px";
+          el.style.fontSize = ptToPx(pt, perCm) + "px";
           el.style.fontWeight = item.bold ? "700" : "400";
           el.style.textAlign = item.align || "left";
           el.textContent = item.text || "";
+          if (selectedDeco?.type === "text" && selectedDeco.index === index) {
+            el.classList.add("selected");
+          }
+          attachDecoPointer(el, "text", index);
           layer.appendChild(el);
         });
 
         label.appendChild(layer);
       }
+
+      // --- Seleccionar y arrastrar decoraciones --------------------------
+      // Aparte del arrastre de los campos: aquel mueve el elemento del DOM y
+      // lo lee al guardar; acá el dato manda, se escribe en `decorations` y
+      // se vuelve a dibujar. El DOM de la capa se regenera en cada render, así
+      // que guardar la posición en el estilo se perdería.
+      let activeDeco = null,
+        decoStartX = 0,
+        decoStartY = 0,
+        decoStartLeft = 0,
+        decoStartTop = 0;
+
+      function attachDecoPointer(el, type, index) {
+        el.addEventListener("pointerdown", (event) => {
+          event.stopPropagation();
+          selectDeco(type, index);
+          const entry = decorations[type === "line" ? "lines" : "texts"][index];
+          activeDeco = { type, index };
+          decoStartX = event.clientX;
+          decoStartY = event.clientY;
+          decoStartLeft = parseFloat(entry.left) || 0;
+          decoStartTop = parseFloat(entry.top) || 0;
+        });
+      }
+
+      document.addEventListener("pointermove", (event) => {
+        if (!activeDeco) return;
+        const rect = label.getBoundingClientRect();
+        const entry =
+          decorations[activeDeco.type === "line" ? "lines" : "texts"][activeDeco.index];
+        if (!entry) return;
+
+        const dyPct = ((event.clientY - decoStartY) / rect.height) * 100;
+        entry.top = Math.max(0, Math.min(100, decoStartTop + dyPct));
+
+        if (activeDeco.type === "line") {
+          // Una línea separadora se mueve solo en vertical: su extensión
+          // horizontal son `left`/`right`, que se editan con números para que
+          // dos líneas queden alineadas de verdad y no "casi".
+          const width = (parseFloat(entry.right) || LINE_DEFAULT_RIGHT) -
+            (parseFloat(entry.left) || LINE_DEFAULT_LEFT);
+          const dxPct = ((event.clientX - decoStartX) / rect.width) * 100;
+          const newLeft = Math.max(0, Math.min(100 - width, decoStartLeft + dxPct));
+          entry.left = newLeft;
+          entry.right = newLeft + width;
+        } else {
+          const dxPct = ((event.clientX - decoStartX) / rect.width) * 100;
+          entry.left = Math.max(0, Math.min(100, decoStartLeft + dxPct));
+        }
+        applyRenderMetrics();
+      });
+
+      document.addEventListener("pointerup", () => {
+        if (!activeDeco) return;
+        activeDeco = null;
+        // El panel muestra los valores redondeados de la posición nueva.
+        refreshDecoPanel();
+      });
+
+      // Un click en el lienzo, fuera de una decoración, deselecciona.
+      label.addEventListener("pointerdown", () => selectDeco(null));
 
       function updateLabelSize() {
         label.style.width = (parseFloat(widthCmInput.value) || 10) + "cm";
@@ -1181,6 +1364,164 @@
         updateSelectedFieldStyle("shrink_to_fit", event.target.checked),
       );
 
+      // --- Decoraciones: crear, configurar y borrar -----------------------
+      // Escriben en `decorations`, que es lo que renderDecorations dibuja y lo
+      // que collectFields devuelve al guardar.
+      const decoPropsGroup = document.getElementById("decoPropsGroup");
+      const decoPropsTitle = document.getElementById("decoPropsTitle");
+      const decoInputs = {
+        text: document.getElementById("decoText"),
+        font_size: document.getElementById("decoFontSize"),
+        bold: document.getElementById("decoBold"),
+        align: document.getElementById("decoAlign"),
+        left: document.getElementById("decoLeft"),
+        right: document.getElementById("decoRight"),
+        dashed: document.getElementById("decoDashed"),
+      };
+      // Cada control vive dentro de su <label>: lo que se muestra u oculta es
+      // la etiqueta, no el input suelto.
+      const DECO_FIELDS_BY_TYPE = {
+        line: ["left", "right", "dashed"],
+        text: ["text", "font_size", "bold", "align"],
+      };
+
+      function decoEntry() {
+        if (!selectedDeco) return null;
+        const list = decorations[selectedDeco.type === "line" ? "lines" : "texts"];
+        return list ? list[selectedDeco.index] || null : null;
+      }
+
+      function selectDeco(type, index) {
+        selectedDeco = type ? { type, index } : null;
+        refreshDecoPanel();
+        applyRenderMetrics();
+      }
+
+      function refreshDecoPanel() {
+        const entry = decoEntry();
+        if (!entry) {
+          decoPropsGroup.hidden = true;
+          return;
+        }
+        decoPropsGroup.hidden = false;
+        const visible = DECO_FIELDS_BY_TYPE[selectedDeco.type];
+        Object.keys(decoInputs).forEach((name) => {
+          const label = decoInputs[name].closest("label");
+          if (label) label.hidden = !visible.includes(name);
+        });
+
+        if (selectedDeco.type === "line") {
+          decoPropsTitle.textContent = "Línea";
+          decoInputs.left.value = Math.round(
+            entry.left != null ? entry.left : LINE_DEFAULT_LEFT,
+          );
+          decoInputs.right.value = Math.round(
+            entry.right != null ? entry.right : LINE_DEFAULT_RIGHT,
+          );
+          decoInputs.dashed.checked = Boolean(entry.dashed);
+        } else {
+          decoPropsTitle.textContent = "Texto fijo";
+          decoInputs.text.value = entry.text || "";
+          // Vacío = lo que decida el render, igual que en las propiedades de
+          // los campos: no se rellena con el valor calculado.
+          decoInputs.font_size.value = entry.font_size != null ? entry.font_size : "";
+          decoInputs.bold.checked = Boolean(entry.bold);
+          decoInputs.align.value = entry.align || "left";
+        }
+      }
+
+      function updateDeco(key, value) {
+        const entry = decoEntry();
+        if (!entry) return;
+        // Misma regla que las propiedades de los campos: vacío o apagado BORRA
+        // la clave en vez de guardarla en falso.
+        if (value === "" || value === null || value === false) {
+          delete entry[key];
+        } else {
+          entry[key] = value;
+        }
+        applyRenderMetrics();
+      }
+
+      // Deja las casillas del recuadro igual que `decorations`, para cuando el
+      // estado no lo puso el usuario sino la plantilla recién cargada.
+      function syncDecoToolbar() {
+        const border = document.getElementById("decoBorder");
+        const dashed = document.getElementById("decoBorderDashed");
+        border.checked = Boolean(decorations.border);
+        dashed.checked = Boolean(decorations.border && decorations.border.dashed);
+      }
+
+      document.getElementById("decoBorder").addEventListener("change", (event) => {
+        const dashed = document.getElementById("decoBorderDashed");
+        decorations.border = event.target.checked
+          ? { dashed: dashed.checked || undefined }
+          : null;
+        applyRenderMetrics();
+      });
+
+      document.getElementById("decoBorderDashed").addEventListener("change", (event) => {
+        if (!decorations.border) return;
+        if (event.target.checked) decorations.border.dashed = true;
+        else delete decorations.border.dashed;
+        applyRenderMetrics();
+      });
+
+      document.getElementById("addLineBtn").addEventListener("click", () => {
+        decorations.lines = decorations.lines || [];
+        // Nace en el medio y con el ancho por defecto del render, para que se
+        // vea apenas se crea y se pueda arrastrar a su lugar.
+        decorations.lines.push({
+          top: 50,
+          left: LINE_DEFAULT_LEFT,
+          right: LINE_DEFAULT_RIGHT,
+        });
+        selectDeco("line", decorations.lines.length - 1);
+      });
+
+      document.getElementById("addDecoTextBtn").addEventListener("click", () => {
+        decorations.texts = decorations.texts || [];
+        decorations.texts.push({ text: "Texto fijo", left: 10, top: 50 });
+        selectDeco("text", decorations.texts.length - 1);
+        decoInputs.text.focus();
+        decoInputs.text.select();
+      });
+
+      document.getElementById("decoDeleteBtn").addEventListener("click", () => {
+        if (!selectedDeco) return;
+        const key = selectedDeco.type === "line" ? "lines" : "texts";
+        decorations[key].splice(selectedDeco.index, 1);
+        // Una lista vacía se borra: el diseño guardado queda sin la clave en
+        // vez de con un array vacío.
+        if (!decorations[key].length) decorations[key] = null;
+        selectDeco(null);
+      });
+
+      decoInputs.text.addEventListener("input", (event) =>
+        updateDeco("text", event.target.value),
+      );
+      decoInputs.font_size.addEventListener("input", (event) => {
+        const value = parseFloat(event.target.value);
+        updateDeco("font_size", Number.isFinite(value) ? value : "");
+      });
+      decoInputs.bold.addEventListener("change", (event) =>
+        updateDeco("bold", event.target.checked),
+      );
+      decoInputs.align.addEventListener("change", (event) =>
+        updateDeco("align", event.target.value === "left" ? "" : event.target.value),
+      );
+      decoInputs.left.addEventListener("input", (event) => {
+        const value = parseFloat(event.target.value);
+        updateDeco("left", Number.isFinite(value) ? value : "");
+      });
+      decoInputs.right.addEventListener("input", (event) => {
+        const value = parseFloat(event.target.value);
+        updateDeco("right", Number.isFinite(value) ? value : "");
+      });
+      decoInputs.dashed.addEventListener("change", (event) =>
+        updateDeco("dashed", event.target.checked),
+      );
+
       document.querySelectorAll(".field").forEach((el) => {
         const key = el.dataset.field;
         if (!TEXT_FIELDS.includes(key)) return;
@@ -1330,6 +1671,10 @@
           lines: Array.isArray(fields.lines) ? fields.lines : null,
           texts: Array.isArray(fields.texts) ? fields.texts : null,
         };
+        // La barra tiene que reflejar el diseño que se acaba de abrir: si no,
+        // el recuadro se ve en el lienzo con la casilla en "no".
+        syncDecoToolbar();
+        selectDeco(null);
         applyRenderMetrics();
       }
 

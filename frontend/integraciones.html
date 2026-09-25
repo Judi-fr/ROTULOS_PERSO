@@ -1,3 +1,10 @@
+<!-- Es el camino de integración sin Tiendanube. La idea es un cliente que no tiene tienda en ninguna plataforma — tiene su propio sistema, un ERP, una web hecha a medida — y quiere que sus pedidos lleguen igual. Las cuatro pestañas son:
+
+Claves de API — le generás una clave a ese cliente y su sistema hace POST /api/v1/ingest/ con el header Api-Key. Sin OAuth, sin tienda, sin nada.
+Webhooks entrantes — lo mismo pero al revés: le das una URL con un secreto HMAC y un mapeo de campos (cómo se llama "código postal" en su JSON versus en el nuestro), y su sistema te empuja los pedidos.
+Webhooks salientes — nosotros le avisamos a él cuando un pedido cambia de estado.
+Entregas — el log de esos avisos, para ver si el otro lado contestó.-->
+
 <!doctype html>
 <html lang="es">
   <head>

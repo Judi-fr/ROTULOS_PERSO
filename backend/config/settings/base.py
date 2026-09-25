@@ -428,3 +428,54 @@ ANTHROPIC_TIMEOUT = env.float("ANTHROPIC_TIMEOUT", default=120.0)
 # anteponer rutas propias en un contenedor que empaqueta sus propias fuentes.
 #   RENDER_FONTS_TTF = {"helvetica": ("/opt/fonts/Helvetica.ttf", ...)}
 RENDER_FONTS_TTF = env.json("RENDER_FONTS_TTF", default={})
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+# Estaba definido SOLO en prod.py, así que fuera de producción no había
+# ninguna configuración y Python caía en su `lastResort`: los INFO se
+# descartaban en silencio y lo demás salía sin fecha, sin nivel y sin nombre
+# del logger. Eso importa porque apps.integrations está escrito para LOGUEAR
+# en vez de reventar (un error ahí no puede romperle el checkout a un
+# comprador), y esa decisión depende de que alguien pueda leer los logs.
+LOG_LEVEL = env("LOG_LEVEL", default="INFO")
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {
+            "format": "{asctime} {levelname} {name}: {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        # Para nuestro código: deja pasar todo lo que el logger permita.
+        "app_console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+        },
+        # Para Django y las librerías de terceros. Tiene nivel propio, y no
+        # alcanza con el del logger raíz: un registro que PROPAGA hacia la
+        # raíz se filtra por el nivel del HANDLER, no por el del logger. Sin
+        # esto, cada aviso de Django saldría dos veces en desarrollo.
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+            "level": "WARNING",
+        },
+    },
+    "root": {"handlers": ["console"], "level": "WARNING"},
+    "loggers": {
+        # Todo nuestro código usa getLogger(__name__) bajo `apps.`, así que
+        # un solo logger lo cubre entero.
+        "apps": {"handlers": ["app_console"], "level": LOG_LEVEL, "propagate": False},
+        # Django trae su propio handler de consola y además propaga hacia la
+        # raíz: sin declararlo acá, cada aviso suyo saldría dos veces (una
+        # pelada, otra con formato). `propagate: False` corta esa segunda
+        # vuelta. Se pierde `mail_admins`, que sin ADMINS configurado no
+        # manda nada; el día que se configure, va agregado acá.
+        "django": {"handlers": ["app_console"], "level": LOG_LEVEL, "propagate": False},
+    },
+}

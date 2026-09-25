@@ -8,7 +8,6 @@ endpoint aparte, de solo lectura, con su propio permiso (``labels.view_all``).
 
 from __future__ import annotations
 
-from datetime import datetime
 
 from django.core.files.base import ContentFile
 from django.db.models import Prefetch, ProtectedError, Q
@@ -26,6 +25,7 @@ from apps.accounts.pagination import UserAdminPagination
 from apps.accounts.permissions_map import user_has_permission
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
+from apps.common.date_filters import date_range_q
 from apps.orders.models import Order
 
 from .models import ElementLayout, Label, LabelTemplate, LayoutElement, LayoutVariable
@@ -45,6 +45,7 @@ from .label_rendering import (
     render_code_svg,
     render_label_pdf,
 )
+from .zpl import DEFAULT_DPMM, SUPPORTED_DPMM, render_label_zpl
 from .element_layout_render import render_element_layout_pdf, render_element_layout_png
 from .element_layout_render.fonts import FontNotAvailable, available_font_families
 from .serializers import (
@@ -368,17 +369,6 @@ class AdminLabelListView(ListAPIView):
     def get_permissions(self):
         return [IsAuthenticated(), HasRolePermission("labels.view_all")]
 
-    def _parse_date_param(self, param_name):
-        raw = self.request.query_params.get(param_name, "").strip()
-        if not raw:
-            return None
-        try:
-            return datetime.strptime(raw, "%Y-%m-%d").date()
-        except ValueError:
-            raise ValidationError(
-                {param_name: f"Formato de fecha inválido (usar YYYY-MM-DD): {raw!r}."}
-            )
-
     def get_queryset(self):
         queryset = Label.objects.select_related("user", "template", "order").all()
         params = self.request.query_params
@@ -408,16 +398,7 @@ class AdminLabelListView(ListAPIView):
         elif is_active_param in ("false", "0"):
             queryset = queryset.filter(is_active=False)
 
-        date_from = self._parse_date_param("date_from")
-        date_to = self._parse_date_param("date_to")
-        if date_from and date_to and date_from > date_to:
-            raise ValidationError(
-                {"date_to": "'date_to' no puede ser anterior a 'date_from'."}
-            )
-        if date_from:
-            queryset = queryset.filter(created_at__date__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(created_at__date__lte=date_to)
+        queryset = queryset.filter(date_range_q(params))
 
         return queryset.order_by("-created_at")
 
@@ -491,10 +472,18 @@ class PreviewLabelView(APIView):
 class RenderLabelView(APIView):
     """POST /api/v1/labels/render/
 
-    Render SIN persistir: arma el PDF con el diseño de una plantilla y los
-    datos de un pedido concreto ``{"template_id": N, "order_id": M}``. Es
-    la semilla del render por lote — simple y sin estado, no crea ningún
+    Render SIN persistir: arma el rótulo con el diseño de una plantilla y
+    los datos de un pedido concreto ``{"template_id": N, "order_id": M}``.
+    Es la semilla del render por lote — simple y sin estado, no crea ningún
     ``Label``.
+
+    ``format`` elige la salida: ``"pdf"`` (por defecto, sirve en cualquier
+    impresora) o ``"zpl"`` para una térmica Zebra, donde el texto y los
+    códigos son comandos nativos en vez de una página rasterizada. Con
+    ``zpl``, ``dpmm`` es la densidad de la impresora (8 = 203 dpi, la
+    mayoría; 12 = 300 dpi): el mismo diseño se emite con los dots que
+    correspondan, así que errarle no rompe nada pero saca la etiqueta a
+    otra escala. Ver ``apps.labels.zpl``.
     """
 
     def get_permissions(self):
@@ -531,18 +520,38 @@ class RenderLabelView(APIView):
             order_qs.select_related("address", "user"), pk=order_id
         )
 
+        output_format = str(request.data.get("format") or "pdf").strip().lower()
+        if output_format not in ("pdf", "zpl"):
+            raise ValidationError({"format": "Debe ser 'pdf' o 'zpl'."})
+
         context = build_label_context(order=order)
         # /labels/render/ es una vista previa sin persistir (ver el
         # docstring de la clase): no consume la numeración secuencial real,
         # el flag es explícito acá, no se adivina del request.
         computed = build_computed_context(owner=request.user, is_preview=True)
-        pdf_bytes = render_label_pdf(
-            design=template.design,
-            width_cm=template.width_cm,
-            height_cm=template.height_cm,
-            context=context,
-            computed=computed,
-        )
+
+        if output_format == "zpl":
+            content = render_label_zpl(
+                design=template.design,
+                width_cm=template.width_cm,
+                height_cm=template.height_cm,
+                context=context,
+                computed=computed,
+                dpmm=_parse_dpmm(request.data.get("dpmm")),
+            )
+            content_type = "text/plain; charset=utf-8"
+            extension = "zpl"
+        else:
+            content = render_label_pdf(
+                design=template.design,
+                width_cm=template.width_cm,
+                height_cm=template.height_cm,
+                context=context,
+                computed=computed,
+            )
+            content_type = "application/pdf"
+            extension = "pdf"
+
         record(
             request,
             category="labels",
@@ -550,13 +559,35 @@ class RenderLabelView(APIView):
             target=order,
             target_type="order",
             target_repr=str(order),
-            changes={"template": {"from": None, "to": template.pk}},
+            changes={
+                "template": {"from": None, "to": template.pk},
+                "format": {"from": None, "to": output_format},
+            },
         )
-        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response = HttpResponse(content, content_type=content_type)
         response["Content-Disposition"] = (
-            f'attachment; filename="rotulo-plantilla-{template.pk}-pedido-{order.pk}.pdf"'
+            f'attachment; filename="rotulo-plantilla-{template.pk}-pedido-{order.pk}.{extension}"'
         )
         return response
+
+
+def _parse_dpmm(raw):
+    """La densidad pedida, validada. Sin valor, la de una impresora de 203
+    dpi, que es la que tiene la enorme mayoría del parque."""
+    if raw in (None, ""):
+        return DEFAULT_DPMM
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ValidationError({"dpmm": "'dpmm' debe ser un número entero."})
+    if value not in SUPPORTED_DPMM:
+        raise ValidationError(
+            {
+                "dpmm": "Densidad no soportada: %s (válidas: %s)."
+                % (value, ", ".join(str(item) for item in SUPPORTED_DPMM))
+            }
+        )
+    return value
 
 
 def _parse_float_query_param(params, name, default, value_range):

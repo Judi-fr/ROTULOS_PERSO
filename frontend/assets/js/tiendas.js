@@ -227,6 +227,17 @@ const SENDER_FIELDS = [
   { key: "sender_phone", label: "Teléfono", placeholder: "11 5555-5555" },
 ];
 
+// Densidades que soporta el generador ZPL (apps.labels.zpl.SUPPORTED_DPMM),
+// nombradas por lo que dice la etiqueta de la impresora y no por el dpmm,
+// que nadie tiene por qué conocer.
+const PRINTER_OPTIONS = [
+  { value: "", label: "Sin configurar (203 dpi)" },
+  { value: "8", label: "Zebra 203 dpi (ZD220, ZD230, GK420...)" },
+  { value: "12", label: "Zebra 300 dpi (ZD620, ZT411...)" },
+  { value: "6", label: "Zebra 152 dpi" },
+  { value: "24", label: "Zebra 600 dpi" },
+];
+
 function renderSenderForm(store) {
   const wrapper = createElement("div", "store-sender");
   wrapper.appendChild(createElement("h4", "store-sender-title", "Rótulos de esta tienda"));
@@ -234,8 +245,8 @@ function renderSenderForm(store) {
     createElement(
       "p",
       "store-sender-help",
-      "Remitente, logo y plantilla que se usan al imprimir los rótulos de esta tienda. " +
-        "Si dejás el remitente vacío se usa el nombre de la tienda."
+      "Remitente, logo, plantilla e impresora que se usan al imprimir los rótulos de esta " +
+        "tienda. Si dejás el remitente vacío se usa el nombre de la tienda."
     )
   );
 
@@ -267,6 +278,26 @@ function renderSenderForm(store) {
   templateField.appendChild(templateLabel);
   templateField.appendChild(templateSelect);
   wrapper.appendChild(templateField);
+
+  // Impresora térmica: la densidad decide con cuántos dots se dibuja el
+  // rótulo (ver apps.labels.zpl). Sin elegir nada, el lote usa 203 dpi, que
+  // es lo que tiene la enorme mayoría; esto es para el que tiene otra y no
+  // quiere elegirla en cada impresión.
+  const printerField = createElement("div", "field");
+  const printerLabel = createElement("label", null, "Impresora térmica");
+  printerLabel.setAttribute("for", `label_printer_dpmm_${store.id}`);
+  const printerSelect = document.createElement("select");
+  printerSelect.id = `label_printer_dpmm_${store.id}`;
+  PRINTER_OPTIONS.forEach(({ value, label }) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    printerSelect.appendChild(option);
+  });
+  printerSelect.value = store.label_printer_dpmm ? String(store.label_printer_dpmm) : "";
+  printerField.appendChild(printerLabel);
+  printerField.appendChild(printerSelect);
+  wrapper.appendChild(printerField);
 
   // Logo: archivo de imagen. Se manda como data URL, igual que el editor.
   const logoField = createElement("div", "field");
@@ -304,6 +335,7 @@ function renderSenderForm(store) {
       payload[key] = inputs[key].value.trim();
     });
     payload.default_template = templateSelect.value ? Number(templateSelect.value) : null;
+    payload.label_printer_dpmm = printerSelect.value ? Number(printerSelect.value) : null;
     if (logoInput.files && logoInput.files[0]) {
       try {
         payload.logo = await readFileAsDataUrl(logoInput.files[0]);

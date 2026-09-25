@@ -209,6 +209,13 @@ body {
   line-height: 1.45;
 }
 
+/* Aviso de la segunda tienda: Tiendanube resuelve cual es por la sesion del
+   navegador, asi que sin cambiar de perfil el boton reconecta siempre la
+   misma. Ver HELP_ME.md. */
+.connect-note {
+  margin-top: 8px;
+}
+
 /* TIENDA */
 .store-card {
   border: 1px solid var(--border);

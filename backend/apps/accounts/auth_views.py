@@ -599,7 +599,15 @@ class PasswordResetRequestView(APIView):
         return Response({"detail": self.GENERIC_MESSAGE})
 
     def _send_reset_email(self, user):
-        """Arma el link al frontend y envía el correo de reset."""
+        """Arma el link al frontend y envía el correo de reset.
+
+        Un fallo de SMTP se traga y se registra, igual que en
+        ``_send_verification_email``. No es una preferencia: esta función solo
+        se llama cuando la cuenta EXISTE, así que dejar propagar la excepción
+        convierte el 500 en un delator — el atacante prueba emails y el que da
+        error es el que está registrado, justo lo que el 200 genérico de esta
+        vista quiere evitar.
+        """
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         token = default_token_generator.make_token(user)
 
@@ -609,20 +617,23 @@ class PasswordResetRequestView(APIView):
         # (PASSWORD_RESET_URL) para no atar el correo a un puerto/ruta fijos.
         reset_url = f"{settings.PASSWORD_RESET_URL}?uid={uid}&token={token}"
 
-        send_mail(
-            subject="Restablecé tu contraseña — ROTULOS",
-            message=(
-                f"Hola,\n\n"
-                f"Recibimos un pedido para restablecer la contraseña de tu "
-                f"cuenta. Para elegir una nueva, entrá en este enlace:\n\n"
-                f"{reset_url}\n\n"
-                f"Si no fuiste vos, ignorá este correo: tu contraseña actual "
-                f"sigue siendo válida.\n"
-            ),
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.email],
-            fail_silently=False,
-        )
+        try:
+            send_mail(
+                subject="Restablecé tu contraseña — ROTULOS",
+                message=(
+                    f"Hola,\n\n"
+                    f"Recibimos un pedido para restablecer la contraseña de tu "
+                    f"cuenta. Para elegir una nueva, entrá en este enlace:\n\n"
+                    f"{reset_url}\n\n"
+                    f"Si no fuiste vos, ignorá este correo: tu contraseña actual "
+                    f"sigue siendo válida.\n"
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[user.email],
+                fail_silently=False,
+            )
+        except Exception as exc:  # noqa: BLE001 - ver el docstring: no delatar la cuenta
+            print(f"No se pudo enviar el email de reset a {user.email}: {exc}")
 
 
 class PasswordResetConfirmView(APIView):
