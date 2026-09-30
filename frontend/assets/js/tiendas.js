@@ -1,10 +1,10 @@
 // Tiendas conectadas (backend: apps.integrations).
 //
-// - Conectar Tiendanube: pide la URL de autorización y lleva al comerciante
-//   a Tiendanube.
+// - Conectar Tiendanube / Shopify: pide la URL de autorización y lleva al
+//   comerciante a su plataforma. Shopify necesita el dominio de la tienda.
 // - Vuelta de la instalación: el backend redirige a esta página con
 //   ?store_connected=<id>, ?store_claim=<token> o ?store_error=<código>
-//   (ver TiendanubeCallbackView). Un store_claim se canjea para vincular la
+//   (ver StoreOAuthCallbackView). Un store_claim se canjea para vincular la
 //   tienda a la cuenta; si no hay sesión, se guarda y se retoma después del
 //   login (index.html vuelve acá cuando existe pendingStoreClaim).
 // - Lista de tiendas con su estado, errores y la acción de desconectar.
@@ -15,17 +15,20 @@
 const INTEGRATIONS_API = `${window.APP_CONFIG.API_BASE}/integrations`;
 const STORES_URL = `${INTEGRATIONS_API}/stores/`;
 const TEMPLATES_URL = `${window.APP_CONFIG.API_BASE}/labels/templates/`;
-const INSTALL_URL = `${INTEGRATIONS_API}/tiendanube/install-url/`;
 const PENDING_CLAIM_KEY = "pendingStoreClaim";
+const PLATFORM_LABELS = { tiendanube: "Tiendanube", shopify: "Shopify" };
 
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
+// La vuelta del OAuth no dice de qué plataforma venía: los textos no la nombran.
 const STORE_ERROR_MESSAGES = {
-  missing_code: "Tiendanube no devolvió el código de autorización. Probá conectar la tienda de nuevo.",
-  authorization_cancelled: "Se canceló la autorización en Tiendanube: la tienda no se conectó.",
-  invalid_state: "El enlace de instalación venció o no es válido. Tocá “Conectar Tiendanube” otra vez.",
-  authorization_rejected: "Tiendanube rechazó la autorización (el código venció o ya se usó). Probá de nuevo.",
-  provider_unavailable: "No pudimos comunicarnos con Tiendanube. Probá de nuevo en unos minutos.",
+  missing_code: "La plataforma no devolvió el código de autorización. Probá conectar la tienda de nuevo.",
+  authorization_cancelled: "Se canceló la autorización: la tienda no se conectó.",
+  invalid_state: "El enlace de instalación venció o no es válido. Volvé a tocar “Conectar”.",
+  invalid_signature: "No pudimos verificar que la instalación venga de la plataforma. Volvé a tocar “Conectar”.",
+  invalid_shop: "El dominio de la tienda no es válido. Revisalo y volvé a intentar.",
+  authorization_rejected: "La plataforma rechazó la autorización (el código venció o ya se usó). Probá de nuevo.",
+  provider_unavailable: "No pudimos comunicarnos con la plataforma. Probá de nuevo en unos minutos.",
   owned_by_other_account: "Esa tienda ya está vinculada a otra cuenta. Si es tuya, escribinos desde Ayuda / Soporte.",
 };
 
@@ -53,7 +56,7 @@ function createElement(tag, className, text) {
 }
 
 // ---------------------------------------------------------------------------
-// Vuelta de la instalación en Tiendanube
+// Vuelta de la instalación
 // ---------------------------------------------------------------------------
 
 // Lee el resultado de la query string y la limpia enseguida: el token de
@@ -110,31 +113,46 @@ async function claimStore(token) {
 // Conectar / desconectar
 // ---------------------------------------------------------------------------
 
-async function connectTiendanube(event) {
-  const button = event?.currentTarget;
+// platform: "tiendanube" | "shopify". shop: dominio de la tienda, solo
+// Shopify (el backend lo valida y lo normaliza).
+async function connectStore(platform, { button, shop } = {}) {
+  const label = PLATFORM_LABELS[platform] || platform;
   if (button) button.disabled = true;
   try {
-    const response = await apiFetch(INSTALL_URL);
+    const query = shop ? `?${new URLSearchParams({ shop })}` : "";
+    const response = await apiFetch(`${INTEGRATIONS_API}/${platform}/install-url/${query}`);
     const data = await response.json().catch(() => ({}));
     if (response.status === 503) {
-      throw new Error("La conexión con Tiendanube todavía no está configurada en el servidor.");
+      throw new Error(`La conexión con ${label} todavía no está configurada en el servidor.`);
     }
     if (!response.ok || !data.authorize_url) {
-      throw new Error(getErrorMessage(data, "No se pudo iniciar la conexión con Tiendanube."));
+      throw new Error(getErrorMessage(data, `No se pudo iniciar la conexión con ${label}.`));
     }
     window.location.assign(data.authorize_url);
   } catch (err) {
     if (err.isSessionExpired) return;
-    showMessage(err.message || "No se pudo iniciar la conexión con Tiendanube.");
+    showMessage(err.message || `No se pudo iniciar la conexión con ${label}.`);
     if (button) button.disabled = false;
   }
+}
+
+function connectShopify(event) {
+  event.preventDefault();
+  const input = document.getElementById("shopifyShopInput");
+  const shop = input.value.trim();
+  if (!shop) {
+    showMessage("Escribí el dominio de tu tienda Shopify (termina en .myshopify.com).");
+    input.focus();
+    return;
+  }
+  connectStore("shopify", { button: document.getElementById("connectShopifyBtn"), shop });
 }
 
 async function disconnectStore(store, button) {
   const name = store.name || `la tienda ${store.external_store_id}`;
   const confirmed = window.confirm(
     `¿Desconectar ${name}? Sus pedidos nuevos van a dejar de entrar. ` +
-      "Para desinstalar la app del todo, hacelo también desde el panel de Tiendanube."
+      `Para desinstalar la app del todo, hacelo también desde el panel de ${store.platform_label || "tu tienda"}.`
   );
   if (!confirmed) return;
 
@@ -200,7 +218,9 @@ function renderStoreCard(store) {
   if (store.status !== "active") {
     const reconnect = createElement("button", "btn btn-primary btn-small", "Volver a conectar");
     reconnect.type = "button";
-    reconnect.addEventListener("click", connectTiendanube);
+    // Shopify reconecta la misma tienda: su id es el dominio.
+    const shop = store.platform === "shopify" ? store.external_store_id : "";
+    reconnect.addEventListener("click", () => connectStore(store.platform, { button: reconnect, shop }));
     actions.appendChild(reconnect);
   }
   if (store.status !== "revoked") {
@@ -459,7 +479,7 @@ async function init() {
   const result = readInstallResult();
 
   if (!window.Auth.getAccessToken()) {
-    // Instaló la app desde Tiendanube sin haber iniciado sesión: se guarda
+    // Instaló la app desde su plataforma sin haber iniciado sesión: se guarda
     // el enlace de vinculación y se retoma al volver del login.
     if (result.claim) localStorage.setItem(PENDING_CLAIM_KEY, result.claim);
     window.location.replace("index.html");
@@ -477,7 +497,10 @@ async function init() {
   await loadStores();
 }
 
-document.getElementById("connectTiendanubeBtn")?.addEventListener("click", connectTiendanube);
+document
+  .getElementById("connectTiendanubeBtn")
+  ?.addEventListener("click", (event) => connectStore("tiendanube", { button: event.currentTarget }));
+document.getElementById("connectShopifyForm")?.addEventListener("submit", connectShopify);
 document.getElementById("refreshStoresBtn")?.addEventListener("click", loadStores);
 document.getElementById("logoutBtn")?.addEventListener("click", () => window.Auth.logout());
 

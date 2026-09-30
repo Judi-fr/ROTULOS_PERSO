@@ -1,7 +1,8 @@
 """Aviso de despacho a la tienda de origen (fase 4).
 
 Cuando un pedido que vino de una tienda conectada pasa a un estado de envío
-(``FULFILLMENT_STATUS_BY_ORDER_STATUS``) o, ya despachado, se le carga o
+que su plataforma sabe informar (``StoreProvider.fulfillment_status_for``)
+o, ya despachado, se le carga o
 cambia el tracking, ``Order.save`` llama a ``notify_store_shipping_change``,
 que solo encola ``internal/push_fulfillment``. El worker
 (``handlers.push_fulfillment``) lee el pedido en ese momento y actualiza el
@@ -15,17 +16,10 @@ import logging
 
 from .events import enqueue_event
 from .models import StoreConnection
+from .providers import get_provider
 from .stores import PUSH_FULFILLMENT_EVENT
 
 logger = logging.getLogger(__name__)
-
-# Estado local del pedido (apps.orders.Order.Status) -> estado del
-# fulfillment order en Tiendanube.
-FULFILLMENT_STATUS_BY_ORDER_STATUS = {
-    "dispatched": "DISPATCHED",
-    "in_transit": "DISPATCHED",
-    "delivered": "DELIVERED",
-}
 
 
 def notify_store_shipping_change(order, *, status_changed, tracking_changed):
@@ -36,11 +30,11 @@ def notify_store_shipping_change(order, *, status_changed, tracking_changed):
         if getattr(order, "_skip_store_notification", False):
             # El cambio vino de la propia tienda (ver ingestion.upsert_store_order).
             return None
-        if not order.store_connection_id or order.status not in FULFILLMENT_STATUS_BY_ORDER_STATUS:
-            return None
-        if not (status_changed or tracking_changed):
+        if not order.store_connection_id or not (status_changed or tracking_changed):
             return None
         connection = order.store_connection
+        if get_provider(connection.platform).fulfillment_status_for(order.status) is None:
+            return None
         if connection.owner_id is None or connection.status == StoreConnection.Status.REVOKED:
             return None
         event, _ = enqueue_event(

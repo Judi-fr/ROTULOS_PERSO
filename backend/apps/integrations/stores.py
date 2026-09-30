@@ -3,13 +3,16 @@ desconexión.
 
 Un comerciante llega a la instalación por dos caminos:
 
-1. Desde nuestra web ("Conectar Tiendanube"): ya está logueado, así que la
-   URL de autorización lleva un ``state`` firmado con su usuario
-   (``make_oauth_state``) y al volver la tienda queda vinculada a él.
-2. Desde la tienda de apps de la plataforma: vuelve SIN ``state``, no
-   sabemos quién es. La tienda se guarda sin ``owner`` y se lo manda a
-   nuestra web con un token de reclamo firmado y de vida corta
-   (``make_claim_token``); al iniciar sesión, ``claim_store`` la vincula.
+1. Desde nuestra web ("Conectar Tiendanube" / "Conectar Shopify"): ya está
+   logueado, así que la URL de autorización lleva un ``state`` firmado con
+   su usuario (``make_oauth_state``) y al volver la tienda queda vinculada
+   a él.
+2. Desde la tienda de apps de la plataforma: no sabemos quién es. En
+   Tiendanube vuelve SIN ``state``; en Shopify pasa antes por
+   ``ShopifyLaunchView``, que firma un ``state`` sin usuario. La tienda se
+   guarda sin ``owner`` y se lo manda a nuestra web con un token de reclamo
+   firmado y de vida corta (``make_claim_token``); al iniciar sesión,
+   ``claim_store`` la vincula.
 
 Identidad siempre desde el usuario autenticado o un dato firmado por el
 backend, nunca desde un id que mande el cliente.
@@ -84,20 +87,32 @@ class ConnectResult:
     owner_conflict: bool
 
 
-def make_oauth_state(user, platform):
-    return signing.dumps({"u": user.pk, "p": platform}, salt=STATE_SALT)
+def make_oauth_state(user, platform, shop_domain=""):
+    """``state`` firmado para la URL de autorización. ``user`` puede ser
+    ``None``: una instalación que arrancó desde el admin de la tienda
+    (Shopify) todavía no sabe de quién es y termina en el reclamo. En las
+    plataformas con dominio por tienda el state queda atado a ESA tienda."""
+    data = {"u": user.pk if user is not None else None, "p": platform}
+    if shop_domain:
+        data["s"] = shop_domain
+    return signing.dumps(data, salt=STATE_SALT)
 
 
-def read_oauth_state(state, platform):
-    """Usuario del ``state`` del callback, o ``None`` si no vino (instalación
-    desde la tienda de apps). ``signing.BadSignature`` si fue alterado, venció
-    o no corresponde: el callback lo trata como un intento inválido."""
+def read_oauth_state(state, platform, shop_domain=""):
+    """Usuario del ``state`` del callback, o ``None`` si no vino o no nombra
+    a nadie (instalación desde la tienda de apps). ``signing.BadSignature``
+    si fue alterado, venció o no corresponde (a la plataforma o a la
+    tienda): el callback lo trata como un intento inválido."""
     if not state:
         return None
     max_age = getattr(settings, "INTEGRATIONS_OAUTH_STATE_MAX_AGE_SECONDS", 900)
     data = signing.loads(state, salt=STATE_SALT, max_age=max_age)
     if not isinstance(data, dict) or data.get("p") != platform:
         raise signing.BadSignature("El state no corresponde a esta plataforma.")
+    if data.get("s", "") != shop_domain:
+        raise signing.BadSignature("El state no corresponde a esta tienda.")
+    if data.get("u") is None:
+        return None
     user = get_user_model().objects.filter(pk=data.get("u"), is_active=True).first()
     if user is None:
         raise signing.BadSignature("El usuario del state no existe o está inactivo.")
@@ -111,7 +126,7 @@ def make_claim_token(connection):
     )
 
 
-def connect_store(provider, code, user=None):
+def connect_store(provider, code, user=None, shop_domain=""):
     """Canjea ``code`` y crea o actualiza la ``StoreConnection``.
 
     Reinstalar una tienda ya conocida actualiza su token (nunca crea otra
@@ -120,7 +135,8 @@ def connect_store(provider, code, user=None):
     se reasigna. Los errores del canje (``ProviderError``) se propagan; no
     poder leer el nombre de la tienda después no impide conectarla.
     """
-    oauth = provider.exchange_code(code)
+    # Solo las plataformas con dominio por tienda lo necesitan para el canje.
+    oauth = provider.exchange_code(code, shop_domain=shop_domain) if shop_domain else provider.exchange_code(code)
     owner_conflict = False
 
     with transaction.atomic():
@@ -142,7 +158,7 @@ def connect_store(provider, code, user=None):
             elif connection.owner_id != user.pk:
                 owner_conflict = True
 
-        connection.access_token = oauth.access_token
+        connection.set_tokens(oauth)
         connection.scopes = oauth.scopes[:500]
         connection.status = StoreConnection.Status.ACTIVE
         connection.last_error = ""
@@ -215,7 +231,7 @@ def disconnect_store(connection):
     """Desconecta sin borrar: descarta el token y deja de procesar la tienda.
     Desinstalar la app en sí se hace desde el panel de la plataforma."""
     connection.status = StoreConnection.Status.REVOKED
-    connection.access_token = ""
+    connection.clear_tokens()
     connection.disconnected_at = timezone.now()
-    connection.save(update_fields=["status", "access_token_encrypted", "disconnected_at", "updated_at"])
+    connection.save(update_fields=["status", *StoreConnection.TOKEN_FIELDS, "disconnected_at", "updated_at"])
     return connection

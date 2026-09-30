@@ -317,6 +317,25 @@ TIENDANUBE_API_VERSION = env("TIENDANUBE_API_VERSION", default="2025-03")
 TIENDANUBE_USER_AGENT = env("TIENDANUBE_USER_AGENT", default="")
 TIENDANUBE_HTTP_TIMEOUT_SECONDS = env.int("TIENDANUBE_HTTP_TIMEOUT_SECONDS", default=10)
 
+# App de Shopify (Dev Dashboard). El client secret firma el callback del
+# OAuth, la apertura de la app (hmac en la query string) y los webhooks
+# (header X-Shopify-Hmac-Sha256). En el panel se configuran como App URL
+# {INTEGRATIONS_PUBLIC_BASE_URL}/api/v1/integrations/shopify/launch/ y como
+# redirect URL .../shopify/callback/. Ver apps.integrations.providers.shopify.
+SHOPIFY_CLIENT_ID = env("SHOPIFY_CLIENT_ID", default="")
+SHOPIFY_CLIENT_SECRET = env("SHOPIFY_CLIENT_SECRET", default="")
+# Versión de la GraphQL Admin API (trimestral: AAAA-01/04/07/10).
+SHOPIFY_API_VERSION = env("SHOPIFY_API_VERSION", default="2026-07")
+# Se piden todos al instalar, aunque traer pedidos y devolver el tracking
+# todavía no esté hecho: sumar un scope después obliga al comerciante a
+# aprobar de nuevo. Leer nombre/dirección del comprador además requiere que
+# Shopify apruebe el acceso a "protected customer data" en el panel.
+SHOPIFY_SCOPES = env(
+    "SHOPIFY_SCOPES",
+    default="read_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders",
+)
+SHOPIFY_HTTP_TIMEOUT_SECONDS = env.int("SHOPIFY_HTTP_TIMEOUT_SECONDS", default=10)
+
 # Instalación de tiendas (apps.integrations.stores): vida del "state" firmado
 # de la URL de autorización y del enlace para vincular una tienda instalada
 # desde la tienda de apps a una cuenta.
@@ -327,8 +346,9 @@ INTEGRATIONS_STORE_CLAIM_MAX_AGE_SECONDS = env.int("INTEGRATIONS_STORE_CLAIM_MAX
 STORE_CONNECT_FRONTEND_PATH = env("STORE_CONNECT_FRONTEND_PATH", default="tiendas.html")
 
 # URL pública HTTPS del backend, sin barra final. Con ella se registran los
-# webhooks de cada tienda ({base}/api/v1/integrations/tiendanube/webhooks/);
-# vacía = no se registran (la tienda queda con un aviso en last_error).
+# webhooks de cada tienda ({base}/api/v1/integrations/<plataforma>/webhooks/)
+# y se arma la redirect URL del OAuth de Shopify; vacía = no se registran
+# webhooks (la tienda queda con un aviso en last_error) y Shopify no conecta.
 INTEGRATIONS_PUBLIC_BASE_URL = env("INTEGRATIONS_PUBLIC_BASE_URL", default="")
 # Al conectar/vincular una tienda se importan los pedidos creados en los
 # últimos N días.

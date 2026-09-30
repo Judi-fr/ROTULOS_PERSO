@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import json
 import logging
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode
@@ -31,6 +32,7 @@ from .base import (
     ProviderRejectedError,
     StoreInfo,
     StoreProvider,
+    WebhookMessage,
     get_header,
 )
 
@@ -44,6 +46,29 @@ API_BASE_URL = "https://api.tiendanube.com/{version}/{store_id}"
 SIGNATURE_HEADER = "X-Linkedstore-Hmac-Sha256"
 
 COUNTRY_NAMES = {"AR": "Argentina"}
+
+# Avisos que traen un pedido: el webhook solo trae el id, el worker pide el
+# pedido completo (ver handlers.sync_order). Entran todos, no solo los pagados.
+ORDER_SYNC_EVENTS = (
+    "order/created",
+    "order/updated",
+    "order/paid",
+    "order/packed",
+    "order/fulfilled",
+    "order/cancelled",
+    "order/edited",
+    "order/pending",
+    "order/voided",
+)
+LABEL_STATUS_EVENT = "fulfillment_order/label_status_updated"
+
+# Estado local del pedido (apps.orders.Order.Status) -> estado del
+# fulfillment order en Tiendanube.
+FULFILLMENT_STATUS_BY_ORDER_STATUS = {
+    "dispatched": "DISPATCHED",
+    "in_transit": "DISPATCHED",
+    "delivered": "DELIVERED",
+}
 
 # Orden de avance de un fulfillment order (la API permite saltar hacia
 # adelante, nunca volver): sirve para no "retroceder" uno ya más avanzado.
@@ -124,6 +149,40 @@ def _shipping_option(value):
 
 class TiendanubeProvider(StoreProvider):
     platform = "tiendanube"
+    order_sync_events = ORDER_SYNC_EVENTS
+    uninstall_events = ("app/uninstalled",)
+    extra_webhook_events = (LABEL_STATUS_EVENT,)
+    privacy_events = {
+        "store/redact": "store",
+        "customers/redact": "customer",
+        "customers/data_request": "data_request",
+    }
+
+    @property
+    def orders_page_size(self):
+        return getattr(settings, "TIENDANUBE_ORDERS_PAGE_SIZE", 200)
+
+    def fulfillment_status_for(self, order_status):
+        return FULFILLMENT_STATUS_BY_ORDER_STATUS.get(order_status)
+
+    def parse_webhook(self, raw_body, headers):
+        """Tiendanube manda todo en el body: ``{"store_id", "event", "id"}``."""
+        try:
+            payload = json.loads((raw_body or b"").decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise ValueError("El payload debe ser JSON válido.") from None
+        if not isinstance(payload, dict):
+            raise ValueError("El payload debe ser un objeto.")
+        event_type = _text(payload.get("event"))
+        store_id = _text(payload.get("store_id"))
+        if not event_type or not store_id:
+            raise ValueError("Faltan 'event' o 'store_id'.")
+        return WebhookMessage(
+            store_id=store_id,
+            event_type=event_type,
+            resource_id=_text(payload.get("id") or ""),
+            payload=payload,
+        )
 
     def verify_webhook(self, raw_body, headers):
         secret = getattr(settings, "TIENDANUBE_CLIENT_SECRET", "")
@@ -207,13 +266,13 @@ class TiendanubeProvider(StoreProvider):
 
     # --- OAuth -----------------------------------------------------------
 
-    def build_authorize_url(self, state):
+    def build_authorize_url(self, state, *, shop_domain=""):
         app_id = getattr(settings, "TIENDANUBE_APP_ID", "")
         if not app_id:
             raise ProviderError("TIENDANUBE_APP_ID no está configurado.")
         return f"{AUTHORIZE_URL.format(app_id=app_id)}?{urlencode({'state': state})}"
 
-    def exchange_code(self, code):
+    def exchange_code(self, code, *, shop_domain=""):
         app_id = getattr(settings, "TIENDANUBE_APP_ID", "")
         secret = getattr(settings, "TIENDANUBE_CLIENT_SECRET", "")
         if not app_id or not secret:

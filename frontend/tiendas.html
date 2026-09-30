@@ -28,7 +28,7 @@
         <p id="pageMessage" class="page-message" role="status" aria-live="polite" hidden></p>
 
         <!-- Conectar: pide la URL de autorización al backend y lleva al
-             comerciante a Tiendanube (ver tiendas.js / connectTiendanube). -->
+             comerciante a su plataforma (ver tiendas.js / connectStore). -->
         <section class="card">
           <div class="card-title">Conectar una tienda</div>
           <div class="card-body connect-row">
@@ -48,6 +48,28 @@
             <button type="button" class="btn btn-primary" id="connectTiendanubeBtn">
               Conectar Tiendanube
             </button>
+          </div>
+          <div class="card-body connect-row">
+            <div>
+              <p class="connect-platform">Shopify</p>
+              <p class="connect-help">
+                Escrib&iacute; el dominio de tu tienda (el que termina en <strong>.myshopify.com</strong>,
+                lo ves en el admin de Shopify) y te llevamos a autorizar la app.
+              </p>
+            </div>
+            <form class="connect-shop" id="connectShopifyForm" novalidate>
+              <label class="sr-only" for="shopifyShopInput">Dominio de tu tienda Shopify</label>
+              <input
+                type="text"
+                id="shopifyShopInput"
+                placeholder="mitienda.myshopify.com"
+                autocomplete="off"
+                autocapitalize="off"
+                spellcheck="false"
+                required
+              />
+              <button type="submit" class="btn btn-primary" id="connectShopifyBtn">Conectar Shopify</button>
+            </form>
           </div>
         </section>
 

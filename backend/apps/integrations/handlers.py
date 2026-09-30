@@ -1,13 +1,16 @@
-"""Handlers de la cola de eventos para tiendas Tiendanube (ver ``events``).
+"""Handlers de la cola de eventos de las tiendas conectadas (ver ``events``).
 
 Se registran al importar este módulo, cosa que ``IntegrationsConfig.ready``
 hace siempre: así el worker (``run_integrations_worker``) los encuentra.
-Todos son idempotentes (un evento puede ejecutarse más de una vez):
+Los genéricos se registran para CADA plataforma (``all_providers``), con los
+nombres de evento que declara su proveedor; los de rótulos pedidos por la
+tienda son solo de Tiendanube (Labels API). Todos son idempotentes (un
+evento puede ejecutarse más de una vez):
 
-- Avisos de pedido (``ORDER_SYNC_EVENTS``): el webhook trae solo el id, así
-  que se pide el pedido completo a la API y se crea o actualiza. Entran
-  todos los pedidos, no solo los pagados.
-- ``app/uninstalled``: desconecta la tienda.
+- Avisos de pedido (``order_sync_events`` del proveedor): se pide el pedido
+  completo a la API y se crea o actualiza. Entran todos los pedidos, no
+  solo los pagados.
+- Desinstalación (``uninstall_events``): desconecta la tienda.
 - ``internal/store_setup`` (al conectar): registra los webhooks que falten
   y, si la tienda ya tiene dueño, lanza la importación inicial.
 - ``internal/import_orders``: importa una página de pedidos y encola la
@@ -17,10 +20,10 @@ Todos son idempotentes (un evento puede ejecutarse más de una vez):
 - ``internal/generate_label`` + ``fulfillment_order/label_status_updated``
   (ver ``store_labels``): el rótulo que pidió el comerciante desde el admin
   de su propia tienda.
-- Privacidad (``store/redact``, ``customers/redact``,
-  ``customers/data_request``): ver ``privacy``. Funcionan aunque la tienda
-  ya esté desconectada (``store/redact`` llega justamente después de
-  desinstalar).
+- Privacidad (``privacy_events`` del proveedor: ``store/redact`` o
+  ``shop/redact``, ``customers/redact``, ``customers/data_request``): ver
+  ``privacy``. Funcionan aunque la tienda ya esté desconectada (el borrado
+  de la tienda llega justamente después de desinstalar).
 """
 
 from __future__ import annotations
@@ -37,9 +40,9 @@ from apps.orders.models import Order
 
 from . import privacy, store_labels
 from .events import PermanentEventError, enqueue_event, register_handler
-from .fulfillment import FULFILLMENT_STATUS_BY_ORDER_STATUS
 from .models import StoreConnection, StoreLabelRequest
-from .providers import get_provider
+from .providers import all_providers, get_provider
+from .providers.tiendanube import LABEL_STATUS_EVENT, TiendanubeProvider
 from .providers.base import ProviderAuthError, ProviderNotFoundError, ProviderRejectedError
 from .stores import (
     GENERATE_LABEL_EVENT,
@@ -54,19 +57,8 @@ logger = logging.getLogger(__name__)
 
 TIENDANUBE = StoreConnection.Platform.TIENDANUBE
 
-ORDER_SYNC_EVENTS = (
-    "order/created",
-    "order/updated",
-    "order/paid",
-    "order/packed",
-    "order/fulfilled",
-    "order/cancelled",
-    "order/edited",
-    "order/pending",
-    "order/voided",
-)
-LABEL_STATUS_EVENT = "fulfillment_order/label_status_updated"
-WEBHOOK_EVENTS = ORDER_SYNC_EVENTS + ("app/uninstalled", LABEL_STATUS_EVENT)
+# Los que se registran en una tienda Tiendanube (se definen en su proveedor).
+WEBHOOK_EVENTS = TiendanubeProvider().webhook_events
 
 # Estados de la plataforma en los que ya tiene el PDF guardado ella: a
 # partir de ahí dejamos de publicarlo (ver store_labels.release_download).
@@ -124,26 +116,22 @@ def sync_order(event):
     _mark_synced(connection)
 
 
-for _event_type in ORDER_SYNC_EVENTS:
-    register_handler(TIENDANUBE, _event_type)(sync_order)
-
-
-@register_handler(TIENDANUBE, "app/uninstalled")
 def app_uninstalled(event):
     connection = event.connection
     if connection is not None and connection.status != StoreConnection.Status.REVOKED:
         disconnect_store(connection)
 
 
-@register_handler(TIENDANUBE, STORE_SETUP_EVENT)
 def setup_store(event):
     connection = _connection_for(event, require_owner=False)
     provider = get_provider(connection.platform)
 
     base_url = str(getattr(settings, "INTEGRATIONS_PUBLIC_BASE_URL", "") or "").rstrip("/")
     if base_url:
-        webhook_url = f"{base_url}{reverse('tiendanube-webhooks')}"
-        _call_api(connection, lambda: provider.register_webhooks(connection, webhook_url, WEBHOOK_EVENTS))
+        webhook_url = f"{base_url}{reverse(f'{provider.platform}-webhooks')}"
+        _call_api(
+            connection, lambda: provider.register_webhooks(connection, webhook_url, provider.webhook_events)
+        )
         if connection.last_error == MISSING_BASE_URL_ERROR:
             connection.last_error = ""
             connection.save(update_fields=["last_error", "updated_at"])
@@ -152,17 +140,16 @@ def setup_store(event):
         connection.last_error = MISSING_BASE_URL_ERROR
         connection.save(update_fields=["last_error", "updated_at"])
 
-    if connection.owner_id is not None:
+    if connection.owner_id is not None and provider.supports_order_import:
         enqueue_initial_import(connection)
 
 
-@register_handler(TIENDANUBE, IMPORT_ORDERS_EVENT)
 def import_orders_page(event):
     connection = _connection_for(event, require_owner=True)
     provider = get_provider(connection.platform)
     page = max(int(event.payload.get("page") or 1), 1)
     since = str(event.payload.get("created_at_min") or "")
-    page_size = getattr(settings, "TIENDANUBE_ORDERS_PAGE_SIZE", 200)
+    page_size = provider.orders_page_size
 
     raws = _call_api(
         connection,
@@ -187,20 +174,19 @@ def import_orders_page(event):
         )
 
 
-@register_handler(TIENDANUBE, PUSH_FULFILLMENT_EVENT)
 def push_fulfillment(event):
     connection = _connection_for(event, require_owner=True)
     order = Order.objects.filter(pk=event.payload.get("order_id"), store_connection=connection).first()
     if order is None or not order.external_id:
         raise PermanentEventError("El pedido ya no existe o no pertenece a esta tienda.")
 
-    target_status = FULFILLMENT_STATUS_BY_ORDER_STATUS.get(order.status)
+    provider = get_provider(connection.platform)
+    target_status = provider.fulfillment_status_for(order.status)
     if target_status is None:
         # Volvió a un estado previo al despacho antes de que el worker llegara:
         # no hay nada que informar.
         return
 
-    provider = get_provider(connection.platform)
     _call_api(
         connection,
         lambda: provider.push_fulfillment(
@@ -273,7 +259,7 @@ def label_status_updated(event):
 
 
 # ---------------------------------------------------------------------------
-# Privacidad (webhooks obligatorios de Tiendanube)
+# Privacidad (webhooks obligatorios de Tiendanube y de Shopify)
 # ---------------------------------------------------------------------------
 
 
@@ -290,7 +276,6 @@ def _privacy_audit(action, connection, changes):
     )
 
 
-@register_handler(TIENDANUBE, "store/redact")
 def store_redact(event):
     connection = event.connection
     if connection is None:
@@ -299,7 +284,6 @@ def store_redact(event):
     _privacy_audit("privacy.store_redact", connection, {"orders_redacted": {"from": None, "to": count}})
 
 
-@register_handler(TIENDANUBE, "customers/redact")
 def customers_redact(event):
     payload = event.payload or {}
     order_ids = [str(order_id) for order_id in payload.get("orders_to_redact") or []]
@@ -308,14 +292,16 @@ def customers_redact(event):
 
     # El aviso trae email, teléfono y documento del comprador: tampoco se
     # guardan en la cola.
-    event.payload = {"store_id": payload.get("store_id"), "orders_to_redact": order_ids}
+    event.payload = {
+        "store_id": payload.get("store_id") or payload.get("shop_domain"),
+        "orders_to_redact": order_ids,
+    }
     event.save(update_fields=["payload", "updated_at"])
 
     if connection is not None:
         _privacy_audit("privacy.customer_redact", connection, {"orders_redacted": {"from": None, "to": count}})
 
 
-@register_handler(TIENDANUBE, "customers/data_request")
 def customers_data_request(event):
     connection = event.connection
     if connection is None:
@@ -335,3 +321,21 @@ def customers_data_request(event):
         connection,
         {"orders_reported": {"from": None, "to": len(report["orders"])}, "sent_to_owner": {"from": None, "to": True}},
     )
+
+
+# ---------------------------------------------------------------------------
+# Registro por plataforma
+# ---------------------------------------------------------------------------
+
+PRIVACY_HANDLERS = {"store": store_redact, "customer": customers_redact, "data_request": customers_data_request}
+
+for _provider in all_providers():
+    for _event_type in _provider.order_sync_events:
+        register_handler(_provider.platform, _event_type)(sync_order)
+    for _event_type in _provider.uninstall_events:
+        register_handler(_provider.platform, _event_type)(app_uninstalled)
+    for _event_type, _kind in _provider.privacy_events.items():
+        register_handler(_provider.platform, _event_type)(PRIVACY_HANDLERS[_kind])
+    register_handler(_provider.platform, STORE_SETUP_EVENT)(setup_store)
+    register_handler(_provider.platform, IMPORT_ORDERS_EVENT)(import_orders_page)
+    register_handler(_provider.platform, PUSH_FULFILLMENT_EVENT)(push_fulfillment)

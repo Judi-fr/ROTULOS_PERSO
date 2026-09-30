@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project overview
 
 ROTULOS_PERSO is a **multi-client** shipping-label ("rótulo") app, distributed as an app installed in
-online stores (Tiendanube first, Shopify maybe later): each client connects their store, their orders
+online stores (Tiendanube and Shopify; WooCommerce next): each client connects their store, their orders
 arrive automatically, and the app generates the labels, dispatches and pushes tracking back. It is **not**
 built for a single company — never hardcode a client, sender or carrier name as a default. A "rótulo" is a
 shipping/waybill LABEL stuck on a parcel — not a product tag — with sender (the client/store that ships),
@@ -122,7 +122,8 @@ first on every page; every other script builds URLs on it.
 - `api/v1/processing/` → `apps.processing.urls` (photo → label-layout agent)
 - `api/v1/labels/` → `apps.labels.urls` (`labels/`, `templates/`, `element-layouts/`, `layout-variables/`,
   `admin/`, `render/`, `barcode/`, `batch/`, `fonts/`)
-- `api/v1/integrations/` → `apps.integrations.urls` (admin ABM + store connections)
+- `api/v1/integrations/` → `apps.integrations.urls` (admin ABM + store connections, plus
+  `<platform>/install-url|callback|webhooks/` per provider and `shopify/launch/`)
 - `api/v1/ingest/` → `apps.integrations.ingest_urls` (API-key/webhook order ingest, separate auth)
 - `api/v1/integrations/` → `apps.integrations.label_urls` (Tiendanube Labels API callbacks + public PDF
   download, separate auth — see "Labels the store asks for" below)
@@ -340,16 +341,50 @@ by `apps.labels.batch_views.LabelBatchView`, with `status` (processing/ready/fai
 
 ### Store integrations (`apps/integrations`)
 
-The product is an app installed in Tiendanube (Shopify later).
+The product is an app installed in the merchant's store platform: Tiendanube (complete) and Shopify
+(connection only so far — orders and tracking push are the next step). WooCommerce is planned with both
+auth paths: the automatic `/wc-auth/v1/authorize` flow and keys pasted by hand.
 
+- **Nothing outside `providers/` names a platform** (except the Tiendanube-only Labels API, rates and
+  carrier). Whatever differs lives on the `StoreProvider` (`providers/base.py`) as an attribute or method:
+  `order_sync_events`/`uninstall_events`/`extra_webhook_events`/`privacy_events` (which webhook names
+  mean what), `parse_webhook` (Tiendanube puts store+event in the body, Shopify in headers),
+  `verify_callback`/`callback_shop_domain`/`requires_shop_domain`/`requires_oauth_state` (OAuth
+  differences), `fulfillment_status_for` (local status → platform's shipping status),
+  `supports_order_import`, `refresh_access_token`. `handlers.py` registers the generic handlers for
+  every `all_providers()` entry with the provider's own event names, and `urls.py` generates
+  `<platform>/install-url|callback|webhooks/` per provider (fixed paths, so reverse names like
+  `tiendanube-webhooks`/`shopify-callback` exist and an unknown platform is a 404). Adding a platform =
+  a provider + a `Platform` choice; not new views.
 - `StoreConnection` (`platform` + `external_store_id` unique together) is owned by a user (`owner`,
-  nullable until claimed), token stored encrypted (`access_token` property, Fernet in `crypto.py`).
+  nullable until claimed), tokens stored encrypted (`access_token`/`refresh_token` properties, Fernet in
+  `crypto.py`; `set_tokens(OAuthResult)`/`clear_tokens()` keep them and their expiries consistent).
   `providers/` has one `StoreProvider` per platform (`get_provider(platform)`); `TiendanubeProvider`
   implements OAuth, `api_request`, webhook signature verification, and order normalization to
   `NormalizedOrder`. Errors: `ProviderError` (retryable) / `ProviderAuthError` / `ProviderNotFoundError` /
   `ProviderRejectedError` (no retry).
-- Install: logged-in merchant calls `GET tiendanube/install-url/`; the Partner Portal redirect URL is `GET
-  tiendanube/callback/` (public). Installed from the app store (no session), the store lands with
+- **Tokens that expire (`tokens.py`).** Tiendanube's token never expires (`token_expires_at` null, used
+  as is). Shopify's does, after an hour, and that is mandatory: new public apps must request expiring
+  offline tokens (`expiring=1`) since 2026-04-01, and all public apps from 2027-01-01. `access_token_for`
+  refreshes 60 s before expiry, and `ShopifyProvider.graphql` forces one refresh + retry on a 401. The
+  refresh runs with the row locked (`select_for_update`) because **refresh tokens rotate**: two
+  processes refreshing at once would leave one holding an invalidated refresh token; the second one sees
+  the ciphertext changed and uses the new token.
+- **Shopify (`providers/shopify.py`)**: `external_store_id` is the shop domain (`xxx.myshopify.com`,
+  validated with an anchored regex — `normalize_shop_domain` also accepts `mitienda` or a pasted URL).
+  GraphQL Admin API only (REST is closed to new public apps). The OAuth callback and the App URL
+  (`GET shopify/launch/`, where Shopify sends a merchant who installs or opens the app) carry an `hmac`
+  over the query string; webhooks are signed in base64 in `X-Shopify-Hmac-Sha256` with topic/shop in
+  headers. Every Shopify install passes through us first, so the callback **requires** a `state`: the
+  launch view signs one with no user, bound to that shop (`make_oauth_state(None, "shopify", shop)`),
+  and the store ends in the claim flow. Registered webhook: `app/uninstalled`; the privacy topics
+  (`shop/redact`, `customers/redact`, `customers/data_request`) are declared in the app config, not via
+  API, and reuse `privacy.py`. Listing in the Shopify App Store would additionally require an embedded
+  app (App Bridge) and Shopify's Billing API — not done. Settings: `SHOPIFY_CLIENT_ID`/`SECRET`/
+  `API_VERSION`/`SCOPES`; the redirect URL is built from `INTEGRATIONS_PUBLIC_BASE_URL`.
+- Install: logged-in merchant calls `GET <platform>/install-url/` (`?shop=` for Shopify); the redirect URL
+  configured in the platform's panel is `GET <platform>/callback/` (public). Installed from the app store
+  (no session), the store lands with
   `owner=None` and the callback redirects with a short-lived `store_claim` token, exchanged via `POST
   stores/claim/`; already-owned stores redirect with `store_connected=<id>`, failures with
   `store_error=<code>`. `POST stores/<id>/disconnect/` revokes (never deletes). `PATCH stores/<id>/settings/` saves how that store's
@@ -368,13 +403,15 @@ The product is an app installed in Tiendanube (Shopify later).
   `@register_handler(platform, event_type)` (`handlers.py`). Exponential backoff up to
   `INTEGRATIONS_EVENT_MAX_ATTEMPTS`; `PermanentEventError` fails without retry; events stuck in
   `processing` past a timeout get requeued.
-- `POST tiendanube/webhooks/` (public) verifies the HMAC signature and enqueues; `internal/*` types are
-  handler-only, never real webhooks. `order/*` events (`ORDER_SYNC_EVENTS`) fetch the full order and
-  `upsert_store_order` it — all orders, not only paid ones. `app/uninstalled` revokes the store.
-  `internal/store_setup` registers webhooks then enqueues `internal/import_orders`, which pages through
-  the store's recent orders.
+- `POST <platform>/webhooks/` (public) verifies the signature, reads it with `parse_webhook` and
+  enqueues; `internal/*` types are handler-only, never real webhooks. Order events (the provider's
+  `order_sync_events`) fetch the full order and `upsert_store_order` it — all orders, not only paid ones.
+  The uninstall event revokes the store. `internal/store_setup` registers the provider's
+  `webhook_events` then, if `supports_order_import`, enqueues `internal/import_orders`, which pages
+  through the store's recent orders.
 - Status sync from the store is forward-only (see `_synced_status` above). Push-back:
-  `Order.save()` → `fulfillment.notify_store_shipping_change` → enqueues `internal/push_fulfillment` →
+  `Order.save()` → `fulfillment.notify_store_shipping_change` (only when the provider's
+  `fulfillment_status_for` maps that status) → enqueues `internal/push_fulfillment` →
   `TiendanubeProvider.push_fulfillment` PATCHes each fulfillment order's status (forward-only) and
   `tracking_info` only when the tracking code changed.
 **Labels the store asks for (`store_labels.py`, `label_views.py`, `label_urls.py`).** The mirror image of

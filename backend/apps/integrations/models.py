@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+from datetime import timedelta
 
 from django.conf import settings
 from django.db import models
@@ -197,6 +198,7 @@ class StoreConnection(models.Model):
 
     class Platform(models.TextChoices):
         TIENDANUBE = "tiendanube", "Tiendanube"
+        SHOPIFY = "shopify", "Shopify"
 
     class Status(models.TextChoices):
         ACTIVE = "active", "Conectada"
@@ -212,12 +214,21 @@ class StoreConnection(models.Model):
     )
     platform = models.CharField(max_length=30, choices=Platform.choices)
     # Id de la tienda en la plataforma (en Tiendanube, el ``user_id`` que
-    # devuelve el canje del código OAuth).
-    external_store_id = models.CharField(max_length=64)
+    # devuelve el canje del código OAuth; en Shopify, su dominio
+    # ``xxx.myshopify.com``).
+    external_store_id = models.CharField(max_length=255)
     name = models.CharField(max_length=150, blank=True, default="")
     store_url = models.URLField(blank=True, default="")
     # Cifrado con apps.integrations.crypto: leer/escribir vía ``access_token``.
     access_token_encrypted = models.TextField(blank=True, default="")
+    # Solo en plataformas cuyo token vence (Shopify: una hora). Se renueva
+    # con el refresh token, que también rota en cada renovación (ver
+    # apps.integrations.tokens). Vacío/null = token sin vencimiento, como el
+    # de Tiendanube. Cifrado igual que el access token: con él se sacan
+    # tokens nuevos durante 90 días.
+    refresh_token_encrypted = models.TextField(blank=True, default="")
+    token_expires_at = models.DateTimeField(null=True, blank=True)
+    refresh_token_expires_at = models.DateTimeField(null=True, blank=True)
     scopes = models.CharField(max_length=500, blank=True, default="")
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
     last_error = models.TextField(blank=True, default="")
@@ -291,6 +302,34 @@ class StoreConnection(models.Model):
     @access_token.setter
     def access_token(self, value):
         self.access_token_encrypted = crypto.encrypt(value)
+
+    @property
+    def refresh_token(self):
+        return crypto.decrypt(self.refresh_token_encrypted)
+
+    @refresh_token.setter
+    def refresh_token(self, value):
+        self.refresh_token_encrypted = crypto.encrypt(value)
+
+    # Campos que toca ``set_tokens``, para los ``save(update_fields=...)``.
+    TOKEN_FIELDS = ("access_token_encrypted", "refresh_token_encrypted", "token_expires_at", "refresh_token_expires_at")
+
+    def set_tokens(self, oauth):
+        """Guarda los tokens de un ``OAuthResult`` (canje del código o
+        renovación). Un token sin vencimiento deja los vencimientos vacíos."""
+        now = timezone.now()
+        self.access_token = oauth.access_token
+        self.refresh_token = oauth.refresh_token or ""
+        self.token_expires_at = now + timedelta(seconds=oauth.expires_in) if oauth.expires_in else None
+        self.refresh_token_expires_at = (
+            now + timedelta(seconds=oauth.refresh_token_expires_in) if oauth.refresh_token_expires_in else None
+        )
+
+    def clear_tokens(self):
+        self.access_token = ""
+        self.refresh_token = ""
+        self.token_expires_at = None
+        self.refresh_token_expires_at = None
 
     @property
     def is_active(self):

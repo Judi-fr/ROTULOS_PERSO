@@ -332,7 +332,8 @@ def _store_frontend_redirect(params):
     incluye el token de la tienda."""
     base = str(settings.FRONTEND_URL).rstrip("/")
     path = str(getattr(settings, "STORE_CONNECT_FRONTEND_PATH", "integraciones.html")).lstrip("/")
-    return HttpResponseRedirect(f"{base}/{path}?{urlencode(params)}")
+    query = f"?{urlencode(params)}" if params else ""
+    return HttpResponseRedirect(f"{base}/{path}{query}")
 
 
 class ShippingRateViewSet(viewsets.ModelViewSet):
@@ -522,55 +523,83 @@ class StoreConnectionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, v
         return Response(self.get_serializer(connection).data)
 
 
-class TiendanubeInstallUrlView(APIView):
-    """GET /api/v1/integrations/tiendanube/install-url/
+def _platform_label(platform):
+    return StoreConnection.Platform(platform).label
 
-    URL de autorización de Tiendanube para el usuario logueado, con un
-    ``state`` firmado que lo identifica al volver al callback."""
+
+class StoreInstallUrlView(APIView):
+    """GET /api/v1/integrations/<plataforma>/install-url/[?shop=...]
+
+    URL de autorización de la plataforma para el usuario logueado, con un
+    ``state`` firmado que lo identifica al volver al callback. Las
+    plataformas con dominio por tienda (Shopify) necesitan ``?shop=``: el
+    state queda atado a esa tienda.
+    """
 
     def get_permissions(self):
         return [IsAuthenticated(), HasRolePermission(STORE_CONNECT_PERMISSION)]
 
-    def get(self, request):
-        provider = get_provider(StoreConnection.Platform.TIENDANUBE)
+    def get(self, request, platform):
+        provider = get_provider(platform)
+        shop_domain = ""
+        if provider.requires_shop_domain:
+            try:
+                shop_domain = provider.normalize_shop_domain(request.query_params.get("shop", ""))
+            except ValueError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            url = provider.build_authorize_url(make_oauth_state(request.user, provider.platform))
+            url = provider.build_authorize_url(
+                make_oauth_state(request.user, provider.platform, shop_domain), shop_domain=shop_domain
+            )
         except ProviderError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response({"authorize_url": url})
 
 
-class TiendanubeCallbackView(APIView):
-    """GET /api/v1/integrations/tiendanube/callback/?code=...&state=...
+class StoreOAuthCallbackView(APIView):
+    """GET /api/v1/integrations/<plataforma>/callback/?code=...&state=...
 
-    Es la *redirect URL* que se configura en el Portal de Partners. Público
-    (Tiendanube redirige el navegador del comerciante, sin nuestro JWT): la
-    identidad sale del ``state`` firmado o, si no vino, del reclamo posterior.
-    Siempre termina redirigiendo al frontend, nunca muestra JSON.
+    Es la *redirect URL* que se configura en el panel de la plataforma.
+    Público (la plataforma redirige el navegador del comerciante, sin
+    nuestro JWT): la identidad sale del ``state`` firmado o, si no nombra a
+    nadie, del reclamo posterior. Shopify además firma el callback entero
+    (``hmac``). Siempre termina redirigiendo al frontend, nunca muestra JSON.
     """
 
     authentication_classes = []
     permission_classes = [AllowAny]
 
-    def get(self, request):
-        provider = get_provider(StoreConnection.Platform.TIENDANUBE)
+    def get(self, request, platform):
+        provider = get_provider(platform)
+        label = _platform_label(platform)
+        if not provider.verify_callback(request.query_params):
+            return _store_frontend_redirect({"store_error": "invalid_signature"})
+
         code = request.query_params.get("code", "").strip()
         if not code:
             error = "authorization_cancelled" if request.query_params.get("error") else "missing_code"
             return _store_frontend_redirect({"store_error": error})
 
         try:
-            user = read_oauth_state(request.query_params.get("state", "").strip(), provider.platform)
+            shop_domain = provider.callback_shop_domain(request.query_params)
+        except ValueError:
+            return _store_frontend_redirect({"store_error": "invalid_shop"})
+
+        state = request.query_params.get("state", "").strip()
+        if provider.requires_oauth_state and not state:
+            return _store_frontend_redirect({"store_error": "invalid_state"})
+        try:
+            user = read_oauth_state(state, provider.platform, shop_domain)
         except signing.BadSignature:
             return _store_frontend_redirect({"store_error": "invalid_state"})
 
         try:
-            result = connect_store(provider, code, user=user)
+            result = connect_store(provider, code, user=user, shop_domain=shop_domain)
         except ProviderAuthError as exc:
-            logger.warning("Tiendanube rechazó la instalación: %s", exc)
+            logger.warning("%s rechazó la instalación: %s", label, exc)
             return _store_frontend_redirect({"store_error": "authorization_rejected"})
         except ProviderError:
-            logger.exception("No se pudo completar la instalación de Tiendanube")
+            logger.exception("No se pudo completar la instalación de %s", label)
             return _store_frontend_redirect({"store_error": "provider_unavailable"})
 
         connection = result.connection
@@ -592,51 +621,87 @@ class TiendanubeCallbackView(APIView):
         return _store_frontend_redirect({"store_connected": str(connection.pk)})
 
 
-class TiendanubeWebhookView(APIView):
-    """POST /api/v1/integrations/tiendanube/webhooks/
+class ShopifyLaunchView(APIView):
+    """GET /api/v1/integrations/shopify/launch/?shop=...&hmac=...&timestamp=...
 
-    Receptor de los webhooks de Tiendanube (``{"store_id", "event", "id"}``).
-    Tiendanube exige un 2xx en menos de 3 segundos y reintenta si no, así
-    que acá solo se verifica la firma (``x-linkedstore-hmac-sha256``), se
-    encola y se responde; el trabajo lo hace el worker (ver handlers).
-
-    Un aviso de una tienda que no tenemos igual se encola (sin tienda) y
-    queda como fallido, para poder depurarlo; responder error solo haría
-    que Tiendanube lo reintente 16 veces.
+    La *App URL* de la app en Shopify: adonde llega el comerciante cuando
+    instala la app desde la App Store o la abre desde su admin. Viene
+    firmada, pero sin nuestro usuario. Si la tienda ya está conectada lo
+    manda a nuestra web (o a vincularla, si todavía no tiene dueño); si no,
+    arranca el OAuth con un ``state`` firmado SIN usuario y atado a esa
+    tienda — Shopify exige autenticar por OAuth antes de mostrar nada, aun
+    después de una reinstalación.
     """
 
     authentication_classes = []
     permission_classes = [AllowAny]
 
-    def post(self, request):
-        provider = get_provider(StoreConnection.Platform.TIENDANUBE)
+    def get(self, request):
+        provider = get_provider(StoreConnection.Platform.SHOPIFY)
+        if not provider.verify_callback(request.query_params):
+            return _store_frontend_redirect({"store_error": "invalid_signature"})
+        try:
+            shop_domain = provider.callback_shop_domain(request.query_params)
+        except ValueError:
+            return _store_frontend_redirect({"store_error": "invalid_shop"})
+
+        connection = StoreConnection.objects.filter(
+            platform=provider.platform, external_store_id=shop_domain, status=StoreConnection.Status.ACTIVE
+        ).first()
+        if connection is not None:
+            if connection.owner_id is None:
+                return _store_frontend_redirect({"store_claim": make_claim_token(connection)})
+            return _store_frontend_redirect({})
+
+        try:
+            url = provider.build_authorize_url(
+                make_oauth_state(None, provider.platform, shop_domain), shop_domain=shop_domain
+            )
+        except ProviderError:
+            logger.exception("No se pudo iniciar la instalación de Shopify")
+            return _store_frontend_redirect({"store_error": "provider_unavailable"})
+        return HttpResponseRedirect(url)
+
+
+class StoreWebhookView(APIView):
+    """POST /api/v1/integrations/<plataforma>/webhooks/
+
+    Receptor de los webhooks de la plataforma. Todas exigen un 2xx en
+    pocos segundos (Tiendanube 3, Shopify 5) y reintentan si no, así que
+    acá solo se verifica la firma, se lee el aviso (``parse_webhook``: cada
+    plataforma pone la tienda y el evento en un lugar distinto), se encola y
+    se responde; el trabajo lo hace el worker (ver handlers).
+
+    Un aviso de una tienda que no tenemos igual se encola (sin tienda) y
+    queda como fallido, para poder depurarlo; responder error solo haría
+    que la plataforma lo reintente.
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request, platform):
+        provider = get_provider(platform)
         raw_body = request.body
         if not provider.verify_webhook(raw_body, request.headers):
             return Response({"detail": "Firma inválida."}, status=status.HTTP_401_UNAUTHORIZED)
 
         try:
-            payload = json.loads(raw_body.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            return Response({"detail": "El payload debe ser JSON válido."}, status=status.HTTP_400_BAD_REQUEST)
-        if not isinstance(payload, dict):
-            return Response({"detail": "El payload debe ser un objeto."}, status=status.HTTP_400_BAD_REQUEST)
-
-        event_type = str(payload.get("event") or "").strip()
-        store_id = str(payload.get("store_id") or "").strip()
-        if not event_type or not store_id:
-            return Response({"detail": "Faltan 'event' o 'store_id'."}, status=status.HTTP_400_BAD_REQUEST)
-        if event_type.startswith(INTERNAL_EVENT_PREFIX):
+            message = provider.parse_webhook(raw_body, request.headers)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        if message.event_type.startswith(INTERNAL_EVENT_PREFIX):
             # Los eventos internos solo los encola el backend.
             return Response({"received": False})
 
         connection = StoreConnection.objects.filter(
-            platform=provider.platform, external_store_id=store_id
+            platform=provider.platform, external_store_id=message.store_id
         ).first()
         enqueue_event(
             platform=provider.platform,
-            event_type=event_type[:80],
+            event_type=message.event_type[:80],
             connection=connection,
-            resource_id=str(payload.get("id") or "")[:100],
-            payload=payload,
+            resource_id=message.resource_id[:100],
+            payload=message.payload,
         )
         return Response({"received": True})

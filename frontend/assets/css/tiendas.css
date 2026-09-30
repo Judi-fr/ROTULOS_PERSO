@@ -216,6 +216,42 @@ body {
   margin-top: 8px;
 }
 
+.connect-row + .connect-row {
+  border-top: 1px solid var(--border);
+}
+
+/* Dominio de la tienda Shopify + botón. */
+.connect-shop {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.connect-shop input {
+  width: 230px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  background: var(--card);
+  color: var(--text-dark);
+}
+
+.connect-shop input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 /* TIENDA */
 .store-card {
   border: 1px solid var(--border);
@@ -320,6 +356,14 @@ body {
   .connect-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+  .connect-shop {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .connect-shop input {
+    flex: 1 1 180px;
+    width: auto;
   }
 }
 
