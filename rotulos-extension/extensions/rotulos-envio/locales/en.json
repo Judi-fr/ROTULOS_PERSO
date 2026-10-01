@@ -1,0 +1,10 @@
+{
+  "name": "Shipping labels",
+  "loading": "Preparing the labels…",
+  "ready": "{{count}} labels ready to print.",
+  "readyOne": "1 label ready to print.",
+  "missingTitle": "Some orders won't be printed",
+  "missingBody": "{{count}} of the selected orders no longer exist in Shopify.",
+  "errorTitle": "The labels couldn't be generated",
+  "genericError": "Please try again in a few minutes."
+}

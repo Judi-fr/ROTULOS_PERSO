@@ -246,16 +246,106 @@
 }
 
 .store-tag {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 2px 9px;
   border-radius: 20px;
   font-size: 11.5px;
   font-weight: 600;
-  background: var(--purple-light);
-  color: var(--purple);
+  background: var(--store-bg, var(--purple-light));
+  color: var(--store-fg, var(--purple));
   margin-left: 8px;
   vertical-align: middle;
 }
+
+/* FILTRO POR TIENDA: un botón por tienda, con el mismo color que marca sus
+   pedidos en la lista (store-color-N, asignado en pedidos.js). */
+.store-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 16px;
+}
+
+.store-filter-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.store-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.store-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--card);
+  color: var(--text-dark);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.store-chip:hover {
+  border-color: var(--store-fg, var(--text-muted));
+}
+
+.store-chip:focus-visible {
+  outline: 2px solid var(--store-fg, var(--blue));
+  outline-offset: 2px;
+}
+
+.store-chip[aria-pressed="true"] {
+  background: var(--store-bg, var(--text-dark));
+  border-color: var(--store-fg, var(--text-dark));
+  color: var(--store-fg, #ffffff);
+}
+
+.store-chip.muted {
+  opacity: 0.75;
+}
+
+.store-chip-hint {
+  font-weight: 400;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.store-chip[aria-pressed="true"] .store-chip-hint {
+  color: inherit;
+  opacity: 0.8;
+}
+
+.store-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--store-fg, currentColor);
+  flex-shrink: 0;
+}
+
+/* Pedido de tienda: borde izquierdo del color de su tienda. */
+.order-item.from-store {
+  border-left: 4px solid var(--store-fg);
+}
+
+/* Paleta de tiendas: distinta de los colores de estado (naranja, verde,
+   ámbar, violeta, rojo) para que una tienda no se lea como un estado. */
+.store-color-0 { --store-fg: #0f766e; --store-bg: #e6f6f4; }
+.store-color-1 { --store-fg: #4338ca; --store-bg: #eceefe; }
+.store-color-2 { --store-fg: #be185d; --store-bg: #fdecf4; }
+.store-color-3 { --store-fg: #0369a1; --store-bg: #e6f3fb; }
+.store-color-4 { --store-fg: #4d7c0f; --store-bg: #eff6e4; }
+.store-color-5 { --store-fg: #475569; --store-bg: #eef1f5; }
 
 .order-item-address {
   margin: 6px 0 0;

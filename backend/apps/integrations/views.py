@@ -21,7 +21,8 @@ from urllib.parse import urlencode
 
 from django.conf import settings
 from django.core import signing
-from django.http import HttpResponseRedirect
+from django.http import HttpResponse, HttpResponseRedirect
+from django.views.decorators.clickjacking import xframe_options_exempt
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -49,6 +50,7 @@ from .models import (
 )
 from .providers import get_provider
 from .providers.base import ProviderAuthError, ProviderError
+from .providers.woocommerce import external_store_id_for, valid_key_pair
 from .serializers import (
     IncomingWebhookSerializer,
     IntegrationKeySerializer,
@@ -68,10 +70,13 @@ from .stores import (
     connect_store,
     disconnect_store,
     make_claim_token,
+    connect_with_credentials,
     make_oauth_state,
     read_oauth_state,
+    read_oauth_state_site,
 )
 from .webhooks import dispatch_event, webhooks_suspended
+from . import shopify_print
 
 logger = logging.getLogger(__name__)
 
@@ -683,20 +688,36 @@ class StoreWebhookView(APIView):
     def post(self, request, platform):
         provider = get_provider(platform)
         raw_body = request.body
-        if not provider.verify_webhook(raw_body, request.headers):
-            return Response({"detail": "Firma inválida."}, status=status.HTTP_401_UNAUTHORIZED)
+        if provider.webhook_secret_per_store:
+            # Firma con el secreto de CADA tienda (WooCommerce): primero hay
+            # que saber de qué tienda es. ``?store=<id>`` va en la URL con la
+            # que registramos el webhook; la firma prueba que es de ella.
+            try:
+                message = provider.parse_webhook(raw_body, request.headers)
+            except ValueError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            if message is None:
+                # El "ping" al crear el webhook: sin firma, no se encola nada.
+                return Response({"received": False})
+            connection = self._store_connection(provider, request.query_params.get("store"), message.store_id)
+            if connection is None or not provider.verify_webhook(raw_body, request.headers, connection=connection):
+                return Response({"detail": "Firma inválida."}, status=status.HTTP_401_UNAUTHORIZED)
+        else:
+            if not provider.verify_webhook(raw_body, request.headers):
+                return Response({"detail": "Firma inválida."}, status=status.HTTP_401_UNAUTHORIZED)
+            try:
+                message = provider.parse_webhook(raw_body, request.headers)
+            except ValueError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            if message is None:
+                return Response({"received": False})
+            connection = StoreConnection.objects.filter(
+                platform=provider.platform, external_store_id=message.store_id
+            ).first()
 
-        try:
-            message = provider.parse_webhook(raw_body, request.headers)
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         if message.event_type.startswith(INTERNAL_EVENT_PREFIX):
             # Los eventos internos solo los encola el backend.
             return Response({"received": False})
-
-        connection = StoreConnection.objects.filter(
-            platform=provider.platform, external_store_id=message.store_id
-        ).first()
         enqueue_event(
             platform=provider.platform,
             event_type=message.event_type[:80],
@@ -705,3 +726,225 @@ class StoreWebhookView(APIView):
             payload=message.payload,
         )
         return Response({"received": True})
+
+    @staticmethod
+    def _store_connection(provider, store_param, external_store_id):
+        """La tienda de un webhook firmado por tienda: por el id de la URL y,
+        si no vino, por el origen que declara (``X-WC-Webhook-Source``)."""
+        queryset = StoreConnection.objects.filter(platform=provider.platform)
+        if str(store_param or "").isdigit():
+            return queryset.filter(pk=int(store_param)).first()
+        if external_store_id:
+            return queryset.filter(external_store_id=external_store_id).first()
+        return None
+
+
+class ShopifyPrintLinkView(APIView):
+    """POST /api/v1/integrations/shopify/print-link/  ``{"ids": ["gid://shopify/Order/…", …]}``
+
+    Lo llama la extensión de impresión del admin de Shopify (ver
+    ``shopify_print``). Sin JWT nuestro: la identidad es el ID token de
+    Shopify que viaja en ``Authorization: Bearer``, y de él sale la tienda.
+    Devuelve el enlace de vida corta que la vista previa de impresión carga.
+    Abierto a CORS (solo esta ruta, ver ``apps.IntegrationsConfig``): la
+    extensión corre en un origen de Shopify.
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        header = request.headers.get("Authorization", "")
+        token = header[7:].strip() if header.lower().startswith("bearer ") else ""
+        if not token:
+            return Response({"detail": "Falta la sesión de Shopify."}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            shop_domain = shopify_print.verify_id_token(token)
+        except shopify_print.PrintError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            connection = shopify_print.connection_for_shop(shop_domain)
+            legacy_ids = shopify_print.legacy_order_ids((request.data or {}).get("ids"))
+            orders, missing = shopify_print.resolve_orders(connection, legacy_ids)
+            if not orders:
+                raise shopify_print.PrintError("Ninguno de los pedidos elegidos existe en Shopify.")
+            url = shopify_print.print_url(shopify_print.make_print_token(connection, orders))
+        except shopify_print.PrintError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        record(
+            request,
+            actor=connection.owner,
+            category="labels",
+            action="label.batch",
+            target=connection,
+            target_type="storeconnection",
+            target_repr=str(connection),
+            changes={"shopify_print": {"from": None, "to": len(orders)}},
+        )
+        return Response({"url": url, "count": len(orders), "missing": missing})
+
+
+@xframe_options_exempt
+def shopify_print_document(request, token):
+    """GET /api/v1/integrations/shopify/print/<token>
+
+    El PDF que muestra la vista previa de impresión de Shopify. Lo carga el
+    navegador dentro del admin de Shopify (de ahí el ``xframe_options_exempt``:
+    con el DENY por defecto la vista previa quedaría en blanco). Lo
+    autentica el enlace firmado; sin sesión, sin JWT."""
+    if request.method != "GET":
+        return HttpResponse(status=405)
+    try:
+        connection, orders = shopify_print.read_print_token(token)
+        pdf_bytes, _count = shopify_print.render_pdf(connection, orders)
+    except shopify_print.PrintError as exc:
+        return HttpResponse(str(exc), status=410, content_type="text/plain; charset=utf-8")
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    response["Content-Disposition"] = 'inline; filename="rotulos.pdf"'
+    # Datos del comprador: que ningún proxy ni el navegador lo guarde.
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+# ---------------------------------------------------------------------------
+# WooCommerce: credenciales por claves de API (ver providers/woocommerce.py)
+# ---------------------------------------------------------------------------
+
+
+def _woocommerce():
+    return get_provider(StoreConnection.Platform.WOOCOMMERCE)
+
+
+def _record_store_connect(request, user, connection):
+    record(
+        request,
+        actor=user,
+        category="integrations",
+        action="store.connect",
+        target=connection,
+        target_type="storeconnection",
+        target_repr=str(connection),
+        changes={"status": {"from": None, "to": connection.status}},
+    )
+
+
+class WooCommerceKeysView(APIView):
+    """POST /api/v1/integrations/woocommerce/keys/
+
+    El ``callback_url`` de la autorización automática: cuando el comerciante
+    aprueba en su sitio, WooCommerce nos POSTea (servidor a servidor) un JSON
+    con ``consumer_key``, ``consumer_secret`` y nuestro ``state`` en
+    ``user_id``. El ``state`` firmado dice qué usuario y qué sitio (lo
+    generó ``woocommerce/install-url/``). Contesta enseguida y sin llamar a
+    la tienda: ella está esperando esta respuesta para seguir.
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        data = request.data if isinstance(request.data, dict) else {}
+        try:
+            user, site = read_oauth_state_site(str(data.get("user_id") or ""), StoreConnection.Platform.WOOCOMMERCE)
+        except signing.BadSignature:
+            return Response({"detail": "Autorización vencida o inválida."}, status=status.HTTP_400_BAD_REQUEST)
+        if user is None:
+            return Response({"detail": "Autorización sin usuario."}, status=status.HTTP_400_BAD_REQUEST)
+
+        key, secret = str(data.get("consumer_key") or ""), str(data.get("consumer_secret") or "")
+        if not valid_key_pair(key, secret):
+            return Response({"detail": "Faltan las claves de la API."}, status=status.HTTP_400_BAD_REQUEST)
+        if str(data.get("key_permissions") or "read_write") != "read_write":
+            return Response({"detail": "Las claves tienen que ser de lectura y escritura."}, status=status.HTTP_400_BAD_REQUEST)
+
+        result = connect_with_credentials(_woocommerce(), user, site, key, secret)
+        _record_store_connect(request, user, result.connection)
+        return Response({"received": True})
+
+
+class WooCommerceReturnView(APIView):
+    """GET /api/v1/integrations/woocommerce/return/?success=1&user_id=<state>
+
+    El ``return_url``: adonde WooCommerce manda el navegador del comerciante
+    después de aprobar (o rechazar). Las claves ya llegaron por
+    ``WooCommerceKeysView``; esto solo lo devuelve a nuestra web con el
+    resultado, como el callback de las otras plataformas.
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        if str(request.query_params.get("success") or "") != "1":
+            return _store_frontend_redirect({"store_error": "authorization_cancelled"})
+        try:
+            user, site = read_oauth_state_site(
+                request.query_params.get("user_id", ""), StoreConnection.Platform.WOOCOMMERCE
+            )
+        except signing.BadSignature:
+            return _store_frontend_redirect({"store_error": "invalid_state"})
+
+        connection = StoreConnection.objects.filter(
+            platform=StoreConnection.Platform.WOOCOMMERCE, external_store_id=external_store_id_for(site)
+        ).first()
+        if connection is None:
+            # Aprobó pero las claves no llegaron (la tienda no pudo
+            # POSTearlas a nuestro servidor).
+            return _store_frontend_redirect({"store_error": "provider_unavailable"})
+        if user is not None and connection.owner_id not in (None, user.pk):
+            return _store_frontend_redirect({"store_error": "owned_by_other_account"})
+        return _store_frontend_redirect({"store_connected": str(connection.pk)})
+
+
+class WooCommerceManualConnectView(APIView):
+    """POST /api/v1/integrations/woocommerce/connect-manual/
+    ``{"site_url", "consumer_key", "consumer_secret"}``
+
+    El camino manual: el comerciante creó las claves en su admin de
+    WooCommerce (Ajustes → Avanzado → API REST, permisos de lectura y
+    escritura) y las pega. Acá sí se prueban contra la tienda antes de
+    guardarlas: es nuestro pedido, nadie está esperando del otro lado.
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission(STORE_CONNECT_PERMISSION)]
+
+    def post(self, request):
+        provider = _woocommerce()
+        data = request.data if isinstance(request.data, dict) else {}
+        try:
+            site = provider.normalize_shop_domain(data.get("site_url", ""))
+        except ValueError as exc:
+            return Response({"site_url": [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
+
+        key = str(data.get("consumer_key") or "").strip()
+        secret = str(data.get("consumer_secret") or "").strip()
+        if not valid_key_pair(key, secret):
+            return Response(
+                {"detail": "Las claves no tienen el formato de WooCommerce (la clave empieza con ck_ y el secreto con cs_)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            auth_mode = provider.check_credentials(site, key, secret)
+        except ProviderAuthError:
+            return Response(
+                {"detail": "La tienda rechazó las claves. Revisá que estén bien copiadas y que tengan permiso de lectura y escritura."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except ProviderError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        result = connect_with_credentials(provider, request.user, site, key, secret, auth_mode=auth_mode)
+        if result.owner_conflict:
+            return Response(
+                {"detail": "Esa tienda ya está vinculada a otra cuenta. Si es tuya, escribinos desde Ayuda / Soporte."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        _record_store_connect(request, request.user, result.connection)
+        return Response(
+            StoreConnectionSerializer(result.connection, context={"request": request}).data,
+            status=status.HTTP_201_CREATED if result.created else status.HTTP_200_OK,
+        )

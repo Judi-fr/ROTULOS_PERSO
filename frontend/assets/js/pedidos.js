@@ -18,12 +18,26 @@ const STATUS_LABELS = {
   cancelled: "Cancelado",
 };
 
+const PLATFORM_LABELS = { tiendanube: "Tiendanube", shopify: "Shopify" };
+
 let addresses = [];
 // Paginación del historial: el backend pagina (PageNumberPagination) y antes
 // se mostraba solo la primera página, así que un pedido viejo no aparecía por
 // ningún lado. Se navega con next/previous, que es lo que manda el backend.
 let ordersPage = 1;
 let ordersHasNext = false;
+
+// Filtro por tienda: "" = todas, "manual" = cargados a mano, o el id de una
+// tienda (el backend acepta ?store=<id>|manual).
+let selectedStore = "";
+// id de tienda -> número de color (store-color-N en pedidos.css). Se asigna
+// por orden de alta (id), así cada tienda conserva su color aunque se sumen
+// otras: las tiendas nunca se borran, solo se desconectan.
+let storeColors = new Map();
+const STORE_COLOR_COUNT = 6;
+// Firma de la lista de tiendas ya dibujada, para no rearmar los botones si
+// no cambió nada al volver a la pestaña.
+let storesSignature = "";
 
 const getAccessToken = () => window.Auth.getAccessToken();
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
@@ -237,10 +251,10 @@ function renderOrderList(orders) {
   if (!container) return;
 
   if (orders.length === 0) {
-    const filtered = document.getElementById("orderStoreFilter")?.value;
-    container.innerHTML = filtered
-      ? '<p class="empty-state">No hay pedidos para esta tienda.</p>'
-      : '<p class="empty-state">Todavía no hiciste ningún pedido.</p>';
+    let empty = "Todavía no hiciste ningún pedido.";
+    if (selectedStore === "manual") empty = "No hay pedidos cargados a mano.";
+    else if (selectedStore) empty = "No hay pedidos de esta tienda.";
+    container.innerHTML = `<p class="empty-state">${empty}</p>`;
     return;
   }
 
@@ -268,12 +282,13 @@ function renderOrderList(orders) {
     // Pedido de tienda: se muestra el número que ve el comerciante en su
     // tienda (#1001) y de qué tienda viene; los manuales, su id propio.
     const number = order.external_number || order.id;
+    const colorClass = storeColorClass(order.store_connection);
     const storeTag = order.store_connection
-      ? `<span class="store-tag">${escapeHtml(order.store_name || "Tienda")}</span>`
+      ? `<span class="store-tag ${colorClass}" title="${escapeHtml(PLATFORM_LABELS[order.store_platform] || "")}"><span class="store-dot"></span>${escapeHtml(order.store_name || "Tienda")}</span>`
       : "";
 
     const item = document.createElement("div");
-    item.className = "order-item";
+    item.className = order.store_connection ? `order-item from-store ${colorClass}` : "order-item";
     item.innerHTML = `
       <div class="order-item-header">
         <div>
@@ -301,9 +316,8 @@ function renderOrdersPager(data) {
 
 async function loadOrders() {
   try {
-    const store = document.getElementById("orderStoreFilter")?.value;
     const params = new URLSearchParams({ page: String(ordersPage) });
-    if (store) params.set("store", store);
+    if (selectedStore) params.set("store", selectedStore);
     const response = await apiFetch(`${ORDERS_URL}?${params.toString()}`);
     if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
     const data = await response.json();
@@ -317,40 +331,99 @@ async function loadOrders() {
   }
 }
 
-// Filtro por tienda: se arma con las tiendas conectadas del usuario (incluye
-// desconectadas, porque sus pedidos siguen en el historial). Sin tiendas, o
-// si el usuario no puede verlas, el filtro queda oculto.
-async function loadStoreFilter() {
+// Filtro por tienda: un botón por cada tienda del usuario (incluye las
+// desconectadas, porque sus pedidos siguen en el historial) + "Todas" +
+// "Cargados a mano". Se arma con la API, así una tienda que se conecta
+// aparece sola: al cargar la página y cada vez que se vuelve a esta pestaña.
+// Sin tiendas, o si el usuario no puede verlas, el filtro queda oculto.
+function storeColorClass(storeId) {
+  if (!storeId || !storeColors.has(storeId)) return "";
+  return `store-color-${storeColors.get(storeId)}`;
+}
+
+function storeChip(value, label, { colorClass = "", hint = "", muted = false } = {}) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `store-chip ${colorClass}${muted ? " muted" : ""}`;
+  button.dataset.store = value;
+  button.setAttribute("aria-pressed", String(value === selectedStore));
+  if (colorClass) {
+    const dot = document.createElement("span");
+    dot.className = "store-dot";
+    button.appendChild(dot);
+  }
+  button.appendChild(document.createTextNode(label));
+  if (hint) {
+    const small = document.createElement("span");
+    small.className = "store-chip-hint";
+    small.textContent = hint;
+    button.appendChild(small);
+  }
+  return button;
+}
+
+function renderStoreFilter(stores) {
   const field = document.getElementById("orderStoreFilterField");
-  const select = document.getElementById("orderStoreFilter");
-  if (!field || !select) return;
+  const group = document.getElementById("orderStoreFilter");
+  if (!field || !group) return;
+
+  const sorted = [...stores].sort((a, b) => a.id - b.id);
+  storeColors = new Map(sorted.map((store, index) => [store.id, index % STORE_COLOR_COUNT]));
+
+  // La tienda elegida ya no está (otra cuenta, o se borró): volver a todas.
+  if (selectedStore && selectedStore !== "manual" && !storeColors.has(Number(selectedStore))) {
+    selectedStore = "";
+  }
+
+  group.replaceChildren(
+    storeChip("", "Todas"),
+    ...sorted.map((store) =>
+      storeChip(String(store.id), store.name || `Tienda ${store.external_store_id}`, {
+        colorClass: storeColorClass(store.id),
+        hint: store.status === "revoked" ? "desconectada" : PLATFORM_LABELS[store.platform] || store.platform_label || "",
+        muted: store.status === "revoked",
+      })
+    ),
+    storeChip("manual", "Cargados a mano")
+  );
+  field.hidden = sorted.length === 0;
+}
+
+async function loadStoreFilter() {
   try {
     const response = await apiFetch(STORES_URL);
-    if (!response.ok) return;
+    if (!response.ok) return false;
     const stores = extractResults(await response.json());
-    if (stores.length === 0) return;
-
-    stores.forEach((store) => {
-      const option = document.createElement("option");
-      option.value = store.id;
-      option.textContent = store.status === "revoked" ? `${store.name} (desconectada)` : store.name;
-      select.appendChild(option);
-    });
-    const manual = document.createElement("option");
-    manual.value = "manual";
-    manual.textContent = "Pedidos cargados a mano";
-    select.appendChild(manual);
-
-    select.addEventListener("change", () => {
-      ordersPage = 1;
-      loadOrders();
-    });
-    field.style.display = "";
+    const signature = JSON.stringify(stores.map((store) => [store.id, store.name, store.status]));
+    if (signature === storesSignature) return false;
+    storesSignature = signature;
+    renderStoreFilter(stores);
+    return true;
   } catch (err) {
-    if (err.isSessionExpired) return;
+    if (err.isSessionExpired) return false;
     console.error("Error al cargar tiendas:", err);
+    return false;
   }
 }
+
+document.getElementById("orderStoreFilter")?.addEventListener("click", (event) => {
+  const chip = event.target.closest(".store-chip");
+  if (!chip || chip.dataset.store === selectedStore) return;
+  selectedStore = chip.dataset.store;
+  document.querySelectorAll("#orderStoreFilter .store-chip").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.store === selectedStore));
+  });
+  ordersPage = 1;
+  loadOrders();
+});
+
+// Volver a esta pestaña (por ejemplo después de conectar una tienda en
+// tiendas.html) actualiza los botones; si cambiaron, también la lista, para
+// que los colores de los pedidos coincidan.
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "visible" || !getAccessToken()) return;
+  if (await loadStoreFilter()) loadOrders();
+});
 
 async function createOrder() {
   const addressId = document.getElementById("orderAddressSelect").value;

@@ -15,6 +15,10 @@ evento puede ejecutarse más de una vez):
   y, si la tienda ya tiene dueño, lanza la importación inicial.
 - ``internal/import_orders``: importa una página de pedidos y encola la
   siguiente, así un error a mitad de camino solo reintenta esa página.
+- ``internal/reconcile_orders`` (plataformas con ``supports_reconciliation``,
+  ver ``stores.enqueue_due_reconciliations``): reactiva los webhooks y trae
+  los pedidos modificados desde el repaso anterior, por si algún aviso no
+  llegó.
 - ``internal/push_fulfillment`` (ver ``fulfillment``): informa a la tienda
   que el pedido se despachó/entregó, con su tracking.
 - ``internal/generate_label`` + ``fulfillment_order/label_status_updated``
@@ -43,11 +47,12 @@ from .events import PermanentEventError, enqueue_event, register_handler
 from .models import StoreConnection, StoreLabelRequest
 from .providers import all_providers, get_provider
 from .providers.tiendanube import LABEL_STATUS_EVENT, TiendanubeProvider
-from .providers.base import ProviderAuthError, ProviderNotFoundError, ProviderRejectedError
+from .providers.base import ProviderAuthError, ProviderError, ProviderNotFoundError, ProviderRejectedError
 from .stores import (
     GENERATE_LABEL_EVENT,
     IMPORT_ORDERS_EVENT,
     PUSH_FULFILLMENT_EVENT,
+    RECONCILE_ORDERS_EVENT,
     STORE_SETUP_EVENT,
     disconnect_store,
     enqueue_initial_import,
@@ -122,10 +127,9 @@ def app_uninstalled(event):
         disconnect_store(connection)
 
 
-def setup_store(event):
-    connection = _connection_for(event, require_owner=False)
-    provider = get_provider(connection.platform)
-
+def _register_webhooks(connection, provider):
+    """Registra (o reactiva) los webhooks de la tienda. Sin URL pública no se
+    puede: queda el aviso en ``last_error``."""
     base_url = str(getattr(settings, "INTEGRATIONS_PUBLIC_BASE_URL", "") or "").rstrip("/")
     if base_url:
         webhook_url = f"{base_url}{reverse(f'{provider.platform}-webhooks')}"
@@ -140,6 +144,25 @@ def setup_store(event):
         connection.last_error = MISSING_BASE_URL_ERROR
         connection.save(update_fields=["last_error", "updated_at"])
 
+
+def setup_store(event):
+    connection = _connection_for(event, require_owner=False)
+    provider = get_provider(connection.platform)
+
+    # Una tienda conectada con claves (WooCommerce) llega sin nombre: al
+    # conectarla no se le pregunta nada (ver stores.connect_with_credentials).
+    if not connection.name:
+        try:
+            info = provider.get_store_info(connection)
+        except ProviderError as exc:
+            logger.warning("No se pudo leer el nombre de la tienda %s: %s", connection.pk, exc)
+        else:
+            if info.name:
+                connection.name = info.name[:150]
+                connection.save(update_fields=["name", "updated_at"])
+
+    _register_webhooks(connection, provider)
+
     if connection.owner_id is not None and provider.supports_order_import:
         enqueue_initial_import(connection)
 
@@ -147,30 +170,75 @@ def setup_store(event):
 def import_orders_page(event):
     connection = _connection_for(event, require_owner=True)
     provider = get_provider(connection.platform)
-    page = max(int(event.payload.get("page") or 1), 1)
+    # "page" es el formato de los eventos encolados antes de existir el cursor
+    # (y el de la primera página, ver stores.enqueue_initial_import). La
+    # página 1 es "sin cursor": un "1" no es un cursor válido en Shopify.
+    cursor = str(event.payload.get("cursor") or "")
+    legacy_page = int(event.payload.get("page") or 1)
+    if not cursor and legacy_page > 1:
+        cursor = str(legacy_page)
     since = str(event.payload.get("created_at_min") or "")
     page_size = provider.orders_page_size
 
-    raws = _call_api(
+    result = _call_api(
         connection,
-        lambda: provider.list_orders(connection, created_at_min=since, page=page, per_page=page_size),
+        lambda: provider.list_orders_page(connection, created_at_min=since, cursor=cursor, per_page=page_size),
     )
-    for raw in raws:
+    for raw in result.orders:
         try:
             normalized = provider.normalize_order(raw)
         except ValueError:
-            logger.warning("Pedido sin id en la importación de la tienda %s (página %s).", connection.pk, page)
+            logger.warning("Pedido sin id en la importación de la tienda %s (cursor %r).", connection.pk, cursor)
             continue
         upsert_store_order(connection, normalized)
     _mark_synced(connection)
 
-    if len(raws) >= page_size:
+    if result.next_cursor:
         enqueue_event(
             platform=connection.platform,
             event_type=IMPORT_ORDERS_EVENT,
             connection=connection,
-            resource_id=str(page + 1),
-            payload={"page": page + 1, "created_at_min": since},
+            resource_id=result.next_cursor[:100],
+            payload={"cursor": result.next_cursor, "created_at_min": since},
+        )
+
+
+def reconcile_orders(event):
+    """Repaso de una tienda cuyos webhooks no alcanzan. La primera página
+    además reactiva los webhooks (WooCommerce desactiva uno tras 5 entregas
+    fallidas: sin esto, una caída nuestra de un rato la dejaría muda)."""
+    connection = _connection_for(event, require_owner=True)
+    provider = get_provider(connection.platform)
+    cursor = str(event.payload.get("cursor") or "")
+    updated_after = str(event.payload.get("updated_after") or "")
+    if not updated_after:
+        raise PermanentEventError("El repaso no dice desde cuándo.")
+
+    if not cursor:
+        _register_webhooks(connection, provider)
+
+    result = _call_api(
+        connection,
+        lambda: provider.list_updated_orders_page(
+            connection, updated_after=updated_after, cursor=cursor, per_page=provider.orders_page_size
+        ),
+    )
+    for raw in result.orders:
+        try:
+            normalized = provider.normalize_order(raw)
+        except ValueError:
+            logger.warning("Pedido sin id en el repaso de la tienda %s.", connection.pk)
+            continue
+        upsert_store_order(connection, normalized)
+    _mark_synced(connection)
+
+    if result.next_cursor:
+        enqueue_event(
+            platform=connection.platform,
+            event_type=RECONCILE_ORDERS_EVENT,
+            connection=connection,
+            resource_id=result.next_cursor[:100],
+            payload=dict(event.payload, cursor=result.next_cursor),
         )
 
 
@@ -195,6 +263,7 @@ def push_fulfillment(event):
             status=target_status,
             tracking_code=order.tracking_number,
             tracking_url=order.tracking_url,
+            carrier=order.carrier,
         ),
     )
 
@@ -339,3 +408,5 @@ for _provider in all_providers():
     register_handler(_provider.platform, STORE_SETUP_EVENT)(setup_store)
     register_handler(_provider.platform, IMPORT_ORDERS_EVENT)(import_orders_page)
     register_handler(_provider.platform, PUSH_FULFILLMENT_EVENT)(push_fulfillment)
+    if _provider.supports_reconciliation:
+        register_handler(_provider.platform, RECONCILE_ORDERS_EVENT)(reconcile_orders)

@@ -124,6 +124,16 @@ class WebhookMessage:
 
 
 @dataclass
+class OrdersPage:
+    """Una página de la importación de pedidos. ``next_cursor`` vacío = era
+    la última. El cursor es opaco para quien lo usa: en Tiendanube es el
+    número de página, en Shopify el ``endCursor`` de GraphQL."""
+
+    orders: list
+    next_cursor: str = ""
+
+
+@dataclass
 class StoreInfo:
     name: str = ""
     store_url: str = ""
@@ -163,6 +173,19 @@ class StoreProvider:
     # Tiendanube puede faltar (instalación desde su tienda de apps); en
     # Shopify toda instalación pasa antes por nosotros y siempre lo trae.
     requires_oauth_state = False
+    # False = la plataforma no vuelve con un ``code`` por GET a
+    # ``<plataforma>/callback/`` (WooCommerce nos POSTea las claves): no se
+    # genera esa ruta y la plataforma trae sus propias vistas.
+    uses_authorization_code = True
+    # True = cada tienda firma sus webhooks con un secreto propio (WooCommerce:
+    # lo elegimos al crearlos), así que hay que saber qué tienda es ANTES de
+    # verificar la firma: ``verify_webhook`` recibe la conexión.
+    webhook_secret_per_store = False
+    # True = los webhooks no alcanzan (se desactivan solos tras varias
+    # fallas, dependen de un cron): el worker repasa cada tanto los pedidos
+    # modificados (``list_updated_orders_page``) y vuelve a registrar los
+    # webhooks (ver ``stores.enqueue_due_reconciliations``).
+    supports_reconciliation = False
 
     @property
     def webhook_events(self):
@@ -206,8 +229,10 @@ class StoreProvider:
         raise NotImplementedError
 
     def parse_webhook(self, raw_body, headers):
-        """Webhook ya verificado -> ``WebhookMessage``. ``ValueError`` (con
-        el mensaje para responder 400) si no se puede leer."""
+        """Webhook -> ``WebhookMessage``. ``ValueError`` (con el mensaje para
+        responder 400) si no se puede leer. ``None`` = un aviso que solo hay
+        que contestar con 200 y no encolar (el "ping" de WooCommerce al crear
+        un webhook)."""
         raise NotImplementedError
 
     def fulfillment_status_for(self, order_status):
@@ -228,10 +253,27 @@ class StoreProvider:
         """Una página de pedidos crudos (list); vacía pasada la última."""
         raise NotImplementedError
 
-    def push_fulfillment(self, connection, order_id, *, status, tracking_code="", tracking_url="", notify_customer=True):
+    def list_updated_orders_page(self, connection, *, updated_after, cursor="", per_page=50):
+        """Una página de los pedidos MODIFICADOS desde ``updated_after`` (ISO,
+        UTC) -> ``OrdersPage``. Solo las plataformas con
+        ``supports_reconciliation``."""
+        raise NotImplementedError
+
+    def list_orders_page(self, connection, *, created_at_min="", cursor="", per_page=200):
+        """Una página de la importación -> ``OrdersPage``. Por defecto pagina
+        por número con ``list_orders`` (el cursor es el número de página);
+        una plataforma que pagina por cursor lo reemplaza."""
+        page = max(int(cursor or 1), 1)
+        orders = self.list_orders(connection, created_at_min=created_at_min, page=page, per_page=per_page)
+        return OrdersPage(orders=orders, next_cursor=str(page + 1) if len(orders) >= per_page else "")
+
+    def push_fulfillment(
+        self, connection, order_id, *, status, tracking_code="", tracking_url="", carrier="", notify_customer=True
+    ):
         """Informa a la tienda que el pedido se despachó/entregó (``status``
-        en el vocabulario de la plataforma) con su tracking. Idempotente: no
-        repite lo que la tienda ya tiene. Devuelve lo que actualizó."""
+        en el vocabulario de la plataforma) con su tracking y el correo
+        (``carrier``, si la plataforma lo muestra). Idempotente: no repite lo
+        que la tienda ya tiene. Devuelve lo que actualizó."""
         raise NotImplementedError
 
     def register_webhooks(self, connection, url, events):
@@ -241,7 +283,8 @@ class StoreProvider:
 
     def verify_webhook(self, raw_body, headers):
         """``True`` si el webhook viene firmado por la plataforma.
-        ``raw_body``: bytes tal cual llegaron; ``headers``: mapping de headers."""
+        ``raw_body``: bytes tal cual llegaron; ``headers``: mapping de headers.
+        Con ``webhook_secret_per_store`` se llama además con ``connection=``."""
         raise NotImplementedError
 
     def normalize_order(self, raw):

@@ -1,11 +1,26 @@
 """Proveedor Shopify (https://shopify.dev/docs/apps).
 
-Implementado: la CONEXIÓN de la tienda — instalación OAuth (authorization
+Implementado: la conexión de la tienda — instalación OAuth (authorization
 code grant de una app no embebida), token que vence y se renueva, datos de
-la tienda, webhooks (firma, lectura y registro) y desinstalación. Traer
-pedidos y devolver el tracking viene después: mientras tanto
-``supports_order_import`` es False y ``order_sync_events`` está vacío, así
-que conectar una tienda Shopify no lanza nada que todavía no sepa hacer.
+la tienda, webhooks (firma, lectura y registro) y desinstalación — y los
+PEDIDOS: importación inicial (paginada por cursor), avisos
+``orders/create|updated|cancelled`` y la devolución del despacho con su
+tracking (``push_fulfillment``).
+
+**El despacho en Shopify es un "fulfillment" sobre cada fulfillment order.**
+Solo se tocan los que la app puede despachar (``CREATE_FULFILLMENT`` en
+``supportedActions``): los de un servicio externo (un depósito que despacha
+por su cuenta) ni aparecen con nuestros scopes, y no nos corresponden.
+"Entregado" NO se informa: marcarlo (``fulfillmentEventCreate``) exige el
+scope ``write_fulfillments``, que la app no pide; un pedido entregado queda
+en Shopify como enviado, con su tracking.
+
+**Leer pedidos exige "protected customer data".** Sin esa aprobación en el
+Dev Dashboard, Shopify responde "This app is not approved to access the
+Order object" (y ``ordersCount`` da 0, que parece una tienda vacía). Solo se
+piden los campos que el rótulo necesita — nombre y dirección — y NO email
+ni teléfono del comprador: un rótulo nunca los imprime, y cada campo
+protegido de más es algo más que Shopify revisa y que hay que custodiar.
 
 Diferencias con Tiendanube que explican la forma de este módulo:
 
@@ -33,14 +48,19 @@ import hmac
 import json
 import logging
 import re
+from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode
 
 import requests
 from django.conf import settings
 from django.urls import reverse
+from django.utils.dateparse import parse_datetime
 
+from .addresses import split_street
 from .base import (
+    NormalizedOrder,
     OAuthResult,
+    OrdersPage,
     ProviderAuthError,
     ProviderError,
     ProviderNotFoundError,
@@ -83,6 +103,90 @@ query Webhooks {
   }
 }
 """
+
+# Solo lo que usa el rótulo y el estado del pedido. Nada de email/teléfono
+# del comprador (ver docstring del módulo). lineItems acotado: el costo de
+# una consulta GraphQL crece con first x first, y el límite es 1000 puntos.
+ORDER_FIELDS = """
+fragment OrderFields on Order {
+  id
+  legacyResourceId
+  name
+  createdAt
+  updatedAt
+  cancelledAt
+  displayFulfillmentStatus
+  totalWeight
+  shippingLine { title }
+  shippingAddress { name address1 address2 city province zip country countryCodeV2 }
+  billingAddress { name }
+  lineItems(first: 20) { nodes { name sku quantity } }
+}
+"""
+
+ORDER_QUERY = ORDER_FIELDS + """
+query Order($id: ID!) {
+  order(id: $id) { ...OrderFields }
+}
+"""
+
+ORDERS_QUERY = ORDER_FIELDS + """
+query Orders($first: Int!, $after: String, $query: String) {
+  orders(first: $first, after: $after, query: $query, sortKey: CREATED_AT) {
+    nodes { ...OrderFields }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+"""
+
+# Los envíos se leen A TRAVÉS de los fulfillment orders que la app puede ver
+# (los del comerciante), no desde order.fulfillments: así los de un servicio
+# externo quedan afuera sin preguntar de quién son. Preguntarlo
+# (Fulfillment.service) exige scopes que la app no tiene, y Shopify lo
+# rechaza en cuanto el pedido tiene algún envío (confirmado en vivo).
+FULFILLMENT_QUERY = """
+query OrderFulfillment($id: ID!) {
+  order(id: $id) {
+    fulfillmentOrders(first: 20) {
+      nodes {
+        id status
+        supportedActions { action }
+        fulfillments(first: 10) {
+          nodes { id status trackingInfo(first: 1) { number url company } }
+        }
+      }
+    }
+  }
+}
+"""
+
+FULFILLMENT_CREATE_MUTATION = """
+mutation FulfillmentCreate($fulfillment: FulfillmentInput!) {
+  fulfillmentCreate(fulfillment: $fulfillment) {
+    fulfillment { id status }
+    userErrors { field message }
+  }
+}
+"""
+
+TRACKING_UPDATE_MUTATION = """
+mutation FulfillmentTrackingUpdate($fulfillmentId: ID!, $trackingInfoInput: FulfillmentTrackingInput!, $notifyCustomer: Boolean) {
+  fulfillmentTrackingInfoUpdate(fulfillmentId: $fulfillmentId, trackingInfoInput: $trackingInfoInput, notifyCustomer: $notifyCustomer) {
+    fulfillment { id }
+    userErrors { field message }
+  }
+}
+"""
+
+# Estados locales que se informan a Shopify como "enviado". Entregado incluido:
+# si el pedido se marcó entregado sin pasar por despachado, igual tiene que
+# figurar enviado en la tienda (ver docstring: "entregado" no se informa).
+SHIPPED_ORDER_STATUSES = ("dispatched", "in_transit", "delivered")
+
+# Avisos de pedido. orders/updated ya cubre pagado, preparado y despachado;
+# orders/cancelled se registra aparte por las dudas de que la cancelación
+# llegue sin un updated.
+ORDER_SYNC_EVENTS = ("orders/create", "orders/updated", "orders/cancelled")
 
 WEBHOOK_CREATE_MUTATION = """
 mutation WebhookCreate($topic: WebhookSubscriptionTopic!, $webhookSubscription: WebhookSubscriptionInput!) {
@@ -135,6 +239,20 @@ def query_string_hmac(params, secret):
     return hmac.new(secret.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
+def _decimal(value):
+    if value in (None, ""):
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def order_gid(order_id):
+    order_id = _text(order_id)
+    return order_id if order_id.startswith("gid://") else f"gid://shopify/Order/{order_id}"
+
+
 def topic_enum(event):
     """``app/uninstalled`` -> ``APP_UNINSTALLED`` (el enum de GraphQL)."""
     return event.upper().replace("/", "_")
@@ -142,6 +260,7 @@ def topic_enum(event):
 
 class ShopifyProvider(StoreProvider):
     platform = "shopify"
+    order_sync_events = ORDER_SYNC_EVENTS
     uninstall_events = ("app/uninstalled",)
     # Los webhooks de privacidad son obligatorios para publicar en la App
     # Store, pero NO se registran por API: se declaran en la configuración
@@ -151,7 +270,6 @@ class ShopifyProvider(StoreProvider):
         "customers/redact": "customer",
         "customers/data_request": "data_request",
     }
-    supports_order_import = False
     requires_shop_domain = True
     requires_oauth_state = True
 
@@ -293,8 +411,9 @@ class ShopifyProvider(StoreProvider):
             detail = items[0].get("message") if items else errors
             if "THROTTLED" in codes:
                 raise ProviderError("Shopify: se alcanzó el límite de consultas a la API.")
-            if "ACCESS_DENIED" in codes:
-                raise ProviderAuthError(f"Shopify denegó el acceso: {str(detail)[:300]}")
+            # ACCESS_DENIED es un campo para el que la app no pidió el scope,
+            # no un token inválido: si fuera ProviderAuthError la tienda
+            # quedaría marcada "con errores" teniendo un token que sirve.
             raise ProviderRejectedError(f"Shopify rechazó la consulta: {str(detail)[:300]}")
         data = body.get("data")
         if not isinstance(data, dict):
@@ -321,6 +440,166 @@ class ShopifyProvider(StoreProvider):
         store_url = _text(primary.get("url")) or f"https://{connection.external_store_id}"
         return StoreInfo(name=_text(shop.get("name")), store_url=store_url, email=_text(shop.get("email")))
 
+    @property
+    def orders_page_size(self):
+        return getattr(settings, "SHOPIFY_ORDERS_PAGE_SIZE", 25)
+
+    # --- Pedidos -----------------------------------------------------------
+
+    def get_order(self, connection, order_id):
+        order = self.graphql(connection, ORDER_QUERY, {"id": order_gid(order_id)}).get("order")
+        if not isinstance(order, dict):
+            raise ProviderNotFoundError(f"Shopify: el pedido {order_id} no existe.")
+        return order
+
+    def list_orders_page(self, connection, *, created_at_min="", cursor="", per_page=25):
+        variables = {"first": per_page, "after": cursor or None}
+        if created_at_min:
+            # Solo la fecha: la sintaxis de búsqueda de Shopify se confunde
+            # con el "+00:00" de un ISO completo, y un día de más no importa
+            # (upsert_store_order no duplica).
+            variables["query"] = f"created_at:>={created_at_min[:10]}"
+        orders = self.graphql(connection, ORDERS_QUERY, variables).get("orders") or {}
+        info = orders.get("pageInfo") or {}
+        next_cursor = _text(info.get("endCursor")) if info.get("hasNextPage") else ""
+        return OrdersPage(orders=[node for node in orders.get("nodes") or [] if isinstance(node, dict)], next_cursor=next_cursor)
+
+    def list_orders(self, connection, *, created_at_min="", page=1, per_page=25):
+        raise NotImplementedError("Shopify pagina por cursor: usar list_orders_page.")
+
+    def normalize_order(self, raw):
+        if not isinstance(raw, dict) or not (raw.get("legacyResourceId") or raw.get("id")):
+            raise ValueError("El pedido de Shopify no trae 'id'.")
+
+        address = raw.get("shippingAddress") or {}
+        street, number = split_street(address.get("address1"))
+        billing = raw.get("billingAddress") or {}
+
+        items = []
+        for item in ((raw.get("lineItems") or {}).get("nodes")) or []:
+            if isinstance(item, dict):
+                items.append(
+                    {"name": _text(item.get("name")), "sku": _text(item.get("sku")), "quantity": item.get("quantity") or 1}
+                )
+
+        grams = _decimal(raw.get("totalWeight"))
+        # El id numérico (legacyResourceId) y no el gid: es el que traen los
+        # webhooks y los avisos de privacidad (orders_to_redact).
+        external_id = _text(raw.get("legacyResourceId")) or _text(raw.get("id")).rsplit("/", 1)[-1]
+        shipping_line = raw.get("shippingLine") or {}
+
+        return NormalizedOrder(
+            external_id=external_id,
+            external_number=_text(raw.get("name")).lstrip("#"),
+            # La dirección de envío puede venir sin nombre (un cliente cargado
+            # a mano en el admin): entonces el de facturación, que es quien
+            # compró. Igual que Tiendanube cae al nombre de contacto.
+            recipient_name=_text(address.get("name")) or _text(billing.get("name")),
+            street=street,
+            number=number,
+            city=_text(address.get("city")),
+            state=_text(address.get("province")),
+            postal_code=_text(address.get("zip")),
+            country=_text(address.get("country")) or "Argentina",
+            reference=_text(address.get("address2")),
+            description=", ".join(f"{item['quantity']}x {item['name']}" for item in items if item["name"]),
+            shipping_option=_text(shipping_line.get("title")),
+            status=self._local_status(raw),
+            total_weight_kg=(grams / 1000) if grams else None,
+            items=items,
+            external_updated_at=parse_datetime(_text(raw.get("updatedAt"))) if raw.get("updatedAt") else None,
+            raw=raw,
+        )
+
+    # --- Despacho y tracking ----------------------------------------------
+
+    def fulfillment_status_for(self, order_status):
+        return "FULFILLED" if order_status in SHIPPED_ORDER_STATUSES else None
+
+    def _mutate(self, connection, mutation, variables, key, what):
+        result = self.graphql(connection, mutation, variables).get(key) or {}
+        errors = result.get("userErrors") or []
+        if errors:
+            message = "; ".join(_text(error.get("message")) for error in errors if isinstance(error, dict))
+            raise ProviderRejectedError(f"Shopify no aceptó {what}: {message[:300]}")
+        return result
+
+    def push_fulfillment(
+        self, connection, order_id, *, status, tracking_code="", tracking_url="", carrier="", notify_customer=True
+    ):
+        """Despacha en Shopify lo que la app puede despachar y deja el
+        tracking al día. Idempotente: un fulfillment order ya despachado deja
+        de ofrecer ``CREATE_FULFILLMENT``, y el tracking solo se reescribe si
+        cambió. Devuelve los ids de fulfillment creados o actualizados."""
+        order = self.graphql(connection, FULFILLMENT_QUERY, {"id": order_gid(order_id)}).get("order")
+        if not isinstance(order, dict):
+            raise ProviderNotFoundError(f"Shopify: el pedido {order_id} no existe.")
+
+        tracking = {}
+        if tracking_code:
+            tracking = {"number": tracking_code}
+            if tracking_url:
+                tracking["url"] = tracking_url
+            if carrier:
+                tracking["company"] = carrier
+
+        fulfillment_orders = [
+            node for node in (order.get("fulfillmentOrders") or {}).get("nodes") or [] if isinstance(node, dict)
+        ]
+        touched = []
+        for fulfillment_order in fulfillment_orders:
+            actions = {_text(item.get("action")) for item in fulfillment_order.get("supportedActions") or []}
+            if "CREATE_FULFILLMENT" not in actions:
+                continue
+            # Uno por fulfillment order: fulfillmentCreate exige que todos
+            # los de una llamada salgan de la misma ubicación.
+            fulfillment = {
+                "lineItemsByFulfillmentOrder": [{"fulfillmentOrderId": fulfillment_order["id"]}],
+                "notifyCustomer": notify_customer,
+            }
+            if tracking:
+                fulfillment["trackingInfo"] = tracking
+            result = self._mutate(
+                connection, FULFILLMENT_CREATE_MUTATION, {"fulfillment": fulfillment}, "fulfillmentCreate", "el despacho"
+            )
+            touched.append(_text((result.get("fulfillment") or {}).get("id")))
+
+        if tracking:
+            # Envíos ya hechos de los fulfillment orders del comerciante (los
+            # recién creados arriba ya llevan el tracking y no están acá: la
+            # consulta es de antes de crearlos).
+            existing = {
+                fulfillment["id"]: fulfillment
+                for fulfillment_order in fulfillment_orders
+                for fulfillment in (fulfillment_order.get("fulfillments") or {}).get("nodes") or []
+                if isinstance(fulfillment, dict) and fulfillment.get("id")
+            }
+            for fulfillment in existing.values():
+                if _text(fulfillment.get("status")).upper() != "SUCCESS":
+                    continue
+                current = (fulfillment.get("trackingInfo") or [{}])[:1] or [{}]
+                if _text(current[0].get("number")) == tracking_code:
+                    continue
+                self._mutate(
+                    connection,
+                    TRACKING_UPDATE_MUTATION,
+                    {"fulfillmentId": fulfillment["id"], "trackingInfoInput": tracking, "notifyCustomer": notify_customer},
+                    "fulfillmentTrackingInfoUpdate",
+                    "el número de seguimiento",
+                )
+                touched.append(_text(fulfillment["id"]))
+        return touched
+
+    @staticmethod
+    def _local_status(raw):
+        """Igual criterio que Tiendanube: cancelado, o despachado si Shopify
+        ya lo marcó enviado. Cualquier otro estado no cambia el local."""
+        if raw.get("cancelledAt"):
+            return "cancelled"
+        if _text(raw.get("displayFulfillmentStatus")).upper() == "FULFILLED":
+            return "dispatched"
+        return ""
+
     # --- Webhooks ----------------------------------------------------------
 
     def verify_webhook(self, raw_body, headers):
@@ -343,6 +622,11 @@ class ShopifyProvider(StoreProvider):
             raise ValueError("El payload debe ser JSON válido.") from None
         if not isinstance(payload, dict):
             raise ValueError("El payload debe ser un objeto.")
+        if event_type in self.order_sync_events:
+            # El aviso trae el pedido entero, con los datos del comprador. El
+            # worker lo vuelve a pedir igual (ver handlers.sync_order), así
+            # que en la cola solo queda el id: nada personal guardado de más.
+            payload = {"id": payload.get("id"), "updated_at": payload.get("updated_at")}
         return WebhookMessage(
             store_id=store_id,
             event_type=event_type,

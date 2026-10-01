@@ -28,6 +28,7 @@ from django.contrib.auth import get_user_model
 from django.core import signing
 from django.db import transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from .events import enqueue_event
 from .models import StoreConnection
@@ -44,6 +45,7 @@ STORE_SETUP_EVENT = "internal/store_setup"
 IMPORT_ORDERS_EVENT = "internal/import_orders"
 PUSH_FULFILLMENT_EVENT = "internal/push_fulfillment"
 GENERATE_LABEL_EVENT = "internal/generate_label"
+RECONCILE_ORDERS_EVENT = "internal/reconcile_orders"
 
 
 def enqueue_store_setup(connection):
@@ -119,6 +121,19 @@ def read_oauth_state(state, platform, shop_domain=""):
     return user
 
 
+def read_oauth_state_site(state, platform):
+    """``(usuario, sitio)`` de un ``state`` atado a un sitio, cuando quien
+    vuelve no dice de qué sitio viene (WooCommerce: el POST de las claves y la
+    vuelta del navegador solo traen el ``state``). El sitio es el que se firmó
+    al generar la URL de autorización. ``signing.BadSignature`` si no sirve."""
+    max_age = getattr(settings, "INTEGRATIONS_OAUTH_STATE_MAX_AGE_SECONDS", 900)
+    data = signing.loads(state or "", salt=STATE_SALT, max_age=max_age)
+    site = data.get("s", "") if isinstance(data, dict) else ""
+    if not site:
+        raise signing.BadSignature("El state no está atado a ningún sitio.")
+    return read_oauth_state(state, platform, site), site
+
+
 def make_claim_token(connection):
     return signing.dumps(
         {"c": connection.pk, "s": connection.external_store_id, "p": connection.platform},
@@ -137,34 +152,12 @@ def connect_store(provider, code, user=None, shop_domain=""):
     """
     # Solo las plataformas con dominio por tienda lo necesitan para el canje.
     oauth = provider.exchange_code(code, shop_domain=shop_domain) if shop_domain else provider.exchange_code(code)
-    owner_conflict = False
 
-    with transaction.atomic():
-        connection = (
-            StoreConnection.objects.select_for_update()
-            .filter(platform=provider.platform, external_store_id=oauth.external_store_id)
-            .first()
-        )
-        created = connection is None
-        if created:
-            connection = StoreConnection(
-                platform=provider.platform,
-                external_store_id=oauth.external_store_id,
-                owner=user,
-            )
-        elif user is not None:
-            if connection.owner_id is None:
-                connection.owner = user
-            elif connection.owner_id != user.pk:
-                owner_conflict = True
-
+    def apply(connection):
         connection.set_tokens(oauth)
         connection.scopes = oauth.scopes[:500]
-        connection.status = StoreConnection.Status.ACTIVE
-        connection.last_error = ""
-        connection.connected_at = timezone.now()
-        connection.disconnected_at = None
-        connection.save()
+
+    connection, created, owner_conflict = _upsert_connection(provider.platform, oauth.external_store_id, user, apply)
 
     try:
         info = provider.get_store_info(connection)
@@ -190,6 +183,103 @@ def connect_store(provider, code, user=None, shop_domain=""):
         needs_claim=connection.owner_id is None,
         owner_conflict=owner_conflict,
     )
+
+
+def _upsert_connection(platform, external_store_id, user, apply_credentials):
+    """Crea o reactiva la conexión de esa tienda con credenciales nuevas
+    (``apply_credentials(connection)``). Devuelve ``(connection, created,
+    owner_conflict)``: una tienda que ya es de OTRA cuenta conserva su dueño
+    (las credenciales se actualizan igual: quien las dio administra la
+    tienda)."""
+    owner_conflict = False
+    with transaction.atomic():
+        connection = (
+            StoreConnection.objects.select_for_update()
+            .filter(platform=platform, external_store_id=external_store_id)
+            .first()
+        )
+        created = connection is None
+        if created:
+            connection = StoreConnection(platform=platform, external_store_id=external_store_id, owner=user)
+        elif user is not None:
+            if connection.owner_id is None:
+                connection.owner = user
+            elif connection.owner_id != user.pk:
+                owner_conflict = True
+
+        apply_credentials(connection)
+        connection.status = StoreConnection.Status.ACTIVE
+        connection.last_error = ""
+        connection.connected_at = timezone.now()
+        connection.disconnected_at = None
+        connection.save()
+    return connection, created, owner_conflict
+
+
+def connect_with_credentials(provider, user, site_url, key, secret, auth_mode="basic"):
+    """Conecta una tienda cuyas credenciales son claves de API y no un código
+    OAuth (WooCommerce, por los dos caminos: las que POSTea su autorización y
+    las que pega el comerciante). No llama a la tienda: con la autorización
+    automática, la tienda está esperando que le contestemos, y en un hosting
+    chico pedirle algo en ese momento puede trabar las dos puntas. Los datos
+    de la tienda, los webhooks y la importación los hace el worker
+    (``enqueue_store_setup``)."""
+    from .providers.woocommerce import credentials_token, external_store_id_for
+
+    def apply(connection):
+        connection.access_token = credentials_token(key, secret)
+        connection.refresh_token = ""
+        connection.token_expires_at = None
+        connection.refresh_token_expires_at = None
+        connection.store_url = site_url[:200]
+        connection.scopes = "read_write"
+        connection.preferences = dict(connection.preferences or {}, woo_auth=auth_mode)
+
+    connection, created, owner_conflict = _upsert_connection(
+        provider.platform, external_store_id_for(site_url), user, apply
+    )
+    enqueue_store_setup(connection)
+    return ConnectResult(
+        connection=connection,
+        created=created,
+        needs_claim=connection.owner_id is None,
+        owner_conflict=owner_conflict,
+    )
+
+
+def enqueue_due_reconciliations(now=None):
+    """Encola el repaso de las tiendas cuyos webhooks no alcanzan
+    (``StoreProvider.supports_reconciliation``) y no se repasaron hace
+    ``INTEGRATIONS_RECONCILE_MINUTES``. Lo llama el worker en cada vuelta. El
+    repaso trae los pedidos modificados desde el anterior (con 10 minutos de
+    margen: un pedido modificado mientras corría el anterior no se pierde) y
+    vuelve a activar los webhooks. Devuelve cuántas tiendas encoló."""
+    from .providers import all_providers
+
+    now = now or timezone.now()
+    interval = timedelta(minutes=getattr(settings, "INTEGRATIONS_RECONCILE_MINUTES", 30))
+    platforms = [provider.platform for provider in all_providers() if provider.supports_reconciliation]
+    count = 0
+    connections = StoreConnection.objects.filter(
+        platform__in=platforms, status=StoreConnection.Status.ACTIVE, owner__isnull=False
+    )
+    for connection in connections:
+        preferences = connection.preferences or {}
+        last = parse_datetime(str(preferences.get("reconciled_at") or ""))
+        if last is not None and now - last < interval:
+            continue
+        since = (last or connection.connected_at) - timedelta(minutes=10)
+        enqueue_event(
+            platform=connection.platform,
+            event_type=RECONCILE_ORDERS_EVENT,
+            connection=connection,
+            resource_id="1",
+            payload={"updated_after": since.replace(microsecond=0).isoformat(), "started_at": now.isoformat()},
+        )
+        connection.preferences = dict(preferences, reconciled_at=now.isoformat())
+        connection.save(update_fields=["preferences", "updated_at"])
+        count += 1
+    return count
 
 
 def claim_store(token, user):

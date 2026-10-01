@@ -1,7 +1,9 @@
 // Tiendas conectadas (backend: apps.integrations).
 //
-// - Conectar Tiendanube / Shopify: pide la URL de autorización y lleva al
-//   comerciante a su plataforma. Shopify necesita el dominio de la tienda.
+// - Conectar Tiendanube / Shopify / WooCommerce: pide la URL de autorización
+//   y lleva al comerciante a su plataforma. Shopify y WooCommerce necesitan
+//   la dirección de la tienda. WooCommerce además se puede conectar pegando
+//   las claves de la API (connectWooManual).
 // - Vuelta de la instalación: el backend redirige a esta página con
 //   ?store_connected=<id>, ?store_claim=<token> o ?store_error=<código>
 //   (ver StoreOAuthCallbackView). Un store_claim se canjea para vincular la
@@ -16,7 +18,8 @@ const INTEGRATIONS_API = `${window.APP_CONFIG.API_BASE}/integrations`;
 const STORES_URL = `${INTEGRATIONS_API}/stores/`;
 const TEMPLATES_URL = `${window.APP_CONFIG.API_BASE}/labels/templates/`;
 const PENDING_CLAIM_KEY = "pendingStoreClaim";
-const PLATFORM_LABELS = { tiendanube: "Tiendanube", shopify: "Shopify" };
+const PLATFORM_LABELS = { tiendanube: "Tiendanube", shopify: "Shopify", woocommerce: "WooCommerce" };
+const WOO_MANUAL_URL = `${INTEGRATIONS_API}/woocommerce/connect-manual/`;
 
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
@@ -148,6 +151,62 @@ function connectShopify(event) {
   connectStore("shopify", { button: document.getElementById("connectShopifyBtn"), shop });
 }
 
+function wooSite() {
+  const input = document.getElementById("wooSiteInput");
+  const site = input.value.trim();
+  if (!site) {
+    showMessage("Escribí la dirección de tu tienda WooCommerce (por ejemplo, https://mitienda.com).");
+    input.focus();
+  }
+  return site;
+}
+
+function connectWoo(event) {
+  event.preventDefault();
+  const site = wooSite();
+  if (site) connectStore("woocommerce", { button: document.getElementById("connectWooBtn"), shop: site });
+}
+
+// Camino manual: las claves se prueban contra la tienda en el backend antes
+// de guardarse. Nunca se guardan en el navegador.
+async function connectWooManual(event) {
+  event.preventDefault();
+  const site = wooSite();
+  if (!site) return;
+  const keyInput = document.getElementById("wooKeyInput");
+  const secretInput = document.getElementById("wooSecretInput");
+  const button = document.getElementById("wooManualBtn");
+  button.disabled = true;
+  try {
+    const response = await apiFetch(WOO_MANUAL_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        site_url: site,
+        consumer_key: keyInput.value.trim(),
+        consumer_secret: secretInput.value.trim(),
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(getErrorMessage(data, "No se pudo conectar la tienda con esas claves."));
+    }
+    keyInput.value = "";
+    secretInput.value = "";
+    document.getElementById("wooManual").open = false;
+    showMessage(
+      "¡Listo! Tu tienda quedó conectada. Estamos importando sus pedidos: pueden tardar unos minutos en aparecer.",
+      "success"
+    );
+    await loadStores();
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    showMessage(err.message || "No se pudo conectar la tienda con esas claves.");
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function disconnectStore(store, button) {
   const name = store.name || `la tienda ${store.external_store_id}`;
   const confirmed = window.confirm(
@@ -218,8 +277,9 @@ function renderStoreCard(store) {
   if (store.status !== "active") {
     const reconnect = createElement("button", "btn btn-primary btn-small", "Volver a conectar");
     reconnect.type = "button";
-    // Shopify reconecta la misma tienda: su id es el dominio.
-    const shop = store.platform === "shopify" ? store.external_store_id : "";
+    // Shopify y WooCommerce reconectan la misma tienda: su dominio / sitio.
+    const shop =
+      store.platform === "shopify" ? store.external_store_id : store.platform === "woocommerce" ? store.store_url : "";
     reconnect.addEventListener("click", () => connectStore(store.platform, { button: reconnect, shop }));
     actions.appendChild(reconnect);
   }
@@ -501,6 +561,8 @@ document
   .getElementById("connectTiendanubeBtn")
   ?.addEventListener("click", (event) => connectStore("tiendanube", { button: event.currentTarget }));
 document.getElementById("connectShopifyForm")?.addEventListener("submit", connectShopify);
+document.getElementById("connectWooForm")?.addEventListener("submit", connectWoo);
+document.getElementById("wooManualForm")?.addEventListener("submit", connectWooManual);
 document.getElementById("refreshStoresBtn")?.addEventListener("click", loadStores);
 document.getElementById("logoutBtn")?.addEventListener("click", () => window.Auth.logout());
 

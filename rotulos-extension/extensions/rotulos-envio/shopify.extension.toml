@@ -1,0 +1,16 @@
+api_version = "2026-07"
+
+# Rótulos de envío desde el admin de Shopify: el comerciante tilda pedidos
+# en su lista, abre "Imprimir" y elige esta opción. El PDF lo arma nuestro
+# backend (backend/apps/integrations/shopify_print.py).
+[[extensions]]
+name = "t:name"
+handle = "rotulos-envio"
+type = "ui_extension"
+uid = "427c870c-2df5-21c0-5023-973edce6213e3c07ac80"
+
+# Una extensión de impresión admite un solo lugar: la lista de pedidos con
+# selección múltiple (para un pedido suelto, se tilda uno solo).
+[[extensions.targeting]]
+module = "./src/PrintActionExtension.jsx"
+target = "admin.order-index.selection-print-action.render"

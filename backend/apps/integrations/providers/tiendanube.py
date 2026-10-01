@@ -397,7 +397,9 @@ class TiendanubeProvider(StoreProvider):
             raise ProviderError("Tiendanube devolvió la lista de pedidos con un formato inesperado.")
         return data
 
-    def push_fulfillment(self, connection, order_id, *, status, tracking_code="", tracking_url="", notify_customer=True):
+    def push_fulfillment(
+        self, connection, order_id, *, status, tracking_code="", tracking_url="", carrier="", notify_customer=True
+    ):
         """Actualiza cada fulfillment order del pedido: estado (solo hacia
         adelante) y tracking (solo si cambió), en un único PATCH por
         fulfillment order. Sin ``tracking_code`` solo cambia el estado."""

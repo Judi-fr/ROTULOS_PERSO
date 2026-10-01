@@ -1,0 +1,10 @@
+{
+  "name": "Rótulos de envío",
+  "loading": "Preparando los rótulos…",
+  "ready": "{{count}} rótulos listos para imprimir.",
+  "readyOne": "1 rótulo listo para imprimir.",
+  "missingTitle": "Algunos pedidos no se imprimen",
+  "missingBody": "{{count}} de los pedidos elegidos ya no existen en Shopify.",
+  "errorTitle": "No se pudieron generar los rótulos",
+  "genericError": "Probá de nuevo en unos minutos."
+}

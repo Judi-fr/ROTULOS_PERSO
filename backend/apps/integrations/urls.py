@@ -6,7 +6,12 @@
   ``<id>/disconnect/``) y, por cada plataforma registrada en
   ``providers``, ``/<plataforma>/install-url/``, ``/<plataforma>/callback/``
   (la redirect URL que se configura en su panel) y
-  ``/<plataforma>/webhooks/``. Shopify suma ``/shopify/launch/`` (su App URL).
+  ``/<plataforma>/webhooks/``. Shopify suma ``/shopify/launch/`` (su App URL) y
+  ``/shopify/print-link/`` + ``/shopify/print/<token>`` (rótulos impresos
+  desde su admin, ver ``shopify_print``). WooCommerce no tiene ``callback/``:
+  ``/woocommerce/keys/`` (las claves que POSTea su autorización),
+  ``/woocommerce/return/`` (la vuelta del navegador) y
+  ``/woocommerce/connect-manual/`` (claves pegadas a mano).
 - ``/store-labels/``: solo lectura, los rótulos que las tiendas del
   comerciante pidieron desde su propio admin (ver ``store_labels``). Los
   endpoints que llama la plataforma viven aparte, en ``label_urls``.
@@ -24,11 +29,16 @@ from .views import (
     ShippingRateViewSet,
     IntegrationKeyViewSet,
     ShopifyLaunchView,
+    ShopifyPrintLinkView,
+    shopify_print_document,
     StoreConnectionViewSet,
     StoreInstallUrlView,
     StoreLabelRequestViewSet,
     StoreOAuthCallbackView,
     StoreWebhookView,
+    WooCommerceKeysView,
+    WooCommerceManualConnectView,
+    WooCommerceReturnView,
     WebhookDeliveryListView,
     WebhookEndpointViewSet,
 )
@@ -50,14 +60,23 @@ for _provider in all_providers():
     _kwargs = {"platform": _platform}
     platform_urls += [
         path(f"{_platform}/install-url/", StoreInstallUrlView.as_view(), _kwargs, name=f"{_platform}-install-url"),
-        path(f"{_platform}/callback/", StoreOAuthCallbackView.as_view(), _kwargs, name=f"{_platform}-callback"),
         path(f"{_platform}/webhooks/", StoreWebhookView.as_view(), _kwargs, name=f"{_platform}-webhooks"),
     ]
+    # WooCommerce no vuelve con un code por GET: tiene sus propias rutas, abajo.
+    if _provider.uses_authorization_code:
+        platform_urls.append(
+            path(f"{_platform}/callback/", StoreOAuthCallbackView.as_view(), _kwargs, name=f"{_platform}-callback")
+        )
 
 urlpatterns = (
     [
         path("webhook-deliveries/", WebhookDeliveryListView.as_view(), name="webhook-delivery-list"),
         path("shopify/launch/", ShopifyLaunchView.as_view(), name="shopify-launch"),
+        path("shopify/print-link/", ShopifyPrintLinkView.as_view(), name="shopify-print-link"),
+        path("shopify/print/<str:token>", shopify_print_document, name="shopify-print"),
+        path("woocommerce/keys/", WooCommerceKeysView.as_view(), name="woocommerce-keys"),
+        path("woocommerce/return/", WooCommerceReturnView.as_view(), name="woocommerce-return"),
+        path("woocommerce/connect-manual/", WooCommerceManualConnectView.as_view(), name="woocommerce-connect-manual"),
     ]
     + platform_urls
     + router.urls

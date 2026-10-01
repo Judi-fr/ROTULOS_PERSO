@@ -19,7 +19,7 @@ from rest_framework.test import APITestCase
 from ..events import process_due_events
 from ..models import IntegrationEvent, StoreConnection
 from ..providers import get_provider
-from ..providers.base import OAuthResult, ProviderAuthError
+from ..providers.base import OAuthResult, ProviderAuthError, ProviderRejectedError
 from ..providers.shopify import query_string_hmac
 from ..stores import IMPORT_ORDERS_EVENT, STATE_SALT, enqueue_store_setup, make_oauth_state
 from ..tokens import access_token_for
@@ -60,6 +60,15 @@ class FakeShopify:
         self.graphql_status = []  # códigos a devolver en orden antes del 200
         self.refresh_status = 200
         self.webhooks = []
+        # Pedidos de la tienda simulada: gid -> nodo GraphQL, y las páginas
+        # de la importación (lista de listas de gids) que devuelve orders().
+        self.orders = {}
+        self.order_pages = [[]]
+        # Despacho: los fulfillment orders que ve la app (cada uno con sus
+        # envíos ya hechos) y los userErrors que contestan las mutaciones
+        # (vacío = aceptada).
+        self.fulfillment_orders = []
+        self.mutation_errors = []
 
     def _token(self, prefix):
         self.token_counter += 1
@@ -99,11 +108,49 @@ class FakeShopify:
             )
         if "webhookSubscriptions" in query:
             return fake_response(200, {"data": {"webhookSubscriptions": {"nodes": self.webhooks}}})
+        if "query Orders(" in query:
+            after = json["variables"].get("after")
+            index = int(after.split("-")[1]) if after else 0
+            page = self.order_pages[index]
+            has_next = index + 1 < len(self.order_pages)
+            return fake_response(
+                200,
+                {
+                    "data": {
+                        "orders": {
+                            "nodes": [self.orders[gid] for gid in page],
+                            "pageInfo": {"hasNextPage": has_next, "endCursor": f"cursor-{index + 1}" if has_next else None},
+                        }
+                    }
+                },
+            )
+        if "query OrderFulfillment(" in query:
+            return fake_response(
+                200,
+                {
+                    "data": {
+                        "order": {
+                            "fulfillmentOrders": {"nodes": self.fulfillment_orders},
+                        }
+                    }
+                },
+            )
+        for mutation in ("fulfillmentCreate", "fulfillmentTrackingInfoUpdate"):
+            if f"{mutation}(" in query:
+                return fake_response(
+                    200,
+                    {"data": {mutation: {"fulfillment": {"id": "gid://shopify/Fulfillment/1"}, "userErrors": self.mutation_errors}}},
+                )
+        if "query Order(" in query:
+            return fake_response(200, {"data": {"order": self.orders.get(json["variables"]["id"])}})
         if "webhookSubscriptionCreate" in query:
             return fake_response(
                 200, {"data": {"webhookSubscriptionCreate": {"webhookSubscription": {"id": "gid://1"}, "userErrors": []}}}
             )
         raise AssertionError(f"Consulta no simulada: {query}")
+
+    def mutations(self, name):
+        return [call["json"]["variables"] for call in self.graphql_calls() if f"{name}(" in call["json"]["query"]]
 
     def graphql_calls(self):
         return [call for call in self.calls if call["url"].endswith("/graphql.json")]
@@ -247,17 +294,20 @@ class ShopifyCallbackTests(ShopifyTestMixin, APITestCase):
         self.assertIn("store_claim", params)
         self.assertIsNone(StoreConnection.objects.get(external_store_id=SHOP).owner)
 
-    def test_al_configurar_registra_la_desinstalacion_y_no_importa_pedidos(self):
+    def test_al_configurar_registra_pedidos_y_desinstalacion_e_importa(self):
         self._callback(state=make_oauth_state(self.user, "shopify", SHOP))
 
         process_due_events()
 
         creates = [call for call in self.fake.graphql_calls() if "webhookSubscriptionCreate" in call["json"]["query"]]
         self.assertEqual(
-            [call["json"]["variables"] for call in creates],
-            [{"topic": "APP_UNINSTALLED", "webhookSubscription": {"uri": f"{BASE_URL}{WEBHOOKS_URL}"}}],
+            [call["json"]["variables"]["topic"] for call in creates],
+            ["ORDERS_CREATE", "ORDERS_UPDATED", "ORDERS_CANCELLED", "APP_UNINSTALLED"],
         )
-        self.assertFalse(IntegrationEvent.objects.filter(event_type=IMPORT_ORDERS_EVENT).exists())
+        self.assertEqual(
+            {call["json"]["variables"]["webhookSubscription"]["uri"] for call in creates}, {f"{BASE_URL}{WEBHOOKS_URL}"}
+        )
+        self.assertTrue(IntegrationEvent.objects.filter(event_type=IMPORT_ORDERS_EVENT).exists())
 
 
 @override_settings(**SHOPIFY_SETTINGS)
@@ -334,6 +384,16 @@ class ShopifyTokenRefreshTests(ShopifyTestMixin, TestCase):
 
         with self.assertRaises(ProviderAuthError):
             self.provider.get_store_info(connection)
+
+    def test_campo_sin_scope_no_es_un_token_invalido(self):
+        connection = self._connection()
+        denied = fake_response(
+            200, {"errors": [{"message": "Access denied for draftOrders field.", "extensions": {"code": "ACCESS_DENIED"}}]}
+        )
+
+        with patch("apps.integrations.providers.shopify.requests.post", return_value=denied):
+            with self.assertRaises(ProviderRejectedError):
+                self.provider.graphql(connection, "{ draftOrders(first: 1) { nodes { id } } }")
 
     def test_si_otro_proceso_ya_lo_renovo_usa_ese(self):
         connection = self._connection(token_expires_at=timezone.now() + timedelta(seconds=30))
@@ -412,6 +472,9 @@ class ShopifySetupTests(ShopifyTestMixin, TestCase):
         enqueue_store_setup(connection)
         process_due_events()
 
-        self.assertFalse(
-            [call for call in self.fake.graphql_calls() if "webhookSubscriptionCreate" in call["json"]["query"]]
-        )
+        topics = [
+            call["json"]["variables"]["topic"]
+            for call in self.fake.graphql_calls()
+            if "webhookSubscriptionCreate" in call["json"]["query"]
+        ]
+        self.assertEqual(topics, ["ORDERS_CREATE", "ORDERS_UPDATED", "ORDERS_CANCELLED"])

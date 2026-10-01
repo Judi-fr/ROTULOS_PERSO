@@ -335,6 +335,23 @@ SHOPIFY_SCOPES = env(
     default="read_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders",
 )
 SHOPIFY_HTTP_TIMEOUT_SECONDS = env.int("SHOPIFY_HTTP_TIMEOUT_SECONDS", default=10)
+# Pedidos por página al importar. Chico a propósito: el costo de una consulta
+# GraphQL crece con pedidos x productos por pedido, y Shopify corta en 1000.
+SHOPIFY_ORDERS_PAGE_SIZE = env.int("SHOPIFY_ORDERS_PAGE_SIZE", default=25)
+# Vida del enlace al PDF que carga la vista previa de impresión del admin de
+# Shopify (apps.integrations.shopify_print). Corto: lleva datos de compradores.
+SHOPIFY_PRINT_LINK_MAX_AGE_SECONDS = env.int("SHOPIFY_PRINT_LINK_MAX_AGE_SECONDS", default=900)
+
+# WooCommerce (apps.integrations.providers.woocommerce). No hay app que
+# registrar: cada tienda autoriza en su propio sitio. El nombre es el que ve
+# el comerciante al aprobar.
+WOOCOMMERCE_APP_NAME = env("WOOCOMMERCE_APP_NAME", default="Rotulos perso")
+# Más que en las plataformas grandes: muchos WordPress son hostings chicos.
+WOOCOMMERCE_HTTP_TIMEOUT_SECONDS = env.int("WOOCOMMERCE_HTTP_TIMEOUT_SECONDS", default=15)
+WOOCOMMERCE_ORDERS_PAGE_SIZE = env.int("WOOCOMMERCE_ORDERS_PAGE_SIZE", default=50)
+# Cada cuánto el worker repasa los pedidos de las tiendas cuyos webhooks no
+# alcanzan (WooCommerce los desactiva tras 5 fallas; ver stores.enqueue_due_reconciliations).
+INTEGRATIONS_RECONCILE_MINUTES = env.int("INTEGRATIONS_RECONCILE_MINUTES", default=30)
 
 # Instalación de tiendas (apps.integrations.stores): vida del "state" firmado
 # de la URL de autorización y del enlace para vincular una tienda instalada

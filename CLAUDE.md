@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project overview
 
 ROTULOS_PERSO is a **multi-client** shipping-label ("rótulo") app, distributed as an app installed in
-online stores (Tiendanube and Shopify; WooCommerce next): each client connects their store, their orders
+online stores (Tiendanube, Shopify and WooCommerce): each client connects their store, their orders
 arrive automatically, and the app generates the labels, dispatches and pushes tracking back. It is **not**
 built for a single company — never hardcode a client, sender or carrier name as a default. A "rótulo" is a
 shipping/waybill LABEL stuck on a parcel — not a product tag — with sender (the client/store that ships),
@@ -341,9 +341,9 @@ by `apps.labels.batch_views.LabelBatchView`, with `status` (processing/ready/fai
 
 ### Store integrations (`apps/integrations`)
 
-The product is an app installed in the merchant's store platform: Tiendanube (complete) and Shopify
-(connection only so far — orders and tracking push are the next step). WooCommerce is planned with both
-auth paths: the automatic `/wc-auth/v1/authorize` flow and keys pasted by hand.
+The product is an app installed in the merchant's store platform: Tiendanube (complete), Shopify
+(connection, orders, pushing the dispatch + tracking back, printing from its admin) and WooCommerce
+(phase 1: connection by both paths, orders, periodic reconciliation, dispatch + tracking note).
 
 - **Nothing outside `providers/` names a platform** (except the Tiendanube-only Labels API, rates and
   carrier). Whatever differs lives on the `StoreProvider` (`providers/base.py`) as an attribute or method:
@@ -377,11 +377,77 @@ auth paths: the automatic `/wc-auth/v1/authorize` flow and keys pasted by hand.
   over the query string; webhooks are signed in base64 in `X-Shopify-Hmac-Sha256` with topic/shop in
   headers. Every Shopify install passes through us first, so the callback **requires** a `state`: the
   launch view signs one with no user, bound to that shop (`make_oauth_state(None, "shopify", shop)`),
-  and the store ends in the claim flow. Registered webhook: `app/uninstalled`; the privacy topics
+  and the store ends in the claim flow. **Reading orders needs "protected customer data" access** requested
+  in the Dev Dashboard (API access requests → protected customer data + the Name and Address fields;
+  on a development store selecting them is enough, no review). Without it Shopify answers "This app is
+  not approved to access the Order object" — and `ordersCount` returns 0, which looks like an empty
+  store. Only name and address are queried, never the buyer's email/phone: the label never prints them.
+  Orders are GraphQL `Order` nodes keyed by `legacyResourceId` (the numeric id webhooks and
+  `orders_to_redact` use); `address1` is split into street + number (`split_street`, the last token
+  starting with a digit: "Calle 12 1500" → "Calle 12" + "1500"). A leading number is never split
+  off: the label prints street + number in that order, so "105 Victoria St" would come out
+  "Victoria St 105", and in Argentina "25 de Mayo" is a street name. A shipping address with no name (a customer typed in the admin) falls back to the
+  billing address' name. The import pages by cursor
+  (`list_orders_page` → `OrdersPage.next_cursor`; the base implementation keeps Tiendanube's numbered
+  pages). An `orders/*` webhook is stored in the queue as just `{id, updated_at}` — the worker refetches
+  the order, so the buyer's data isn't kept twice. Registered webhooks: `orders/create|updated|cancelled`
+  and `app/uninstalled`. Dispatching (`push_fulfillment`) creates a Shopify fulfillment per fulfillment
+  order the app is allowed to fulfill (`CREATE_FULFILLMENT` in `supportedActions` — a third-party
+  fulfillment service's orders don't even show up with our scopes), with `trackingInfo`
+  `{number, url, company=Order.carrier}`, and rewrites tracking only when the number changed, on the
+  fulfillments reached THROUGH those visible fulfillment orders — never via `order.fulfillments` +
+  `Fulfillment.service`: reading `service` needs scopes the app lacks, and Shopify rejects the whole
+  query as soon as the order has any fulfillment (found live; the schema validator doesn't catch it). "Delivered" is NOT pushed: `fulfillmentEventCreate` needs the
+  `write_fulfillments` scope, which the app doesn't request, so a delivered order stays "fulfilled" in
+  Shopify.
+- **Printing labels from Shopify's own admin (`shopify_print.py`).** The merchant ticks orders in their
+  Shopify order list → Print menu → our labels. That menu entry is an *admin print action extension*
+  (target `admin.order-index.selection-print-action.render`), a separate Shopify CLI project in
+  `rotulos-extension/` (extension `extensions/rotulos-envio/`) — the only part of the product that needs the CLI; the app itself stays Django and
+  was created by hand. Two steps on purpose: `POST shopify/print-link/` is called by the extension with
+  `fetch` and an **ID token** it attaches itself (`shopify.auth.idToken()`; JWT HS256 with the client
+  secret, `aud` = client id, `dest` = the shop — `verify_id_token`). The extension calls a **relative** `/api/...` URL, which Shopify
+  resolves against the App URL in `shopify.app.rotulos-perso.toml` (verified live) — so the extension
+  carries no server domain and only that TOML changes with the server. **Don't test it from the laptop
+  that runs the Tailscale tunnel** with Tailscale DNS on: there the domain resolves to the tailnet's
+  private IP (100.x) and the browser's local-network-access protection kills the request from Shopify's
+  public page — NetworkError, status null, nothing in the server log (`tailscale set
+  --accept-dns=false` while testing, or use another device). The endpoint resolves the selected orders (fetching and upserting
+  any we don't have yet, so a chosen order can't be missing from the PDF), and returns a signed,
+  short-lived link (`SHOPIFY_PRINT_LINK_MAX_AGE_SECONDS`, 15 min). `GET shopify/print/<token>` serves the
+  PDF (store template + logo, same renderer as the batch) to Shopify's print preview, which loads it
+  as a document — no ID token there, and it's framed, hence `xframe_options_exempt`. CORS is opened
+  for `print-link/` and `print/<token>` ONLY, from any origin, via corsheaders' `check_request_enabled`
+  signal (`apps.py`) — the print preview also fetches the PDF with a CORS preflight (seen in the logs;
+  dev's allow-all hid it). Both are authenticated by Shopify's token or the signed link, not a cookie. The privacy topics
   (`shop/redact`, `customers/redact`, `customers/data_request`) are declared in the app config, not via
   API, and reuse `privacy.py`. Listing in the Shopify App Store would additionally require an embedded
   app (App Bridge) and Shopify's Billing API — not done. Settings: `SHOPIFY_CLIENT_ID`/`SECRET`/
   `API_VERSION`/`SCOPES`; the redirect URL is built from `INTEGRATIONS_PUBLIC_BASE_URL`.
+- **WooCommerce (`providers/woocommerce.py`)** — every store is a self-hosted WordPress, so: credentials
+  are REST **API keys** (consumer key + secret, stored encrypted as JSON in `access_token`, never expire)
+  that arrive by **two paths**, decided with the user: the automatic `/wc-auth/v1/authorize` (the
+  generic `woocommerce/install-url/?shop=` builds it with our signed `state` as `user_id`; WooCommerce
+  POSTs the keys server-to-server to `woocommerce/keys/` — which answers without calling the store,
+  since the store is blocked waiting on us — and sends the browser to `woocommerce/return/`), or keys
+  pasted by hand at `woocommerce/connect-manual/`, which ARE tested against the store first. Both end in
+  `stores.connect_with_credentials`. No `callback/` route (`uses_authorization_code = False`).
+  **HTTPS only** (over HTTP the API demands OAuth 1.0a signing — not implemented); Basic auth, falling
+  back once to keys in the query string for hosts that strip `Authorization` (remembered in
+  `preferences["woo_auth"]`). Webhooks are **ours, signed with a per-store secret**
+  (`StoreConnection.webhook_secret`, `webhook_secret_per_store`): delivered to
+  `woocommerce/webhooks/?store=<id>`, so the generic receiver finds the store BEFORE verifying; the
+  creation "ping" (`webhook_id=N`, no topic) gets a bare 200 (`parse_webhook` → `None`). WooCommerce
+  disables a webhook after 5 failed deliveries and fires them from WP-Cron, so it has
+  `supports_reconciliation`: each worker loop, `stores.enqueue_due_reconciliations` queues
+  `internal/reconcile_orders` every `INTEGRATIONS_RECONCILE_MINUTES` (30) per store — re-enables the
+  webhooks and re-syncs orders modified since the last pass (`modified_after`, 10 min overlap). No
+  uninstall event (a 401 marks the store "error"). Dispatch = order → `completed` + a customer-visible
+  note with carrier/number/URL (no tracking field without plugins; decided 2026-10-01), never
+  duplicated. Province codes (`C`, `B`, `X`…) map to names for AR; `address_1` goes through
+  `providers/addresses.split_street` (shared with Shopify); no shipping address → billing; buyer
+  email/phone are never stored. Phase 2 (printing from the Woo admin, checkout rates) needs a
+  WordPress plugin.
 - Install: logged-in merchant calls `GET <platform>/install-url/` (`?shop=` for Shopify); the redirect URL
   configured in the platform's panel is `GET <platform>/callback/` (public). Installed from the app store
   (no session), the store lands with
@@ -489,6 +555,11 @@ permission (UI-only gating; the backend re-checks every permission server-side).
   `labels_shared`/`pedidos`/`perfil`). Color tokens (`:root`) stay per file — not every screen uses the same
   palette, and `tiendas.css`/`despachar.css`/`gestionuser.css` keep their own variants and don't load it.
 - `pedidos.html` paginates its order history (`?page=`, Anterior/Siguiente driven by the API's `next`).
+  Its store filter is one button per store (plus "Todas" and "Cargados a mano"), built from
+  `GET /integrations/stores/` — never a hardcoded list — and rebuilt when the tab becomes visible again,
+  so a store connected in `tiendas.html` shows up by itself. Each store gets a color (`store-color-N` in
+  `pedidos.css`, assigned by store id order so it doesn't shift when another store is added) that also
+  marks its orders' tag and left border.
 - `assets/js/admin_common.js` — permission/formatting helpers for admin pages: `isAdminMode()`,
   `canUseUserPermission()`, `canViewUsers()`, `translateRole()`, `actionLabel()`, `formatDateTime()`,
   `renderSimplePager()`, `loadAuditActionsCatalog()`.

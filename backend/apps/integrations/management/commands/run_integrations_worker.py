@@ -13,6 +13,7 @@ from django.db import close_old_connections
 
 from apps.integrations.events import process_due_events
 from apps.integrations.store_labels import expire_stale_requests
+from apps.integrations.stores import enqueue_due_reconciliations
 
 
 class Command(BaseCommand):
@@ -40,6 +41,11 @@ class Command(BaseCommand):
                 expired = expire_stale_requests()
                 if expired:
                     self.stdout.write(f"Rótulos vencidos informados como fallidos: {expired}")
+                # Tiendas cuyos webhooks no alcanzan (WooCommerce): cada tanto
+                # se repasan sus pedidos modificados.
+                reconciling = enqueue_due_reconciliations()
+                if reconciling:
+                    self.stdout.write(f"Tiendas a repasar: {reconciling}")
                 counts = process_due_events(limit=options["limit"])
                 processed = sum(counts.values())
                 if processed:

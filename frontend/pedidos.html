@@ -117,12 +117,12 @@
         <section class="profile-card">
           <div class="profile-card-title">Historial de pedidos</div>
           <div class="profile-card-body">
-            <!-- Solo se muestra si el usuario tiene alguna tienda conectada. -->
-            <div class="field" id="orderStoreFilterField" style="display:none;">
-              <label for="orderStoreFilter">Tienda</label>
-              <select id="orderStoreFilter">
-                <option value="">Todas las tiendas</option>
-              </select>
+            <!-- Un botón por tienda conectada (los arma pedidos.js desde la API,
+                 así una tienda nueva aparece sola). Solo se muestra si el
+                 usuario tiene alguna tienda. -->
+            <div class="store-filter" id="orderStoreFilterField" hidden>
+              <span class="store-filter-label" id="orderStoreFilterLabel">Ver pedidos de</span>
+              <div class="store-chips" id="orderStoreFilter" role="group" aria-labelledby="orderStoreFilterLabel"></div>
             </div>
             <div id="orderList" class="order-list">
               <p class="empty-state">Cargando pedidos...</p>

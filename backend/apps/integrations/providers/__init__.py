@@ -3,8 +3,12 @@
 from .base import NormalizedOrder, StoreProvider
 from .shopify import ShopifyProvider
 from .tiendanube import TiendanubeProvider
+from .woocommerce import WooCommerceProvider
 
-_PROVIDERS = {provider.platform: provider for provider in (TiendanubeProvider(), ShopifyProvider())}
+_PROVIDERS = {
+    provider.platform: provider
+    for provider in (TiendanubeProvider(), ShopifyProvider(), WooCommerceProvider())
+}
 
 
 def get_provider(platform):

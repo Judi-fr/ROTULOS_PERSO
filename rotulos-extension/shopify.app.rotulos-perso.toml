@@ -1,0 +1,30 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "bd3ad6cbc915cfffeb53856d5b7abe15"
+name = "Rotulos perso"
+application_url = "https://sillaenojada-hp-laptop-14-dq1xxx.tail0c0717.ts.net/api/v1/integrations/shopify/launch/"
+embedded = false
+
+[build]
+
+[webhooks]
+api_version = "2026-07"
+
+  # Webhooks de privacidad, obligatorios para la App Store. Shopify solo los
+  # acepta declarados acá, no por API. Los procesa el mismo receptor que el
+  # resto (backend/apps/integrations/privacy.py). Los de pedidos y
+  # desinstalación los registra el backend por API, tienda por tienda.
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+  uri = "https://sillaenojada-hp-laptop-14-dq1xxx.tail0c0717.ts.net/api/v1/integrations/shopify/webhooks/"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [
+  "https://sillaenojada-hp-laptop-14-dq1xxx.tail0c0717.ts.net/api/v1/integrations/shopify/callback/"
+]

@@ -71,6 +71,51 @@
               <button type="submit" class="btn btn-primary" id="connectShopifyBtn">Conectar Shopify</button>
             </form>
           </div>
+          <div class="card-body connect-row">
+            <div>
+              <p class="connect-platform">WooCommerce</p>
+              <p class="connect-help">
+                Escrib&iacute; la direcci&oacute;n de tu tienda (tiene que empezar con
+                <strong>https://</strong>) y te llevamos a tu WordPress para autorizar la app. Si tu
+                hosting no lo permite, pod&eacute;s cargar las claves de la API a mano.
+              </p>
+            </div>
+            <form class="connect-shop" id="connectWooForm" novalidate>
+              <label class="sr-only" for="wooSiteInput">Direcci&oacute;n de tu tienda WooCommerce</label>
+              <input
+                type="text"
+                id="wooSiteInput"
+                placeholder="https://mitienda.com"
+                autocomplete="off"
+                autocapitalize="off"
+                spellcheck="false"
+                required
+              />
+              <button type="submit" class="btn btn-primary" id="connectWooBtn">Conectar WooCommerce</button>
+            </form>
+          </div>
+          <!-- Camino manual de WooCommerce: claves de la API pegadas a mano
+               (POST woocommerce/connect-manual/). Usa la misma dirección de
+               arriba. -->
+          <details class="card-body woo-manual" id="wooManual">
+            <summary>Cargar las claves de la API a mano</summary>
+            <ol class="connect-help woo-steps">
+              <li>En tu WordPress, and&aacute; a <strong>WooCommerce &rarr; Ajustes &rarr; Avanzado &rarr; API REST</strong>.</li>
+              <li>Toc&aacute; <strong>A&ntilde;adir clave</strong>, eleg&iacute; permisos de <strong>Lectura/Escritura</strong> y gener&aacute; la clave.</li>
+              <li>Copi&aacute; la clave del cliente (empieza con <code>ck_</code>) y la clave secreta (empieza con <code>cs_</code>).</li>
+            </ol>
+            <form class="woo-manual-form" id="wooManualForm" novalidate>
+              <div class="field">
+                <label for="wooKeyInput">Clave del cliente</label>
+                <input type="text" id="wooKeyInput" placeholder="ck_..." autocomplete="off" spellcheck="false" />
+              </div>
+              <div class="field">
+                <label for="wooSecretInput">Clave secreta</label>
+                <input type="password" id="wooSecretInput" placeholder="cs_..." autocomplete="off" spellcheck="false" />
+              </div>
+              <button type="submit" class="btn btn-primary" id="wooManualBtn">Conectar con estas claves</button>
+            </form>
+          </details>
         </section>
 
         <!-- Tiendas del usuario: las arma tiendas.js (renderStoreCard). -->
