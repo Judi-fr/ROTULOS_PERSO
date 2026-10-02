@@ -46,6 +46,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 import requests
 from django.conf import settings
+from django.db import transaction
 from django.urls import reverse
 from django.utils.dateparse import parse_datetime
 
@@ -153,6 +154,16 @@ def credentials_token(key, secret):
 
 def valid_key_pair(key, secret):
     return _text(key).startswith("ck_") and _text(secret).startswith("cs_")
+
+
+def _remember_print_plugin(connection, linked):
+    """``preferences["print_plugin"]``: si el plugin quedó vinculado, para
+    mostrarlo en la tienda (``tiendas.html``). Se escribe con un UPDATE y no
+    con ``save()``: el worker trae copias de la conexión que pueden ser
+    viejas."""
+    if (connection.preferences or {}).get("print_plugin") != linked:
+        connection.preferences = dict(connection.preferences or {}, print_plugin=linked)
+        type(connection).objects.filter(pk=connection.pk).update(preferences=connection.preferences)
 
 
 class WooCommerceProvider(StoreProvider):
@@ -444,9 +455,19 @@ class WooCommerceProvider(StoreProvider):
     # --- Webhooks ----------------------------------------------------------
 
     def ensure_webhook_secret(self, connection):
+        """El secreto se crea una sola vez, leyéndolo de la base con la fila
+        bloqueada: el worker carga las conexiones de toda una tanda de eventos
+        de una vez, y una copia vieja sin secreto generaría otro distinto del
+        que ya tienen los webhooks de la tienda (todos los avisos, rechazados)."""
         if not connection.webhook_secret:
-            connection.webhook_secret = secrets.token_urlsafe(32)
-            connection.save(update_fields=["webhook_secret_encrypted", "updated_at"])
+            from ..models import StoreConnection
+
+            with transaction.atomic():
+                fresh = StoreConnection.objects.select_for_update().get(pk=connection.pk)
+                if not fresh.webhook_secret:
+                    fresh.webhook_secret = secrets.token_urlsafe(32)
+                    fresh.save(update_fields=["webhook_secret_encrypted", "updated_at"])
+            connection.webhook_secret_encrypted = fresh.webhook_secret_encrypted
         return connection.webhook_secret
 
     def register_webhooks(self, connection, url, events):
@@ -486,6 +507,41 @@ class WooCommerceProvider(StoreProvider):
                 )
                 changed.append(topic)
         return changed
+
+    def configure_admin_print(self, connection, base_url):
+        """Escribe en nuestro plugin de WordPress ("Rótulos de envío") a dónde
+        pedir la impresión y la cotización del envío, qué tienda es y el
+        secreto con el que firmar, por
+        la API de ajustes de WooCommerce (el plugin declara el grupo
+        ``rotulos``). Sin el plugin instalado ese grupo no existe (404): no es
+        un error, la tienda imprime desde la app."""
+        settings_values = {
+            "rotulos_print_link_url": f"{base_url}{reverse('woocommerce-print-link')}",
+            "rotulos_rates_url": f"{base_url}{reverse('woocommerce-rates')}",
+            "rotulos_store_id": str(connection.pk),
+            "rotulos_secret": self.ensure_webhook_secret(connection),
+        }
+        try:
+            response = self.api_request(
+                connection,
+                "POST",
+                "settings/rotulos/batch",
+                json_body={"update": [{"id": key, "value": value} for key, value in settings_values.items()]},
+            )
+        except ProviderNotFoundError:
+            _remember_print_plugin(connection, False)
+            return False
+        except ProviderError as exc:
+            # Una falla pasajera no dice nada del plugin: se deja lo que había.
+            logger.warning("No se pudo configurar el plugin de impresión de la tienda %s: %s", connection.pk, exc)
+            return False
+        data = _json(response)
+        items = data.get("update") if isinstance(data, dict) else None
+        failed = [item for item in items or [] if isinstance(item, dict) and item.get("error")]
+        if failed:
+            logger.warning("El plugin de impresión de la tienda %s rechazó ajustes: %s", connection.pk, failed)
+        _remember_print_plugin(connection, not failed)
+        return not failed
 
     def verify_webhook(self, raw_body, headers, connection=None):
         secret = connection.webhook_secret if connection is not None else ""

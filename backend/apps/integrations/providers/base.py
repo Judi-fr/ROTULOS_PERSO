@@ -80,6 +80,13 @@ class NormalizedLabelRequest:
     created_at: datetime | None = None
 
 
+# Tienda conectada con una app propia del comerciante y no con la nuestra
+# (conexión manual de Shopify, ``stores.connect_with_own_app``): el client ID
+# de esa app, en ``StoreConnection.preferences``. Su secreto va cifrado en
+# ``StoreConnection.webhook_secret``, porque es lo que firma sus webhooks.
+OWN_APP_CLIENT_ID_PREF = "own_app_client_id"
+
+
 class ProviderError(Exception):
     """Falla hablando con la plataforma (red, 5xx, límite de uso, respuesta
     inesperada): en general se puede reintentar."""
@@ -280,6 +287,21 @@ class StoreProvider:
         """Registra en la tienda los ``events`` que todavía no apunten a
         ``url``. Idempotente. Devuelve los eventos registrados ahora."""
         raise NotImplementedError
+
+    def verify_store_webhook(self, raw_body, headers, connection):
+        """``True`` si el webhook viene firmado con un secreto propio de
+        ``connection`` en vez del de nuestra app (Shopify conectada con la app
+        del propio comerciante, ver ``ShopifyProvider.own_app_token``). Se
+        prueba solo cuando falla ``verify_webhook``."""
+        return False
+
+    def configure_admin_print(self, connection, base_url):
+        """Deja lista la impresión de rótulos desde el admin de la tienda,
+        cuando eso depende de algo instalado en ella (WooCommerce: nuestro
+        plugin). Corre junto con ``register_webhooks``, al conectar y en cada
+        repaso. Nunca falla: sin el plugin la tienda funciona igual. Devuelve
+        si quedó configurada."""
+        return False
 
     def verify_webhook(self, raw_body, headers):
         """``True`` si el webhook viene firmado por la plataforma.

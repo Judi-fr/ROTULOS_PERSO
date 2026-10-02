@@ -246,9 +246,11 @@ async function printLabels() {
       throw new Error(getErrorMessage(data, "No se pudieron generar los rótulos."));
     }
 
+    let dispatched = 0;
     if (document.getElementById("markDispatched").checked) {
       button.textContent = "Despachando...";
       const { done, failed } = await markDispatched(orderIds);
+      dispatched = done;
       if (failed.length) {
         showPrintMsg(
           `Rótulos generados. Se despacharon ${done} de ${orderIds.length} pedidos: ` +
@@ -262,8 +264,11 @@ async function printLabels() {
       }
     }
 
-    // El archivo se arma en "Mis documentos": ahí se descarga.
-    window.location.href = "documentos.html";
+    // El archivo se arma en "Mis documentos": ahí se descarga, y esa página
+    // confirma lo que se hizo (ver documentos.js, showBatchResult).
+    const result = new URLSearchParams({ labels: String(orderIds.length) });
+    if (dispatched) result.set("dispatched", String(dispatched));
+    window.location.href = `documentos.html?${result}`;
   } catch (err) {
     if (err.isSessionExpired) return;
     showPrintMsg(err.message || "No se pudieron generar los rótulos.", false);

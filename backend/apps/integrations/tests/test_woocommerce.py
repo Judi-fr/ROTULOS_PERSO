@@ -96,6 +96,8 @@ class FakeWoo:
         self.accepted_mode = "basic"  # "query" = hosting que se come el header
         self.valid_keys = ("ck_bueno", "cs_bueno")
         self.store_name = "Mi Tienda Woo"
+        # Ajustes de nuestro plugin de impresión; None = no está instalado.
+        self.plugin_settings = None
 
     def _authorized(self, auth, params):
         if auth is not None:
@@ -143,6 +145,12 @@ class FakeWoo:
                 if hook["id"] == hook_id:
                     hook.update(json)
             return fake_response(200, {})
+        if method == "POST" and path == "settings/rotulos/batch":
+            if self.plugin_settings is None:
+                return fake_response(404, {"code": "rest_setting_setting_group_invalid"})
+            for item in json["update"]:
+                self.plugin_settings[item["id"]] = item["value"]
+            return fake_response(200, {"update": json["update"]})
         raise AssertionError(f"Pedido no simulado: {method} {path}")
 
     def get(self, url, headers=None, timeout=None):
@@ -398,6 +406,19 @@ class SetupAndWebhookTests(WooTestMixin, APITestCase):
         self.assertEqual(self.woo.calls_to("POST", "webhooks"), [])
         self.assertEqual(self.woo.webhooks[0]["status"], "active")
         self.assertEqual(self.woo.webhooks[0]["secret"], self.connection.webhook_secret)
+
+    def test_configuracion_y_repaso_en_la_misma_tanda_comparten_el_secreto(self):
+        # El worker toma los eventos de a tandas con su conexión ya cargada:
+        # el repaso trae una copia vieja, sin secreto, y no debe inventar
+        # otro distinto del que ya se mandó a WooCommerce.
+        enqueue_store_setup(self.connection)
+        enqueue_due_reconciliations()
+        process_due_events()
+
+        self.connection.refresh_from_db()
+        created = [call["json"] for call in self.woo.calls_to("POST", "webhooks")]
+        self.assertTrue(created)
+        self.assertTrue(all(hook["secret"] == self.connection.webhook_secret for hook in created))
 
     def test_aviso_firmado_con_el_secreto_de_la_tienda_trae_el_pedido(self):
         get_provider("woocommerce").ensure_webhook_secret(self.connection)

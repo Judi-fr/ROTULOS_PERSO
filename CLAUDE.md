@@ -424,6 +424,19 @@ The product is an app installed in the merchant's store platform: Tiendanube (co
   API, and reuse `privacy.py`. Listing in the Shopify App Store would additionally require an embedded
   app (App Bridge) and Shopify's Billing API — not done. Settings: `SHOPIFY_CLIENT_ID`/`SECRET`/
   `API_VERSION`/`SCOPES`; the redirect URL is built from `INTEGRATIONS_PUBLIC_BASE_URL`.
+- **Shopify manual connection (`POST shopify/connect-manual/`, `stores.connect_with_own_app`).** For a
+  merchant who can't install our app: they create their OWN app in their Dev Dashboard (our scopes +
+  protected customer data name/address), install it on their store and paste its client ID + secret.
+  We get a token with the **client credentials grant** (`ShopifyProvider.own_app_token`: 24 h, no
+  refresh token — `refresh_access_token` simply asks again with the same credentials). Shopify only
+  allows it when app and store are in the same organization (`shop_not_permitted` otherwise; the
+  view translates Shopify's raw errors). The client ID lives in `preferences["own_app_client_id"]`
+  (`OWN_APP_CLIENT_ID_PREF`, in `providers/base.py`) and the secret, encrypted, in `webhook_secret`,
+  because **that app's webhooks are signed with its own secret**: the receiver tries our app's secret
+  first and then `provider.verify_store_webhook(..., connection)`. Installing our app later
+  (`connect_store`) drops both. The print menu extension belongs to our app, so it does not exist on
+  this path. The scopes listed in `tiendas.html` must match `SHOPIFY_SCOPES`. **Tiendanube has no
+  manual path**: its API only grants access to an installed app (authorization code only).
 - **WooCommerce (`providers/woocommerce.py`)** — every store is a self-hosted WordPress, so: credentials
   are REST **API keys** (consumer key + secret, stored encrypted as JSON in `access_token`, never expire)
   that arrive by **two paths**, decided with the user: the automatic `/wc-auth/v1/authorize` (the
@@ -446,8 +459,53 @@ The product is an app installed in the merchant's store platform: Tiendanube (co
   note with carrier/number/URL (no tracking field without plugins; decided 2026-10-01), never
   duplicated. Province codes (`C`, `B`, `X`…) map to names for AR; `address_1` goes through
   `providers/addresses.split_street` (shared with Shopify); no shipping address → billing; buyer
-  email/phone are never stored. Phase 2 (printing from the Woo admin, checkout rates) needs a
-  WordPress plugin.
+  email/phone are never stored.   **The webhook secret is created once, reading the row under lock** (`ensure_webhook_secret`):
+  the worker loads a whole batch's connections at once, and a stale copy without a secret used
+  to mint a second one, so every webhook from that store got 401 forever.
+- **Printing from the WooCommerce admin (`woocommerce_print.py` + our WordPress plugin).** The plugin
+  "Rótulos de envío" lives in `backend/apps/integrations/wordpress_plugin/rotulos-envio/` — inside
+  `backend/` because the API image only copies that folder, and the backend serves it as a zip. It adds
+  a "Print shipping labels" bulk action to WooCommerce → Orders (both the HPOS and the legacy posts
+  screens). The PHP calls `POST woocommerce/print-link/` **server to server** with `{store, ids, ts}`
+  signed in `X-Rotulos-Signature` (base64 HMAC-SHA256) with the store's `webhook_secret`, then
+  `wp_safe_redirect`s the browser (new tab) to `GET woocommerce/print/<token>` (its host is whitelisted
+  through `allowed_redirect_hosts`). Order resolution, the signed link and the PDF are
+  `shopify_print`'s (`read_print_token`/`print_url` take the platform/route).
+  - **The merchant configures nothing**: the backend writes the endpoint, store id and secret into the
+    plugin through WooCommerce's own settings REST API (`POST settings/rotulos/batch`,
+    `StoreProvider.configure_admin_print`) on setup, on every reconciliation and on demand
+    (`POST stores/<id>/check-print-plugin/`, the "Verificar plugin" button). 404 = plugin not
+    installed, which is fine. The result is kept in `preferences["print_plugin"]` (written with an
+    UPDATE, never `save()`, because the worker holds stale copies) and exposed as
+    `print_plugin_linked`. Each setting the plugin declares **needs `option_key`**, or WooCommerce
+    answers 200 and stores nothing.
+  - **Checkout quotes (`woocommerce_rates.py`, plugin `includes/shipping.php`).** WooCommerce has
+    no carrier API, so the plugin registers a shipping method ("Shipping labels (rates table)",
+    id `rotulos`) the merchant adds to their zones. At checkout it POSTs `woocommerce/rates/`
+    `{postcode, country, weight_kg, currency}` signed like the print request (the cart weight is
+    converted to kg in WordPress with `wc_get_weight`), and the backend answers from the same
+    `ShippingRate` table and `matching_rates` rule as Tiendanube. Same rule as there: **it never
+    breaks the sale** — only a bad signature is 401; any other failure answers `{"rates": []}`, and
+    the plugin, on timeout (5 s) or error, offers nothing and logs to WooCommerce's logger. Answers
+    are cached 5 min in a transient (WooCommerce recalculates on every checkout refresh); a rate in
+    another currency than the store's is dropped; a non-AR destination is not quoted (the table's
+    postal codes are Argentine). The rates URL is one more setting the backend writes
+    (`rotulos_rates_url`). `tiendas.html` tells a linked store how to turn it on, and
+    `tarifas_envio.html?store=<id>` opens with that store chosen.
+  - **Getting it to the merchant**: `GET woocommerce/print-plugin/` returns the zip
+    (`plugin_zip()`: everything under a top-level `rotulos-envio/` folder, which is WordPress' identity
+    for the plugin — another name would install an update beside the old one). `tiendas.html` shows,
+    on each active WooCommerce store, the download, a link to the store's own
+    `wp-admin/plugin-install.php?tab=upload`, and "Verificar plugin".
+  - **Prepared for the WordPress.org directory** (not submitted): English source strings with bundled
+    `languages/` es_ES/es_AR (`.po` + `.mo`, rebuild with `msgfmt`), `readme.txt` with the mandatory
+    "External services" section, `uninstall.php`, `Requires Plugins: woocommerce`, GPLv2+. Still
+    missing for the submission: a WordPress.org account (`Contributors:` in readme.txt) and a public
+    privacy-policy URL to cite. Once listed, the download can become a link to
+    `plugin-install.php?tab=plugin-information&plugin=<slug>` on the merchant's store.
+- **Local test store**: WordPress + WooCommerce in podman (`woo-wp` on 127.0.0.1:8080, `woo-db`),
+  published by Tailscale Funnel at `https://<laptop>.ts.net:8443`; `podman start woo-db woo-wp`
+  after a reboot. No wp-cli in the image: run PHP through `podman exec` + `wp-load.php`.
 - Install: logged-in merchant calls `GET <platform>/install-url/` (`?shop=` for Shopify); the redirect URL
   configured in the platform's panel is `GET <platform>/callback/` (public). Installed from the app store
   (no session), the store lands with
@@ -543,7 +601,23 @@ then the page's own script — and each redirects to `dashboard.html` if the cal
 permission (UI-only gating; the backend re-checks every permission server-side).
 
 - `assets/js/utils.js` — shared helpers loaded as a classic script (global functions, not an ES module):
-  `escapeHtml`, `getErrorMessage`, `showMessage`, `formatDate`, `extractResults`.
+  `escapeHtml`, `getErrorMessage`, `showMessage`, `formatDate`, `extractResults`. `showMessage`
+  scrolls the page to `#pageMessage` when it is out of view: the notice sits at the top, and an
+  action taken further down used to end with no visible result at all.
+- **Every action says how it ended.** A write that succeeds shows a green `page-message success`
+  (or the section's own `.store-sender-msg`) and a failure a red one; nothing ends in silence or
+  only in a redirect. Store connections report in `#connectMessage` inside the connect card
+  (`showConnectResult`), with the HTTP status (or the platform's error code) as "Error NNN:" so the
+  merchant can quote it. `tiendas.js` re-renders every card on `loadStores`, so a notice for one store
+  goes into its NEW card (`showStoreFeedback`, cards carry `data-store-id`). In `tiendas.html` the
+  "Conectar una tienda" card is a `<details>`: closed when the user already has stores (so "Mis
+  tiendas" is reachable without scrolling), open with none, and `showConnectResult` opens it. Each
+  store's "Rótulos de esta tienda" form is a `<details>` too, closed by default; the ones the user
+  opened are kept in `openSenderForms` so a re-render (e.g. after saving) doesn't close them. The
+  "Conexión mediante API" button next to the title links to `integraciones.html` and is shown only
+  with `integrations.manage` (that page is admin-only). It is the only way in: `integraciones.html`
+  is deliberately not in the dashboard menu (`DashboardView`). Batch printing lands on
+  `documentos.html?labels=N[&dispatched=M]`, which confirms it and cleans the URL.
 - `assets/js/topbar.js` — the shared top bar for the non-admin pages (avatar, name, email, per-page links
   and the `logoutBtn` button). The page declares only
   `<header class="topbar" id="appTopbar" data-links='[{"href":"…","label":"…"}]'></header>`; the script

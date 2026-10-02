@@ -266,6 +266,12 @@ async function init() {
   }
   await loadStores();
   resetForm();
+  // Llegando desde tiendas.html (?store=<id>), esa tienda queda elegida.
+  const requested = new URLSearchParams(window.location.search).get("store");
+  if (requested && [...storeSelect.options].some((option) => option.value === requested)) {
+    storeSelect.value = requested;
+    storeSelect.dispatchEvent(new Event("change"));
+  }
 }
 
 init();

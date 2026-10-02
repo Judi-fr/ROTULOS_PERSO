@@ -1,0 +1,74 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Rotulos de envio 1.1.0\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: es_AR\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Domain: rotulos-envio\n"
+
+msgid "Shipping labels"
+msgstr "Rótulos de envío"
+
+msgid "Settings written by the shipping labels service when the store is connected."
+msgstr "Configuración que escribe el servicio de rótulos al conectar la tienda."
+
+msgid "Print request URL"
+msgstr "URL para pedir la impresión"
+
+msgid "Store number in the service"
+msgstr "Número de tienda en el servicio"
+
+msgid "Shared secret"
+msgstr "Secreto compartido"
+
+msgid "Print shipping labels"
+msgstr "Imprimir rótulos"
+
+msgid "You are not allowed to print shipping labels."
+msgstr "No tenés permiso para imprimir rótulos."
+
+msgid "Select at least one order to print."
+msgstr "Elegí al menos un pedido para imprimir."
+
+msgid "This plugin is not linked to the shipping labels service yet. Connect the store from the service and press \"Check plugin\" there."
+msgstr "El plugin todavía no está vinculado con el servicio de rótulos. Conectá la tienda desde el servicio y tocá \"Verificar plugin\" ahí."
+
+msgid "Could not reach the shipping labels service. Please try again in a few minutes."
+msgstr "No pudimos contactar al servicio de rótulos. Probá de nuevo en unos minutos."
+
+msgid "The shipping labels service could not prepare the labels."
+msgstr "El servicio de rótulos no pudo armar la impresión."
+
+msgid "Shipping labels:"
+msgstr "Rótulos:"
+
+msgid "Print shipping labels for the selected orders straight from the WooCommerce order list."
+msgstr "Imprimí los rótulos de envío de los pedidos elegidos directamente desde la lista de pedidos de WooCommerce."
+
+msgid "Print shipping labels for the selected orders straight from the WooCommerce order list, and quote shipping at checkout from your rates table."
+msgstr "Imprimí los rótulos de envío de los pedidos elegidos desde la lista de pedidos de WooCommerce, y cotizá el envío en el checkout con tu tabla de tarifas."
+
+msgid "Shipping quote URL"
+msgstr "URL para cotizar el envío"
+
+msgid "Shipping labels (rates table)"
+msgstr "Rótulos de envío (tabla de tarifas)"
+
+msgid "Quotes shipping from the rates table you load in the shipping labels service: destination postal code and cart weight. Destinations outside your table get no quote."
+msgstr "Cotiza el envío con la tabla de tarifas que cargás en el servicio de rótulos: código postal de destino y peso del carrito. Los destinos que no están en tu tabla no se cotizan."
+
+msgid "Name in the zone list"
+msgstr "Nombre en la lista de la zona"
+
+msgid "Only shown in your admin. Buyers see the option names from your rates table."
+msgstr "Solo se ve en tu administración. Los compradores ven los nombres de las opciones de tu tabla de tarifas."
+
+msgid "%1$s (%2$d to %3$d business days)"
+msgstr "%1$s (%2$d a %3$d días hábiles)"
+
+msgid "%1$s (%2$d business day)"
+msgid_plural "%1$s (%2$d business days)"
+msgstr[0] "%1$s (%2$d día hábil)"
+msgstr[1] "%1$s (%2$d días hábiles)"

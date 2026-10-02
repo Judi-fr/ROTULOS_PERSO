@@ -63,14 +63,8 @@ class DashboardView(APIView):
                     "enabled": True,
                 }
             )
-            menu.append(
-                {
-                    "key": "integrations",
-                    "label": "Integraciones",
-                    "url": "integraciones.html",
-                    "enabled": True,
-                }
-            )
+            # Integraciones (claves de API y webhooks) no va en el menú: se
+            # entra desde tiendas.html, botón "Conexión mediante API".
 
         # Carga operativa de pedidos (stories 20-22): alta manual + importación
         # CSV/Excel + plantillas de mapeo. Va a admin y operator (mismos roles

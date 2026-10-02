@@ -58,6 +58,7 @@ from django.utils.dateparse import parse_datetime
 
 from .addresses import split_street
 from .base import (
+    OWN_APP_CLIENT_ID_PREF,
     NormalizedOrder,
     OAuthResult,
     OrdersPage,
@@ -358,7 +359,24 @@ class ShopifyProvider(StoreProvider):
         )
         return self._oauth_result(shop, body)
 
+    def own_app_token(self, shop_domain, client_id, client_secret):
+        """Token de la app que el propio comerciante creó en su Dev Dashboard
+        e instaló en su tienda (la conexión manual): *client credentials
+        grant*, sin redirecciones. Shopify solo lo permite si la app y la
+        tienda son de la misma organización. El token dura 24 horas y no trae
+        refresh token: se pide otro igual (``refresh_access_token``)."""
+        shop = self.normalize_shop_domain(shop_domain)
+        body = self._token_request(
+            shop,
+            {"grant_type": "client_credentials", "client_id": client_id, "client_secret": client_secret},
+            "conectar con tu app",
+        )
+        return self._oauth_result(shop, body)
+
     def refresh_access_token(self, connection):
+        own_client_id = (connection.preferences or {}).get(OWN_APP_CLIENT_ID_PREF)
+        if own_client_id:
+            return self.own_app_token(connection.external_store_id, own_client_id, connection.webhook_secret)
         client_id, secret = _credentials()
         refresh_token = connection.refresh_token
         if not refresh_token:
@@ -610,6 +628,19 @@ class ShopifyProvider(StoreProvider):
         digest = hmac.new(secret.encode("utf-8"), raw_body or b"", hashlib.sha256).digest()
         expected = base64.b64encode(digest)
         return hmac.compare_digest(signature.encode("utf-8"), expected)
+
+    def verify_store_webhook(self, raw_body, headers, connection):
+        """Los webhooks que registramos con la app del comerciante los firma
+        Shopify con el secreto de ESA app, que guardamos como
+        ``webhook_secret`` de la tienda."""
+        if not (connection.preferences or {}).get(OWN_APP_CLIENT_ID_PREF):
+            return False
+        secret = connection.webhook_secret
+        signature = get_header(headers, WEBHOOK_SIGNATURE_HEADER).strip()
+        if not secret or not signature:
+            return False
+        digest = hmac.new(secret.encode("utf-8"), raw_body or b"", hashlib.sha256).digest()
+        return hmac.compare_digest(signature.encode("utf-8"), base64.b64encode(digest))
 
     def parse_webhook(self, raw_body, headers):
         event_type = get_header(headers, WEBHOOK_TOPIC_HEADER).strip()

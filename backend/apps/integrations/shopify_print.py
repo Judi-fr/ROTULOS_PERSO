@@ -143,7 +143,7 @@ def resolve_orders(connection, legacy_ids):
                 continue
             except (ProviderError, ValueError) as exc:
                 logger.warning("No se pudo traer el pedido %s de la tienda %s para imprimir: %s", legacy_id, connection.pk, exc)
-                raise PrintError("No pudimos traer los pedidos de Shopify. Probá de nuevo en unos minutos.") from exc
+                raise PrintError("No pudimos traer los pedidos de la tienda. Probá de nuevo en unos minutos.") from exc
         orders.append(order)
     return orders, missing
 
@@ -152,16 +152,18 @@ def make_print_token(connection, orders):
     return signing.dumps({"c": connection.pk, "o": [order.pk for order in orders]}, salt=PRINT_TOKEN_SALT)
 
 
-def read_print_token(token):
+def read_print_token(token, platform=StoreConnection.Platform.SHOPIFY):
     """``(connection, orders)`` del enlace, o ``PrintError`` si venció o fue
-    alterado. Revalida la tienda: una desconectada ya no imprime."""
+    alterado. Revalida la tienda: una desconectada ya no imprime. También lo
+    usa la impresión desde WooCommerce (``woocommerce_print``), con su
+    ``platform``: un enlace de una plataforma no sirve en la ruta de otra."""
     max_age = getattr(settings, "SHOPIFY_PRINT_LINK_MAX_AGE_SECONDS", 900)
     try:
         data = signing.loads(token, salt=PRINT_TOKEN_SALT, max_age=max_age)
     except signing.BadSignature as exc:
-        raise PrintError("El enlace de impresión venció. Volvé a elegir los pedidos en Shopify.") from exc
+        raise PrintError("El enlace de impresión venció. Volvé a elegir los pedidos en tu tienda.") from exc
     connection = StoreConnection.objects.filter(
-        pk=data.get("c"), platform=StoreConnection.Platform.SHOPIFY, status=StoreConnection.Status.ACTIVE
+        pk=data.get("c"), platform=platform, status=StoreConnection.Status.ACTIVE
     ).first()
     if connection is None:
         raise PrintError("La tienda ya no está conectada.")
@@ -177,11 +179,11 @@ def read_print_token(token):
     return connection, orders
 
 
-def print_url(token):
+def print_url(token, route="shopify-print"):
     base_url = str(getattr(settings, "INTEGRATIONS_PUBLIC_BASE_URL", "") or "").rstrip("/")
     if not base_url:
         raise PrintError("Falta la URL pública del servidor (INTEGRATIONS_PUBLIC_BASE_URL).")
-    return f"{base_url}{reverse('shopify-print', kwargs={'token': token})}"
+    return f"{base_url}{reverse(route, kwargs={'token': token})}"
 
 
 def render_pdf(connection, orders):

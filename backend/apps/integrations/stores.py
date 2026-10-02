@@ -32,7 +32,7 @@ from django.utils.dateparse import parse_datetime
 
 from .events import enqueue_event
 from .models import StoreConnection
-from .providers.base import ProviderError
+from .providers.base import OWN_APP_CLIENT_ID_PREF, ProviderError
 
 STATE_SALT = "apps.integrations.store-oauth-state"
 CLAIM_SALT = "apps.integrations.store-claim"
@@ -156,9 +156,31 @@ def connect_store(provider, code, user=None, shop_domain=""):
     def apply(connection):
         connection.set_tokens(oauth)
         connection.scopes = oauth.scopes[:500]
+        # Instalada con NUESTRA app: si antes estaba conectada con la app del
+        # comerciante (connect_with_own_app), sus credenciales ya no se usan.
+        preferences = dict(connection.preferences or {})
+        if preferences.pop(OWN_APP_CLIENT_ID_PREF, None):
+            connection.preferences = preferences
+            connection.webhook_secret = ""
 
     connection, created, owner_conflict = _upsert_connection(provider.platform, oauth.external_store_id, user, apply)
+    _load_store_info(provider, connection)
 
+    # Registrar webhooks e importar pedidos lleva varias llamadas a la API:
+    # lo hace el worker, el callback solo vuelve rápido al frontend.
+    enqueue_store_setup(connection)
+
+    return ConnectResult(
+        connection=connection,
+        created=created,
+        needs_claim=connection.owner_id is None,
+        owner_conflict=owner_conflict,
+    )
+
+
+def _load_store_info(provider, connection):
+    """Nombre, URL y plan de la tienda recién conectada. No poder leerlos no
+    impide conectarla: queda el aviso en ``last_error``."""
     try:
         info = provider.get_store_info(connection)
     except ProviderError as exc:
@@ -173,10 +195,26 @@ def connect_store(provider, code, user=None, shop_domain=""):
         connection.preferences = dict(connection.preferences or {}, features=list(info.features))
         connection.save(update_fields=["name", "store_url", "preferences", "updated_at"])
 
-    # Registrar webhooks e importar pedidos lleva varias llamadas a la API:
-    # lo hace el worker, el callback solo vuelve rápido al frontend.
-    enqueue_store_setup(connection)
 
+def connect_with_own_app(provider, user, shop_domain, client_id, client_secret):
+    """Conexión manual de Shopify: con la app que el comerciante creó en su
+    propio Dev Dashboard e instaló en su tienda, no con la nuestra. Sirve
+    cuando no puede o no quiere instalar nuestra app. Pide el token en el
+    momento (si las credenciales no sirven, ``ProviderError`` y no se guarda
+    nada) y guarda el client ID en ``preferences`` y el secreto, cifrado, en
+    ``webhook_secret``: con él se renueva el token cada 24 horas y se
+    verifican los webhooks de esa app."""
+    oauth = provider.own_app_token(shop_domain, client_id, client_secret)
+
+    def apply(connection):
+        connection.set_tokens(oauth)
+        connection.scopes = oauth.scopes[:500]
+        connection.webhook_secret = client_secret
+        connection.preferences = dict(connection.preferences or {}, **{OWN_APP_CLIENT_ID_PREF: client_id})
+
+    connection, created, owner_conflict = _upsert_connection(provider.platform, oauth.external_store_id, user, apply)
+    _load_store_info(provider, connection)
+    enqueue_store_setup(connection)
     return ConnectResult(
         connection=connection,
         created=created,

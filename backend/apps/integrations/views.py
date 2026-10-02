@@ -71,12 +71,13 @@ from .stores import (
     disconnect_store,
     make_claim_token,
     connect_with_credentials,
+    connect_with_own_app,
     make_oauth_state,
     read_oauth_state,
     read_oauth_state_site,
 )
 from .webhooks import dispatch_event, webhooks_suspended
-from . import shopify_print
+from . import shopify_print, woocommerce_print, woocommerce_rates
 
 logger = logging.getLogger(__name__)
 
@@ -512,6 +513,26 @@ class StoreConnectionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, v
             )
         return Response(self.get_serializer(connection).data)
 
+    @action(detail=True, methods=["post"], url_path="check-print-plugin")
+    def check_print_plugin(self, request, pk=None):
+        """POST /api/v1/integrations/stores/<id>/check-print-plugin/
+
+        Vincula ya el plugin de impresión que el comerciante acaba de instalar
+        en su tienda, sin esperar el próximo repaso del worker. Devuelve la
+        tienda con ``print_plugin_linked`` al día."""
+        connection = self.get_object()
+        if connection.status != StoreConnection.Status.ACTIVE:
+            return Response({"detail": "La tienda no está conectada."}, status=status.HTTP_400_BAD_REQUEST)
+        base_url = str(getattr(settings, "INTEGRATIONS_PUBLIC_BASE_URL", "") or "").rstrip("/")
+        if not base_url:
+            return Response(
+                {"detail": "Falta la URL pública del servidor (INTEGRATIONS_PUBLIC_BASE_URL)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        get_provider(connection.platform).configure_admin_print(connection, base_url)
+        connection.refresh_from_db()
+        return Response(self.get_serializer(connection).data)
+
     @action(detail=True, methods=["post"])
     def disconnect(self, request, pk=None):
         connection = self.get_object()
@@ -703,17 +724,27 @@ class StoreWebhookView(APIView):
             if connection is None or not provider.verify_webhook(raw_body, request.headers, connection=connection):
                 return Response({"detail": "Firma inválida."}, status=status.HTTP_401_UNAUTHORIZED)
         else:
-            if not provider.verify_webhook(raw_body, request.headers):
-                return Response({"detail": "Firma inválida."}, status=status.HTTP_401_UNAUTHORIZED)
+            signed_by_app = provider.verify_webhook(raw_body, request.headers)
             try:
                 message = provider.parse_webhook(raw_body, request.headers)
             except ValueError as exc:
+                if not signed_by_app:
+                    return Response({"detail": "Firma inválida."}, status=status.HTTP_401_UNAUTHORIZED)
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            connection = (
+                StoreConnection.objects.filter(platform=provider.platform, external_store_id=message.store_id).first()
+                if message is not None
+                else None
+            )
+            # Sin la firma de nuestra app, todavía puede venir de la app
+            # propia con la que el comerciante conectó esa tienda (Shopify
+            # manual): la firma su secreto, guardado en la tienda.
+            if not signed_by_app and not (
+                connection is not None and provider.verify_store_webhook(raw_body, request.headers, connection)
+            ):
+                return Response({"detail": "Firma inválida."}, status=status.HTTP_401_UNAUTHORIZED)
             if message is None:
                 return Response({"received": False})
-            connection = StoreConnection.objects.filter(
-                platform=provider.platform, external_store_id=message.store_id
-            ).first()
 
         if message.event_type.startswith(INTERNAL_EVENT_PREFIX):
             # Los eventos internos solo los encola el backend.
@@ -737,6 +768,68 @@ class StoreWebhookView(APIView):
         if external_store_id:
             return queryset.filter(external_store_id=external_store_id).first()
         return None
+
+
+class ShopifyManualConnectView(APIView):
+    """POST /api/v1/integrations/shopify/connect-manual/
+    ``{"shop", "client_id", "client_secret"}``
+
+    Conexión manual de Shopify, sin instalar nuestra app: el comerciante creó
+    una app en su propio Dev Dashboard (con los permisos y el acceso a datos
+    de clientes que necesitamos), la instaló en su tienda y pega su client ID
+    y su secreto. Se prueban en el momento pidiendo un token
+    (``stores.connect_with_own_app``). La impresión desde el menú Imprimir de
+    Shopify no funciona por este camino: esa extensión es de nuestra app.
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission(STORE_CONNECT_PERMISSION)]
+
+    def post(self, request):
+        provider = get_provider("shopify")
+        data = request.data if isinstance(request.data, dict) else {}
+        try:
+            shop = provider.normalize_shop_domain(data.get("shop", ""))
+        except ValueError as exc:
+            return Response({"shop": [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
+        client_id = str(data.get("client_id") or "").strip()
+        client_secret = str(data.get("client_secret") or "").strip()
+        if not client_id or not client_secret:
+            return Response(
+                {"detail": "Pegá el ID de cliente y el secreto de tu app (Dev Dashboard → tu app → Configuración)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            result = connect_with_own_app(provider, request.user, shop, client_id, client_secret)
+        except ProviderAuthError as exc:
+            return Response({"detail": _own_app_error_message(str(exc))}, status=status.HTTP_400_BAD_REQUEST)
+        except ProviderError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        if result.owner_conflict:
+            return Response(
+                {"detail": "Esa tienda ya está vinculada a otra cuenta. Si es tuya, escribinos desde Ayuda / Soporte."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        _record_store_connect(request, request.user, result.connection)
+        return Response(
+            StoreConnectionSerializer(result.connection, context={"request": request}).data,
+            status=status.HTTP_201_CREATED if result.created else status.HTTP_200_OK,
+        )
+
+
+def _own_app_error_message(detail):
+    """Lo que Shopify contesta cuando no da el token, dicho para el
+    comerciante. Los códigos son los de su OAuth (``shop_not_permitted``,
+    ``invalid_client``...)."""
+    if "shop_not_permitted" in detail:
+        return (
+            "Shopify no deja usar esa app en esta tienda: la app tiene que estar creada en la misma "
+            "organización que la tienda e instalada en ella."
+        )
+    if any(code in detail for code in ("application_cannot_be_found", "invalid_client", "Could not find Shopify API application")):
+        return "Shopify no reconoce esas credenciales. Revisá que el ID de cliente y el secreto sean de tu app."
+    return f"Shopify no aceptó esas credenciales. {detail}"
 
 
 class ShopifyPrintLinkView(APIView):
@@ -794,10 +887,14 @@ def shopify_print_document(request, token):
     navegador dentro del admin de Shopify (de ahí el ``xframe_options_exempt``:
     con el DENY por defecto la vista previa quedaría en blanco). Lo
     autentica el enlace firmado; sin sesión, sin JWT."""
+    return _print_document(request, token, StoreConnection.Platform.SHOPIFY)
+
+
+def _print_document(request, token, platform):
     if request.method != "GET":
         return HttpResponse(status=405)
     try:
-        connection, orders = shopify_print.read_print_token(token)
+        connection, orders = shopify_print.read_print_token(token, platform)
         pdf_bytes, _count = shopify_print.render_pdf(connection, orders)
     except shopify_print.PrintError as exc:
         return HttpResponse(str(exc), status=410, content_type="text/plain; charset=utf-8")
@@ -806,6 +903,99 @@ def shopify_print_document(request, token):
     # Datos del comprador: que ningún proxy ni el navegador lo guarde.
     response["Cache-Control"] = "no-store"
     return response
+
+
+class WooCommercePluginDownloadView(APIView):
+    """GET /api/v1/integrations/woocommerce/print-plugin/
+
+    El plugin de WordPress "Rótulos de envío" como zip, listo para subir en
+    Plugins → Añadir nuevo → Subir plugin (ver ``woocommerce_print.plugin_zip``)."""
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission(STORE_CONNECT_PERMISSION)]
+
+    def get(self, request):
+        response = HttpResponse(woocommerce_print.plugin_zip(), content_type="application/zip")
+        response["Content-Disposition"] = f'attachment; filename="{woocommerce_print.PLUGIN_ZIP_NAME}"'
+        return response
+
+
+class WooCommercePrintLinkView(APIView):
+    """POST /api/v1/integrations/woocommerce/print-link/  ``{"store", "ids", "ts"}``
+
+    Lo llama nuestro plugin de WordPress desde el servidor de la tienda (ver
+    ``woocommerce_print``). Sin JWT: la identidad es la firma
+    ``X-Rotulos-Signature`` con el secreto de la tienda. Devuelve el enlace de
+    vida corta al PDF, al que el plugin manda el navegador. Sin CORS: no lo
+    llama un navegador."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        raw_body = request.body
+        try:
+            connection, data = woocommerce_print.verify_plugin_request(
+                raw_body, request.headers.get(woocommerce_print.SIGNATURE_HEADER, "")
+            )
+        except shopify_print.PrintError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            orders, missing = shopify_print.resolve_orders(connection, woocommerce_print.order_ids(data.get("ids")))
+            if not orders:
+                raise shopify_print.PrintError("Ninguno de los pedidos elegidos existe en la tienda.")
+            url = shopify_print.print_url(shopify_print.make_print_token(connection, orders), route="woocommerce-print")
+        except shopify_print.PrintError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        record(
+            request,
+            actor=connection.owner,
+            category="labels",
+            action="label.batch",
+            target=connection,
+            target_type="storeconnection",
+            target_repr=str(connection),
+            changes={"woocommerce_print": {"from": None, "to": len(orders)}},
+        )
+        return Response({"url": url, "count": len(orders), "missing": missing})
+
+
+class WooCommerceRatesView(APIView):
+    """POST /api/v1/integrations/woocommerce/rates/
+    ``{"store", "ts", "postcode", "country", "weight_kg", "currency"}``
+
+    Lo llama el método de envío de nuestro plugin desde el checkout de la
+    tienda, firmado igual que la impresión (``woocommerce_print``). Contesta
+    ``{"rates": [...]}`` desde la tabla de tarifas (``woocommerce_rates``).
+    Está en medio de la venta de otro: salvo una firma inválida (401), NUNCA
+    contesta error — una lista vacía solo saca nuestra opción del checkout.
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        try:
+            connection, data = woocommerce_print.verify_plugin_request(
+                request.body, request.headers.get(woocommerce_print.SIGNATURE_HEADER, "")
+            )
+        except shopify_print.PrintError as exc:
+            return Response({"detail": str(exc), "rates": []}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            return Response(woocommerce_rates.quote(connection, data))
+        except Exception:  # noqa: BLE001 - nunca romper un checkout ajeno
+            logger.exception("Error inesperado cotizando para la tienda %s", connection.pk)
+            return Response({"rates": []})
+
+
+def woocommerce_print_document(request, token):
+    """GET /api/v1/integrations/woocommerce/print/<token>
+
+    El PDF al que el plugin manda el navegador (en una pestaña nueva, no
+    enmarcado). Lo autentica el enlace firmado; sin sesión, sin JWT."""
+    return _print_document(request, token, StoreConnection.Platform.WOOCOMMERCE)
 
 
 # ---------------------------------------------------------------------------

@@ -44,6 +44,9 @@ function getErrorMessage(data, fallback) {
 // cambia si arrancan ocultas con `hidden` o con `style="display:none"` —
 // esta función cubre ambos casos). dashboard.html tiene su propio elemento
 // (id/clase distintos) y su propio showMessage local: no lo reemplaza este.
+// Si el aviso quedó fuera de la vista (la acción se hizo más abajo en la
+// página), se lleva la página hasta él: un aviso que no se ve es como no
+// avisar.
 function showMessage(text, type = "error") {
   const el = document.getElementById("pageMessage");
   if (!el) return;
@@ -51,6 +54,10 @@ function showMessage(text, type = "error") {
   el.className = `page-message ${type}`;
   el.hidden = false;
   el.style.display = "block";
+  const box = el.getBoundingClientRect();
+  if (box.top < 0 || box.bottom > window.innerHeight) {
+    el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
 }
 
 // Formatea una fecha ISO como dd/mm/aaaa hh:mm (es-AR). "-" si no hay

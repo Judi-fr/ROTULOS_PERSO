@@ -6,12 +6,17 @@
   ``<id>/disconnect/``) y, por cada plataforma registrada en
   ``providers``, ``/<plataforma>/install-url/``, ``/<plataforma>/callback/``
   (la redirect URL que se configura en su panel) y
-  ``/<plataforma>/webhooks/``. Shopify suma ``/shopify/launch/`` (su App URL) y
+  ``/<plataforma>/webhooks/``. Shopify suma ``/shopify/launch/`` (su App URL),
+  ``/shopify/connect-manual/`` (conexión con la app propia del comerciante) y
   ``/shopify/print-link/`` + ``/shopify/print/<token>`` (rótulos impresos
   desde su admin, ver ``shopify_print``). WooCommerce no tiene ``callback/``:
   ``/woocommerce/keys/`` (las claves que POSTea su autorización),
   ``/woocommerce/return/`` (la vuelta del navegador) y
-  ``/woocommerce/connect-manual/`` (claves pegadas a mano).
+  ``/woocommerce/connect-manual/`` (claves pegadas a mano), más
+  ``/woocommerce/print-link/`` + ``/woocommerce/print/<token>`` (rótulos
+  impresos desde su admin con nuestro plugin, ver ``woocommerce_print``) y
+  ``/woocommerce/print-plugin/`` (el plugin como zip) y ``/woocommerce/rates/``
+  (la cotización del envío en su checkout, ver ``woocommerce_rates``).
 - ``/store-labels/``: solo lectura, los rótulos que las tiendas del
   comerciante pidieron desde su propio admin (ver ``store_labels``). Los
   endpoints que llama la plataforma viven aparte, en ``label_urls``.
@@ -29,6 +34,7 @@ from .views import (
     ShippingRateViewSet,
     IntegrationKeyViewSet,
     ShopifyLaunchView,
+    ShopifyManualConnectView,
     ShopifyPrintLinkView,
     shopify_print_document,
     StoreConnectionViewSet,
@@ -38,6 +44,10 @@ from .views import (
     StoreWebhookView,
     WooCommerceKeysView,
     WooCommerceManualConnectView,
+    WooCommercePluginDownloadView,
+    WooCommercePrintLinkView,
+    WooCommerceRatesView,
+    woocommerce_print_document,
     WooCommerceReturnView,
     WebhookDeliveryListView,
     WebhookEndpointViewSet,
@@ -72,11 +82,16 @@ urlpatterns = (
     [
         path("webhook-deliveries/", WebhookDeliveryListView.as_view(), name="webhook-delivery-list"),
         path("shopify/launch/", ShopifyLaunchView.as_view(), name="shopify-launch"),
+        path("shopify/connect-manual/", ShopifyManualConnectView.as_view(), name="shopify-connect-manual"),
         path("shopify/print-link/", ShopifyPrintLinkView.as_view(), name="shopify-print-link"),
         path("shopify/print/<str:token>", shopify_print_document, name="shopify-print"),
         path("woocommerce/keys/", WooCommerceKeysView.as_view(), name="woocommerce-keys"),
         path("woocommerce/return/", WooCommerceReturnView.as_view(), name="woocommerce-return"),
         path("woocommerce/connect-manual/", WooCommerceManualConnectView.as_view(), name="woocommerce-connect-manual"),
+        path("woocommerce/print-plugin/", WooCommercePluginDownloadView.as_view(), name="woocommerce-print-plugin"),
+        path("woocommerce/rates/", WooCommerceRatesView.as_view(), name="woocommerce-rates"),
+        path("woocommerce/print-link/", WooCommercePrintLinkView.as_view(), name="woocommerce-print-link"),
+        path("woocommerce/print/<str:token>", woocommerce_print_document, name="woocommerce-print"),
     ]
     + platform_urls
     + router.urls

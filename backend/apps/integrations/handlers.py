@@ -136,6 +136,7 @@ def _register_webhooks(connection, provider):
         _call_api(
             connection, lambda: provider.register_webhooks(connection, webhook_url, provider.webhook_events)
         )
+        provider.configure_admin_print(connection, base_url)
         if connection.last_error == MISSING_BASE_URL_ERROR:
             connection.last_error = ""
             connection.save(update_fields=["last_error", "updated_at"])

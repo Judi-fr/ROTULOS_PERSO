@@ -3,13 +3,17 @@
 // - Conectar Tiendanube / Shopify / WooCommerce: pide la URL de autorización
 //   y lleva al comerciante a su plataforma. Shopify y WooCommerce necesitan
 //   la dirección de la tienda. WooCommerce además se puede conectar pegando
-//   las claves de la API (connectWooManual).
+//   las claves de la API (connectWooManual) y Shopify con una app propia del
+//   comerciante (connectShopifyManual). Tiendanube no tiene camino manual: su
+//   API solo da acceso a una app instalada.
 // - Vuelta de la instalación: el backend redirige a esta página con
 //   ?store_connected=<id>, ?store_claim=<token> o ?store_error=<código>
 //   (ver StoreOAuthCallbackView). Un store_claim se canjea para vincular la
 //   tienda a la cuenta; si no hay sesión, se guarda y se retoma después del
 //   login (index.html vuelve acá cuando existe pendingStoreClaim).
 // - Lista de tiendas con su estado, errores y la acción de desconectar.
+// - Tiendas WooCommerce: el plugin de WordPress para imprimir rótulos desde
+//   su lista de pedidos (descargarlo, subirlo, "Verificar plugin").
 //
 // Sesión y apiFetch salen de assets/js/auth.js (window.Auth). Todo texto
 // que viene del backend (nombre, errores) se inserta con textContent.
@@ -20,6 +24,8 @@ const TEMPLATES_URL = `${window.APP_CONFIG.API_BASE}/labels/templates/`;
 const PENDING_CLAIM_KEY = "pendingStoreClaim";
 const PLATFORM_LABELS = { tiendanube: "Tiendanube", shopify: "Shopify", woocommerce: "WooCommerce" };
 const WOO_MANUAL_URL = `${INTEGRATIONS_API}/woocommerce/connect-manual/`;
+const WOO_PLUGIN_URL = `${INTEGRATIONS_API}/woocommerce/print-plugin/`;
+const SHOPIFY_MANUAL_URL = `${INTEGRATIONS_API}/shopify/connect-manual/`;
 
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
@@ -58,6 +64,53 @@ function createElement(tag, className, text) {
   return node;
 }
 
+// Cartel con el resultado de conectar una tienda, debajo de los formularios
+// de conexión (el #pageMessage de arriba queda fuera de la vista desde ahí).
+// code: el número de error (estado HTTP) o el código que devolvió la
+// plataforma; se muestra para que el comerciante lo pueda citar en soporte.
+function showConnectResult(text, type = "error", code = null) {
+  setConnectCardOpen(true);
+  const el = document.getElementById("connectMessage");
+  if (!el) {
+    showMessage(code ? `Error ${code}: ${text}` : text, type);
+    return;
+  }
+  el.replaceChildren();
+  if (type === "error" && code) {
+    el.appendChild(createElement("span", "connect-message-code", `Error ${code}: `));
+  }
+  el.appendChild(document.createTextNode(text));
+  el.className = `page-message connect-message ${type}`;
+  el.hidden = false;
+  el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+// "Conectar una tienda" es un desplegable: con tiendas ya conectadas arranca
+// cerrado (lo que se busca suele ser "Mis tiendas"), sin ninguna arranca
+// abierto. Una vez que el comerciante lo abre o cierra, no se lo cambiamos
+// solos, salvo para mostrarle el resultado de una conexión.
+let connectCardTouched = false;
+
+function setConnectCardOpen(open) {
+  const card = document.getElementById("connectCard");
+  if (card) card.open = open;
+}
+
+function syncConnectCard(stores) {
+  if (connectCardTouched) return;
+  const message = document.getElementById("connectMessage");
+  if (message && !message.hidden) return;
+  setConnectCardOpen(!stores.length);
+}
+
+// Error con el número a mostrar: el estado HTTP de la respuesta. Un fallo de
+// red no tiene respuesta, y un aviso de validación del navegador, tampoco.
+function connectError(message, code = null) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
 // ---------------------------------------------------------------------------
 // Vuelta de la instalación
 // ---------------------------------------------------------------------------
@@ -79,9 +132,9 @@ function readInstallResult() {
 
 function showInstallResult(result) {
   if (result.error) {
-    showMessage(STORE_ERROR_MESSAGES[result.error] || "No se pudo conectar la tienda.");
+    showConnectResult(STORE_ERROR_MESSAGES[result.error] || "No se pudo conectar la tienda.", "error", result.error);
   } else if (result.connected) {
-    showMessage(
+    showConnectResult(
       "¡Listo! Tu tienda quedó conectada. Estamos importando sus pedidos: pueden tardar unos minutos en aparecer.",
       "success"
     );
@@ -126,36 +179,93 @@ async function connectStore(platform, { button, shop } = {}) {
     const response = await apiFetch(`${INTEGRATIONS_API}/${platform}/install-url/${query}`);
     const data = await response.json().catch(() => ({}));
     if (response.status === 503) {
-      throw new Error(`La conexión con ${label} todavía no está configurada en el servidor.`);
+      throw connectError(`La conexión con ${label} todavía no está configurada en el servidor.`, 503);
     }
     if (!response.ok || !data.authorize_url) {
-      throw new Error(getErrorMessage(data, `No se pudo iniciar la conexión con ${label}.`));
+      throw connectError(getErrorMessage(data, `No se pudo iniciar la conexión con ${label}.`), response.status);
     }
     window.location.assign(data.authorize_url);
   } catch (err) {
     if (err.isSessionExpired) return;
-    showMessage(err.message || `No se pudo iniciar la conexión con ${label}.`);
+    showConnectResult(
+      err.code ? err.message : "No pudimos comunicarnos con el servidor. Revisá tu conexión y probá de nuevo.",
+      "error",
+      err.code || null
+    );
     if (button) button.disabled = false;
   }
 }
 
-function connectShopify(event) {
-  event.preventDefault();
+function shopifyShop() {
   const input = document.getElementById("shopifyShopInput");
   const shop = input.value.trim();
   if (!shop) {
-    showMessage("Escribí el dominio de tu tienda Shopify (termina en .myshopify.com).");
+    showConnectResult("Escribí el dominio de tu tienda Shopify (termina en .myshopify.com) en el campo de arriba.");
     input.focus();
+  }
+  return shop;
+}
+
+function connectShopify(event) {
+  event.preventDefault();
+  const shop = shopifyShop();
+  if (shop) connectStore("shopify", { button: document.getElementById("connectShopifyBtn"), shop });
+}
+
+// Camino manual de Shopify: el backend pide un token con las credenciales de
+// la app del comerciante antes de guardar nada. Nunca se guardan en el navegador.
+async function connectShopifyManual(event) {
+  event.preventDefault();
+  const shop = shopifyShop();
+  if (!shop) return;
+  const idInput = document.getElementById("shopifyClientIdInput");
+  const secretInput = document.getElementById("shopifyClientSecretInput");
+  if (!idInput.value.trim() || !secretInput.value.trim()) {
+    showConnectResult("Pegá el ID de cliente y el secreto de tu app.");
     return;
   }
-  connectStore("shopify", { button: document.getElementById("connectShopifyBtn"), shop });
+  const button = document.getElementById("shopifyManualBtn");
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Conectando...";
+  try {
+    const response = await apiFetch(SHOPIFY_MANUAL_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shop, client_id: idInput.value.trim(), client_secret: secretInput.value.trim() }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw connectError(getErrorMessage(data, "No se pudo conectar la tienda con tu app."), response.status);
+    }
+    idInput.value = "";
+    secretInput.value = "";
+    document.getElementById("shopifyManual").open = false;
+    showConnectResult(
+      `¡Listo! ${data.name || "Tu tienda"} quedó conectada con tu app. Estamos importando sus pedidos: pueden tardar unos minutos en aparecer.`,
+      "success"
+    );
+    await loadStores();
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    showConnectResult(
+      err.code ? err.message : "No pudimos comunicarnos con el servidor. Revisá tu conexión y probá de nuevo.",
+      "error",
+      err.code || null
+    );
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
 }
 
 function wooSite() {
   const input = document.getElementById("wooSiteInput");
   const site = input.value.trim();
   if (!site) {
-    showMessage("Escribí la dirección de tu tienda WooCommerce (por ejemplo, https://mitienda.com).");
+    showConnectResult(
+      "Escribí la dirección de tu tienda WooCommerce (por ejemplo, https://mitienda.com) en el campo de arriba."
+    );
     input.focus();
   }
   return site;
@@ -176,7 +286,9 @@ async function connectWooManual(event) {
   const keyInput = document.getElementById("wooKeyInput");
   const secretInput = document.getElementById("wooSecretInput");
   const button = document.getElementById("wooManualBtn");
+  const originalText = button.textContent;
   button.disabled = true;
+  button.textContent = "Conectando...";
   try {
     const response = await apiFetch(WOO_MANUAL_URL, {
       method: "POST",
@@ -189,21 +301,26 @@ async function connectWooManual(event) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(getErrorMessage(data, "No se pudo conectar la tienda con esas claves."));
+      throw connectError(getErrorMessage(data, "No se pudo conectar la tienda con esas claves."), response.status);
     }
     keyInput.value = "";
     secretInput.value = "";
     document.getElementById("wooManual").open = false;
-    showMessage(
-      "¡Listo! Tu tienda quedó conectada. Estamos importando sus pedidos: pueden tardar unos minutos en aparecer.",
+    showConnectResult(
+      `¡Listo! ${data.name || "Tu tienda"} quedó conectada. Estamos importando sus pedidos: pueden tardar unos minutos en aparecer.`,
       "success"
     );
     await loadStores();
   } catch (err) {
     if (err.isSessionExpired) return;
-    showMessage(err.message || "No se pudo conectar la tienda con esas claves.");
+    showConnectResult(
+      err.code ? err.message : "No pudimos comunicarnos con el servidor. Revisá tu conexión y probá de nuevo.",
+      "error",
+      err.code || null
+    );
   } finally {
     button.disabled = false;
+    button.textContent = originalText;
   }
 }
 
@@ -242,6 +359,7 @@ function addDetail(list, label, value) {
 
 function renderStoreCard(store) {
   const card = createElement("article", "store-card");
+  card.dataset.storeId = store.id;
 
   const head = createElement("div", "store-card-head");
   const title = createElement("div");
@@ -272,6 +390,9 @@ function renderStoreCard(store) {
   }
 
   card.appendChild(renderSenderForm(store));
+  if (store.platform === "woocommerce" && store.status === "active") {
+    card.appendChild(renderPrintPlugin(store));
+  }
 
   const actions = createElement("div", "store-actions");
   if (store.status !== "active") {
@@ -292,6 +413,133 @@ function renderStoreCard(store) {
   card.appendChild(actions);
 
   return card;
+}
+
+// ---------------------------------------------------------------------------
+// Plugin de WordPress para imprimir desde WooCommerce
+// ---------------------------------------------------------------------------
+
+// El plugin agrega "Imprimir rótulos" a las acciones masivas de WooCommerce →
+// Pedidos. El comerciante no lo configura: "Verificar plugin" le pide al
+// backend que le escriba la configuración (si no, lo hace el repaso cada 30
+// minutos). print_plugin_linked: true = vinculado, false = no está instalado,
+// null = todavía no se sabe.
+function renderPrintPlugin(store) {
+  const wrapper = createElement("div", "store-sender store-plugin");
+  wrapper.appendChild(createElement("h4", "store-sender-title", "Plugin para WordPress"));
+
+  const linked = store.print_plugin_linked === true;
+  wrapper.appendChild(
+    createElement(
+      "p",
+      "store-sender-help",
+      linked
+        ? "El plugin está instalado y conectado. Para imprimir, seleccioná los pedidos en WooCommerce > " +
+          "Pedidos y elegí Imprimir rótulos en el menú de acciones masivas."
+        : "Con el plugin podés imprimir los rótulos directamente desde WooCommerce y mostrar el costo de " +
+          "envío en el checkout de tu tienda."
+    )
+  );
+
+  if (linked) {
+    // El mismo plugin cotiza el envío en el checkout, pero eso lo activa el
+    // comerciante: un método de envío de WooCommerce vive en sus zonas.
+    const rates = createElement(
+      "p",
+      "store-sender-help",
+      "También podés mostrar el costo de envío en el checkout. Cargá tus precios en Tarifas de envío y " +
+        "después agregá el método Rótulos de envío en cada zona de WooCommerce (Ajustes > Envío). "
+    );
+    const ratesLink = createElement("a", "store-link", "Cargar tarifas");
+    ratesLink.href = `tarifas_envio.html?store=${encodeURIComponent(store.id)}`;
+    rates.appendChild(ratesLink);
+    wrapper.appendChild(rates);
+  }
+
+  if (!linked) {
+    const steps = createElement("ol", "woo-steps");
+    steps.appendChild(createElement("li", "", "Descargá el archivo del plugin."));
+    const upload = createElement("li", "", "En WordPress, entrá a Plugins > Añadir nuevo > Subir plugin, elegí el archivo y activalo. ");
+    if (store.store_url && /^https:\/\//i.test(store.store_url)) {
+      const link = createElement("a", "store-link", "Abrir en mi tienda");
+      link.href = `${store.store_url.replace(/\/+$/, "")}/wp-admin/plugin-install.php?tab=upload`;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      upload.appendChild(link);
+    }
+    steps.appendChild(upload);
+    steps.appendChild(createElement("li", "", "Volvé a esta página y hacé clic en Verificar plugin."));
+    wrapper.appendChild(steps);
+  }
+
+  const feedback = createElement("p", "store-sender-msg");
+  feedback.hidden = true;
+  if (store.print_plugin_linked === false) {
+    showFeedback(feedback, "No encontramos el plugin en tu tienda.", false);
+  }
+  wrapper.appendChild(feedback);
+
+  const actions = createElement("div", "store-actions");
+  const download = createElement("button", linked ? "btn btn-outline btn-small" : "btn btn-primary btn-small", "Descargar plugin");
+  download.type = "button";
+  download.addEventListener("click", () => downloadPrintPlugin(download, feedback));
+  actions.appendChild(download);
+  const check = createElement("button", "btn btn-outline btn-small", "Verificar plugin");
+  check.type = "button";
+  check.addEventListener("click", () => checkPrintPlugin(store, check, feedback));
+  actions.appendChild(check);
+  wrapper.appendChild(actions);
+
+  return wrapper;
+}
+
+async function downloadPrintPlugin(button, feedback) {
+  button.disabled = true;
+  try {
+    const response = await apiFetch(WOO_PLUGIN_URL);
+    if (!response.ok) throw new Error(`Error ${response.status}: no se pudo descargar el plugin.`);
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "rotulos-envio.zip";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showFeedback(feedback, "Se descargó el archivo rotulos-envio.zip.", true);
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    showFeedback(feedback, err.message || "No se pudo descargar el plugin.", false);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function checkPrintPlugin(store, button, feedback) {
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Verificando...";
+  try {
+    const response = await apiFetch(`${STORES_URL}${store.id}/check-print-plugin/`, { method: "POST" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(getErrorMessage(data, "No se pudo verificar el plugin."));
+    await loadStores();
+    if (data.print_plugin_linked === true) {
+      showStoreFeedback(store.id, ".store-plugin", "El plugin quedó conectado.", true);
+    } else {
+      showStoreFeedback(
+        store.id,
+        ".store-plugin",
+        "No encontramos el plugin en tu tienda. Revisá que esté instalado y activo.",
+        false
+      );
+    }
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    showFeedback(feedback, err.message || "No se pudo verificar el plugin.", false);
+    button.disabled = false;
+    button.textContent = originalText;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -318,9 +566,22 @@ const PRINTER_OPTIONS = [
   { value: "24", label: "Zebra 600 dpi" },
 ];
 
+// Formularios "Rótulos de esta tienda" abiertos, por id de tienda: cada
+// loadStores recrea las tarjetas, y uno abierto no tiene que cerrarse solo
+// (por ejemplo, al guardar).
+const openSenderForms = new Set();
+
 function renderSenderForm(store) {
-  const wrapper = createElement("div", "store-sender");
-  wrapper.appendChild(createElement("h4", "store-sender-title", "Rótulos de esta tienda"));
+  // Desplegable: con varias tiendas, la lista no es una pila de formularios.
+  const wrapper = createElement("details", "store-sender store-sender-collapsible");
+  wrapper.open = openSenderForms.has(store.id);
+  wrapper.addEventListener("toggle", () => {
+    if (wrapper.open) openSenderForms.add(store.id);
+    else openSenderForms.delete(store.id);
+  });
+  const summary = createElement("summary", "store-sender-summary");
+  summary.appendChild(createElement("h4", "store-sender-title", "Rótulos de esta tienda"));
+  wrapper.appendChild(summary);
   wrapper.appendChild(
     createElement(
       "p",
@@ -440,6 +701,20 @@ function readFileAsDataUrl(file) {
   });
 }
 
+// Aviso dentro de una sección de la tarjeta de una tienda, después de
+// redibujar la lista (las tarjetas se recrean en cada loadStores).
+function showStoreFeedback(storeId, sectionSelector, text, ok) {
+  const section = document.querySelector(`[data-store-id="${storeId}"] ${sectionSelector}`);
+  if (section?.tagName === "DETAILS") section.open = true;
+  const feedback = section?.querySelector(".store-sender-msg");
+  if (!feedback) {
+    showMessage(text, ok ? "success" : "error");
+    return;
+  }
+  showFeedback(feedback, text, ok);
+  feedback.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
 function showFeedback(feedback, text, ok) {
   feedback.textContent = text;
   feedback.className = `store-sender-msg ${ok ? "ok" : "error"}`;
@@ -494,8 +769,10 @@ async function saveSettings(store, payload, button, feedback) {
       throw new Error(getErrorMessage(data, "No se pudo guardar."));
     }
     // El logo puede haber cambiado (o borrado): se redibuja la lista con lo
-    // que devolvió el backend, que es la fuente de verdad.
+    // que devolvió el backend, que es la fuente de verdad. El aviso va en la
+    // tarjeta NUEVA de esa tienda: la anterior ya no está en la página.
     await loadStores();
+    showStoreFeedback(store.id, ".store-sender:not(.store-plugin)", "Cambios guardados.", true);
     return;
   } catch (err) {
     if (err.isSessionExpired) return;
@@ -507,6 +784,7 @@ async function saveSettings(store, payload, button, feedback) {
 }
 
 function renderStores(stores) {
+  syncConnectCard(stores);
   const list = document.getElementById("storesList");
   list.replaceChildren();
   if (!stores.length) {
@@ -547,6 +825,8 @@ async function init() {
   }
 
   window.AppTopbar.render();
+  const permissions = window.Auth.getCurrentUser()?.permissions || [];
+  document.getElementById("apiConnectLink").hidden = !permissions.includes("integrations.manage");
   showInstallResult(result);
 
   const claimToken = result.claim || localStorage.getItem(PENDING_CLAIM_KEY);
@@ -563,7 +843,13 @@ document
 document.getElementById("connectShopifyForm")?.addEventListener("submit", connectShopify);
 document.getElementById("connectWooForm")?.addEventListener("submit", connectWoo);
 document.getElementById("wooManualForm")?.addEventListener("submit", connectWooManual);
+document.getElementById("shopifyManualForm")?.addEventListener("submit", connectShopifyManual);
 document.getElementById("refreshStoresBtn")?.addEventListener("click", loadStores);
+// Se marca con el clic en el título y no con el evento "toggle": ese evento
+// también salta cuando lo abre o cierra setConnectCardOpen.
+document.querySelector("#connectCard > summary")?.addEventListener("click", () => {
+  connectCardTouched = true;
+});
 document.getElementById("logoutBtn")?.addEventListener("click", () => window.Auth.logout());
 
 init();

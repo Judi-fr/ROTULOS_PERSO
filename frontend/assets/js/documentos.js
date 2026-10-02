@@ -230,7 +230,23 @@ if (logoutBtn) {
   logoutBtn.addEventListener("click", () => window.Auth.logout());
 }
 
+// Vuelta de imprimir_rotulos.html: ?labels=<pedidos>[&dispatched=<n>]. Se
+// confirma lo que se hizo y se limpia la URL, para que recargar no lo repita.
+function showBatchResult() {
+  const params = new URLSearchParams(window.location.search);
+  const labels = Number(params.get("labels"));
+  if (!labels) return;
+  window.history.replaceState(null, "", window.location.pathname);
+  const dispatched = Number(params.get("dispatched"));
+  let text = `Listo: generamos los rótulos de ${labels} ${labels === 1 ? "pedido" : "pedidos"}. Descargalos desde la lista de abajo.`;
+  if (dispatched) {
+    text += ` Además se ${dispatched === 1 ? "marcó 1 pedido" : `marcaron ${dispatched} pedidos`} como despachado${dispatched === 1 ? "" : "s"}.`;
+  }
+  showMessage(text, "success");
+}
+
 async function init() {
+  showBatchResult();
   try {
     const response = await apiFetch(ME_URL);
     if (response.ok) {

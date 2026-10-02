@@ -36,6 +36,13 @@ class StoreConnectionSerializer(serializers.ModelSerializer):
     def get_label_api_enabled(self, connection):
         return store_labels.supports_label_api(connection)
 
+    # Si el plugin de impresión de la tienda quedó vinculado (WooCommerce, ver
+    # ``StoreProvider.configure_admin_print``). ``null`` = no se sabe / no aplica.
+    print_plugin_linked = serializers.SerializerMethodField()
+
+    def get_print_plugin_linked(self, connection):
+        return (connection.preferences or {}).get("print_plugin")
+
     class Meta:
         model = StoreConnection
         fields = [
@@ -56,6 +63,7 @@ class StoreConnectionSerializer(serializers.ModelSerializer):
             "label_printer_dpmm",
             "scopes",
             "label_api_enabled",
+            "print_plugin_linked",
             "last_error",
             "connected_at",
             "disconnected_at",

@@ -69,6 +69,9 @@ class FakeShopify:
         # (vacío = aceptada).
         self.fulfillment_orders = []
         self.mutation_errors = []
+        # Conexión manual (client credentials): el error de OAuth a devolver,
+        # o None para dar el token.
+        self.client_credentials_error = None
 
     def _token(self, prefix):
         self.token_counter += 1
@@ -83,6 +86,11 @@ class FakeShopify:
     def __call__(self, url, data=None, json=None, headers=None, timeout=None):
         self.calls.append({"url": url, "data": data, "json": json, "headers": headers or {}})
         if url.endswith("/admin/oauth/access_token"):
+            if data.get("grant_type") == "client_credentials":
+                if self.client_credentials_error:
+                    return fake_response(400, {"error": self.client_credentials_error})
+                self.token_counter += 1
+                return fake_response(200, {"access_token": f"propio-{self.token_counter}", "scope": "read_orders", "expires_in": 86399})
             if data.get("grant_type") == "refresh_token":
                 if self.refresh_status != 200:
                     return fake_response(self.refresh_status, {"error": "invalid_grant"})

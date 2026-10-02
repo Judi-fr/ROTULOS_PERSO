@@ -136,6 +136,29 @@ body {
   color: var(--text-muted);
 }
 
+.main-heading-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.main-heading-row .btn {
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+@media (max-width: 600px) {
+  .main-heading-row {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .main-heading-row .btn {
+    margin: 0 0 20px;
+  }
+}
+
 .page-message {
   padding: 12px 16px;
   border-radius: 8px;
@@ -153,6 +176,44 @@ body {
   background: #dcfce7;
   color: #15803d;
   border: 1px solid #bbf7d0;
+}
+
+/* Resultado de conectar una tienda, dentro de la tarjeta de conexión. */
+.page-message.connect-message {
+  margin: 0 22px 22px;
+}
+
+.connect-message-code {
+  font-weight: 700;
+}
+
+/* "Conectar una tienda" desplegable (<details class="card">). */
+.connect-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.connect-card-title::-webkit-details-marker {
+  display: none;
+}
+
+.connect-card-title::after {
+  content: "▾";
+  font-size: 14px;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.connect-card:not([open]) .connect-card-title {
+  border-bottom: none;
+}
+
+.connect-card:not([open]) .connect-card-title::after {
+  transform: rotate(-90deg);
 }
 
 /* TARJETAS */
@@ -434,6 +495,32 @@ body {
 .store-sender-title {
   margin: 0;
   font-size: 14px;
+}
+
+/* "Rótulos de esta tienda" desplegable (<details>), misma flecha que
+   "Conectar una tienda". */
+.store-sender-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.store-sender-summary::-webkit-details-marker {
+  display: none;
+}
+
+.store-sender-summary::after {
+  content: "▾";
+  font-size: 14px;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.store-sender-collapsible:not([open]) .store-sender-summary::after {
+  transform: rotate(-90deg);
 }
 
 .store-sender-help {

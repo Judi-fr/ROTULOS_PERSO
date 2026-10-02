@@ -20,17 +20,28 @@
       <header class="topbar" id="appTopbar" data-links='[{"href": "rotulos_tienda.html", "label": "Rótulos de la tienda"}, {"href": "tarifas_envio.html", "label": "Tarifas de envío"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
 
       <main class="main">
-        <div class="main-heading">
-          <h1>Tiendas conectadas</h1>
-          <p>Conectá tu tienda online para que sus pedidos entren solos y puedas generar sus rótulos.</p>
+        <div class="main-heading main-heading-row">
+          <div>
+            <h1>Tiendas conectadas</h1>
+            <p>Conectá tu tienda online para que sus pedidos entren solos y puedas generar sus rótulos.</p>
+          </div>
+          <!-- Claves de API y webhooks (integraciones.html). Esa página es solo
+               de integrations.manage: tiendas.js muestra el botón solo a quien
+               lo tiene (el backend lo vuelve a chequear). -->
+          <a class="btn btn-outline btn-small" id="apiConnectLink" href="integraciones.html" hidden>
+            Conexi&oacute;n mediante API
+          </a>
         </div>
 
         <p id="pageMessage" class="page-message" role="status" aria-live="polite" hidden></p>
 
         <!-- Conectar: pide la URL de autorización al backend y lleva al
              comerciante a su plataforma (ver tiendas.js / connectStore). -->
-        <section class="card">
-          <div class="card-title">Conectar una tienda</div>
+        <!-- Desplegable: con tiendas ya conectadas arranca cerrado, para llegar
+             a "Mis tiendas" sin bajar por todos los formularios (ver tiendas.js,
+             setConnectCardOpen). -->
+        <details class="card connect-card" id="connectCard" open>
+          <summary class="card-title connect-card-title">Conectar una tienda</summary>
           <div class="card-body connect-row">
             <div>
               <p class="connect-platform">Tiendanube</p>
@@ -71,6 +82,36 @@
               <button type="submit" class="btn btn-primary" id="connectShopifyBtn">Conectar Shopify</button>
             </form>
           </div>
+          <!-- Camino manual de Shopify: con una app que el comerciante crea en
+               su propio Dev Dashboard (POST shopify/connect-manual/). Usa el
+               dominio de arriba. Los permisos listados tienen que coincidir con
+               SHOPIFY_SCOPES del backend. -->
+          <details class="card-body woo-manual" id="shopifyManual">
+            <summary>Conectar con tu propia app de Shopify</summary>
+            <p class="connect-help">
+              Para cuando no pod&eacute;s instalar nuestra app. As&iacute; tambi&eacute;n entran los
+              pedidos y se informa el despacho, pero el men&uacute; <strong>Imprimir</strong> del admin
+              de Shopify no muestra nuestros r&oacute;tulos: se imprimen desde ac&aacute;.
+            </p>
+            <ol class="connect-help woo-steps">
+              <li>En tu Shopify and&aacute; a <strong>Configuraci&oacute;n &rarr; Apps &rarr; Desarrollar apps</strong> y cre&aacute; una app en el <strong>Dev Dashboard</strong>.</li>
+              <li>En la versi&oacute;n de la app eleg&iacute; los permisos <code>read_orders</code>, <code>read_merchant_managed_fulfillment_orders</code> y <code>write_merchant_managed_fulfillment_orders</code>.</li>
+              <li>En <strong>Acceso a datos protegidos de clientes</strong> ped&iacute; el <strong>nombre</strong> y la <strong>direcci&oacute;n</strong> (sin eso Shopify no deja leer los pedidos).</li>
+              <li>Public&aacute; la versi&oacute;n e <strong>instal&aacute; la app en tu tienda</strong>.</li>
+              <li>En la configuraci&oacute;n de la app copi&aacute; el <strong>ID de cliente</strong> y el <strong>secreto</strong>, y escrib&iacute; arriba el dominio de tu tienda.</li>
+            </ol>
+            <form class="woo-manual-form" id="shopifyManualForm" novalidate>
+              <div class="field">
+                <label for="shopifyClientIdInput">ID de cliente</label>
+                <input type="text" id="shopifyClientIdInput" autocomplete="off" spellcheck="false" />
+              </div>
+              <div class="field">
+                <label for="shopifyClientSecretInput">Secreto</label>
+                <input type="password" id="shopifyClientSecretInput" autocomplete="off" spellcheck="false" />
+              </div>
+              <button type="submit" class="btn btn-primary" id="shopifyManualBtn">Conectar con mi app</button>
+            </form>
+          </details>
           <div class="card-body connect-row">
             <div>
               <p class="connect-platform">WooCommerce</p>
@@ -116,7 +157,12 @@
               <button type="submit" class="btn btn-primary" id="wooManualBtn">Conectar con estas claves</button>
             </form>
           </details>
-        </section>
+          <!-- Resultado de la última conexión (éxito o error con su número), al
+               lado de los formularios: el aviso general de arriba queda fuera
+               de la vista cuando se conecta desde acá abajo. Lo llena tiendas.js
+               (showConnectResult). -->
+          <p id="connectMessage" class="page-message connect-message" role="status" aria-live="polite" hidden></p>
+        </details>
 
         <!-- Tiendas del usuario: las arma tiendas.js (renderStoreCard). -->
         <section class="card">

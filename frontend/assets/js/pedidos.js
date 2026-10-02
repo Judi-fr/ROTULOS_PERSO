@@ -214,6 +214,7 @@ async function setDefaultAddress(id) {
     });
     if (!response.ok) throw new Error("No se pudo actualizar la dirección predeterminada.");
     await loadAddresses();
+    showMessage("Listo: esa es ahora tu dirección predeterminada.", "success");
   } catch (err) {
     if (err.isSessionExpired) return;
     showMessage(err.message || "No se pudo actualizar la dirección predeterminada.");
@@ -228,6 +229,7 @@ async function deleteAddress(id) {
     const response = await apiFetch(`${ADDRESSES_URL}${id}/`, { method: "DELETE" });
     if (response.status === 204) {
       await loadAddresses();
+      showMessage("Dirección eliminada.", "success");
       return;
     }
     const data = await response.json().catch(() => ({}));
@@ -472,6 +474,7 @@ async function cancelOrder(id) {
       throw new Error(getErrorMessage(data, "No se pudo cancelar el pedido."));
     }
     await loadOrders();
+    showMessage("Pedido cancelado.", "success");
   } catch (err) {
     if (err.isSessionExpired) return;
     showMessage(err.message || "No se pudo cancelar el pedido.");
