@@ -89,3 +89,271 @@ function extractResults(data) {
   if (data && Array.isArray(data.results)) return data.results;
   return [];
 }
+
+// Descarga un archivo que devolvió la API (export, PDF) sin abrir otra
+// pestaña. El nombre sale del Content-Disposition del backend si lo trae.
+async function downloadResponse(response, fallbackName) {
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="?([^";]+)"?/i);
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = match ? match[1] : fallbackName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Selector de pedidos propios con filtros (tienda, estado, rango de fechas),
+// paginado y con selección que sobrevive al cambio de página y de filtro.
+// Lo comparten las acciones masivas que trabajan sobre pedidos tildados
+// (planilla_retiro.html, estado_pedidos.html); dibuja sus dos tarjetas
+// dentro de `root`. Usa las clases de imprimir_rotulos.css, que esas
+// páginas cargan. Necesita window.Auth (auth.js).
+//
+//   const picker = createOrderPicker(root, {
+//     statusOptions: [["created,preparing", "Pendientes de despacho"], ...],
+//     onSelectionChange: (count) => ...,
+//   });
+//   picker.selectedIds(); picker.clear(); picker.reload();
+function createOrderPicker(root, options = {}) {
+  const apiBase = window.APP_CONFIG.API_BASE;
+  const statusOptions = options.statusOptions || [
+    ["created,preparing", "Pendientes de despacho"],
+    ["", "Todos"],
+    ["created", "Creados"],
+    ["preparing", "En preparación"],
+    ["dispatched", "Despachados"],
+    ["in_transit", "En tránsito"],
+  ];
+  const selected = new Set();
+  let page = 1;
+  let hasNext = false;
+
+  root.innerHTML = `
+    <section class="profile-card">
+      <div class="profile-card-title">Qué pedidos ver</div>
+      <div class="profile-card-body">
+        <div class="filters-row">
+          <div class="field" data-role="storeField" style="display:none;">
+            <label>Tienda</label>
+            <select data-role="store"><option value="">Todas las tiendas</option></select>
+          </div>
+          <div class="field">
+            <label>Estado</label>
+            <select data-role="status"></select>
+          </div>
+          <div class="field">
+            <label>Desde</label>
+            <input type="date" data-role="dateFrom" />
+          </div>
+          <div class="field">
+            <label>Hasta</label>
+            <input type="date" data-role="dateTo" />
+          </div>
+        </div>
+        <p class="filters-hint">
+          El rango acota por fecha de alta del pedido. Filtrá y usá
+          "Seleccionar todos" para no tildarlos de a uno.
+        </p>
+      </div>
+    </section>
+    <section class="profile-card">
+      <div class="profile-card-title">
+        <span>Pedidos</span>
+        <span class="selection-count" data-role="count">0 seleccionados</span>
+      </div>
+      <div class="profile-card-body">
+        <div class="select-all-row">
+          <input type="checkbox" data-role="selectAll" id="pickerSelectAll" />
+          <label for="pickerSelectAll">Seleccionar todos los de esta página</label>
+        </div>
+        <div data-role="list" class="print-order-list">
+          <p class="empty-state">Cargando pedidos...</p>
+        </div>
+        <div class="pager" data-role="pager" style="display:none;">
+          <button type="button" class="btn btn-outline btn-small" data-role="prev">Anterior</button>
+          <span data-role="pageInfo"></span>
+          <button type="button" class="btn btn-outline btn-small" data-role="next">Siguiente</button>
+        </div>
+      </div>
+    </section>
+  `;
+  const el = (role) => root.querySelector(`[data-role="${role}"]`);
+  statusOptions.forEach(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    el("status").appendChild(option);
+  });
+
+  function updateCount() {
+    const count = selected.size;
+    el("count").textContent = count === 1 ? "1 seleccionado" : `${count} seleccionados`;
+    if (options.onSelectionChange) options.onSelectionChange(count);
+  }
+
+  function addressSummary(address) {
+    if (!address) return "";
+    const street = [address.street, address.number].filter(Boolean).join(" ");
+    const city = [address.city, address.state].filter(Boolean).join(", ");
+    return [street, city].filter(Boolean).join(" — ");
+  }
+
+  // Todo lo que viene de una tienda es texto de terceros: se escapa siempre.
+  function render(orders) {
+    const list = el("list");
+    if (!orders.length) {
+      list.innerHTML = '<p class="empty-state">No hay pedidos con estos filtros.</p>';
+      return;
+    }
+    list.innerHTML = "";
+    orders.forEach((order) => {
+      const row = document.createElement("label");
+      row.className = "print-order";
+      const number = order.external_number || order.id;
+      const recipient = order.address?.recipient_name || "";
+      const store = order.store_connection
+        ? `<span class="store-tag">${escapeHtml(order.store_name || "Tienda")}</span>`
+        : "";
+      const tracking = order.tracking_number
+        ? ` · Seguimiento ${escapeHtml(order.tracking_number)}`
+        : "";
+      row.innerHTML = `
+        <input type="checkbox" value="${escapeHtml(order.id)}" ${selected.has(order.id) ? "checked" : ""} />
+        <span class="print-order-body">
+          <span class="print-order-title">Pedido #${escapeHtml(number)}${store}</span>
+          <span class="print-order-meta">${escapeHtml(recipient)}${recipient ? " · " : ""}${escapeHtml(addressSummary(order.address))}</span>
+          <span class="print-order-meta">${escapeHtml(formatDate(order.created_at))} · ${escapeHtml(order.status_label || order.status)}${tracking}</span>
+        </span>
+      `;
+      row.querySelector("input").addEventListener("change", (event) => {
+        if (event.target.checked) selected.add(order.id);
+        else selected.delete(order.id);
+        updateCount();
+      });
+      list.appendChild(row);
+    });
+  }
+
+  async function load() {
+    const params = new URLSearchParams({ page: String(page) });
+    const filters = currentFilters();
+    Object.entries(filters).forEach(([key, value]) => params.set(key, value));
+    try {
+      const response = await window.Auth.apiFetch(`${apiBase}/orders/?${params}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(getErrorMessage(data, "No se pudieron cargar los pedidos."));
+      render(extractResults(data));
+      hasNext = Boolean(data.next);
+      el("pager").style.display = hasNext || page > 1 ? "flex" : "none";
+      el("pageInfo").textContent = `Página ${page}`;
+      el("prev").disabled = page <= 1;
+      el("next").disabled = !hasNext;
+      el("selectAll").checked = false;
+    } catch (err) {
+      if (err.isSessionExpired) return;
+      el("list").innerHTML = `<p class="empty-state">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  function currentFilters() {
+    const filters = {};
+    const map = { store: "store", status: "status", date_from: "dateFrom", date_to: "dateTo" };
+    Object.entries(map).forEach(([key, role]) => {
+      const value = el(role).value;
+      if (value) filters[key] = value;
+    });
+    return filters;
+  }
+
+  async function loadStores() {
+    try {
+      const response = await window.Auth.apiFetch(`${apiBase}/integrations/stores/`);
+      if (!response.ok) return;
+      const stores = extractResults(await response.json());
+      if (!stores.length) return;
+      const select = el("store");
+      stores.forEach((store) => {
+        const option = document.createElement("option");
+        option.value = store.id;
+        option.textContent = store.name || `Tienda ${store.external_store_id}`;
+        select.appendChild(option);
+      });
+      const manual = document.createElement("option");
+      manual.value = "manual";
+      manual.textContent = "Pedidos cargados a mano";
+      select.appendChild(manual);
+      el("storeField").style.display = "";
+    } catch (err) {
+      if (!err.isSessionExpired) console.error("Error al cargar tiendas:", err);
+    }
+  }
+
+  ["store", "status", "dateFrom", "dateTo"].forEach((role) => {
+    el(role).addEventListener("change", () => {
+      page = 1;
+      load();
+    });
+  });
+  el("selectAll").addEventListener("change", (event) => {
+    el("list").querySelectorAll("input[type=checkbox]").forEach((checkbox) => {
+      checkbox.checked = event.target.checked;
+      const id = Number(checkbox.value);
+      if (event.target.checked) selected.add(id);
+      else selected.delete(id);
+    });
+    updateCount();
+  });
+  el("prev").addEventListener("click", () => {
+    if (page > 1) {
+      page -= 1;
+      load();
+    }
+  });
+  el("next").addEventListener("click", () => {
+    if (hasNext) {
+      page += 1;
+      load();
+    }
+  });
+
+  loadStores().then(load);
+  updateCount();
+
+  return {
+    selectedIds: () => Array.from(selected),
+    clear() {
+      selected.clear();
+      updateCount();
+    },
+    reload: load,
+    filters: currentFilters,
+  };
+}
+
+// Detalle de una acción masiva ({updated, failed, results: [{number, ok,
+// detail}]}, ver apps.orders.bulk_views): lista solo los pedidos que NO se
+// pudieron actualizar y por qué. Los que salieron bien ya los resume el
+// aviso de la página.
+function renderBulkResult(container, data) {
+  container.innerHTML = "";
+  const failed = (data?.results || []).filter((item) => !item.ok);
+  if (!failed.length) return;
+  const box = document.createElement("div");
+  box.className = "bulk-result";
+  const title = document.createElement("p");
+  title.className = "bulk-result-title";
+  title.textContent =
+    failed.length === 1 ? "1 pedido no se actualizó:" : `${failed.length} pedidos no se actualizaron:`;
+  const list = document.createElement("ul");
+  failed.forEach((item) => {
+    const li = document.createElement("li");
+    li.textContent = `#${item.number}: ${item.detail}`;
+    list.appendChild(li);
+  });
+  box.append(title, list);
+  container.appendChild(box);
+}

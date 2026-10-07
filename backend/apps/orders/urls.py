@@ -9,6 +9,13 @@ Se montan bajo ``/api/v1/`` (ver config/urls.py), igual que
 from django.urls import path
 from rest_framework.routers import SimpleRouter
 
+from .bulk_views import (
+    BulkStatusView,
+    DispatchManifestView,
+    OrderExportView,
+    TrackingImportConfirmView,
+    TrackingImportPreviewView,
+)
 from .import_views import (
     ImportMappingViewSet,
     OrderImportConfirmView,
@@ -32,6 +39,21 @@ urlpatterns = [
     # Carga operativa (story 20): alta manual de un envío a nombre propio o
     # (con orders.create_for_others) de otro usuario.
     path("orders/manual/", ManualOrderCreateView.as_view(), name="order-manual-create"),
+    # Acciones masivas sobre los pedidos propios (ver bulk_views). Antes del
+    # router: si no, "export" se tomaría como el <pk> de /orders/<pk>/.
+    path("orders/bulk-status/", BulkStatusView.as_view(), name="order-bulk-status"),
+    path("orders/export/", OrderExportView.as_view(), name="order-export"),
+    path("orders/manifest/", DispatchManifestView.as_view(), name="order-manifest"),
+    path(
+        "orders/tracking-import/preview/",
+        TrackingImportPreviewView.as_view(),
+        name="order-tracking-import-preview",
+    ),
+    path(
+        "orders/tracking-import/confirm/",
+        TrackingImportConfirmView.as_view(),
+        name="order-tracking-import-confirm",
+    ),
     # Importación CSV/Excel (story 21), en tres pasos: subir -> mapear ->
     # confirmar. La plantilla descargable (story 22) va antes del router
     # para no chocar con /orders/imports/<pk>/.

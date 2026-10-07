@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Exportar pedidos</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/pedidos.css" />
+    <link rel="stylesheet" href="assets/css/imprimir_rotulos.css" />
+    <link rel="stylesheet" href="assets/css/acciones_masivas.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar" id="appTopbar" data-links='[{"href": "pedidos.html", "label": "Mis pedidos"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Exportar pedidos</h1>
+          <p>
+            Bajá tus pedidos en una planilla, para cargarlos en el sistema del
+            transportista o llevar tus cuentas.
+          </p>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <section class="profile-card">
+          <div class="profile-card-title">Qué pedidos exportar</div>
+          <div class="profile-card-body">
+            <div class="filters-row">
+              <div class="field" id="storeFilterField" style="display:none;">
+                <label for="storeFilter">Tienda</label>
+                <select id="storeFilter">
+                  <option value="">Todas las tiendas</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="statusFilter">Estado</label>
+                <select id="statusFilter">
+                  <option value="">Todos</option>
+                  <option value="created,preparing">Pendientes de despacho</option>
+                  <option value="dispatched,in_transit">En camino</option>
+                  <option value="delivered">Entregados</option>
+                  <option value="cancelled">Cancelados</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="dateFrom">Desde</label>
+                <input type="date" id="dateFrom" />
+              </div>
+              <div class="field">
+                <label for="dateTo">Hasta</label>
+                <input type="date" id="dateTo" />
+              </div>
+            </div>
+            <p class="filters-hint">
+              El rango acota por fecha de alta del pedido. Sin filtros se
+              exportan todos tus pedidos.
+            </p>
+          </div>
+        </section>
+
+        <section class="profile-card">
+          <div class="profile-card-title">Formato</div>
+          <div class="profile-card-body">
+            <div class="choice-row">
+              <label class="choice">
+                <input type="radio" name="fileType" value="xlsx" checked />
+                <span><strong>Excel (.xlsx)</strong><br /><small>Para abrir y trabajar en Excel o Google Sheets.</small></span>
+              </label>
+              <label class="choice">
+                <input type="radio" name="fileType" value="csv" />
+                <span><strong>CSV</strong><br /><small>Para subir a otro sistema (separado por punto y coma).</small></span>
+              </label>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn btn-primary" id="exportBtn">Exportar</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/export_orders.js"></script>
+  </body>
+</html>

@@ -195,6 +195,10 @@ CORS_EXPOSE_HEADERS = [
     "X-Layout-Missing",
     "X-Layout-Truncated",
     "X-Layout-Warnings",
+    # Exportación de pedidos y planilla de retiro (apps.orders.bulk_views):
+    # el nombre del archivo y cuántos pedidos salieron.
+    "Content-Disposition",
+    "X-Order-Count",
 ]
 
 # ---------------------------------------------------------------------------
@@ -326,13 +330,14 @@ SHOPIFY_CLIENT_ID = env("SHOPIFY_CLIENT_ID", default="")
 SHOPIFY_CLIENT_SECRET = env("SHOPIFY_CLIENT_SECRET", default="")
 # Versión de la GraphQL Admin API (trimestral: AAAA-01/04/07/10).
 SHOPIFY_API_VERSION = env("SHOPIFY_API_VERSION", default="2026-07")
-# Se piden todos al instalar, aunque traer pedidos y devolver el tracking
-# todavía no esté hecho: sumar un scope después obliga al comerciante a
-# aprobar de nuevo. Leer nombre/dirección del comprador además requiere que
-# Shopify apruebe el acceso a "protected customer data" en el panel.
+# Sumar un scope después obliga al comerciante a aprobar de nuevo (lo pide
+# ShopifyLaunchView al abrir la app). write_fulfillments es para informar
+# "en tránsito" y "entregado" (fulfillmentEventCreate). Leer nombre/dirección
+# del comprador además requiere que Shopify apruebe el acceso a "protected
+# customer data" en el panel.
 SHOPIFY_SCOPES = env(
     "SHOPIFY_SCOPES",
-    default="read_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders",
+    default="read_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,write_fulfillments",
 )
 SHOPIFY_HTTP_TIMEOUT_SECONDS = env.int("SHOPIFY_HTTP_TIMEOUT_SECONDS", default=10)
 # Pedidos por página al importar. Chico a propósito: el costo de una consulta

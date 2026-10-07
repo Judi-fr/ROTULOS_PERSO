@@ -346,3 +346,88 @@ class ShopifyPushFulfillmentTests(ShopifyTestMixin, APITestCase):
         self.order.save()
 
         self.assertFalse(IntegrationEvent.objects.filter(event_type=PUSH_FULFILLMENT_EVENT).exists())
+
+
+def fulfilled_order(display_status):
+    """Fulfillment order ya despachado, con su envío en ``display_status``."""
+    order = closed_fulfillment_order(TRACKING)
+    order["fulfillments"]["nodes"][0]["displayStatus"] = display_status
+    return order
+
+
+@override_settings(**SHOPIFY_SETTINGS)
+class ShopifyDeliveryEventTests(ShopifyTestMixin, APITestCase):
+    """En tránsito y entregado viajan como fulfillment events sobre el envío."""
+
+    def setUp(self):
+        super().setUp()
+        self.owner = make_user("comercio@example.com")
+        self.connection = self._connection(owner=self.owner)
+        order, _ = upsert_store_order(self.connection, get_provider("shopify").normalize_order(shopify_order(777)))
+        self.order = Order.objects.get(pk=order.pk)
+
+    def _ship(self, status, **data):
+        response = self.client.post(
+            f"/api/v1/orders/{self.order.pk}/ship/",
+            {"status": status, "tracking_number": TRACKING, **data},
+            format="json",
+            **auth_headers_for(self.owner),
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        process_due_events()
+
+    def _events(self):
+        return [call["fulfillmentEvent"] for call in self.fake.mutations("fulfillmentEventCreate")]
+
+    def test_en_transito_sobre_un_envio_existente(self):
+        self.fake.fulfillment_orders = [fulfilled_order("FULFILLED")]
+
+        self._ship("in_transit")
+
+        self.assertEqual(self._events(), [{"fulfillmentId": "gid://shopify/Fulfillment/5", "status": "IN_TRANSIT"}])
+
+    def test_entregado_sin_despacho_previo_crea_el_envio_y_lo_marca_entregado(self):
+        self.fake.fulfillment_orders = [OPEN_FULFILLMENT_ORDER]
+
+        self._ship("delivered")
+
+        self.assertEqual(len(self.fake.mutations("fulfillmentCreate")), 1)
+        # El id que devolvió fulfillmentCreate en el simulador.
+        self.assertEqual(self._events(), [{"fulfillmentId": "gid://shopify/Fulfillment/1", "status": "DELIVERED"}])
+        self.assertEqual(IntegrationEvent.objects.get(event_type=PUSH_FULFILLMENT_EVENT).status, "done")
+
+    def test_ya_entregado_en_shopify_no_repite_el_evento(self):
+        self.fake.fulfillment_orders = [fulfilled_order("DELIVERED")]
+        self._ship("delivered")
+        self.assertEqual(self._events(), [])
+
+    def test_nunca_vuelve_un_envio_entregado_a_en_transito(self):
+        self.fake.fulfillment_orders = [fulfilled_order("DELIVERED")]
+        self._ship("in_transit")
+        self.assertEqual(self._events(), [])
+
+    def test_despachado_no_manda_eventos(self):
+        self.fake.fulfillment_orders = [OPEN_FULFILLMENT_ORDER]
+        self._ship("dispatched")
+        self.assertEqual(self._events(), [])
+
+    def test_tienda_que_no_aprobo_el_scope_queda_enviada_sin_fallar(self):
+        self.connection.scopes = "read_orders,write_merchant_managed_fulfillment_orders"
+        self.connection.save()
+        self.fake.fulfillment_orders = [OPEN_FULFILLMENT_ORDER]
+
+        self._ship("delivered")
+
+        self.assertEqual(len(self.fake.mutations("fulfillmentCreate")), 1)
+        self.assertEqual(self._events(), [])
+        self.assertEqual(IntegrationEvent.objects.get(event_type=PUSH_FULFILLMENT_EVENT).status, "done")
+
+    def test_shopify_rechaza_el_evento(self):
+        self.fake.fulfillment_orders = [fulfilled_order("FULFILLED")]
+        self.fake.mutation_errors = [{"field": ["fulfillmentEvent"], "message": "Fulfillment is cancelled."}]
+
+        self._ship("delivered")
+
+        event = IntegrationEvent.objects.get(event_type=PUSH_FULFILLMENT_EVENT)
+        self.assertEqual(event.status, "failed")
+        self.assertIn("Fulfillment is cancelled", event.last_error)

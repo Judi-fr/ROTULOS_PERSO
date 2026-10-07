@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Cambiar estado de pedidos</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/pedidos.css" />
+    <link rel="stylesheet" href="assets/css/imprimir_rotulos.css" />
+    <link rel="stylesheet" href="assets/css/acciones_masivas.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar" id="appTopbar" data-links='[{"href": "pedidos.html", "label": "Mis pedidos"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Cambiar estado de pedidos</h1>
+          <p>
+            Despachá, marcá en tránsito o entregados, o cancelá varios pedidos
+            de una vez. Si vienen de una tienda, la tienda se entera sola.
+          </p>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <!-- Filtros y lista: los dibuja createOrderPicker (utils.js). -->
+        <div id="orderPicker"></div>
+
+        <section class="profile-card">
+          <div class="profile-card-title">Qué hacer con los pedidos elegidos</div>
+          <div class="profile-card-body">
+            <div class="filters-row">
+              <div class="field">
+                <label for="targetStatus">Nuevo estado</label>
+                <select id="targetStatus">
+                  <option value="dispatched">Despachado</option>
+                  <option value="in_transit">En tránsito</option>
+                  <option value="delivered">Entregado</option>
+                  <option value="cancelled">Cancelar los pedidos</option>
+                </select>
+              </div>
+              <div class="field" id="carrierField">
+                <label for="carrierInput">Transportista (opcional)</label>
+                <input type="text" id="carrierInput" maxlength="100" placeholder="Se guarda en todos los elegidos" />
+              </div>
+            </div>
+            <p class="filters-hint">
+              El estado del envío solo avanza: un pedido que ya está más
+              adelante no vuelve atrás, y solo se puede cancelar un pedido
+              que todavía no salió. Esos se informan abajo y el resto se
+              actualiza igual.
+            </p>
+            <div class="form-actions">
+              <button type="button" class="btn btn-primary" id="applyBtn">Aplicar</button>
+            </div>
+            <div id="bulkResult"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/bulk_status.js"></script>
+  </body>
+</html>

@@ -223,6 +223,30 @@ There is **no `role` field on `User`** — it's derived, never stored directly:
   /orders/imports/` (upload) → `POST /orders/imports/<id>/validate/` → `POST /orders/imports/<id>/confirm/`,
   plus `GET /orders/imports/template/` and saved mappings at `/orders/import-mappings/`
   (`orders.import_mappings`).
+- **Bulk actions (`bulk_views.py`, logic in `bulk.py`/`manifest.py`)** — each processes orders one by one
+  and answers `{updated, failed, results: [{order_id, number, ok, detail}]}`, so one order that can't move
+  (delivered, cancelled, foreign) never blocks the rest. They reuse `shipping.apply_shipping`/`apply_cancel`,
+  the same code as `ship`/`cancel` (forward-only status, store push via `Order.save`, `order.ship`/
+  `order.cancel` audit with actor), and the permissions of the one-by-one action — no new permission keys.
+  Max 500 orders per call.
+  - `POST /orders/bulk-status/` `{order_ids, status, carrier?}`: `cancelled` needs `orders.cancel`, the
+    shipping statuses `orders.create`.
+  - `GET /orders/export/?file_type=csv|xlsx` + the list's own filters (`views.filter_orders`, shared with
+    `GET /orders/`) or `ids=`. **`file_type`, not `format`**: DRF reserves `?format=` for the renderer and
+    404s on "csv". CSV is `;` + BOM (what Spanish Excel opens on double click); third-party text starting
+    with `= + - @` is neutralized (CSV injection) and xlsx cells are forced to string. Count in
+    `X-Order-Count` (exposed via `CORS_EXPOSE_HEADERS`, like `Content-Disposition`).
+  - `POST /orders/manifest/` `{order_ids, carrier?}` → "Planilla de retiro" PDF (platypus table with
+    repeated header + signature block kept together) the carrier signs on pickup. Same rule as the label:
+    no products, prices or buyer contact. Changes no status.
+  - `POST /orders/tracking-import/preview/` (multipart `file`, optional `mapping` JSON, `carrier`,
+    `store`) reads the carrier's spreadsheet with `import_parsing`, guesses columns by synonym
+    (`detect_columns`: tracking before order, because "número de seguimiento" contains "número") and
+    matches each row to an own order — `external_number`, then `external_id`, then our id — with a
+    per-row `state` (`ok`/`not_found`/`ambiguous`/`not_shippable`/`duplicate`/...). Stores nothing.
+    `ambiguous` = two stores share the number; `store` breaks the tie. `.../confirm/` `{status, rows}`
+    applies only the rows sent back; an order already further along keeps its status and only gets the
+    tracking.
 - `ingestion.upsert_store_order(connection, normalized)` is the single store-order creation path: keyed on
   `(store_connection, external_id)`, ignores updates older than `external_updated_at`, and
   `_synced_status()` only ever moves a shipping status forward or cancels (never reactivates a locally
@@ -397,9 +421,17 @@ The product is an app installed in the merchant's store platform: Tiendanube (co
   `{number, url, company=Order.carrier}`, and rewrites tracking only when the number changed, on the
   fulfillments reached THROUGH those visible fulfillment orders — never via `order.fulfillments` +
   `Fulfillment.service`: reading `service` needs scopes the app lacks, and Shopify rejects the whole
-  query as soon as the order has any fulfillment (found live; the schema validator doesn't catch it). "Delivered" is NOT pushed: `fulfillmentEventCreate` needs the
-  `write_fulfillments` scope, which the app doesn't request, so a delivered order stays "fulfilled" in
-  Shopify.
+  query as soon as the order has any fulfillment (found live; the schema validator doesn't catch it). **In transit and delivered are pushed as fulfillment events** (`fulfillmentEventCreate`, status
+  `IN_TRANSIT`/`DELIVERED`) on each of the app's fulfillments, including one created in the same push
+  (an order marked delivered without being dispatched first gets fulfilled, then delivered). Skipped
+  when the fulfillment's `displayStatus` is already there or further on (`_ALREADY_AT`): no duplicate
+  line in the buyer's timeline, and a delivered shipment never goes back to in transit. It needs
+  `write_fulfillments` (added 2026-10-05): a store installed before that has it missing from
+  `StoreConnection.scopes`, so the event is skipped without failing (the shipment itself went out), and
+  `ShopifyLaunchView` sends that merchant back through OAuth the next time they open the app
+  (`_needs_new_scopes`; Shopify only asks for what's missing and the callback updates the same row).
+  Not for empty `scopes` (unknown — it would loop) nor for own-app connections. `missing_scopes`
+  treats a granted `write_x` as covering `read_x`.
 - **Printing labels from Shopify's own admin (`shopify_print.py`).** The merchant ticks orders in their
   Shopify order list → Print menu → our labels. That menu entry is an *admin print action extension*
   (target `admin.order-index.selection-print-action.render`), a separate Shopify CLI project in
@@ -693,6 +725,15 @@ permission (UI-only gating; the backend re-checks every permission server-side).
   the `X-Layout-Missing`/`X-Layout-Truncated` headers surface as warnings. That is deliberate: the canvas
   places things (one mm→px factor for everything), the server says what comes out — so this screen cannot
   drift from the print output the way `editor_rotulos.html` does (see below).
+- **Bulk order actions, one page each** (backend in `apps/orders/bulk_views.py`):
+  `cargar_seguimientos.html` + `tracking_import.js` (upload → review/remap columns → confirm),
+  `planilla_retiro.html` + `dispatch_manifest.js` (optionally also marks them dispatched),
+  `estado_pedidos.html` + `bulk_status.js` (asks before cancelling) and `exportar_pedidos.html` +
+  `export_orders.js` (by filter, no ticking). The two that work on ticked orders draw their filters and
+  list with `createOrderPicker(root)` from `utils.js` (selection survives paging/filters); results go
+  through `renderBulkResult` and files through `downloadResponse`, also in `utils.js`. They load
+  `pedidos.css` + `imprimir_rotulos.css` + `acciones_masivas.css`. `print_labels.js` keeps its own copy
+  of the list (it predates the picker and wasn't reorganized).
 - **Addresses are not a menu entry.** They live inside `pedidos.html` (its own section, full CRUD); a
   separate `addresses` entry pointing at `pedidos.html#addressesSection` was a second door to the same
   screen and was removed.

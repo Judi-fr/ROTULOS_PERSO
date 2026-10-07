@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Cargar seguimientos</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/pedidos.css" />
+    <link rel="stylesheet" href="assets/css/imprimir_rotulos.css" />
+    <link rel="stylesheet" href="assets/css/acciones_masivas.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar" id="appTopbar" data-links='[{"href": "pedidos.html", "label": "Mis pedidos"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Cargar seguimientos</h1>
+          <p>
+            Subí la planilla que te dio el transportista con el número de
+            pedido y el de seguimiento: se cargan todos de una vez y, si el
+            pedido vino de una tienda, el comprador recibe el seguimiento.
+          </p>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <!-- Paso 1: la planilla -->
+        <section class="profile-card">
+          <div class="profile-card-title">1. La planilla del transportista</div>
+          <div class="profile-card-body">
+            <div class="filters-row">
+              <div class="field">
+                <label for="fileInput">Archivo (Excel o CSV)</label>
+                <input type="file" id="fileInput" accept=".xlsx,.csv,.txt" />
+              </div>
+              <div class="field">
+                <label for="carrierInput">Transportista (si la planilla no lo dice)</label>
+                <input type="text" id="carrierInput" maxlength="100" placeholder="Se usa en las filas sin transportista" />
+              </div>
+              <div class="field" id="storeFilterField" style="display:none;">
+                <label for="storeFilter">Tienda</label>
+                <select id="storeFilter">
+                  <option value="">Cualquiera</option>
+                </select>
+              </div>
+            </div>
+            <p class="filters-hint">
+              Necesita una columna con el número de pedido (el de tu tienda, o
+              el que muestra esta app para los cargados a mano) y otra con el
+              número de seguimiento. Las columnas se reconocen solas; si no,
+              las elegís en el paso 2. Elegí la tienda solo si dos de tus
+              tiendas usan los mismos números de pedido.
+            </p>
+            <div class="form-actions">
+              <button type="button" class="btn btn-primary" id="previewBtn">Leer planilla</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Paso 2: revisar -->
+        <section class="profile-card" id="reviewCard" style="display:none;">
+          <div class="profile-card-title">
+            <span>2. Revisá lo que se encontró</span>
+            <span class="selection-count" id="reviewCount"></span>
+          </div>
+          <div class="profile-card-body">
+            <div class="filters-row" id="mappingRow"></div>
+            <div class="form-actions" style="justify-content:flex-start;">
+              <button type="button" class="btn btn-outline btn-small" id="remapBtn">Volver a cruzar con estas columnas</button>
+            </div>
+            <div id="countsRow" class="counts-row"></div>
+            <div class="tracking-table-wrap">
+              <table class="tracking-table">
+                <thead>
+                  <tr>
+                    <th><input type="checkbox" id="selectAllRows" checked title="Todas las filas válidas" /></th>
+                    <th>Fila</th>
+                    <th>Pedido</th>
+                    <th>Coincide con</th>
+                    <th>Seguimiento</th>
+                    <th>Transportista</th>
+                    <th>Resultado</th>
+                  </tr>
+                </thead>
+                <tbody id="rowsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Paso 3: confirmar -->
+        <section class="profile-card" id="confirmCard" style="display:none;">
+          <div class="profile-card-title">3. Confirmar</div>
+          <div class="profile-card-body">
+            <div class="filters-row">
+              <div class="field">
+                <label for="targetStatus">Dejar los pedidos como</label>
+                <select id="targetStatus">
+                  <option value="dispatched">Despachados</option>
+                  <option value="in_transit">En tránsito</option>
+                  <option value="delivered">Entregados</option>
+                </select>
+              </div>
+            </div>
+            <p class="filters-hint">
+              Un pedido que ya está más adelante conserva su estado: solo se
+              le carga el seguimiento.
+            </p>
+            <div class="form-actions">
+              <button type="button" class="btn btn-primary" id="confirmBtn">Cargar seguimientos</button>
+            </div>
+            <div id="bulkResult"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/tracking_import.js"></script>
+  </body>
+</html>

@@ -126,6 +126,45 @@ class DashboardView(APIView):
                     "enabled": True,
                 }
             )
+        # Acciones masivas sobre pedidos propios (apps.orders.bulk_views),
+        # con el mismo permiso que exige cada endpoint: la planilla de retiro
+        # y la exportación solo leen; cargar seguimientos y cambiar estados
+        # despachan, como POST /orders/<id>/ship/.
+        if user_has_permission(user, "orders.view"):
+            menu.append(
+                {
+                    "key": "dispatch_manifest",
+                    "label": "Planilla de retiro",
+                    "url": "planilla_retiro.html",
+                    "enabled": True,
+                }
+            )
+        if user_has_permission(user, "orders.create"):
+            menu.append(
+                {
+                    "key": "tracking_import",
+                    "label": "Cargar seguimientos",
+                    "url": "cargar_seguimientos.html",
+                    "enabled": True,
+                }
+            )
+            menu.append(
+                {
+                    "key": "orders_bulk_status",
+                    "label": "Cambiar estado de pedidos",
+                    "url": "estado_pedidos.html",
+                    "enabled": True,
+                }
+            )
+        if user_has_permission(user, "orders.view"):
+            menu.append(
+                {
+                    "key": "orders_export",
+                    "label": "Exportar pedidos",
+                    "url": "exportar_pedidos.html",
+                    "enabled": True,
+                }
+            )
         # Las direcciones NO son una entrada aparte: pedidos.html ya tiene
         # su propia sección con el CRUD completo, y listarlas también acá
         # era ofrecer dos puertas al mismo lugar.

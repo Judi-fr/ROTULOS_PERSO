@@ -30,8 +30,44 @@ from apps.common.date_filters import date_range_q
 from .ingestion import TARGET_FIELDS, create_order_from_data, validate_mapped_row
 from .models import Address, Order
 from .serializers import AddressSerializer, AdminOrderSerializer, OrderSerializer, OrderShipSerializer
+from .shipping import apply_cancel, apply_shipping
 
 User = get_user_model()
+
+
+def filter_orders(queryset, params):
+    """Filtros del listado de pedidos propios, compartidos con la exportación
+    (``bulk_views.OrderExportView``) para que "exportar lo que estoy viendo"
+    sea exactamente lo que se ve."""
+    # ?store=<id> recorta a una tienda conectada, ?store=manual a los
+    # pedidos sin tienda. Como el queryset ya es del usuario, un id de
+    # tienda ajena simplemente devuelve una lista vacía.
+    store = params.get("store")
+    if store:
+        if store == "manual":
+            queryset = queryset.filter(store_connection__isnull=True)
+        elif store.isdigit():
+            queryset = queryset.filter(store_connection_id=int(store))
+        else:
+            raise ValidationError(
+                {"store": "Debe ser el id de una tienda o 'manual'."}
+            )
+    # ?status=created,preparing — uno o varios estados separados por coma
+    # (la pantalla de impresión trabaja sobre los pedidos pendientes).
+    status_param = params.get("status")
+    if status_param:
+        wanted = [value.strip() for value in status_param.split(",") if value.strip()]
+        valid = {choice for choice, _ in Order.Status.choices}
+        unknown = [value for value in wanted if value not in valid]
+        if unknown:
+            raise ValidationError(
+                {"status": f"Estado desconocido: {', '.join(unknown)}."}
+            )
+        queryset = queryset.filter(status__in=wanted)
+    # ?date_from=/&date_to= (YYYY-MM-DD, inclusive los dos) acota por
+    # fecha de alta. Lo usa la pantalla de impresión para juntar "los
+    # pedidos de esta semana" sin tener que tildarlos de a uno.
+    return queryset.filter(date_range_q(params))
 
 
 class AddressViewSet(viewsets.ModelViewSet):
@@ -97,42 +133,9 @@ class OrderViewSet(
             .select_related("address", "store_connection")
             .prefetch_related("status_events")
         )
-        # ?store=<id> recorta a una tienda conectada, ?store=manual a los
-        # pedidos sin tienda. Como el queryset ya es del usuario, un id de
-        # tienda ajena simplemente devuelve una lista vacía.
-        store = self.request.query_params.get("store") if self.action == "list" else None
-        if store:
-            if store == "manual":
-                queryset = queryset.filter(store_connection__isnull=True)
-            elif store.isdigit():
-                queryset = queryset.filter(store_connection_id=int(store))
-            else:
-                raise ValidationError(
-                    {"store": "Debe ser el id de una tienda o 'manual'."}
-                )
-        # ?status=created,preparing — uno o varios estados separados por coma
-        # (la pantalla de impresión trabaja sobre los pedidos pendientes).
-        status_param = (
-            self.request.query_params.get("status") if self.action == "list" else None
-        )
-        if status_param:
-            wanted = [value.strip() for value in status_param.split(",") if value.strip()]
-            valid = {choice for choice, _ in Order.Status.choices}
-            unknown = [value for value in wanted if value not in valid]
-            if unknown:
-                raise ValidationError(
-                    {"status": f"Estado desconocido: {', '.join(unknown)}."}
-                )
-            queryset = queryset.filter(status__in=wanted)
-        # ?date_from=/&date_to= (YYYY-MM-DD, inclusive los dos) acota por
-        # fecha de alta. Lo usa la pantalla de impresión para juntar "los
-        # pedidos de esta semana" sin tener que tildarlos de a uno.
         if self.action == "list":
-            queryset = self._filter_by_dates(queryset)
+            queryset = filter_orders(queryset, self.request.query_params)
         return queryset
-
-    def _filter_by_dates(self, queryset):
-        return queryset.filter(date_range_q(self.request.query_params))
 
     def perform_create(self, serializer):
         order = serializer.save(user=self.request.user)
@@ -153,23 +156,7 @@ class OrderViewSet(
                 {"detail": "Este pedido ya no se puede cancelar."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        previous_status = order.status
-        # El save() del modelo ya deja su propio rastro de auditoría
-        # (order.status_change, sin actor) para ediciones hechas desde el
-        # admin de Django o a mano; acá se evita duplicarlo porque esta
-        # cancelación SÍ tiene un actor conocido (order.cancel, más abajo).
-        order._skip_status_audit = True
-        order.status = Order.Status.CANCELLED
-        order.save(update_fields=["status", "updated_at"])
-        record(
-            request,
-            category="orders",
-            action="order.cancel",
-            target=order,
-            target_type="order",
-            target_repr=str(order),
-            changes={"status": {"from": previous_status, "to": order.status}},
-        )
+        apply_cancel(request, order)
         return Response(self.get_serializer(order).data)
 
     @action(detail=True, methods=["post"])
@@ -183,34 +170,7 @@ class OrderViewSet(
         order = self.get_object()
         serializer = OrderShipSerializer(data=request.data, context={"order": order})
         serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-
-        tracked_fields = ("status", "carrier", "tracking_number", "tracking_url")
-        previous = {field: getattr(order, field) for field in tracked_fields}
-        order.status = data["status"]
-        for field in ("carrier", "tracking_number", "tracking_url"):
-            if field in data:
-                setattr(order, field, data[field].strip())
-        changes = {
-            field: {"from": previous[field], "to": getattr(order, field)}
-            for field in tracked_fields
-            if previous[field] != getattr(order, field)
-        }
-
-        if changes:
-            # Mismo criterio que cancel: esta vista registra su propia
-            # auditoría con actor (order.ship).
-            order._skip_status_audit = True
-            order.save(update_fields=[*tracked_fields, "updated_at"])
-            record(
-                request,
-                category="orders",
-                action="order.ship",
-                target=order,
-                target_type="order",
-                target_repr=str(order),
-                changes=changes,
-            )
+        apply_shipping(request, order, serializer.validated_data)
         # Se relee para que el timeline (status_events, prefetched) incluya
         # el estado nuevo.
         return Response(self.get_serializer(self.get_queryset().get(pk=order.pk)).data)

@@ -11,9 +11,13 @@ tracking (``push_fulfillment``).
 Solo se tocan los que la app puede despachar (``CREATE_FULFILLMENT`` en
 ``supportedActions``): los de un servicio externo (un depósito que despacha
 por su cuenta) ni aparecen con nuestros scopes, y no nos corresponden.
-"Entregado" NO se informa: marcarlo (``fulfillmentEventCreate``) exige el
-scope ``write_fulfillments``, que la app no pide; un pedido entregado queda
-en Shopify como enviado, con su tracking.
+"En tránsito" y "entregado" se informan como *fulfillment events*
+(``fulfillmentEventCreate``) sobre esos envíos, que es lo que Shopify muestra
+en la línea de tiempo del pedido y al comprador. Exigen el scope
+``write_fulfillments``: una tienda instalada antes de pedirlo no lo tiene
+hasta que el comerciante vuelve a aprobar la app (``ShopifyLaunchView`` lo
+pide al abrirla, ver ``missing_scopes``); mientras tanto el pedido queda
+"enviado", con su tracking, y el evento se saltea sin fallar.
 
 **Leer pedidos exige "protected customer data".** Sin esa aprobación en el
 Dev Dashboard, Shopify responde "This app is not approved to access the
@@ -153,7 +157,7 @@ query OrderFulfillment($id: ID!) {
         id status
         supportedActions { action }
         fulfillments(first: 10) {
-          nodes { id status trackingInfo(first: 1) { number url company } }
+          nodes { id status displayStatus trackingInfo(first: 1) { number url company } }
         }
       }
     }
@@ -164,7 +168,7 @@ query OrderFulfillment($id: ID!) {
 FULFILLMENT_CREATE_MUTATION = """
 mutation FulfillmentCreate($fulfillment: FulfillmentInput!) {
   fulfillmentCreate(fulfillment: $fulfillment) {
-    fulfillment { id status }
+    fulfillment { id status displayStatus }
     userErrors { field message }
   }
 }
@@ -179,10 +183,46 @@ mutation FulfillmentTrackingUpdate($fulfillmentId: ID!, $trackingInfoInput: Fulf
 }
 """
 
-# Estados locales que se informan a Shopify como "enviado". Entregado incluido:
-# si el pedido se marcó entregado sin pasar por despachado, igual tiene que
-# figurar enviado en la tienda (ver docstring: "entregado" no se informa).
-SHIPPED_ORDER_STATUSES = ("dispatched", "in_transit", "delivered")
+FULFILLMENT_EVENT_MUTATION = """
+mutation FulfillmentEventCreate($fulfillmentEvent: FulfillmentEventInput!) {
+  fulfillmentEventCreate(fulfillmentEvent: $fulfillmentEvent) {
+    fulfillmentEvent { id status }
+    userErrors { field message }
+  }
+}
+"""
+
+# Estado local -> lo que se informa a Shopify. Todos crean el envío
+# ("enviado") si todavía no existe: un pedido marcado entregado sin pasar por
+# despachado igual tiene que figurar enviado. En tránsito y entregado agregan
+# además el evento (FulfillmentEventStatus) sobre cada envío.
+SHOPIFY_FULFILLMENT_STATUS = {
+    "dispatched": "FULFILLED",
+    "in_transit": "IN_TRANSIT",
+    "delivered": "DELIVERED",
+}
+SHIPPED_ORDER_STATUSES = tuple(SHOPIFY_FULFILLMENT_STATUS)
+
+# Scope que exige fulfillmentEventCreate.
+EVENTS_SCOPE = "write_fulfillments"
+
+# displayStatus de un envío que ya está en ese punto o más adelante: no se
+# le vuelve a mandar el evento (sería una línea repetida en la línea de
+# tiempo del comprador), y nunca se lo hace "retroceder" a en tránsito.
+_ALREADY_AT = {
+    "IN_TRANSIT": {"IN_TRANSIT", "OUT_FOR_DELIVERY", "ATTEMPTED_DELIVERY", "DELIVERED", "PICKED_UP"},
+    "DELIVERED": {"DELIVERED", "PICKED_UP"},
+}
+
+
+def missing_scopes(granted, required):
+    """Scopes de ``required`` que no están en ``granted`` (cadenas separadas
+    por coma). Un ``write_x`` concedido cubre ``read_x``: Shopify a veces
+    devuelve solo el de escritura."""
+    have = {scope.strip() for scope in (granted or "").split(",") if scope.strip()}
+    covered = have | {"read_" + scope[len("write_"):] for scope in have if scope.startswith("write_")}
+    wanted = [scope.strip() for scope in (required or "").split(",") if scope.strip()]
+    return [scope for scope in wanted if scope not in covered]
 
 # Avisos de pedido. orders/updated ya cubre pagado, preparado y despachado;
 # orders/cancelled se registra aparte por las dudas de que la cancelación
@@ -532,7 +572,7 @@ class ShopifyProvider(StoreProvider):
     # --- Despacho y tracking ----------------------------------------------
 
     def fulfillment_status_for(self, order_status):
-        return "FULFILLED" if order_status in SHIPPED_ORDER_STATUSES else None
+        return SHOPIFY_FULFILLMENT_STATUS.get(order_status)
 
     def _mutate(self, connection, mutation, variables, key, what):
         result = self.graphql(connection, mutation, variables).get(key) or {}
@@ -545,10 +585,12 @@ class ShopifyProvider(StoreProvider):
     def push_fulfillment(
         self, connection, order_id, *, status, tracking_code="", tracking_url="", carrier="", notify_customer=True
     ):
-        """Despacha en Shopify lo que la app puede despachar y deja el
-        tracking al día. Idempotente: un fulfillment order ya despachado deja
-        de ofrecer ``CREATE_FULFILLMENT``, y el tracking solo se reescribe si
-        cambió. Devuelve los ids de fulfillment creados o actualizados."""
+        """Despacha en Shopify lo que la app puede despachar, deja el
+        tracking al día y, para ``IN_TRANSIT``/``DELIVERED``, agrega ese
+        evento a cada envío. Idempotente: un fulfillment order ya despachado
+        deja de ofrecer ``CREATE_FULFILLMENT``, el tracking solo se reescribe
+        si cambió y el evento solo se manda si el envío no está ya en ese
+        punto. Devuelve los ids de fulfillment creados o actualizados."""
         order = self.graphql(connection, FULFILLMENT_QUERY, {"id": order_gid(order_id)}).get("order")
         if not isinstance(order, dict):
             raise ProviderNotFoundError(f"Shopify: el pedido {order_id} no existe.")
@@ -565,6 +607,16 @@ class ShopifyProvider(StoreProvider):
             node for node in (order.get("fulfillmentOrders") or {}).get("nodes") or [] if isinstance(node, dict)
         ]
         touched = []
+        # Envíos de la app sobre los que puede ir un evento: los que ya
+        # estaban y los que se crean acá (id -> displayStatus).
+        shipments = {
+            fulfillment["id"]: _text(fulfillment.get("displayStatus")).upper()
+            for fulfillment_order in fulfillment_orders
+            for fulfillment in (fulfillment_order.get("fulfillments") or {}).get("nodes") or []
+            if isinstance(fulfillment, dict)
+            and fulfillment.get("id")
+            and _text(fulfillment.get("status")).upper() == "SUCCESS"
+        }
         for fulfillment_order in fulfillment_orders:
             actions = {_text(item.get("action")) for item in fulfillment_order.get("supportedActions") or []}
             if "CREATE_FULFILLMENT" not in actions:
@@ -580,7 +632,10 @@ class ShopifyProvider(StoreProvider):
             result = self._mutate(
                 connection, FULFILLMENT_CREATE_MUTATION, {"fulfillment": fulfillment}, "fulfillmentCreate", "el despacho"
             )
-            touched.append(_text((result.get("fulfillment") or {}).get("id")))
+            created = result.get("fulfillment") or {}
+            touched.append(_text(created.get("id")))
+            if created.get("id"):
+                shipments[created["id"]] = _text(created.get("displayStatus")).upper()
 
         if tracking:
             # Envíos ya hechos de los fulfillment orders del comerciante (los
@@ -606,7 +661,36 @@ class ShopifyProvider(StoreProvider):
                     "el número de seguimiento",
                 )
                 touched.append(_text(fulfillment["id"]))
+
+        if status in _ALREADY_AT:
+            self._push_events(connection, order_id, status, shipments)
         return touched
+
+    def _push_events(self, connection, order_id, status, shipments):
+        """El evento ``status`` (en tránsito / entregado) sobre cada envío
+        que no esté ya en ese punto. Sin el scope no se intenta: la tienda
+        todavía no volvió a aprobar la app, y fallar acá dejaría el despacho
+        —que sí salió— como un aviso fallido."""
+        # Sin scopes guardados (no se sabe) se intenta igual.
+        if connection.scopes and missing_scopes(connection.scopes, EVENTS_SCOPE):
+            logger.info(
+                "Shopify %s: no se informa %s del pedido %s, la tienda no aprobó %s todavía.",
+                connection.external_store_id,
+                status,
+                order_id,
+                EVENTS_SCOPE,
+            )
+            return
+        for fulfillment_id, display_status in shipments.items():
+            if display_status in _ALREADY_AT[status]:
+                continue
+            self._mutate(
+                connection,
+                FULFILLMENT_EVENT_MUTATION,
+                {"fulfillmentEvent": {"fulfillmentId": fulfillment_id, "status": status}},
+                "fulfillmentEventCreate",
+                "el estado del envío",
+            )
 
     @staticmethod
     def _local_status(raw):

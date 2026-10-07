@@ -149,6 +149,11 @@ class FakeShopify:
                     200,
                     {"data": {mutation: {"fulfillment": {"id": "gid://shopify/Fulfillment/1"}, "userErrors": self.mutation_errors}}},
                 )
+        if "fulfillmentEventCreate(" in query:
+            return fake_response(
+                200,
+                {"data": {"fulfillmentEventCreate": {"fulfillmentEvent": {"id": "gid://shopify/FulfillmentEvent/1"}, "userErrors": self.mutation_errors}}},
+            )
         if "query Order(" in query:
             return fake_response(200, {"data": {"order": self.orders.get(json["variables"]["id"])}})
         if "webhookSubscriptionCreate" in query:
@@ -331,6 +336,31 @@ class ShopifyLaunchTests(ShopifyTestMixin, APITestCase):
 
     def test_tienda_ya_conectada_va_directo_a_nuestra_web(self):
         self._connection(owner=make_user("comercio@example.com"))
+        response = self.client.get(LAUNCH_URL, signed({"shop": SHOP, "timestamp": "1790000000"}))
+        self.assertEqual(response["Location"], f"{FRONTEND}/tiendas.html")
+
+    @override_settings(SHOPIFY_SCOPES="read_orders,write_fulfillments")
+    def test_tienda_instalada_sin_un_scope_nuevo_vuelve_a_aprobar(self):
+        self._connection(owner=make_user("comercio@example.com"), scopes="read_orders")
+        response = self.client.get(LAUNCH_URL, signed({"shop": SHOP, "timestamp": "1790000000"}))
+        url = urlparse(response["Location"])
+        self.assertEqual(url.netloc, SHOP)
+        self.assertEqual(parse_qs(url.query)["scope"][0], "read_orders,write_fulfillments")
+
+    @override_settings(SHOPIFY_SCOPES="read_orders,write_fulfillments")
+    def test_con_todos_los_scopes_no_vuelve_a_pedirlos(self):
+        # Shopify a veces devuelve solo el write_: cubre al read_.
+        self._connection(owner=make_user("comercio@example.com"), scopes="write_orders,write_fulfillments")
+        response = self.client.get(LAUNCH_URL, signed({"shop": SHOP, "timestamp": "1790000000"}))
+        self.assertEqual(response["Location"], f"{FRONTEND}/tiendas.html")
+
+    @override_settings(SHOPIFY_SCOPES="read_orders,write_fulfillments")
+    def test_conectada_con_la_app_propia_no_se_re_aprueba(self):
+        self._connection(
+            owner=make_user("comercio@example.com"),
+            scopes="read_orders",
+            preferences={"own_app_client_id": "cliente-propio"},
+        )
         response = self.client.get(LAUNCH_URL, signed({"shop": SHOP, "timestamp": "1790000000"}))
         self.assertEqual(response["Location"], f"{FRONTEND}/tiendas.html")
 

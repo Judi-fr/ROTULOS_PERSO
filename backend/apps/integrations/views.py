@@ -49,7 +49,8 @@ from .models import (
     WebhookEndpoint,
 )
 from .providers import get_provider
-from .providers.base import ProviderAuthError, ProviderError
+from .providers.base import OWN_APP_CLIENT_ID_PREF, ProviderAuthError, ProviderError
+from .providers.shopify import missing_scopes
 from .providers.woocommerce import external_store_id_for, valid_key_pair
 from .serializers import (
     IncomingWebhookSerializer,
@@ -647,6 +648,16 @@ class StoreOAuthCallbackView(APIView):
         return _store_frontend_redirect({"store_connected": str(connection.pk)})
 
 
+def _needs_new_scopes(connection):
+    """La tienda conectada con NUESTRA app no tiene todos los scopes que la
+    app pide hoy. Sin scopes guardados no se sabe, y no se insiste (si no,
+    cada apertura sería un OAuth). Una conectada con la app propia del
+    comerciante no se puede re-aprobar desde acá: sus scopes los decide él."""
+    if not connection.scopes or (connection.preferences or {}).get(OWN_APP_CLIENT_ID_PREF):
+        return False
+    return bool(missing_scopes(connection.scopes, getattr(settings, "SHOPIFY_SCOPES", "")))
+
+
 class ShopifyLaunchView(APIView):
     """GET /api/v1/integrations/shopify/launch/?shop=...&hmac=...&timestamp=...
 
@@ -677,7 +688,12 @@ class ShopifyLaunchView(APIView):
         if connection is not None:
             if connection.owner_id is None:
                 return _store_frontend_redirect({"store_claim": make_claim_token(connection)})
-            return _store_frontend_redirect({})
+            if not _needs_new_scopes(connection):
+                return _store_frontend_redirect({})
+            # Instalada antes de que la app pidiera un scope nuevo (p. ej.
+            # write_fulfillments para informar "entregado"): se pasa otra vez
+            # por el OAuth, Shopify le muestra al comerciante solo lo que
+            # falta aprobar y el callback actualiza el token de la misma fila.
 
         try:
             url = provider.build_authorize_url(
