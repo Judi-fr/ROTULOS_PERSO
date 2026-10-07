@@ -426,7 +426,7 @@ function renderStoreCard(store) {
 // null = todavía no se sabe.
 function renderPrintPlugin(store) {
   const wrapper = createElement("div", "store-sender store-plugin");
-  wrapper.appendChild(createElement("h4", "store-sender-title", "Plugin para WordPress"));
+  wrapper.appendChild(createElement("h4", "store-sender-title", "Imprimir desde WooCommerce"));
 
   const linked = store.print_plugin_linked === true;
   wrapper.appendChild(
@@ -434,10 +434,8 @@ function renderPrintPlugin(store) {
       "p",
       "store-sender-help",
       linked
-        ? "El plugin está instalado y conectado. Para imprimir, seleccioná los pedidos en WooCommerce > " +
-          "Pedidos y elegí Imprimir rótulos en el menú de acciones masivas."
-        : "Con el plugin podés imprimir los rótulos directamente desde WooCommerce y mostrar el costo de " +
-          "envío en el checkout de tu tienda."
+        ? "En WooCommerce → Pedidos tildá los pedidos y elegí “Imprimir rótulos” en Acciones masivas."
+        : "Instalá nuestro plugin en tu WordPress para imprimir los rótulos desde tu lista de pedidos, sin entrar acá."
     )
   );
 
@@ -447,10 +445,10 @@ function renderPrintPlugin(store) {
     const rates = createElement(
       "p",
       "store-sender-help",
-      "También podés mostrar el costo de envío en el checkout. Cargá tus precios en Tarifas de envío y " +
-        "después agregá el método Rótulos de envío en cada zona de WooCommerce (Ajustes > Envío). "
+      "Para cotizar el envío en tu checkout: cargá tus precios en Tarifas de envío y, en WooCommerce → " +
+        "Ajustes → Envío, agregá el método “Rótulos de envío (tabla de tarifas)” a tus zonas. "
     );
-    const ratesLink = createElement("a", "store-link", "Cargar tarifas");
+    const ratesLink = createElement("a", "store-link", "Ir a Tarifas de envío");
     ratesLink.href = `tarifas_envio.html?store=${encodeURIComponent(store.id)}`;
     rates.appendChild(ratesLink);
     wrapper.appendChild(rates);
@@ -458,24 +456,24 @@ function renderPrintPlugin(store) {
 
   if (!linked) {
     const steps = createElement("ol", "woo-steps");
-    steps.appendChild(createElement("li", "", "Descargá el archivo del plugin."));
-    const upload = createElement("li", "", "En WordPress, entrá a Plugins > Añadir nuevo > Subir plugin, elegí el archivo y activalo. ");
+    steps.appendChild(createElement("li", "", "Descargá el plugin."));
+    const upload = createElement("li", "", "En tu WordPress andá a Plugins → Añadir nuevo → Subir plugin, elegí el archivo y activalo. ");
     if (store.store_url && /^https:\/\//i.test(store.store_url)) {
-      const link = createElement("a", "store-link", "Abrir en mi tienda");
+      const link = createElement("a", "store-link", "Abrir esa pantalla en tu tienda");
       link.href = `${store.store_url.replace(/\/+$/, "")}/wp-admin/plugin-install.php?tab=upload`;
       link.target = "_blank";
       link.rel = "noopener noreferrer";
       upload.appendChild(link);
     }
     steps.appendChild(upload);
-    steps.appendChild(createElement("li", "", "Volvé a esta página y hacé clic en Verificar plugin."));
+    steps.appendChild(createElement("li", "", "Volvé acá y tocá “Verificar plugin”."));
     wrapper.appendChild(steps);
   }
 
   const feedback = createElement("p", "store-sender-msg");
   feedback.hidden = true;
   if (store.print_plugin_linked === false) {
-    showFeedback(feedback, "No encontramos el plugin en tu tienda.", false);
+    showFeedback(feedback, "Todavía no encontramos el plugin en tu tienda.", false);
   }
   wrapper.appendChild(feedback);
 
@@ -506,7 +504,7 @@ async function downloadPrintPlugin(button, feedback) {
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    showFeedback(feedback, "Se descargó el archivo rotulos-envio.zip.", true);
+    showFeedback(feedback, "Plugin descargado (rotulos-envio.zip). Ahora subilo en tu WordPress.", true);
   } catch (err) {
     if (err.isSessionExpired) return;
     showFeedback(feedback, err.message || "No se pudo descargar el plugin.", false);
@@ -525,12 +523,12 @@ async function checkPrintPlugin(store, button, feedback) {
     if (!response.ok) throw new Error(getErrorMessage(data, "No se pudo verificar el plugin."));
     await loadStores();
     if (data.print_plugin_linked === true) {
-      showStoreFeedback(store.id, ".store-plugin", "El plugin quedó conectado.", true);
+      showStoreFeedback(store.id, ".store-plugin", "El plugin quedó vinculado: ya podés imprimir desde WooCommerce.", true);
     } else {
       showStoreFeedback(
         store.id,
         ".store-plugin",
-        "No encontramos el plugin en tu tienda. Revisá que esté instalado y activo.",
+        "Todavía no encontramos el plugin en tu tienda. Revisá que esté subido y activado.",
         false
       );
     }
