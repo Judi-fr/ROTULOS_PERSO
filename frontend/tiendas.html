@@ -55,6 +55,23 @@
                 navegador. Abr&iacute; esta p&aacute;gina en otro perfil del navegador antes de
                 tocar el bot&oacute;n.
               </p>
+              <!-- Link para compartir (POST tiendanube/install-share-link/): lo abre
+                   quien administra la tienda, sin cuenta nuestra, y la tienda queda
+                   en esta cuenta. Ver tiendas.js / createShareLink. -->
+              <div class="share-install">
+                <p class="connect-help">
+                  <strong>&iquest;La tienda la administra otra persona?</strong> Gener&aacute; un
+                  link y mand&aacute;selo: al abrirlo autoriza la app en Tiendanube y la tienda
+                  queda conectada a tu cuenta. Vale 72 horas.
+                </p>
+                <button type="button" class="btn btn-outline" id="shareTiendanubeBtn">
+                  Generar link para compartir
+                </button>
+                <div class="share-install-result" id="shareTiendanubeResult" hidden>
+                  <input type="text" id="shareTiendanubeUrl" readonly aria-label="Link de instalación para compartir" />
+                  <button type="button" class="btn btn-outline" id="shareTiendanubeCopyBtn">Copiar</button>
+                </div>
+              </div>
             </div>
             <button type="button" class="btn btn-primary" id="connectTiendanubeBtn">
               Conectar Tiendanube

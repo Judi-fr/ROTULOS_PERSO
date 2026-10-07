@@ -7,6 +7,11 @@ Un comerciante llega a la instalación por dos caminos:
    logueado, así que la URL de autorización lleva un ``state`` firmado con
    su usuario (``make_oauth_state``) y al volver la tienda queda vinculada
    a él.
+   Variante: el comerciante genera un link para compartir
+   (``make_share_token``) y se lo pasa a quien administra la tienda, que lo
+   abre sin cuenta nuestra. El link pide un ``state`` nuevo con el usuario
+   que lo generó, marcado como compartido para que el callback lo devuelva
+   a una página pública en vez de a la del comerciante.
 2. Desde la tienda de apps de la plataforma: no sabemos quién es. En
    Tiendanube vuelve SIN ``state``; en Shopify pasa antes por
    ``ShopifyLaunchView``, que firma un ``state`` sin usuario. La tienda se
@@ -36,6 +41,7 @@ from .providers.base import OWN_APP_CLIENT_ID_PREF, ProviderError
 
 STATE_SALT = "apps.integrations.store-oauth-state"
 CLAIM_SALT = "apps.integrations.store-claim"
+SHARE_SALT = "apps.integrations.store-install-share"
 
 # Eventos INTERNOS de la cola (no los manda la plataforma: el receptor de
 # webhooks descarta cualquier aviso con este prefijo). Sus handlers están en
@@ -89,15 +95,52 @@ class ConnectResult:
     owner_conflict: bool
 
 
-def make_oauth_state(user, platform, shop_domain=""):
+def make_oauth_state(user, platform, shop_domain="", shared=False):
     """``state`` firmado para la URL de autorización. ``user`` puede ser
     ``None``: una instalación que arrancó desde el admin de la tienda
     (Shopify) todavía no sabe de quién es y termina en el reclamo. En las
-    plataformas con dominio por tienda el state queda atado a ESA tienda."""
+    plataformas con dominio por tienda el state queda atado a ESA tienda.
+    ``shared``: la autorización la abrió otra persona con un link para
+    compartir (ver ``make_share_token``)."""
     data = {"u": user.pk if user is not None else None, "p": platform}
     if shop_domain:
         data["s"] = shop_domain
+    if shared:
+        data["x"] = 1
     return signing.dumps(data, salt=STATE_SALT)
+
+
+def oauth_state_is_shared(state):
+    """Si el ``state`` viene de un link para compartir. Solo decide a qué
+    página vuelve el navegador: no valida nada (eso es ``read_oauth_state``),
+    así que un state inválido o vencido simplemente no es compartido."""
+    max_age = getattr(settings, "INTEGRATIONS_OAUTH_STATE_MAX_AGE_SECONDS", 900)
+    try:
+        data = signing.loads(state or "", salt=STATE_SALT, max_age=max_age)
+    except signing.BadSignature:
+        return False
+    return isinstance(data, dict) and bool(data.get("x"))
+
+
+def make_share_token(user, platform):
+    """Token del link de instalación para compartir: quién lo generó y para
+    qué plataforma. Vive más que un ``state`` (``INTEGRATIONS_INSTALL_SHARE_MAX_AGE_SECONDS``)
+    porque lo abre otra persona, cuando pueda; al abrirlo se firma un
+    ``state`` nuevo con la vida corta de siempre."""
+    return signing.dumps({"u": user.pk, "p": platform}, salt=SHARE_SALT)
+
+
+def read_share_token(token, platform):
+    """Usuario que generó el link. ``signing.BadSignature`` si fue alterado,
+    venció, es de otra plataforma o su usuario ya no está activo."""
+    max_age = getattr(settings, "INTEGRATIONS_INSTALL_SHARE_MAX_AGE_SECONDS", 259200)
+    data = signing.loads(token or "", salt=SHARE_SALT, max_age=max_age)
+    if not isinstance(data, dict) or data.get("p") != platform:
+        raise signing.BadSignature("El link no corresponde a esta plataforma.")
+    user = get_user_model().objects.filter(pk=data.get("u"), is_active=True).first()
+    if user is None:
+        raise signing.BadSignature("El usuario del link no existe o está inactivo.")
+    return user
 
 
 def read_oauth_state(state, platform, shop_domain=""):

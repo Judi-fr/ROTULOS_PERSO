@@ -277,6 +277,33 @@ body {
   margin-top: 8px;
 }
 
+/* Link de instalación para compartir (Tiendanube). */
+.share-install {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.share-install-result {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.share-install-result input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  background: var(--card);
+  color: var(--text-dark);
+}
+
 .connect-row + .connect-row {
   border-top: 1px solid var(--border);
 }

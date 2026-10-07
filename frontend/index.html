@@ -77,7 +77,9 @@
       const isAdmin = Boolean((data.user && data.user.is_staff) || role === 'admin');
       // Si venía de instalar la app en su tienda sin sesión (tiendas.js guardó
       // el enlace de vinculación), vuelve a terminar ese paso.
-      window.location.replace(localStorage.getItem('pendingStoreClaim') ? 'tiendas.html' : (isAdmin ? 'gestionuser.html' : 'dashboard.html'));
+      // Lo mismo si venía de "Imprimir rótulos" en las acciones masivas de
+        // Tiendanube (imprimir_tiendanube.js guardó los pedidos elegidos).
+        window.location.replace(localStorage.getItem('pendingTiendanubePrint') ? 'imprimir_tiendanube.html' : localStorage.getItem('pendingStoreClaim') ? 'tiendas.html' : (isAdmin ? 'gestionuser.html' : 'dashboard.html'));
     }
 
     // Callback de Google Identity Services: response.credential es el ID
@@ -156,7 +158,9 @@
         const isAdmin = Boolean((data.user && data.user.is_staff) || role === 'admin');
         // Si venía de instalar la app en su tienda sin sesión (tiendas.js guardó
         // el enlace de vinculación), vuelve a terminar ese paso.
-        window.location.replace(localStorage.getItem('pendingStoreClaim') ? 'tiendas.html' : (isAdmin ? 'gestionuser.html' : 'dashboard.html'));
+        // Lo mismo si venía de "Imprimir rótulos" en las acciones masivas de
+        // Tiendanube (imprimir_tiendanube.js guardó los pedidos elegidos).
+        window.location.replace(localStorage.getItem('pendingTiendanubePrint') ? 'imprimir_tiendanube.html' : localStorage.getItem('pendingStoreClaim') ? 'tiendas.html' : (isAdmin ? 'gestionuser.html' : 'dashboard.html'));
       } catch (error) {
         alert(error.message || 'Error en usuario o clave - Reingrese');
       }

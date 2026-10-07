@@ -6,7 +6,11 @@
   ``<id>/disconnect/``) y, por cada plataforma registrada en
   ``providers``, ``/<plataforma>/install-url/``, ``/<plataforma>/callback/``
   (la redirect URL que se configura en su panel) y
-  ``/<plataforma>/webhooks/``. Shopify suma ``/shopify/launch/`` (su App URL),
+  ``/<plataforma>/webhooks/``. Tiendanube suma ``/tiendanube/install-share-link/``
+  + ``/tiendanube/install/<token>/`` (link de instalación para compartir con
+  quien administra la tienda), y ``/tiendanube/print-link/`` +
+  ``/tiendanube/print/<token>`` ("Imprimir rótulos" en las acciones masivas de
+  Ventas, un link de app que abre ``imprimir_tiendanube.html``). Shopify suma ``/shopify/launch/`` (su App URL),
   ``/shopify/connect-manual/`` (conexión con la app propia del comerciante) y
   ``/shopify/print-link/`` + ``/shopify/print/<token>`` (rótulos impresos
   desde su admin, ver ``shopify_print``). WooCommerce no tiene ``callback/``:
@@ -38,10 +42,14 @@ from .views import (
     ShopifyPrintLinkView,
     shopify_print_document,
     StoreConnectionViewSet,
+    StoreInstallShareLinkView,
+    StoreInstallShareView,
     StoreInstallUrlView,
     StoreLabelRequestViewSet,
     StoreOAuthCallbackView,
     StoreWebhookView,
+    TiendanubePrintLinkView,
+    tiendanube_print_document,
     WooCommerceKeysView,
     WooCommerceManualConnectView,
     WooCommercePluginDownloadView,
@@ -77,6 +85,23 @@ for _provider in all_providers():
         platform_urls.append(
             path(f"{_platform}/callback/", StoreOAuthCallbackView.as_view(), _kwargs, name=f"{_platform}-callback")
         )
+    # Link de instalación para compartir: solo donde se autoriza sin saber
+    # antes de qué tienda se trata (Tiendanube).
+    if _provider.uses_authorization_code and not _provider.requires_shop_domain:
+        platform_urls += [
+            path(
+                f"{_platform}/install-share-link/",
+                StoreInstallShareLinkView.as_view(),
+                _kwargs,
+                name=f"{_platform}-install-share-link",
+            ),
+            path(
+                f"{_platform}/install/<str:token>/",
+                StoreInstallShareView.as_view(),
+                _kwargs,
+                name=f"{_platform}-install-share",
+            ),
+        ]
 
 urlpatterns = (
     [
@@ -85,6 +110,8 @@ urlpatterns = (
         path("shopify/connect-manual/", ShopifyManualConnectView.as_view(), name="shopify-connect-manual"),
         path("shopify/print-link/", ShopifyPrintLinkView.as_view(), name="shopify-print-link"),
         path("shopify/print/<str:token>", shopify_print_document, name="shopify-print"),
+        path("tiendanube/print-link/", TiendanubePrintLinkView.as_view(), name="tiendanube-print-link"),
+        path("tiendanube/print/<str:token>", tiendanube_print_document, name="tiendanube-print"),
         path("woocommerce/keys/", WooCommerceKeysView.as_view(), name="woocommerce-keys"),
         path("woocommerce/return/", WooCommerceReturnView.as_view(), name="woocommerce-return"),
         path("woocommerce/connect-manual/", WooCommerceManualConnectView.as_view(), name="woocommerce-connect-manual"),

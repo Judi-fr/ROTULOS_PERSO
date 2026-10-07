@@ -102,8 +102,11 @@ is the live one; don't delete the others or treat them as fixtures.
 ### Frontend
 
 No build step. Open the HTML files directly or serve `frontend/` with any static server. The API base URL
-lives only in `assets/js/config.js` (`window.APP_CONFIG.API_BASE`, `http://127.0.0.1:8000/api/v1`), loaded
-first on every page; every other script builds URLs on it.
+lives only in `assets/js/config.js` (`window.APP_CONFIG.API_BASE`), loaded first on every page; every other
+script builds URLs on it. Opened from `localhost`/`127.0.0.1`/`file://` it is `http://127.0.0.1:8000/api/v1`;
+from any other host it is that same origin's `/api/v1` — the dev tunnel publishes `/api`, `/media`, `/admin`
+and `/static` → 8000 and `/` → 8001 under one domain, so someone else's browser can use the app (a hardcoded
+127.0.0.1 would make it call *their* machine). The Docker image still overwrites the file from `API_BASE`.
 
 ## Architecture
 
@@ -542,7 +545,15 @@ The product is an app installed in the merchant's store platform: Tiendanube (co
   configured in the platform's panel is `GET <platform>/callback/` (public). Installed from the app store
   (no session), the store lands with
   `owner=None` and the callback redirects with a short-lived `store_claim` token, exchanged via `POST
-  stores/claim/`; already-owned stores redirect with `store_connected=<id>`, failures with
+  stores/claim/`;
+  **Install link to share (Tiendanube only — platforms with `uses_authorization_code` and no
+  `requires_shop_domain`)**: the merchant often isn't who administers the store. `POST
+  tiendanube/install-share-link/` (`orders.create`) returns a public URL `.../tiendanube/install/<token>/`
+  signed with the user (`make_share_token`, `INTEGRATIONS_INSTALL_SHARE_MAX_AGE_SECONDS`, 72 h); whoever
+  opens it, with no account of ours, gets a FRESH short-lived `state` for that user marked `x=1`
+  (`make_oauth_state(..., shared=True)`), and the callback (`oauth_state_is_shared`) sends them to the
+  public `tienda_conectada.html` (`STORE_SHARED_CONNECT_FRONTEND_PATH`) instead of `tiendas.html`. Built
+  from `INTEGRATIONS_PUBLIC_BASE_URL` (503 without it). The button lives in `tiendas.html`'s Tiendanube row. already-owned stores redirect with `store_connected=<id>`, failures with
   `store_error=<code>`. `POST stores/<id>/disconnect/` revokes (never deletes). `PATCH stores/<id>/settings/` saves how that store's
   labels print — `sender_name`/`sender_address`/`sender_phone`, `logo` (file or the editor's base64 data
   URL, 2 MB cap), `default_template` (must be public or the caller's) and `label_printer_dpmm` (its
@@ -570,6 +581,21 @@ The product is an app installed in the merchant's store platform: Tiendanube (co
   `fulfillment_status_for` maps that status) → enqueues `internal/push_fulfillment` →
   `TiendanubeProvider.push_fulfillment` PATCHes each fulfillment order's status (forward-only) and
   `tracking_info` only when the tracking code changed.
+**Printing from Tiendanube's sales list (bulk-action app link).** Unlike Shopify/WooCommerce there is no
+extension or plugin: Tiendanube lets an app register a *link* (Partner Portal → the app → Links → "Acciones
+masivas") that shows up in Ventas' bulk-action menu and opens a URL with the selected orders. It points at
+`imprimir_tiendanube.html` (+ `assets/js/imprimir_tiendanube.js`). **Tiendanube doesn't sign that link**, so
+the identity comes from our own session: the page calls `POST tiendanube/print-link/` (`labels.batch`, JWT)
+with `{store, ids}`, the store must be the caller's active Tiendanube (`store` = its Tiendanube id; omitted →
+their only one), and the answer is the same short-lived signed PDF link as Shopify/WooCommerce
+(`shopify_print.resolve_orders`/`make_print_token`, route `tiendanube-print`). Without a session the page
+stashes the query in `localStorage.pendingTiendanubePrint` and `index.html` returns to it after login. Tiendanube
+opens it as `?locale=es&store=<tiendanube store id>&id[]=<order id>&id[]=...` (seen live 2026-10-07; the
+ids are Tiendanube order ids = our `external_id`, not order numbers). The format isn't publicly documented,
+so the page also accepts `ids`/`orders`/... (comma lists too) and, when it finds none, prints what it
+received. Configured in the Partner Portal as category "Órdenes", "listado de órdenes". Working end to end
+(printed live from demosbuspack on 2026-10-07).
+
 **Labels the store asks for (`store_labels.py`, `label_views.py`, `label_urls.py`).** The mirror image of
 the print flow: instead of the merchant picking orders in *our* app, they tick orders in *their* store
 admin and Tiendanube asks us for the labels (Labels API). `POST .../tiendanube/labels/<token>/generate`

@@ -363,9 +363,15 @@ INTEGRATIONS_RECONCILE_MINUTES = env.int("INTEGRATIONS_RECONCILE_MINUTES", defau
 # desde la tienda de apps a una cuenta.
 INTEGRATIONS_OAUTH_STATE_MAX_AGE_SECONDS = env.int("INTEGRATIONS_OAUTH_STATE_MAX_AGE_SECONDS", default=900)
 INTEGRATIONS_STORE_CLAIM_MAX_AGE_SECONDS = env.int("INTEGRATIONS_STORE_CLAIM_MAX_AGE_SECONDS", default=1800)
+# Vida del link de instalación para compartir (72 h): lo abre otra persona,
+# la que administra la tienda, cuando puede.
+INTEGRATIONS_INSTALL_SHARE_MAX_AGE_SECONDS = env.int("INTEGRATIONS_INSTALL_SHARE_MAX_AGE_SECONDS", default=259200)
 # Página del frontend (relativa a FRONTEND_URL) a la que vuelve el comerciante
 # después de instalar la app, con el resultado en la query string.
 STORE_CONNECT_FRONTEND_PATH = env("STORE_CONNECT_FRONTEND_PATH", default="tiendas.html")
+# Página PÚBLICA a la que vuelve quien instaló con un link para compartir: no
+# tiene sesión nuestra, así que no puede ir a la del comerciante.
+STORE_SHARED_CONNECT_FRONTEND_PATH = env("STORE_SHARED_CONNECT_FRONTEND_PATH", default="tienda_conectada.html")
 
 # URL pública HTTPS del backend, sin barra final. Con ella se registran los
 # webhooks de cada tienda ({base}/api/v1/integrations/<plataforma>/webhooks/)

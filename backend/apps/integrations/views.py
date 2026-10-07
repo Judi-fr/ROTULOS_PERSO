@@ -24,6 +24,7 @@ from django.core import signing
 from django.http import HttpResponse, HttpResponseRedirect
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.shortcuts import get_object_or_404
+from django.urls import reverse
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -74,8 +75,11 @@ from .stores import (
     connect_with_credentials,
     connect_with_own_app,
     make_oauth_state,
+    make_share_token,
+    oauth_state_is_shared,
     read_oauth_state,
     read_oauth_state_site,
+    read_share_token,
 )
 from .webhooks import dispatch_event, webhooks_suspended
 from . import shopify_print, woocommerce_print, woocommerce_rates
@@ -333,12 +337,17 @@ class IncomingWebhookView(APIView):
 # ---------------------------------------------------------------------------
 
 
-def _store_frontend_redirect(params):
+def _store_frontend_redirect(params, shared=False):
     """Vuelve al frontend con el resultado de la instalación en la query
     string (``store_connected``, ``store_claim`` o ``store_error``). Nunca
-    incluye el token de la tienda."""
+    incluye el token de la tienda. ``shared``: quien vuelve instaló con un
+    link para compartir y no tiene sesión nuestra, así que va a la página
+    pública en vez de a la del comerciante."""
     base = str(settings.FRONTEND_URL).rstrip("/")
-    path = str(getattr(settings, "STORE_CONNECT_FRONTEND_PATH", "integraciones.html")).lstrip("/")
+    if shared:
+        path = str(getattr(settings, "STORE_SHARED_CONNECT_FRONTEND_PATH", "tienda_conectada.html")).lstrip("/")
+    else:
+        path = str(getattr(settings, "STORE_CONNECT_FRONTEND_PATH", "integraciones.html")).lstrip("/")
     query = f"?{urlencode(params)}" if params else ""
     return HttpResponseRedirect(f"{base}/{path}{query}")
 
@@ -583,6 +592,58 @@ class StoreInstallUrlView(APIView):
         return Response({"authorize_url": url})
 
 
+class StoreInstallShareLinkView(APIView):
+    """POST /api/v1/integrations/<plataforma>/install-share-link/
+
+    Link de instalación para que el comerciante se lo pase a quien
+    administra la tienda (muchas veces no es la misma persona). Quien lo
+    abre no necesita cuenta nuestra: autoriza en la plataforma y la tienda
+    queda en la cuenta de quien generó el link. Solo existe en plataformas
+    con authorization code y sin dominio por tienda (Tiendanube): las otras
+    necesitan saber la tienda antes de autorizar.
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission(STORE_CONNECT_PERMISSION)]
+
+    def post(self, request, platform):
+        base = str(getattr(settings, "INTEGRATIONS_PUBLIC_BASE_URL", "")).rstrip("/")
+        if not base:
+            return Response(
+                {"detail": "El servidor no tiene una dirección pública configurada para armar el link."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        token = make_share_token(request.user, platform)
+        path = reverse(f"{platform}-install-share", kwargs={"token": token})
+        max_age = getattr(settings, "INTEGRATIONS_INSTALL_SHARE_MAX_AGE_SECONDS", 259200)
+        return Response({"share_url": f"{base}{path}", "expires_in_hours": max_age // 3600})
+
+
+class StoreInstallShareView(APIView):
+    """GET /api/v1/integrations/<plataforma>/install/<token>/
+
+    Lo que abre quien recibió el link: público, sin sesión. Firma un
+    ``state`` nuevo con el usuario del link (marcado como compartido) y lo
+    manda a la autorización de la plataforma. El token del link vive días;
+    el state, los minutos de siempre."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request, platform, token):
+        try:
+            user = read_share_token(token, platform)
+        except signing.BadSignature:
+            return _store_frontend_redirect({"store_error": "share_link_invalid"}, shared=True)
+        provider = get_provider(platform)
+        try:
+            url = provider.build_authorize_url(make_oauth_state(user, provider.platform, shared=True))
+        except ProviderError:
+            logger.exception("No se pudo iniciar la instalación compartida de %s", _platform_label(platform))
+            return _store_frontend_redirect({"store_error": "provider_unavailable"}, shared=True)
+        return HttpResponseRedirect(url)
+
+
 class StoreOAuthCallbackView(APIView):
     """GET /api/v1/integrations/<plataforma>/callback/?code=...&state=...
 
@@ -599,35 +660,40 @@ class StoreOAuthCallbackView(APIView):
     def get(self, request, platform):
         provider = get_provider(platform)
         label = _platform_label(platform)
+        state = request.query_params.get("state", "").strip()
+        shared = oauth_state_is_shared(state)
+
+        def redirect(params):
+            return _store_frontend_redirect(params, shared=shared)
+
         if not provider.verify_callback(request.query_params):
-            return _store_frontend_redirect({"store_error": "invalid_signature"})
+            return redirect({"store_error": "invalid_signature"})
 
         code = request.query_params.get("code", "").strip()
         if not code:
             error = "authorization_cancelled" if request.query_params.get("error") else "missing_code"
-            return _store_frontend_redirect({"store_error": error})
+            return redirect({"store_error": error})
 
         try:
             shop_domain = provider.callback_shop_domain(request.query_params)
         except ValueError:
-            return _store_frontend_redirect({"store_error": "invalid_shop"})
+            return redirect({"store_error": "invalid_shop"})
 
-        state = request.query_params.get("state", "").strip()
         if provider.requires_oauth_state and not state:
-            return _store_frontend_redirect({"store_error": "invalid_state"})
+            return redirect({"store_error": "invalid_state"})
         try:
             user = read_oauth_state(state, provider.platform, shop_domain)
         except signing.BadSignature:
-            return _store_frontend_redirect({"store_error": "invalid_state"})
+            return redirect({"store_error": "invalid_state"})
 
         try:
             result = connect_store(provider, code, user=user, shop_domain=shop_domain)
         except ProviderAuthError as exc:
             logger.warning("%s rechazó la instalación: %s", label, exc)
-            return _store_frontend_redirect({"store_error": "authorization_rejected"})
+            return redirect({"store_error": "authorization_rejected"})
         except ProviderError:
             logger.exception("No se pudo completar la instalación de %s", label)
-            return _store_frontend_redirect({"store_error": "provider_unavailable"})
+            return redirect({"store_error": "provider_unavailable"})
 
         connection = result.connection
         record(
@@ -642,10 +708,10 @@ class StoreOAuthCallbackView(APIView):
         )
 
         if result.needs_claim:
-            return _store_frontend_redirect({"store_claim": make_claim_token(connection)})
+            return redirect({"store_claim": make_claim_token(connection)})
         if result.owner_conflict:
-            return _store_frontend_redirect({"store_error": "owned_by_other_account"})
-        return _store_frontend_redirect({"store_connected": str(connection.pk)})
+            return redirect({"store_error": "owned_by_other_account"})
+        return redirect({"store_connected": str(connection.pk)})
 
 
 def _needs_new_scopes(connection):
@@ -1004,6 +1070,63 @@ class WooCommerceRatesView(APIView):
         except Exception:  # noqa: BLE001 - nunca romper un checkout ajeno
             logger.exception("Error inesperado cotizando para la tienda %s", connection.pk)
             return Response({"rates": []})
+
+
+class TiendanubePrintLinkView(APIView):
+    """POST /api/v1/integrations/tiendanube/print-link/  ``{"store", "ids"}``
+
+    "Imprimir rótulos" en las acciones masivas de Ventas del admin de
+    Tiendanube: es un *link de app* configurado en el Portal de Partners, que
+    abre ``imprimir_tiendanube.html`` en el navegador del comerciante con los
+    pedidos elegidos. Tiendanube no firma ese link, así que la identidad NO
+    sale de él: sale del JWT del comerciante logueado en nuestra app, y la
+    tienda tiene que ser suya. ``store`` es el id de la tienda en Tiendanube;
+    si no llega y el usuario tiene una sola Tiendanube activa, es esa.
+    ``ids`` son los ids de pedido de Tiendanube (``external_id``)."""
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission("labels.batch")]
+
+    def post(self, request):
+        stores = StoreConnection.objects.filter(
+            platform=StoreConnection.Platform.TIENDANUBE, owner=request.user, status=StoreConnection.Status.ACTIVE
+        )
+        store_id = str(request.data.get("store") or "").strip()
+        if store_id:
+            connection = stores.filter(external_store_id=store_id).first()
+        else:
+            connection = stores.first() if stores.count() == 1 else None
+        if connection is None:
+            return Response(
+                {"detail": "Esa tienda de Tiendanube no está conectada a tu cuenta."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        try:
+            orders, missing = shopify_print.resolve_orders(connection, woocommerce_print.order_ids(request.data.get("ids")))
+            if not orders:
+                raise shopify_print.PrintError("Ninguno de los pedidos elegidos existe en la tienda.")
+            url = shopify_print.print_url(shopify_print.make_print_token(connection, orders), route="tiendanube-print")
+        except shopify_print.PrintError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        record(
+            request,
+            category="labels",
+            action="label.batch",
+            target=connection,
+            target_type="storeconnection",
+            target_repr=str(connection),
+            changes={"tiendanube_print": {"from": None, "to": len(orders)}},
+        )
+        return Response({"url": url, "count": len(orders), "missing": missing})
+
+
+def tiendanube_print_document(request, token):
+    """GET /api/v1/integrations/tiendanube/print/<token>
+
+    El PDF al que ``imprimir_tiendanube.html`` manda el navegador. Lo
+    autentica el enlace firmado y de vida corta; sin sesión, sin JWT."""
+    return _print_document(request, token, StoreConnection.Platform.TIENDANUBE)
 
 
 def woocommerce_print_document(request, token):

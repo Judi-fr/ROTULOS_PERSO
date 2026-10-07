@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Conexión de la tienda</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Reusa el mismo estilo de tarjeta que perfil.html/reset-password.html. -->
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/perfil.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- Vuelta de una instalación hecha con un link para compartir
+           (StoreInstallShareView → callback). Quien llega acá administra la
+           tienda pero no tiene cuenta nuestra: página pública, sin auth.js. -->
+      <header class="topbar">
+        <div class="topbar-user">
+          <div class="topbar-user-info">
+            <span class="topbar-user-name">Conexión de la tienda</span>
+          </div>
+        </div>
+      </header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1 id="resultTitle">Conexión de la tienda</h1>
+        </div>
+
+        <p id="pageMessage" class="page-message" hidden></p>
+
+        <section class="profile-card">
+          <div class="profile-card-body">
+            <p id="resultText"></p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/tienda_conectada.js"></script>
+  </body>
+</html>
