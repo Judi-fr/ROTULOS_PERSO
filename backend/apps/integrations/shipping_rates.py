@@ -1,48 +1,23 @@
-"""Cotización de envíos para el checkout de la tienda.
+"""La tabla de tarifas de cada tienda (``ShippingRate``) y la regla con la que
+se cotiza, comunes a todas las plataformas.
 
-La otra mitad de ser un medio de envío. ``store_labels`` resuelve el rótulo
-DESPUÉS de la venta; esto resuelve el precio ANTES: cuando un comprador
-llega al checkout de una tienda que nos tiene como carrier, la plataforma
-nos manda el carrito y espera la lista de tarifas que ese comprador va a
-ver como opción de envío.
-
-Tres cosas que lo hacen distinto del resto del código:
-
-- **Está en el camino de una venta ajena.** Si no contestamos, el comprador
-  no ve nuestra opción de envío; si fallamos seguido, Tiendanube abre un
-  corta-corriente (500 pedidos en 30 minutos con 50% de error) y deja de
-  preguntarnos por 5 minutos. Por eso acá no se llama a ninguna API ni se
-  encola nada: es una consulta a la base y se contesta.
-- **El precio sale de una tabla por tienda** (``ShippingRate``), no de un
-  cálculo ni de un transportista. Código postal de destino y peso del
-  carrito entran, precio sale.
+- **El precio sale de una tabla por tienda**, no de un cálculo ni de un
+  transportista. Código postal de destino y peso del carrito entran, precio
+  sale (``matching_rates``).
 - **Un CP que no está en la tabla no se cotiza.** Se devuelve la lista sin
   esa opción en vez de inventar un precio: preferimos que el comerciante
   vea que le falta una zona a venderle un envío a pérdida.
+
+Cómo le llega esa respuesta a cada checkout es de cada plataforma: Tiendanube
+nos llama como carrier (``providers/tiendanube/rates.py``), WooCommerce
+pregunta desde nuestro plugin (``providers/woocommerce/rates.py``) y a VTEX
+se le publica la tabla (``providers/vtex/freight.py``, abajo
+``rates_changed``).
 """
 
 from __future__ import annotations
 
-import logging
-from datetime import timedelta
-from decimal import Decimal, InvalidOperation
-
-from django.conf import settings
-from django.urls import reverse
-from django.utils import timezone
-
 from .models import ShippingRate
-
-logger = logging.getLogger(__name__)
-
-# Tipo de envío de la plataforma: a un domicilio ("ship") o a retirar
-# ("pickup"). Hoy solo cotizamos a domicilio: no tenemos sucursales.
-RATE_TYPE_SHIP = "ship"
-
-
-def _setting(name, default):
-    return getattr(settings, name, default)
-
 
 def normalize_postal_code(value):
     """Los dígitos comparables de un CP argentino.
@@ -54,60 +29,6 @@ def normalize_postal_code(value):
     """
     digits = "".join(character for character in str(value or "") if character.isdigit())
     return digits[:4] if digits else ""
-
-
-def rates_callback_url(connection):
-    """La URL que se registra como ``callback_url`` de esta tienda: donde la
-    plataforma nos pregunta los precios. Vacía si falta
-    ``INTEGRATIONS_PUBLIC_BASE_URL``.
-
-    Lleva el mismo token firmado que el callback de rótulos, porque el
-    payload del checkout tampoco dice de qué tienda es (trae ``store_id``,
-    pero venir en el cuerpo no lo hace confiable).
-    """
-    from . import store_labels
-
-    base = str(_setting("INTEGRATIONS_PUBLIC_BASE_URL", "") or "").rstrip("/")
-    if not base:
-        return ""
-    path = reverse(
-        "tiendanube-rates", kwargs={"token": store_labels.make_callback_token(connection)}
-    )
-    return f"{base}{path}"
-
-
-# ---------------------------------------------------------------------------
-# Lo que manda la plataforma
-# ---------------------------------------------------------------------------
-
-
-def destination_postal_code(payload):
-    """CP del comprador, normalizado. "" si el carrito no lo trae."""
-    destination = payload.get("destination") if isinstance(payload, dict) else None
-    if not isinstance(destination, dict):
-        return ""
-    return normalize_postal_code(destination.get("postal_code"))
-
-
-def cart_weight_kg(payload):
-    """Peso total del carrito en kilos.
-
-    La plataforma manda ``grams`` por ítem (no kilos) y la cantidad aparte.
-    Un ítem sin peso suma cero: es preferible cotizar de menos que no
-    cotizar, y el comerciante que no carga pesos ya sabe lo que hace.
-    """
-    total = Decimal("0")
-    items = payload.get("items") if isinstance(payload, dict) else None
-    for item in items or []:
-        if not isinstance(item, dict):
-            continue
-        try:
-            grams = Decimal(str(item.get("grams") or 0))
-            quantity = Decimal(str(item.get("quantity") or 1))
-        except (InvalidOperation, ValueError):
-            continue
-        total += grams * quantity
-    return total / Decimal("1000")
 
 
 # ---------------------------------------------------------------------------
@@ -155,51 +76,50 @@ def matching_rates(connection, postal_code, weight_kg):
     return [best[code] for code in sorted(best)]
 
 
-def _delivery_dates(rate):
-    """Las fechas ISO que espera la plataforma, a partir de los días
-    prometidos. Sin días cargados no se manda nada: es mejor no prometer
-    una fecha que prometer una inventada."""
-    dates = {}
-    now = timezone.now()
-    if rate.delivery_days_min is not None:
-        dates["min_delivery_date"] = (now + timedelta(days=rate.delivery_days_min)).isoformat()
-    if rate.delivery_days_max is not None:
-        dates["max_delivery_date"] = (now + timedelta(days=rate.delivery_days_max)).isoformat()
-    return dates
+# ---------------------------------------------------------------------------
+# Plataformas que cotizan con una tabla propia (VTEX)
+# ---------------------------------------------------------------------------
+#
+# Ahí no hay callback: la plataforma no nos pregunta el precio, así que la
+# tabla se le publica (``StoreProvider.push_shipping_rates``) y se vuelve a
+# publicar cuando cambia. Publicar es una decisión del comerciante (prende el
+# envío en SU checkout), igual que registrar el carrier en Tiendanube: queda en
+# ``preferences["rates_push"]["enabled"]`` y se cambia desde
+# ``stores/<id>/publish-rates/``.
+
+RATES_PUSH_PREF = "rates_push"
 
 
-def quote(connection, payload):
-    """El cuerpo de la respuesta al checkout: ``{"rates": [...]}``.
+def rates_push_state(connection):
+    """Lo que se sabe de la publicación: ``enabled``, ``status``
+    (``pending``/``published``/``failed``), ``published_at``, ``rows``,
+    ``unlinked_policies``, ``error``. ``{}`` = nunca se publicó."""
+    return dict((connection.preferences or {}).get(RATES_PUSH_PREF) or {})
 
-    Una lista vacía es una respuesta válida y quiere decir "no llegamos a
-    ese destino": la plataforma simplemente no muestra nuestra opción.
-    """
-    postal_code = destination_postal_code(payload)
-    weight_kg = cart_weight_kg(payload)
-    rates = matching_rates(connection, postal_code, weight_kg)
 
-    if not rates:
-        # Un destino sin tarifa es el agujero más común de una tabla recién
-        # cargada; queda en el log para que se pueda completar.
-        logger.info(
-            "Sin tarifa para la tienda %s: CP %r, %s kg.",
-            connection.pk,
-            postal_code,
-            weight_kg,
-        )
-        return {"rates": []}
+def save_rates_push_state(connection, **values):
+    """Escribe con un UPDATE: el worker trae copias viejas de la conexión."""
+    preferences = dict(connection.preferences or {})
+    preferences[RATES_PUSH_PREF] = dict(preferences.get(RATES_PUSH_PREF) or {}, **values)
+    connection.preferences = preferences
+    type(connection).objects.filter(pk=connection.pk).update(preferences=preferences)
 
-    return {
-        "rates": [
-            {
-                "name": rate.option_name,
-                "code": rate.option_code,
-                "price": float(rate.price),
-                "price_merchant": float(rate.price),
-                "currency": rate.currency,
-                "type": RATE_TYPE_SHIP,
-                **_delivery_dates(rate),
-            }
-            for rate in rates
-        ]
-    }
+
+def enqueue_rates_push(connection):
+    from .events import enqueue_event
+    from .stores import PUSH_SHIPPING_RATES_EVENT
+
+    save_rates_push_state(connection, status="pending")
+    event, _ = enqueue_event(platform=connection.platform, event_type=PUSH_SHIPPING_RATES_EVENT, connection=connection)
+    return event
+
+
+def rates_changed(connection):
+    """La tabla de ``connection`` cambió: si su plataforma necesita que se la
+    publiquen y el comerciante la publicó, se vuelve a publicar. Varios
+    cambios seguidos encolan un solo evento (el pendiente se reutiliza)."""
+    from .providers import get_provider
+
+    if get_provider(connection.platform).supports_rates_push and rates_push_state(connection).get("enabled"):
+        return enqueue_rates_push(connection)
+    return None

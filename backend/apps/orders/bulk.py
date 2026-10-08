@@ -201,11 +201,22 @@ def normalize_header(header):
 def detect_columns(headers):
     """Adivina qué columna es cuál. Devuelve ``{campo: encabezado o None}``;
     una columna se asigna a un solo campo."""
+    detected = match_columns(headers, [(field, HEADER_SYNONYMS[field]) for field in ("tracking_url", "tracking_number", "carrier", "order")])
+    return {field: detected.get(field) for field in TRACKING_FIELDS}
+
+
+def match_columns(headers, fields, *, contains_min_words=1):
+    """``fields``: ``[(campo, [sinónimos normalizados]), ...]`` en orden de
+    prioridad. Devuelve ``{campo: encabezado o None}``; una columna se asigna a
+    un solo campo, primero por igualdad y después por "contiene" (por palabras
+    enteras, para que "ref" no caiga en "preferencia"). ``contains_min_words``:
+    los sinónimos más cortos que eso solo valen por igualdad (que "numero" no
+    se lleve "numero de telefono"). La usan el importador de seguimientos y el
+    de Empretienda."""
     normalized = {header: normalize_header(header) for header in headers}
     used = set()
     detected = {}
-    for field in ("tracking_url", "tracking_number", "carrier", "order"):
-        synonyms = HEADER_SYNONYMS[field]
+    for field, synonyms in fields:
         match = None
         for synonym in synonyms:
             match = next(
@@ -215,8 +226,8 @@ def detect_columns(headers):
                 break
         if not match:
             for synonym in synonyms:
-                # "contiene" por palabras enteras, para que "ref" no caiga
-                # en "preferencia".
+                if len(synonym.split()) < contains_min_words:
+                    continue
                 pattern = re.compile(rf"\b{re.escape(synonym)}\b")
                 match = next(
                     (h for h in headers if h not in used and pattern.search(normalized[h])), None
@@ -226,7 +237,7 @@ def detect_columns(headers):
         detected[field] = match
         if match:
             used.add(match)
-    return {field: detected.get(field) for field in TRACKING_FIELDS}
+    return detected
 
 
 def normalize_order_key(value):

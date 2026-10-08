@@ -1,0 +1,17 @@
+{
+  // Codespace para probar la integración de Magento de ROTULOS_PERSO.
+  // Pide la máquina de 8 GB: Magento + MariaDB + OpenSearch no entran en menos.
+  "name": "Magento de prueba (Mage-OS)",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "8gb"
+  },
+  "forwardPorts": [8080],
+  "portsAttributes": {
+    "8080": { "label": "Magento", "onAutoForward": "silent" }
+  }
+}

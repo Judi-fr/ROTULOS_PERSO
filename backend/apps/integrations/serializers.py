@@ -7,7 +7,9 @@ from rest_framework import serializers
 
 from apps.labels.serializers import ImageOrDataUrlField
 
-from . import store_labels
+from . import shipping_rates
+from .providers.tiendanube import labels as store_labels
+from .providers import get_provider
 from .models import (
     IncomingWebhook,
     IntegrationKey,
@@ -43,6 +45,17 @@ class StoreConnectionSerializer(serializers.ModelSerializer):
     def get_print_plugin_linked(self, connection):
         return (connection.preferences or {}).get("print_plugin")
 
+    # Plataformas que cotizan con una tabla propia (VTEX): si se le puede
+    # publicar la nuestra y en qué quedó (ver shipping_rates.rates_push_state).
+    supports_rates_push = serializers.SerializerMethodField()
+    rates_push = serializers.SerializerMethodField()
+
+    def get_supports_rates_push(self, connection):
+        return get_provider(connection.platform).supports_rates_push
+
+    def get_rates_push(self, connection):
+        return shipping_rates.rates_push_state(connection) or None
+
     class Meta:
         model = StoreConnection
         fields = [
@@ -64,6 +77,8 @@ class StoreConnectionSerializer(serializers.ModelSerializer):
             "scopes",
             "label_api_enabled",
             "print_plugin_linked",
+            "supports_rates_push",
+            "rates_push",
             "last_error",
             "connected_at",
             "disconnected_at",
@@ -172,11 +187,9 @@ class ShippingRateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         # Los CP se guardan normalizados para poder compararlos como texto
         # en la consulta del checkout (ver shipping_rates.matching_rates).
-        from .shipping_rates import normalize_postal_code
-
         for field in ("postal_code_from", "postal_code_to"):
             if field in attrs:
-                normalized = normalize_postal_code(attrs[field])
+                normalized = shipping_rates.normalize_postal_code(attrs[field])
                 if not normalized:
                     raise serializers.ValidationError(
                         {field: "Poné un código postal con números, por ejemplo 1602."}

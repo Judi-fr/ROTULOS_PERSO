@@ -57,6 +57,33 @@
           </div>
         </section>
 
+        <!-- Solo para plataformas que cotizan con una tabla propia (VTEX): ahí
+             el checkout no nos pregunta el precio, así que la tabla se publica
+             en la tienda (POST stores/<id>/publish-rates/). Lo arma
+             assets/js/vtex/tarifas_vtex.js (renderPublishCard). -->
+        <section class="profile-card" id="publishCard" style="display: none">
+          <div class="profile-card-title">
+            <span>Publicar en el checkout de VTEX</span>
+          </div>
+          <div class="profile-card-body">
+            <p class="field-hint">
+              VTEX no nos consulta el precio en cada compra: cotiza con su propia tabla de fletes. Al
+              publicar, subimos esta tabla como una pol&iacute;tica de env&iacute;o por modalidad
+              (<code>rotulos-standard</code>, etc.) y la mantenemos al d&iacute;a con cada cambio. Las
+              tarifas sin plazo de entrega se publican con 5 d&iacute;as, porque VTEX exige uno.
+            </p>
+            <p class="publish-status" id="publishStatus"></p>
+            <ol class="field-hint publish-steps" id="publishDockSteps" hidden>
+              <li>En el admin de VTEX and&aacute; a <strong>Env&iacute;o &rarr; Muelles</strong> (Loading docks) y abr&iacute; el muelle desde el que despach&aacute;s.</li>
+              <li>En <strong>Pol&iacute;ticas de env&iacute;o</strong> asoci&aacute; las que se muestran arriba y guard&aacute;.</li>
+            </ol>
+            <div class="form-actions">
+              <button type="button" class="btn btn-primary btn-small" id="publishBtn">Publicar tabla</button>
+              <button type="button" class="btn btn-outline btn-small" id="publishRefreshBtn">Actualizar estado</button>
+            </div>
+          </div>
+        </section>
+
         <section class="profile-card" id="formCard" style="display: none">
           <div class="profile-card-title">
             <span id="formTitle">Agregar una tarifa</span>
@@ -143,5 +170,6 @@
     <script src="assets/js/utils.js"></script>
     <script src="assets/js/topbar.js"></script>
     <script src="assets/js/tarifas_envio.js"></script>
+    <script src="assets/js/vtex/tarifas_vtex.js"></script>
   </body>
 </html>

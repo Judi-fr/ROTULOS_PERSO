@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project overview
 
 ROTULOS_PERSO is a **multi-client** shipping-label ("rótulo") app, distributed as an app installed in
-online stores (Tiendanube, Shopify and WooCommerce): each client connects their store, their orders
+online stores (Tiendanube, Shopify, WooCommerce, VTEX, Magento and Empretienda): each client connects their store, their orders
 arrive automatically, and the app generates the labels, dispatches and pushes tracking back. It is **not**
 built for a single company — never hardcode a client, sender or carrier name as a default. A "rótulo" is a
 shipping/waybill LABEL stuck on a parcel — not a product tag — with sender (the client/store that ships),
@@ -15,13 +15,13 @@ Backend: Django REST API (`backend/`), all routes under `/api/v1/` (`backend/con
 `accounts` (auth, user admin, roles/permissions, support inbox), `orders` (addresses/orders, manual
 creation, CSV/Excel import, store sync, dispatch), `audit` (read-only trail), `labels` (two independent
 label-rendering systems, see below), `integrations` (store connections, webhooks, event queue),
-`documents` (generated batch output + uploaded source files) and `processing` (Claude vision agent that
-reads a photographed label). Frontend: static multi-page app (`frontend/`), plain HTML/CSS/JS, no build
+`documents` (generated batch output + uploaded source files), `processing` (Claude vision agent that
+reads a photographed label) and `carriers` (shipping companies the clients dispatch with: Andreani). Frontend: static multi-page app (`frontend/`), plain HTML/CSS/JS, no build
 step.
 
 Don't assume: there is no point-of-sale/destination catalog (`Address` stores city/state as free text),
-there is no carrier API (`Order.carrier`/`tracking_number` are typed in when dispatching), and the app is
-not scoped to one client or one carrier.
+the only carrier API is Andreani's (`apps/carriers`, see below; for anything else `Order.carrier`/
+`tracking_number` are typed in when dispatching), and the app is not scoped to one client or one carrier.
 
 ## Commands
 
@@ -36,6 +36,7 @@ source venv/bin/activate
 - All tests: `python manage.py test`
 - One app: `python manage.py test apps.accounts`
 - One test: `python manage.py test apps.accounts.tests.test_accounts.LoginTests.test_login_normaliza_email`
+- One platform folder: `python manage.py test apps.integrations.providers.vtex` (or `.magento`)
 - Migrations: `python manage.py makemigrations` / `python manage.py migrate`
 - Django shell: `python manage.py shell`
 - Store integrations worker (processes `IntegrationEvent`, retries): `python manage.py run_integrations_worker`
@@ -51,7 +52,7 @@ Django's own handler and once formatted from the root one. This matters because 
 written to **log instead of raising** (an error there must not break a buyer's checkout), and that choice
 is only safe if someone can read the logs: before, outside production there was no configuration at all,
 so Python fell back to `lastResort` — every `INFO` was dropped in silence, including
-`shipping_rates`' "no rate for this postal code", which is the diagnostic for why a store's shipping
+the rate callbacks' (`providers/tiendanube/rates.py`, `providers/woocommerce/rates.py`) "no rate for this postal code", which is the diagnostic for why a store's shipping
 option never appeared.
 
 ### Health probes (`config/health.py`)
@@ -127,8 +128,9 @@ and `/static` → 8000 and `/` → 8001 under one domain, so someone else's brow
   `admin/`, `render/`, `barcode/`, `batch/`, `fonts/`)
 - `api/v1/integrations/` → `apps.integrations.urls` (admin ABM + store connections, plus
   `<platform>/install-url|callback|webhooks/` per provider and `shopify/launch/`)
+- `api/v1/carriers/` → `apps.carriers.urls` (`andreani/account/`, `andreani/branches/`, `andreani/shipments/`...)
 - `api/v1/ingest/` → `apps.integrations.ingest_urls` (API-key/webhook order ingest, separate auth)
-- `api/v1/integrations/` → `apps.integrations.label_urls` (Tiendanube Labels API callbacks + public PDF
+- `api/v1/integrations/` → `apps.integrations.providers.tiendanube.label_urls` and `.rate_urls` (Tiendanube Labels API callbacks + public PDF
   download, separate auth — see "Labels the store asks for" below)
 
 REST Framework is closed by default (`DEFAULT_PERMISSION_CLASSES = [IsAuthenticated]`); a public endpoint
@@ -369,9 +371,25 @@ by `apps.labels.batch_views.LabelBatchView`, with `status` (processing/ready/fai
 ### Store integrations (`apps/integrations`)
 
 The product is an app installed in the merchant's store platform: Tiendanube (complete), Shopify
-(connection, orders, pushing the dispatch + tracking back, printing from its admin) and WooCommerce
-(phase 1: connection by both paths, orders, periodic reconciliation, dispatch + tracking note).
+(connection, orders, pushing the dispatch + tracking back, printing from its admin), WooCommerce
+(phase 1: connection by both paths, orders, periodic reconciliation, dispatch + tracking note) and VTEX
+(written without an account yet: key connection, hook + feed, tracking on the invoice) and Magento
+(phase 1, written without a store: Integration credentials, reconciliation, shipment + tracking) and
+Empretienda (no API: its exported sales spreadsheet is imported).
 
+- **Every platform lives in its own folder** (asked 2026-10-08, so it can be found and fixed by hand):
+  `providers/<platform>/` holds its `provider.py`, its own views/urls/handlers/modules, and `tests/`;
+  the frontend part is in `frontend/assets/js/<platform>/`. Each folder's `__init__.py` lists its files
+  and what has to live elsewhere: the `Platform` choice and migrations, settings, the management
+  command `register_store_carrier`, the HTML forms/pages (`imprimir_tiendanube.html` stays at the root,
+  its URL is registered in the Partner Portal) and `rotulos-extension/` (the Shopify CLI project). What
+  several platforms share stays at `apps/integrations/` level: `store_print.py` (signed print link,
+  order resolution, PDF — used by Shopify, Woo and Tiendanube), `shipping_rates.py` (the rate table and
+  its rule), `views.py` (OAuth install/callback, webhooks receiver, `_print_document`,
+  `_record_store_connect`), `handlers.py` (which imports `providers/tiendanube/handlers.py` at the end
+  to register Tiendanube's label handlers), `stores.py`, `privacy.py`, `tokens.py`. Test helpers shared
+  by every platform are in `apps/integrations/tests/helpers.py`. Platform JS loads AFTER `tiendas.js`
+  and is only called from event/async paths. **A new platform starts directly in its folder.**
 - **Nothing outside `providers/` names a platform** (except the Tiendanube-only Labels API, rates and
   carrier). Whatever differs lives on the `StoreProvider` (`providers/base.py`) as an attribute or method:
   `order_sync_events`/`uninstall_events`/`extra_webhook_events`/`privacy_events` (which webhook names
@@ -397,7 +415,7 @@ The product is an app installed in the merchant's store platform: Tiendanube (co
   refresh runs with the row locked (`select_for_update`) because **refresh tokens rotate**: two
   processes refreshing at once would leave one holding an invalidated refresh token; the second one sees
   the ciphertext changed and uses the new token.
-- **Shopify (`providers/shopify.py`)**: `external_store_id` is the shop domain (`xxx.myshopify.com`,
+- **Shopify (`providers/shopify/provider.py`)**: `external_store_id` is the shop domain (`xxx.myshopify.com`,
   validated with an anchored regex — `normalize_shop_domain` also accepts `mitienda` or a pasted URL).
   GraphQL Admin API only (REST is closed to new public apps). The OAuth callback and the App URL
   (`GET shopify/launch/`, where Shopify sends a merchant who installs or opens the app) carry an `hmac`
@@ -435,7 +453,7 @@ The product is an app installed in the merchant's store platform: Tiendanube (co
   (`_needs_new_scopes`; Shopify only asks for what's missing and the callback updates the same row).
   Not for empty `scopes` (unknown — it would loop) nor for own-app connections. `missing_scopes`
   treats a granted `write_x` as covering `read_x`.
-- **Printing labels from Shopify's own admin (`shopify_print.py`).** The merchant ticks orders in their
+- **Printing labels from Shopify's own admin (`providers/shopify/admin_print.py` + the shared `store_print.py`).** The merchant ticks orders in their
   Shopify order list → Print menu → our labels. That menu entry is an *admin print action extension*
   (target `admin.order-index.selection-print-action.render`), a separate Shopify CLI project in
   `rotulos-extension/` (extension `extensions/rotulos-envio/`) — the only part of the product that needs the CLI; the app itself stays Django and
@@ -472,7 +490,7 @@ The product is an app installed in the merchant's store platform: Tiendanube (co
   (`connect_store`) drops both. The print menu extension belongs to our app, so it does not exist on
   this path. The scopes listed in `tiendas.html` must match `SHOPIFY_SCOPES`. **Tiendanube has no
   manual path**: its API only grants access to an installed app (authorization code only).
-- **WooCommerce (`providers/woocommerce.py`)** — every store is a self-hosted WordPress, so: credentials
+- **WooCommerce (`providers/woocommerce/provider.py`)** — every store is a self-hosted WordPress, so: credentials
   are REST **API keys** (consumer key + secret, stored encrypted as JSON in `access_token`, never expire)
   that arrive by **two paths**, decided with the user: the automatic `/wc-auth/v1/authorize` (the
   generic `woocommerce/install-url/?shop=` builds it with our signed `state` as `user_id`; WooCommerce
@@ -497,15 +515,16 @@ The product is an app installed in the merchant's store platform: Tiendanube (co
   email/phone are never stored.   **The webhook secret is created once, reading the row under lock** (`ensure_webhook_secret`):
   the worker loads a whole batch's connections at once, and a stale copy without a secret used
   to mint a second one, so every webhook from that store got 401 forever.
-- **Printing from the WooCommerce admin (`woocommerce_print.py` + our WordPress plugin).** The plugin
-  "Rótulos de envío" lives in `backend/apps/integrations/wordpress_plugin/rotulos-envio/` — inside
+- **Printing from the WooCommerce admin (`providers/woocommerce/admin_print.py` + our WordPress plugin).** The plugin
+  "Rótulos de envío" lives in `backend/apps/integrations/providers/woocommerce/wordpress_plugin/rotulos-envio/` — inside
   `backend/` because the API image only copies that folder, and the backend serves it as a zip. It adds
   a "Print shipping labels" bulk action to WooCommerce → Orders (both the HPOS and the legacy posts
   screens). The PHP calls `POST woocommerce/print-link/` **server to server** with `{store, ids, ts}`
   signed in `X-Rotulos-Signature` (base64 HMAC-SHA256) with the store's `webhook_secret`, then
   `wp_safe_redirect`s the browser (new tab) to `GET woocommerce/print/<token>` (its host is whitelisted
   through `allowed_redirect_hosts`). Order resolution, the signed link and the PDF are
-  `shopify_print`'s (`read_print_token`/`print_url` take the platform/route).
+  the shared `store_print.py`'s (`read_print_token`/`print_url` take the platform/route, `order_ids` validates
+  numeric ids for Woo and Tiendanube).
   - **The merchant configures nothing**: the backend writes the endpoint, store id and secret into the
     plugin through WooCommerce's own settings REST API (`POST settings/rotulos/batch`,
     `StoreProvider.configure_admin_print`) on setup, on every reconciliation and on demand
@@ -514,7 +533,7 @@ The product is an app installed in the merchant's store platform: Tiendanube (co
     UPDATE, never `save()`, because the worker holds stale copies) and exposed as
     `print_plugin_linked`. Each setting the plugin declares **needs `option_key`**, or WooCommerce
     answers 200 and stores nothing.
-  - **Checkout quotes (`woocommerce_rates.py`, plugin `includes/shipping.php`).** WooCommerce has
+  - **Checkout quotes (`providers/woocommerce/rates.py`, plugin `includes/shipping.php`).** WooCommerce has
     no carrier API, so the plugin registers a shipping method ("Shipping labels (rates table)",
     id `rotulos`) the merchant adds to their zones. At checkout it POSTs `woocommerce/rates/`
     `{postcode, country, weight_kg, currency}` signed like the print request (the cart weight is
@@ -538,6 +557,116 @@ The product is an app installed in the merchant's store platform: Tiendanube (co
     missing for the submission: a WordPress.org account (`Contributors:` in readme.txt) and a public
     privacy-policy URL to cite. Once listed, the download can become a link to
     `plugin-install.php?tab=plugin-information&plugin=<slug>` on the merchant's store.
+- **VTEX (`providers/vtex/`, its own folder on request: `provider.py` orders/hook/feed/dispatch,
+  `freight.py` checkout quotes, `views.py` the connect view, `common.py`, `tests/`; frontend in
+  `frontend/assets/js/vtex/`) — written 2026-10-08 WITHOUT an account**: everything comes from the
+  official Orders API reference (its OpenAPI) and is tested against `FakeVtex` (`tests/fake_vtex.py`);
+  points to check on the first real account are marked "A CONFIRMAR". Connection is only by hand:
+  `POST vtex/connect-manual/` `{account, app_key, app_token}` (`VtexManualConnectView`, tested against
+  VTEX first, answers `warnings` for missing non-essential permissions) → `stores.connect_with_api_credentials`
+  (the generic half of `connect_with_credentials`). No `install-url/` (`uses_install_url = False`) nor
+  `callback/`. `external_store_id` is the **account name** (`micuenta` of `micuenta.myvtex.com`), which
+  also builds the API host (`VTEX_API_HOST_TEMPLATE`, `{account}.vtexcommercestable.com.br`); the
+  credentials are JSON in `access_token`. The key needs a **custom role** (no predefined one has the
+  hook): OMS "List Orders", "View order", "Feed v3 and Hook Admin", "Notify invoice", "Change order
+  workflow status" — a 403 names the missing resource.
+  - **Hook + feed.** The *hook* (one per appKey) POSTs `{OrderId, State, Origin.Account}` to
+    `vtex/webhooks/?store=<id>` with the headers we chose: the per-store secret goes in header `key`
+    (`webhook_secret_per_store`; the hook isn't signed). Configuring it makes VTEX ping
+    (`{"hookConfig": "ping"}` → bare 200) and it refuses to save it if the ping fails; VTEX also deletes a
+    hook after 3 days without notifications, so it is re-checked on every pass. **A hook pointing to
+    another system (the merchant's ERP using the same key) is never overwritten**: `last_error` asks for a
+    dedicated key. The backup is the *orders feed* (a queue VTEX keeps up to 14 days), read on every
+    reconciliation (`VTEX_RECONCILE_MINUTES`, 5 — `StoreProvider.reconcile_minutes` lets each platform
+    have its own interval); it needs no public URL, so without a hook orders still arrive. A page's feed
+    items are committed on the NEXT page, after the handler stored their orders. The order list is only
+    used for the initial import (statuses ready-for-handling/handling/invoiced, VTEX caps it at 30 pages);
+    it can't filter by "modified since" and VTEX says not to use it for integrations.
+  - **Dispatch = tracking on the invoice; we never invoice** (an Argentine invoice is fiscal, issued by
+    the merchant's ERP; decided 2026-10-08). `push_fulfillment` moves `ready-for-handling` →
+    `start-handling`, PATCHes `trackingNumber`/`trackingUrl`/`courier` onto each Output invoice, and for
+    delivered PUTs a tracking event with `isDelivered`. No invoice yet → `ProviderError` (retried); when
+    the invoice shows up later (hook/feed) `handlers._store_order` asks
+    `StoreProvider.needs_fulfillment_push` and enqueues the push again. Local status from VTEX: canceled
+    → cancelled, invoiced WITH tracking → dispatched (invoiced alone isn't: ERPs invoice before shipping),
+    `courierStatus.finished` → delivered. `external_number` is the `orderId` (what the admin shows).
+    `clientProfileData`/payments/contact info are never stored (`_stored_copy`).
+  - **Checkout quotes = a published freight table, not a callback** (added 2026-10-08). VTEX's checkout
+    never asks an outside party for a price: it quotes from the freight tables of its shipping
+    policies. So `push_shipping_rates` publishes the `ShippingRate` table as one shipping policy per
+    `option_code` (`rotulos-<code>`, created if missing, only renamed afterwards — never re-activated)
+    with its freight rows (Logistics API, permission "Logistics shipping full access"). `freight_rows`
+    rebuilds `matching_rates`' rule ("tightest bracket that fits") as non-overlapping rows: postal
+    ranges are split into segments with the same rates, brackets become consecutive weight ranges
+    (grams, `VTEX_FREIGHT_WEIGHT_UNITS_PER_KG`), equal neighbours merge back. VTEX's update endpoint
+    APPENDS rows, so the last published rows are kept in `preferences["vtex_freight"]` and only the
+    difference is sent (deletes with `operationType` 3, then inserts). A row needs a delivery time:
+    rates without days go out with `VTEX_DEFAULT_DELIVERY_DAYS` (5). A policy only quotes once the
+    merchant links it to a dock in their admin — we don't touch their docks; the unlinked ones are
+    reported. Publishing turns the option on in THEIR checkout, so it is the merchant's call:
+    `POST stores/<id>/publish-rates/ {enabled}` (generic: `StoreProvider.supports_rates_push`;
+    refuses with no active rates) sets `preferences["rates_push"]` and enqueues
+    `internal/push_shipping_rates`; after that every create/update/delete in `ShippingRateViewSet`
+    calls `shipping_rates.rates_changed`, which re-enqueues it (one pending event absorbs a burst).
+    State (`pending`/`published`/`failed`, rows, unlinked policies, error) is exposed as `rates_push`
+    on the store serializer and shown in `tarifas_envio.html` ("Publicar en el checkout de VTEX", JS in
+    `assets/js/vtex/tarifas_vtex.js`). A
+    missing logistics permission fails only the publication, never marks the store "error".
+  - Not done (phase 2): printing from the VTEX admin (needs a VTEX IO app).
+- **Magento 2 / Adobe Commerce (`providers/magento/`, its own folder: `provider.py`, `oauth.py` the
+  request signing, `views.py` the connect view, `tests/`; frontend in `frontend/assets/js/magento/`) —
+  phase 1, written 2026-10-08 WITHOUT a store**
+  (the laptop has 3.5 GB of RAM: a local Magento + MySQL + OpenSearch doesn't fit; the real test is
+  meant for a client's store or a rented server). Tested against `FakeMagento` (`tests/fake_magento.py`),
+  which re-derives the OAuth signature from the URL that actually arrived; "A CONFIRMAR" marks what
+  needs a real store. Connection only by hand: the merchant creates an *Integration* (System →
+  Extensions → Integrations, custom resources: Sales → Operations → Orders with View/Ship/Comment, and
+  Shipments), activates it and pastes its four credentials into `POST magento/connect-manual/`
+  (`MagentoManualConnectView`, tested against the store first) → `connect_with_api_credentials`.
+  `external_store_id`/`store_url` work like WooCommerce's (site URL, **HTTPS only**). **Every request is
+  signed with OAuth 1.0a HMAC-SHA256** (`oauth1_header`, stdlib only) instead of sending the token as
+  Bearer: since 2.4.4 that is off by default and turning it on is a setting Adobe advises against. The
+  query string is built by us with the same encoding that was signed (bracketed `searchCriteria[...]`
+  keys would otherwise break the signature). A host without URL rewrites serves the API under
+  `/index.php/rest/`: tried on connect and kept in `preferences["magento_rest_path"]`.
+  - **No webhooks in Magento Open Source** → `order_sync_events = ()`, `register_webhooks` is a no-op
+    (and `handlers._register_webhooks` no longer demands a public URL for a platform without webhook
+    events). Orders arrive by reconciliation every `MAGENTO_RECONCILE_MINUTES` (5), which is exact here:
+    the API filters by `updated_at` (`YYYY-MM-DD HH:MM:SS`, UTC). The order list already carries full
+    orders; past the last page Magento repeats the last one instead of returning empty, so paging
+    stops on `total_count`. Shipping address comes from `extension_attributes.shipping_assignments`
+    (billing as fallback); a configurable product's child line (`parent_item_id`) is skipped;
+    `external_number` = `increment_id`, `external_id` = `entity_id`. State canceled/closed →
+    cancelled, complete → dispatched.
+  - **Dispatch creates a shipment** (`POST order/{id}/ship` with a `custom` carrier track, title =
+    `Order.carrier`, Magento emails the buyer); if the merchant already shipped from their admin, only
+    the missing track is added (`shipment/track`) and the shipment email resent. Magento has no field
+    for a custom carrier's tracking URL: it goes in a buyer-visible order comment, never repeated.
+    **We never invoice** (in Magento invoicing captures the payment). "Delivered" doesn't exist there.
+  - Phase 2 (not done): our own Magento module for instant order notifications, a "print labels" mass
+    action and checkout quotes (a Magento carrier calling our rates) — like the WooCommerce plugin.
+- **Empretienda (`providers/empretienda/`) — no API at all** (none public or for partners as of
+  2026-10; DUX, which integrates it, also imports by hand). Its only output is the spreadsheet from
+  "Gestión de ventas → Listado de ventas → Exportar". So `EmpretiendaProvider` talks to nobody: it
+  exists so the store is a normal `StoreConnection` (orders grouped, sender/logo/template, store filter,
+  idempotent by order number) — no credentials, webhooks, auto import (`supports_order_import = False`)
+  nor dispatch push (tracking is entered in Empretienda's admin). `POST empretienda/connect/`
+  `{store_url, name}` adds it (`external_store_id` = the store's domain, so two accounts can't load the
+  same one). Orders come in through `importar_empretienda.html` (JS in `assets/js/empretienda/`):
+  `POST empretienda/import/preview/` then `confirm/`, multipart `{store, file, mapping?}` — the file is
+  sent in both steps, so a spreadsheet with buyers' data is never stored between them.
+  `spreadsheet.py`: **the real column names aren't published anywhere** — `FIELDS` holds the most
+  likely synonyms (A CONFIRMAR with a real export) and the merchant fixes any column in the preview; the
+  fixed mapping is kept in `preferences["empretienda_mapping"]` and used first next time. Detection
+  reuses `apps.orders.bulk.match_columns` (generalized from the tracking import), with one-word
+  synonyms only matching exactly (so "numero" doesn't take "numero de telefono"). Rows of the same
+  order (one per product) are grouped; each order goes through `upsert_store_order`, so re-importing
+  overlapping ranges updates instead of duplicating, and status only moves forward. Status from the
+  status columns (A CONFIRMAR: exact texts): cancel/anulad → cancelled, entregad → delivered, en
+  camino/en tránsito → in_transit, enviad/despachad → dispatched. Email, phone and DNI columns are never
+  read; `raw_payload` keeps only the order number and the status texts. Permission: `orders.create`
+  (it's how THEIR store's orders arrive, like the other platforms do automatically), not the generic
+  `orders.import`, which merchants don't have.
 - **Local test store**: WordPress + WooCommerce in podman (`woo-wp` on 127.0.0.1:8080, `woo-db`),
   published by Tailscale Funnel at `https://<laptop>.ts.net:8443`; `podman start woo-db woo-wp`
   after a reboot. No wp-cli in the image: run PHP through `podman exec` + `wp-load.php`.
@@ -584,11 +713,11 @@ The product is an app installed in the merchant's store platform: Tiendanube (co
 **Printing from Tiendanube's sales list (bulk-action app link).** Unlike Shopify/WooCommerce there is no
 extension or plugin: Tiendanube lets an app register a *link* (Partner Portal → the app → Links → "Acciones
 masivas") that shows up in Ventas' bulk-action menu and opens a URL with the selected orders. It points at
-`imprimir_tiendanube.html` (+ `assets/js/imprimir_tiendanube.js`). **Tiendanube doesn't sign that link**, so
+`imprimir_tiendanube.html` (+ `assets/js/tiendanube/imprimir_tiendanube.js`; the HTML stays at the root because its URL is registered in the Partner Portal). **Tiendanube doesn't sign that link**, so
 the identity comes from our own session: the page calls `POST tiendanube/print-link/` (`labels.batch`, JWT)
 with `{store, ids}`, the store must be the caller's active Tiendanube (`store` = its Tiendanube id; omitted →
 their only one), and the answer is the same short-lived signed PDF link as Shopify/WooCommerce
-(`shopify_print.resolve_orders`/`make_print_token`, route `tiendanube-print`). Without a session the page
+(`store_print.resolve_orders`/`make_print_token`, route `tiendanube-print`). Without a session the page
 stashes the query in `localStorage.pendingTiendanubePrint` and `index.html` returns to it after login. Tiendanube
 opens it as `?locale=es&store=<tiendanube store id>&id[]=<order id>&id[]=...` (seen live 2026-10-07; the
 ids are Tiendanube order ids = our `external_id`, not order numbers). The format isn't publicly documented,
@@ -596,7 +725,7 @@ so the page also accepts `ids`/`orders`/... (comma lists too) and, when it finds
 received. Configured in the Partner Portal as category "Órdenes", "listado de órdenes". Working end to end
 (printed live from demosbuspack on 2026-10-07).
 
-**Labels the store asks for (`store_labels.py`, `label_views.py`, `label_urls.py`).** The mirror image of
+**Labels the store asks for (`providers/tiendanube/labels.py`, `label_views.py`, `label_urls.py`, `handlers.py`).** The mirror image of
 the print flow: instead of the merchant picking orders in *our* app, they tick orders in *their* store
 admin and Tiendanube asks us for the labels (Labels API). `POST .../tiendanube/labels/<token>/generate`
 (bulk and single are the same endpoint — only the array size changes) has 5 seconds to answer, so it only
@@ -612,8 +741,8 @@ anything still pending after `STORE_LABEL_TIMEOUT_SECONDS`, with margin over the
 waits before failing it silently. `/cancel` is required by Tiendanube; `/suspension` and `/reactivate`
 are optional and share the same contract (`StoreLabelDecisionView`) — for us all three mean "stop serving
 the PDF".
-**Quoting shipping at checkout (`shipping_rates.py`, `rate_views.py`, `rate_urls.py`).** The other half of
-being a carrier: `store_labels` resolves the label *after* the sale, this resolves the price *before* it.
+**Quoting shipping at checkout (the shared table and rule in `shipping_rates.py`; Tiendanube's callback in `providers/tiendanube/rates.py`, `rate_views.py`, `rate_urls.py`).** The other half of
+being a carrier: `labels` resolves the label *after* the sale, this resolves the price *before* it.
 `POST .../tiendanube/rates/<token>` receives the cart and answers `{"rates": [...]}` — the options the buyer
 sees at checkout. Same signed per-store token as the labels callbacks (the cart's `store_id` is body data,
 not proof). It touches nothing but the DB: no API calls, no queue, because **it sits in the middle of
@@ -632,13 +761,13 @@ is why the view **never returns 5xx**: an unreadable cart or an unexpected excep
   with `tarifas_envio.html` + `assets/js/tarifas_envio.js`, linked from `tiendas.html` and the
   `shipping_rates` menu item. Audited as `store.update`.
 - **Carrier registration is manual, on purpose.** `python manage.py register_store_carrier [<store id>]`
-  calls `store_labels.register_carrier`, which registers both callbacks (`callback_url` =
-  `shipping_rates.rates_callback_url`, `callback_labels_url` = `store_labels.callback_base_url`) and
+  calls `tiendanube.labels.register_carrier`, which registers both callbacks (`callback_url` =
+  `tiendanube.rates.rates_callback_url`, `callback_labels_url` = `labels.callback_base_url`) and
   **refuses if the store has no active rates** — a carrier with no table would offer a shipping method that
   never answers a price. It is manual because registering flips that store's checkout on: it is turned on
   client by client, never as a side effect of installing the app.
 - **Plan gating.** `connect_store` saves the store's `features` into `StoreConnection.preferences`, and
-  `store_labels.supports_label_api()` reads `fulfillment_order_label_api` off it (`None` = unknown, for
+  `tiendanube.labels.supports_label_api()` reads `fulfillment_order_label_api` off it (`None` = unknown, for
   stores connected before this existed). Surfaced as `label_api_enabled` on the store serializer.
 - **The merchant's view.** `GET /api/v1/integrations/store-labels/` (`orders.create`, read-only, filters
   `?store=` and `?status=`) lists the caller's own store label requests with the failure reason — never
@@ -649,6 +778,57 @@ is why the view **never returns 5xx**: an unreadable cart or an unexpected excep
   orders, `store/redact` revokes the store and anonymizes everything, `customers/data_request` emails a
   JSON report to the store owner (no owner → fails without retry, report stays in `event.result`). Orders
   are anonymized, never deleted.
+
+### Carriers (`apps/carriers`) — Andreani
+
+The opposite direction from `apps.integrations`: there a store sends us orders; here we ask a **shipping
+company** to carry them. **Each client uses their OWN account and contracts** (decided 2026-10-08; never
+an account of ours as default), so everything hangs from `CarrierAccount.owner`. Written 2026-10-08
+**without credentials** (Andreani only gives QA credentials to clients, through their sales rep): it
+comes from Andreani's official docs, published as spreadsheets at developers.andreani.com/document, and
+is tested against `FakeAndreani` (`andreani/tests/fake_andreani.py`); "A CONFIRMAR" marks what needs a
+real account. Their Warehouse service (stock, order preparation) is another API, left for later.
+- Models (`apps/carriers/models.py`, shared by every carrier): `CarrierAccount` (one per owner and
+  carrier: credentials encrypted with `apps.integrations.crypto`, `client_code`, `contracts` as
+  `[{code, label, kind: "home"|"branch"}]` — one contract per service —, sender + origin address, default
+  package weight/volume, cached 24 h token), `CarrierShipment` (one per order and carrier shipment:
+  `tracking_number` = Andreani's *número de envío*, `group_number` = *agrupadorDeBultos*, `status`
+  pending/in_transit/at_branch/delivered/issue/returning/cancelled, Andreani's own text in
+  `carrier_status`) and `CarrierShipmentEvent` (the traces, unique per shipment+moment+event).
+- **Andreani lives in `apps/carriers/andreani/`** (`client.py` the API, `shipments.py` order ↔ shipment
+  and status mapping, `views.py`/`urls.py`, `tests/`). API: `GET /login` with Basic auth → token in header
+  `x-authorization-token` (A CONFIRMAR whether it can come in the body; both are read), renewed at 23 h or
+  on the first 401; QA and production chosen per account. Order v2 (`POST /v2/ordenes-de-envio`:
+  `contrato`, `origen.postal`, `destino.postal` or `destino.sucursal.id`, `remitente`, `destinatario` is a
+  LIST, `bultos` with `kilos`/`volumenCm` and `referencias: [{meta: "idCliente"}]`), labels
+  (`GET .../{agrupador}/etiquetas`, PDF or `Accept: application/zpl`), tracking v3
+  (`GET /v3/envios/{n}/trazas`), branches (`GET /v2/sucursales?codigoPostal=`, no token) and cancellation
+  (`POST /v2/nueva-accion`, `accion: cancelacion`).
+- **Creating a shipment** (`POST carriers/andreani/shipments/` `{order_ids, contract, branches?,
+  package_count?}`, `orders.create`, one failing order never blocks the rest) stores the shipment and,
+  through `orders.shipping.apply_shipping`, sets `Order.carrier = "Andreani"`, `tracking_number` and
+  `tracking_url` (`ANDREANI_TRACKING_URL_TEMPLATE`, A CONFIRMAR) and moves the order only to **preparing**:
+  created is not dispatched. **The label's barcode is the Andreani number with no extra code**: the
+  rótulo prints `{{tracking}}` = `Order.tracking_number` (that's the "number under the barcode" the user
+  asked for). One open shipment per order; cancelling clears the order's tracking so it can be sent again.
+- **HOP points are just Andreani branches** (nomenclature `HOPxxxx`, "PUNTO ANDREANI HOP …"): a branch
+  contract sends to `destino.sucursal.id`, and `branches/?cp=` marks them `is_hop`.
+- **Tracking** (`shipments.sync_shipment`): the worker calls `apps.carriers.tracking.sync_due_shipments`
+  each loop (open shipments not checked for `ANDREANI_TRACKING_POLL_MINUTES`, up to
+  `ANDREANI_TRACKING_MAX_DAYS`). Events map by Andreani's "Maestro de eventos y estados": **the cycle
+  matters** — `EnvioEntregado` in a return cycle (Drop/Devolucion/Rescate) is the parcel going back to the
+  sender, not delivered. Order status moves forward only: admitted (`Admision`/`AltaAutomatica`) →
+  dispatched (that's when the store gets the tracking), moving or waiting at a branch/HOP → in transit,
+  delivered to the buyer → delivered; returns and issues stay visible on the shipment only. A rejected
+  login deactivates the account (`last_error`, shown in `andreani.html`) until the client saves it again;
+  any other failure is noted and the shipment is retried on the next interval, not every loop.
+- Frontend: `andreani.html` (the account: credentials, contracts, sender/origin, default package; "Probar
+  conexión") and `envios_andreani.html` (pick orders with `createOrderPicker`, choose contract and, for
+  branch contracts, a branch/HOP per order by its postal code; then the shipments table with status, last
+  movement, label PDF/ZPL — several at once as a zip or one ZPL file —, refresh and cancel). JS in
+  `assets/js/andreani/`. Menu entries "Envíos Andreani" and "Cuenta de Andreani" (`orders.create`).
+- Not done yet: the quote API (`/v1/tarifas`) for checkout prices, the push "novedades" (Andreani
+  configures them by hand per client), and Warehouse.
 
 ### Frontend
 
@@ -666,7 +846,7 @@ permission (UI-only gating; the backend re-checks every permission server-side).
   (or the section's own `.store-sender-msg`) and a failure a red one; nothing ends in silence or
   only in a redirect. Store connections report in `#connectMessage` inside the connect card
   (`showConnectResult`), with the HTTP status (or the platform's error code) as "Error NNN:" so the
-  merchant can quote it. `tiendas.js` re-renders every card on `loadStores`, so a notice for one store
+  merchant can quote it. `tiendas.js` (+ each platform's `assets/js/<platform>/tiendas_<platform>.js`) re-renders every card on `loadStores`, so a notice for one store
   goes into its NEW card (`showStoreFeedback`, cards carry `data-store-id`). In `tiendas.html` the
   "Conectar una tienda" card is a `<details>`: closed when the user already has stores (so "Mis
   tiendas" is reachable without scrolling), open with none, and `showConnectResult` opens it. Each

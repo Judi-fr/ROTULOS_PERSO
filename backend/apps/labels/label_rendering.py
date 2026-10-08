@@ -289,7 +289,7 @@ def build_preview_context():
 def build_shipment_context(shipment, store=None):
     """Igual que ``build_label_context``, pero para un envío que NO es un
     ``Order`` nuestro: el rótulo que pidió la tienda desde su propio admin
-    (``apps.integrations.store_labels``), donde los datos del comprador
+    (``apps.integrations.providers.tiendanube.labels``), donde los datos del comprador
     llegan en el callback y nunca se guardan como pedido.
 
     ``shipment`` es un ``NormalizedLabelRequest`` (o cualquier objeto con

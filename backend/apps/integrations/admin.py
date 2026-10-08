@@ -74,7 +74,7 @@ class WebhookDeliveryAdmin(admin.ModelAdmin):
 @admin.register(StoreLabelRequest)
 class StoreLabelRequestAdmin(admin.ModelAdmin):
     """Solo lectura: acá se mira por qué un rótulo que pidió la tienda no
-    salió. Lo crea el callback y lo resuelve el worker (ver store_labels)."""
+    salió. Lo crea el callback y lo resuelve el worker (ver providers/tiendanube/labels.py)."""
 
     list_display = ("external_label_id", "connection", "status", "created_at", "released_at")
     list_filter = ("status", "connection__platform")

@@ -1,6 +1,6 @@
 """Contrato común de las plataformas de tienda online.
 
-Cada plataforma (Tiendanube, Shopify; WooCommerce, Mercado Libre... a
+Cada plataforma (Tiendanube, Shopify, WooCommerce, VTEX; Mercado Libre... a
 futuro) implementa ``StoreProvider`` y traduce SUS pedidos a un
 ``NormalizedOrder``. Todo lo que viene después (crear/actualizar el pedido,
 generar el rótulo) trabaja sobre ``NormalizedOrder`` y no sabe de qué
@@ -21,6 +21,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
+
+from django.conf import settings
 
 
 @dataclass
@@ -55,7 +57,7 @@ class NormalizedOrder:
 @dataclass
 class NormalizedLabelRequest:
     """Un rótulo que la TIENDA nos pidió generar, ya traducido a los campos
-    que necesita el render (ver ``apps.integrations.store_labels``).
+    que necesita el render (ver ``providers/tiendanube/labels.py``).
 
     Es el equivalente de ``NormalizedOrder`` para el otro sentido: ahí la
     plataforma nos avisa de un pedido y lo guardamos; acá nos pide un
@@ -193,6 +195,14 @@ class StoreProvider:
     # modificados (``list_updated_orders_page``) y vuelve a registrar los
     # webhooks (ver ``stores.enqueue_due_reconciliations``).
     supports_reconciliation = False
+    # False = la plataforma no tiene una URL a la que mandar al comerciante a
+    # autorizar (VTEX: la clave se pega a mano): no se genera
+    # ``<plataforma>/install-url/``.
+    uses_install_url = True
+    # True = la plataforma no nos pregunta el precio en el checkout: cotiza
+    # con una tabla propia, y la nuestra hay que publicársela
+    # (``push_shipping_rates``, VTEX). Ver ``shipping_rates.rates_changed``.
+    supports_rates_push = False
 
     @property
     def webhook_events(self):
@@ -201,6 +211,11 @@ class StoreProvider:
     @property
     def orders_page_size(self):
         return 200
+
+    @property
+    def reconcile_minutes(self):
+        """Cada cuánto se repasa una tienda (``supports_reconciliation``)."""
+        return getattr(settings, "INTEGRATIONS_RECONCILE_MINUTES", 30)
 
     def build_authorize_url(self, state, *, shop_domain=""):
         """URL a la que se manda al comerciante para instalar/autorizar la
@@ -274,6 +289,13 @@ class StoreProvider:
         orders = self.list_orders(connection, created_at_min=created_at_min, page=page, per_page=per_page)
         return OrdersPage(orders=orders, next_cursor=str(page + 1) if len(orders) >= per_page else "")
 
+    def needs_fulfillment_push(self, normalized, order):
+        """``True`` si, tras sincronizar ``order`` con lo que dice la tienda
+        (``normalized``), hay que volver a informarle el despacho: la
+        plataforma no tenía dónde recibirlo cuando se despachó (VTEX: el
+        seguimiento va en una factura que llega después)."""
+        return False
+
     def push_fulfillment(
         self, connection, order_id, *, status, tracking_code="", tracking_url="", carrier="", notify_customer=True
     ):
@@ -281,6 +303,12 @@ class StoreProvider:
         en el vocabulario de la plataforma) con su tracking y el correo
         (``carrier``, si la plataforma lo muestra). Idempotente: no repite lo
         que la tienda ya tiene. Devuelve lo que actualizó."""
+        raise NotImplementedError
+
+    def push_shipping_rates(self, connection, rates):
+        """Publica en la tienda la tabla de tarifas (``ShippingRate`` activas
+        de la conexión; vacía = despublicar). Idempotente. Devuelve un resumen
+        para mostrarle al comerciante. Solo con ``supports_rates_push``."""
         raise NotImplementedError
 
     def register_webhooks(self, connection, url, events):

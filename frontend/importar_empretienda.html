@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Importar ventas de Empretienda</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/pedidos.css" />
+    <link rel="stylesheet" href="assets/css/imprimir_rotulos.css" />
+    <link rel="stylesheet" href="assets/css/acciones_masivas.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar" id="appTopbar" data-links='[{"href": "tiendas.html", "label": "Mis tiendas"}, {"href": "pedidos.html", "label": "Mis pedidos"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Importar ventas de Empretienda</h1>
+          <p>
+            Empretienda no se conecta sola: subí la planilla que exportás desde
+            su admin (<strong>Gestión de ventas &rarr; Listado de ventas &rarr;
+            Exportar</strong>) y sus pedidos quedan en tu tienda, listos para
+            imprimir los rótulos. Podés subir la misma venta más de una vez: se
+            actualiza, no se duplica.
+          </p>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <!-- Paso 1: tienda y planilla (backend: apps/integrations/providers/empretienda/) -->
+        <section class="profile-card">
+          <div class="profile-card-title">1. La planilla de Empretienda</div>
+          <div class="profile-card-body">
+            <div class="filters-row">
+              <div class="field">
+                <label for="storeSelect">Tienda</label>
+                <select id="storeSelect">
+                  <option value="">Elegí una tienda...</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="fileInput">Archivo (Excel o CSV)</label>
+                <input type="file" id="fileInput" accept=".xlsx,.csv,.txt" />
+              </div>
+            </div>
+            <p class="filters-hint" id="noStoresHint" style="display:none;">
+              Todavía no agregaste tu tienda Empretienda: hacelo en
+              <a href="tiendas.html">Mis tiendas</a> &rarr; Conectar una tienda &rarr; Empretienda.
+            </p>
+            <div class="form-actions">
+              <button type="button" class="btn btn-primary" id="previewBtn">Leer planilla</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Paso 2: revisar columnas y pedidos -->
+        <section class="profile-card" id="reviewCard" style="display:none;">
+          <div class="profile-card-title">
+            <span>2. Revisá lo que se encontró</span>
+            <span class="selection-count" id="reviewCount"></span>
+          </div>
+          <div class="profile-card-body">
+            <p class="filters-hint">
+              Qué columna de la planilla se usó para cada dato. Si alguna está
+              mal, cambiala y tocá «Volver a leer»: la próxima vez se acuerda.
+            </p>
+            <div class="filters-row" id="mappingRow"></div>
+            <div class="form-actions" style="justify-content:flex-start;">
+              <button type="button" class="btn btn-outline btn-small" id="remapBtn">Volver a leer con estas columnas</button>
+            </div>
+            <div id="countsRow" class="counts-row"></div>
+            <div class="tracking-table-wrap">
+              <table class="tracking-table">
+                <thead>
+                  <tr>
+                    <th>Orden</th>
+                    <th>Destinatario</th>
+                    <th>Domicilio</th>
+                    <th>Localidad</th>
+                    <th>Productos</th>
+                    <th>Resultado</th>
+                  </tr>
+                </thead>
+                <tbody id="ordersBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Paso 3: confirmar -->
+        <section class="profile-card" id="confirmCard" style="display:none;">
+          <div class="profile-card-title">3. Confirmar</div>
+          <div class="profile-card-body">
+            <p class="filters-hint">
+              Se guardan los pedidos sin errores. Un pedido que acá ya está más
+              avanzado (por ejemplo, despachado) conserva su estado.
+            </p>
+            <div class="form-actions">
+              <button type="button" class="btn btn-primary" id="confirmBtn">Importar pedidos</button>
+            </div>
+            <div id="importResult"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/empretienda/importar_empretienda.js"></script>
+  </body>
+</html>

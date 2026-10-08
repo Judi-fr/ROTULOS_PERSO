@@ -2,7 +2,7 @@ api_version = "2026-07"
 
 # Rótulos de envío desde el admin de Shopify: el comerciante tilda pedidos
 # en su lista, abre "Imprimir" y elige esta opción. El PDF lo arma nuestro
-# backend (backend/apps/integrations/shopify_print.py).
+# backend (backend/apps/integrations/providers/shopify/admin_print.py y store_print.py).
 [[extensions]]
 name = "t:name"
 handle = "rotulos-envio"

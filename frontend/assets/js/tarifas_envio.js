@@ -6,8 +6,13 @@
 // .ShippingRateSerializer): los CP se normalizan, el rango se controla y la
 // tienda se verifica contra el dueño de la sesión.
 //
+// En las plataformas que cotizan con una tabla propia (VTEX) la tabla además
+// se publica en la tienda: tarjeta "Publicar en el checkout de VTEX", en
+// assets/js/vtex/tarifas_vtex.js (renderPublishCard, refreshStore), que
+// tarifas_envio.html carga después de este archivo.
+//
 // Sesión y apiFetch salen de assets/js/auth.js (window.Auth); escapeHtml,
-// showMessage y extractResults, de assets/js/utils.js.
+// showMessage, extractResults y formatDate, de assets/js/utils.js.
 
 const API_BASE = window.APP_CONFIG.API_BASE;
 const ME_URL = `${API_BASE}/auth/me/`;
@@ -37,6 +42,8 @@ const fields = {
 };
 
 let storeId = "";
+// Tiendas del usuario por id (para saber si la elegida publica su tabla).
+const storesById = new Map();
 // Id de la tarifa que se está editando, o null si el formulario agrega una.
 let editingId = null;
 
@@ -48,6 +55,7 @@ async function loadStores() {
     const response = await apiFetch(STORES_URL);
     if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
     extractResults(await response.json()).forEach((store) => {
+      storesById.set(String(store.id), store);
       const option = document.createElement("option");
       option.value = store.id;
       option.textContent = store.name || `Tienda ${store.external_store_id}`;
@@ -208,6 +216,7 @@ form.addEventListener("submit", async (event) => {
     showMessage(editingId ? "Tarifa actualizada." : "Tarifa agregada.", "success");
     resetForm();
     await loadRates();
+    await refreshStore();
   } catch (err) {
     if (err.isSessionExpired) return;
     console.error("Error al guardar la tarifa:", err);
@@ -233,6 +242,7 @@ async function removeRate(rate) {
     showMessage("Tarifa eliminada.", "success");
     if (editingId === rate.id) resetForm();
     await loadRates();
+    await refreshStore();
   } catch (err) {
     if (err.isSessionExpired) return;
     console.error("Error al eliminar la tarifa:", err);
@@ -246,6 +256,7 @@ storeSelect.addEventListener("change", (event) => {
   formCard.style.display = chosen ? "" : "none";
   listCard.style.display = chosen ? "" : "none";
   resetForm();
+  renderPublishCard();
   if (chosen) loadRates();
 });
 

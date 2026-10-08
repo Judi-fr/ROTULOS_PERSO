@@ -13,7 +13,7 @@ para la app (formulario del Portal de Partners).
 
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.integrations import store_labels
+from apps.integrations.providers.tiendanube import labels as store_labels
 from apps.integrations.models import StoreConnection
 from apps.integrations.providers.base import ProviderError
 

@@ -2,6 +2,8 @@
 
 - ABM admin (``integrations.manage``): ``/keys/``, ``/incoming-webhooks/``,
   ``/webhook-endpoints/``, ``/webhook-deliveries/``.
+- Las vistas propias de cada plataforma están en su carpeta
+  (``providers/<plataforma>/views.py``); acá solo se montan.
 - Tiendas online del comerciante: ``/stores/`` (+ ``claim/``,
   ``<id>/disconnect/``) y, por cada plataforma registrada en
   ``providers``, ``/<plataforma>/install-url/``, ``/<plataforma>/callback/``
@@ -13,34 +15,60 @@
   Ventas, un link de app que abre ``imprimir_tiendanube.html``). Shopify suma ``/shopify/launch/`` (su App URL),
   ``/shopify/connect-manual/`` (conexión con la app propia del comerciante) y
   ``/shopify/print-link/`` + ``/shopify/print/<token>`` (rótulos impresos
-  desde su admin, ver ``shopify_print``). WooCommerce no tiene ``callback/``:
+  desde su admin, ver ``providers/shopify/admin_print.py``). WooCommerce no tiene ``callback/``:
   ``/woocommerce/keys/`` (las claves que POSTea su autorización),
   ``/woocommerce/return/`` (la vuelta del navegador) y
   ``/woocommerce/connect-manual/`` (claves pegadas a mano), más
   ``/woocommerce/print-link/`` + ``/woocommerce/print/<token>`` (rótulos
-  impresos desde su admin con nuestro plugin, ver ``woocommerce_print``) y
+  impresos desde su admin con nuestro plugin, ver ``providers/woocommerce/admin_print.py``) y
   ``/woocommerce/print-plugin/`` (el plugin como zip) y ``/woocommerce/rates/``
-  (la cotización del envío en su checkout, ver ``woocommerce_rates``).
+  (la cotización del envío en su checkout, ver ``providers/woocommerce/rates.py``).
+  VTEX no tiene ``install-url/`` ni ``callback/``: ``/vtex/connect-manual/``
+  (el appKey/appToken que pega el comerciante) y ``/vtex/webhooks/`` (su hook
+  de pedidos). Magento tampoco: ``/magento/connect-manual/`` (las credenciales de
+  una Integración de su admin); sin webhooks en la fase 1. Empretienda no tiene
+  API: ``/empretienda/connect/`` (la tienda, sin credenciales) y
+  ``/empretienda/import/preview/`` + ``confirm/`` (su planilla de ventas).
 - ``/store-labels/``: solo lectura, los rótulos que las tiendas del
-  comerciante pidieron desde su propio admin (ver ``store_labels``). Los
-  endpoints que llama la plataforma viven aparte, en ``label_urls``.
+  comerciante pidieron desde su propio admin (ver
+  ``providers/tiendanube/labels.py``). Los endpoints que llama la plataforma
+  viven aparte, en ``providers/tiendanube/label_urls.py``.
 - ``/shipping-rates/``: ABM de la tabla de tarifas con la que cotizamos el
   envío en el checkout de esas tiendas (ver ``shipping_rates``). El
-  callback que consulta esa tabla vive en ``rate_urls``.
+  callback que consulta esa tabla vive en ``providers/tiendanube/rate_urls.py``.
 """
 
 from django.urls import path
 from rest_framework.routers import SimpleRouter
 
 from .providers import all_providers
-from .views import (
-    IncomingWebhookViewSet,
-    ShippingRateViewSet,
-    IntegrationKeyViewSet,
+from .providers.empretienda.views import (
+    EmpretiendaConnectView,
+    EmpretiendaImportConfirmView,
+    EmpretiendaImportPreviewView,
+)
+from .providers.magento.views import MagentoManualConnectView
+from .providers.shopify.views import (
     ShopifyLaunchView,
     ShopifyManualConnectView,
     ShopifyPrintLinkView,
     shopify_print_document,
+)
+from .providers.tiendanube.views import TiendanubePrintLinkView, tiendanube_print_document
+from .providers.vtex.views import VtexManualConnectView
+from .providers.woocommerce.views import (
+    WooCommerceKeysView,
+    WooCommerceManualConnectView,
+    WooCommercePluginDownloadView,
+    WooCommercePrintLinkView,
+    WooCommerceRatesView,
+    WooCommerceReturnView,
+    woocommerce_print_document,
+)
+from .views import (
+    IncomingWebhookViewSet,
+    ShippingRateViewSet,
+    IntegrationKeyViewSet,
     StoreConnectionViewSet,
     StoreInstallShareLinkView,
     StoreInstallShareView,
@@ -48,15 +76,6 @@ from .views import (
     StoreLabelRequestViewSet,
     StoreOAuthCallbackView,
     StoreWebhookView,
-    TiendanubePrintLinkView,
-    tiendanube_print_document,
-    WooCommerceKeysView,
-    WooCommerceManualConnectView,
-    WooCommercePluginDownloadView,
-    WooCommercePrintLinkView,
-    WooCommerceRatesView,
-    woocommerce_print_document,
-    WooCommerceReturnView,
     WebhookDeliveryListView,
     WebhookEndpointViewSet,
 )
@@ -76,10 +95,14 @@ platform_urls = []
 for _provider in all_providers():
     _platform = _provider.platform
     _kwargs = {"platform": _platform}
-    platform_urls += [
-        path(f"{_platform}/install-url/", StoreInstallUrlView.as_view(), _kwargs, name=f"{_platform}-install-url"),
-        path(f"{_platform}/webhooks/", StoreWebhookView.as_view(), _kwargs, name=f"{_platform}-webhooks"),
-    ]
+    platform_urls.append(
+        path(f"{_platform}/webhooks/", StoreWebhookView.as_view(), _kwargs, name=f"{_platform}-webhooks")
+    )
+    # VTEX no tiene a dónde mandar al comerciante a autorizar: pega su clave.
+    if _provider.uses_install_url:
+        platform_urls.append(
+            path(f"{_platform}/install-url/", StoreInstallUrlView.as_view(), _kwargs, name=f"{_platform}-install-url")
+        )
     # WooCommerce no vuelve con un code por GET: tiene sus propias rutas, abajo.
     if _provider.uses_authorization_code:
         platform_urls.append(
@@ -119,6 +142,11 @@ urlpatterns = (
         path("woocommerce/rates/", WooCommerceRatesView.as_view(), name="woocommerce-rates"),
         path("woocommerce/print-link/", WooCommercePrintLinkView.as_view(), name="woocommerce-print-link"),
         path("woocommerce/print/<str:token>", woocommerce_print_document, name="woocommerce-print"),
+        path("vtex/connect-manual/", VtexManualConnectView.as_view(), name="vtex-connect-manual"),
+        path("magento/connect-manual/", MagentoManualConnectView.as_view(), name="magento-connect-manual"),
+        path("empretienda/connect/", EmpretiendaConnectView.as_view(), name="empretienda-connect"),
+        path("empretienda/import/preview/", EmpretiendaImportPreviewView.as_view(), name="empretienda-import-preview"),
+        path("empretienda/import/confirm/", EmpretiendaImportConfirmView.as_view(), name="empretienda-import-confirm"),
     ]
     + platform_urls
     + router.urls

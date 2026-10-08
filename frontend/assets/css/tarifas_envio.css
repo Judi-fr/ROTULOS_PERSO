@@ -231,3 +231,17 @@
     flex-direction: column;
   }
 }
+
+/* Estado de la publicación de la tabla en VTEX (ver tarifas_envio.js). */
+.publish-status {
+  margin: 12px 0;
+  font-weight: 700;
+}
+
+.publish-status.error {
+  color: #b42318;
+}
+
+.publish-steps {
+  margin: 0 0 12px 18px;
+}

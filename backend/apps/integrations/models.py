@@ -17,7 +17,7 @@ Dos direcciones, cuatro modelos:
   ``IntegrationEvent`` (cola persistente con reintentos que procesa
   ``manage.py run_integrations_worker``, ver ``events``) +
   ``StoreLabelRequest`` (un rótulo que pidió la tienda desde SU admin, ver
-  ``store_labels``).
+  ``providers/tiendanube/labels.py``).
 """
 
 from __future__ import annotations
@@ -200,6 +200,9 @@ class StoreConnection(models.Model):
         TIENDANUBE = "tiendanube", "Tiendanube"
         SHOPIFY = "shopify", "Shopify"
         WOOCOMMERCE = "woocommerce", "WooCommerce"
+        VTEX = "vtex", "VTEX"
+        MAGENTO = "magento", "Magento"
+        EMPRETIENDA = "empretienda", "Empretienda"
 
     class Status(models.TextChoices):
         ACTIVE = "active", "Conectada"
@@ -217,7 +220,10 @@ class StoreConnection(models.Model):
     # Id de la tienda en la plataforma (en Tiendanube, el ``user_id`` que
     # devuelve el canje del código OAuth; en Shopify, su dominio
     # ``xxx.myshopify.com``; en WooCommerce, la URL del sitio sin esquema,
-    # ``mitienda.com`` o ``mitienda.com/tienda``).
+    # ``mitienda.com`` o ``mitienda.com/tienda``; en VTEX, el nombre de la
+    # cuenta, ``micuenta`` de ``micuenta.myvtex.com``; en Magento, la URL de la
+    # tienda sin esquema, como en WooCommerce; en Empretienda, el dominio de la
+    # tienda, ``mitienda.empretienda.com.ar``).
     external_store_id = models.CharField(max_length=255)
     name = models.CharField(max_length=150, blank=True, default="")
     store_url = models.URLField(blank=True, default="")
@@ -232,7 +238,8 @@ class StoreConnection(models.Model):
     token_expires_at = models.DateTimeField(null=True, blank=True)
     refresh_token_expires_at = models.DateTimeField(null=True, blank=True)
     # Clave con la que la tienda firma sus webhooks, cuando es POR TIENDA
-    # (WooCommerce: los webhooks los creamos nosotros y elegimos el secreto).
+    # (WooCommerce: los webhooks los creamos nosotros y elegimos el secreto;
+    # VTEX: va como header del hook de pedidos).
     # Tiendanube y Shopify firman con el secreto de la app: vacío.
     webhook_secret_encrypted = models.TextField(blank=True, default="")
     scopes = models.CharField(max_length=500, blank=True, default="")

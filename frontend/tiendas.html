@@ -57,7 +57,7 @@
               </p>
               <!-- Link para compartir (POST tiendanube/install-share-link/): lo abre
                    quien administra la tienda, sin cuenta nuestra, y la tienda queda
-                   en esta cuenta. Ver tiendas.js / createShareLink. -->
+                   en esta cuenta. Ver assets/js/tiendanube/tiendas_tiendanube.js / createShareLink. -->
               <div class="share-install">
                 <p class="connect-help">
                   <strong>&iquest;La tienda la administra otra persona?</strong> Gener&aacute; un
@@ -174,6 +174,102 @@
               <button type="submit" class="btn btn-primary" id="wooManualBtn">Conectar con estas claves</button>
             </form>
           </details>
+          <!-- VTEX (JS: assets/js/vtex/tiendas_vtex.js): no hay a dónde mandar a autorizar; el comerciante crea una
+               clave de aplicación con un rol propio y la pega
+               (POST vtex/connect-manual/). Los recursos listados son los que
+               pide apps/integrations/providers/vtex.py. -->
+          <details class="card-body woo-manual" id="vtexConnect">
+            <summary class="connect-platform">VTEX</summary>
+            <p class="connect-help">
+              VTEX se conecta con una <strong>clave de aplicaci&oacute;n</strong> de tu cuenta. Con ella entran
+              los pedidos y, al despachar, el n&uacute;mero de seguimiento se agrega a la factura del pedido
+              (la factura la sigue cargando tu sistema de facturaci&oacute;n: nosotros no facturamos).
+            </p>
+            <ol class="connect-help woo-steps">
+              <li>En el admin de VTEX and&aacute; a <strong>Configuraci&oacute;n de la cuenta &rarr; Roles</strong> y cre&aacute; un rol con los recursos de OMS <strong>List Orders</strong>, <strong>View order</strong>, <strong>Feed v3 and Hook Admin</strong>, <strong>Notify invoice</strong> y <strong>Change order workflow status</strong>. Para cotizar el env&iacute;o en tu checkout, sum&aacute; tambi&eacute;n <strong>Logistics shipping full access</strong>.</li>
+              <li>En <strong>Configuraci&oacute;n de la cuenta &rarr; Claves de aplicaci&oacute;n</strong> gener&aacute; una clave nueva <strong>solo para esta app</strong> y asignale ese rol.</li>
+              <li>Copi&aacute; el <strong>appKey</strong> y el <strong>appToken</strong> (VTEX muestra el appToken una sola vez).</li>
+            </ol>
+            <form class="woo-manual-form" id="vtexConnectForm" novalidate>
+              <div class="field">
+                <label for="vtexAccountInput">Cuenta</label>
+                <input type="text" id="vtexAccountInput" placeholder="micuenta (de micuenta.myvtex.com)" autocomplete="off" autocapitalize="off" spellcheck="false" />
+              </div>
+              <div class="field">
+                <label for="vtexAppKeyInput">appKey</label>
+                <input type="text" id="vtexAppKeyInput" placeholder="vtexappkey-micuenta-..." autocomplete="off" spellcheck="false" />
+              </div>
+              <div class="field">
+                <label for="vtexAppTokenInput">appToken</label>
+                <input type="password" id="vtexAppTokenInput" autocomplete="off" spellcheck="false" />
+              </div>
+              <button type="submit" class="btn btn-primary" id="vtexConnectBtn">Conectar VTEX</button>
+            </form>
+          </details>
+          <!-- Magento (fase 1, JS: assets/js/magento/tiendas_magento.js): las credenciales de una Integración del admin
+               (POST magento/connect-manual/). Los permisos listados son los que
+               usa apps/integrations/providers/magento.py. -->
+          <details class="card-body woo-manual" id="magentoConnect">
+            <summary class="connect-platform">Magento</summary>
+            <p class="connect-help">
+              Magento se conecta con una <strong>Integraci&oacute;n</strong> de tu admin. Los pedidos entran
+              solos cada pocos minutos y, al despachar, creamos el env&iacute;o con el n&uacute;mero de
+              seguimiento (Magento le avisa al comprador). Nunca facturamos: eso cobra el pago y lo
+              decid&iacute;s vos.
+            </p>
+            <ol class="connect-help woo-steps">
+              <li>En el admin de Magento and&aacute; a <strong>Sistema &rarr; Extensiones &rarr; Integraciones</strong> y toc&aacute; <strong>Agregar nueva integraci&oacute;n</strong>.</li>
+              <li>Ponele un nombre y tu contrase&ntilde;a de admin. En <strong>API &rarr; Acceso a recursos</strong> eleg&iacute; <strong>Personalizado</strong> y marc&aacute; <strong>Ventas &rarr; Operaciones &rarr; Pedidos</strong> (con <em>Acciones &rarr; Ver, Enviar y Comentar</em>) y <strong>Env&iacute;os</strong>.</li>
+              <li>Guard&aacute;, toc&aacute; <strong>Activar</strong> y <strong>Permitir</strong>, y copi&aacute; las cuatro credenciales que muestra.</li>
+            </ol>
+            <form class="woo-manual-form" id="magentoConnectForm" novalidate>
+              <div class="field">
+                <label for="magentoSiteInput">Direcci&oacute;n de tu tienda</label>
+                <input type="text" id="magentoSiteInput" placeholder="https://mitienda.com" autocomplete="off" autocapitalize="off" spellcheck="false" />
+              </div>
+              <div class="field">
+                <label for="magentoConsumerKeyInput">Clave del consumidor</label>
+                <input type="text" id="magentoConsumerKeyInput" autocomplete="off" spellcheck="false" />
+              </div>
+              <div class="field">
+                <label for="magentoConsumerSecretInput">Secreto del consumidor</label>
+                <input type="password" id="magentoConsumerSecretInput" autocomplete="off" spellcheck="false" />
+              </div>
+              <div class="field">
+                <label for="magentoAccessTokenInput">Token de acceso</label>
+                <input type="text" id="magentoAccessTokenInput" autocomplete="off" spellcheck="false" />
+              </div>
+              <div class="field">
+                <label for="magentoAccessTokenSecretInput">Secreto del token de acceso</label>
+                <input type="password" id="magentoAccessTokenSecretInput" autocomplete="off" spellcheck="false" />
+              </div>
+              <button type="submit" class="btn btn-primary" id="magentoConnectBtn">Conectar Magento</button>
+            </form>
+          </details>
+          <!-- Empretienda (JS: assets/js/empretienda/tiendas_empretienda.js): no
+               tiene API, así que solo se agrega la tienda (POST
+               empretienda/connect/) y sus ventas se importan con su planilla
+               en importar_empretienda.html. -->
+          <details class="card-body woo-manual" id="empretiendaConnect">
+            <summary class="connect-platform">Empretienda</summary>
+            <p class="connect-help">
+              Empretienda no permite que otra app lea sus ventas, así que no se conecta sola: agreg&aacute;
+              tu tienda ac&aacute; y despu&eacute;s import&aacute; la planilla que export&aacute;s desde su admin
+              (<strong>Gesti&oacute;n de ventas &rarr; Listado de ventas &rarr; Exportar</strong>). Los pedidos
+              quedan en tu tienda para imprimir los r&oacute;tulos; el seguimiento se sigue cargando en Empretienda.
+            </p>
+            <form class="woo-manual-form" id="empretiendaConnectForm" novalidate>
+              <div class="field">
+                <label for="empretiendaUrlInput">Direcci&oacute;n de tu tienda</label>
+                <input type="text" id="empretiendaUrlInput" placeholder="https://mitienda.empretienda.com.ar" autocomplete="off" autocapitalize="off" spellcheck="false" />
+              </div>
+              <div class="field">
+                <label for="empretiendaNameInput">Nombre (como quer&eacute;s verla ac&aacute;)</label>
+                <input type="text" id="empretiendaNameInput" maxlength="150" autocomplete="off" />
+              </div>
+              <button type="submit" class="btn btn-primary" id="empretiendaConnectBtn">Agregar tienda</button>
+            </form>
+          </details>
           <!-- Resultado de la última conexión (éxito o error con su número), al
                lado de los formularios: el aviso general de arriba queda fuera
                de la vista cuando se conecta desde acá abajo. Lo llena tiendas.js
@@ -201,5 +297,11 @@
     <script src="assets/js/utils.js"></script>
     <script src="assets/js/topbar.js"></script>
     <script src="assets/js/tiendas.js"></script>
+    <script src="assets/js/tiendanube/tiendas_tiendanube.js"></script>
+    <script src="assets/js/shopify/tiendas_shopify.js"></script>
+    <script src="assets/js/woocommerce/tiendas_woocommerce.js"></script>
+    <script src="assets/js/vtex/tiendas_vtex.js"></script>
+    <script src="assets/js/magento/tiendas_magento.js"></script>
+    <script src="assets/js/empretienda/tiendas_empretienda.js"></script>
   </body>
 </html>

@@ -1,5 +1,6 @@
 """``python manage.py run_integrations_worker`` — procesa la cola de eventos
-de tiendas conectadas (``IntegrationEvent``, ver ``apps.integrations.events``).
+de tiendas conectadas (``IntegrationEvent``, ver ``apps.integrations.events``)
+y consulta el seguimiento de los envíos de transportistas (``apps.carriers``).
 
 Corre en un proceso aparte del servidor web (en Docker, un servicio más con
 el mismo código). ``--once`` procesa un solo lote y termina (útil para cron
@@ -11,8 +12,9 @@ import time
 from django.core.management.base import BaseCommand
 from django.db import close_old_connections
 
+from apps.carriers.tracking import sync_due_shipments
 from apps.integrations.events import process_due_events
-from apps.integrations.store_labels import expire_stale_requests
+from apps.integrations.providers.tiendanube.labels import expire_stale_requests
 from apps.integrations.stores import enqueue_due_reconciliations
 
 
@@ -46,6 +48,11 @@ class Command(BaseCommand):
                 reconciling = enqueue_due_reconciliations()
                 if reconciling:
                     self.stdout.write(f"Tiendas a repasar: {reconciling}")
+                # Seguimiento de los envíos creados en un transportista
+                # (Andreani): los abiertos que hace rato no se consultan.
+                moved = sync_due_shipments(limit=options["limit"])
+                if moved:
+                    self.stdout.write(f"Envíos que cambiaron de estado: {moved}")
                 counts = process_due_events(limit=options["limit"])
                 processed = sum(counts.values())
                 if processed:

@@ -1,13 +1,16 @@
 """Registro de plataformas de tienda online (ver ``base.StoreProvider``)."""
 
 from .base import NormalizedOrder, StoreProvider
+from .empretienda import EmpretiendaProvider
+from .magento import MagentoProvider
 from .shopify import ShopifyProvider
 from .tiendanube import TiendanubeProvider
+from .vtex import VtexProvider
 from .woocommerce import WooCommerceProvider
 
 _PROVIDERS = {
     provider.platform: provider
-    for provider in (TiendanubeProvider(), ShopifyProvider(), WooCommerceProvider())
+    for provider in (TiendanubeProvider(), ShopifyProvider(), WooCommerceProvider(), VtexProvider(), MagentoProvider(), EmpretiendaProvider())
 }
 
 

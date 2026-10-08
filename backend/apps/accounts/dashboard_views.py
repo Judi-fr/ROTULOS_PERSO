@@ -93,7 +93,7 @@ class DashboardView(APIView):
                 {"key": "stores", "label": "Tiendas conectadas", "url": "tiendas.html", "enabled": True}
             )
             # Los rótulos que la tienda pidió desde SU panel: solo lectura,
-            # para ver por qué falló uno (ver apps.integrations.store_labels).
+            # para ver por qué falló uno (ver apps.integrations.providers.tiendanube.labels).
             menu.append(
                 {
                     "key": "store_labels",
@@ -115,6 +115,15 @@ class DashboardView(APIView):
         menu.append(
             {"key": "orders", "label": "Mis pedidos", "url": "pedidos.html", "enabled": True}
         )
+        # Envíos por Andreani con la cuenta del propio cliente (apps.carriers):
+        # mismo permiso que despachar.
+        if user_has_permission(user, "orders.create"):
+            menu.append(
+                {"key": "andreani_shipments", "label": "Envíos Andreani", "url": "envios_andreani.html", "enabled": True}
+            )
+            menu.append(
+                {"key": "andreani_account", "label": "Cuenta de Andreani", "url": "andreani.html", "enabled": True}
+            )
         # Imprimir los rótulos de varios pedidos de una (apps.labels batch):
         # mismo permiso que exige LabelBatchView.
         if user_has_permission(user, "labels.batch"):

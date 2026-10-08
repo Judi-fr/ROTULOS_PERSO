@@ -18,12 +18,15 @@ evento puede ejecutarse más de una vez):
 - ``internal/reconcile_orders`` (plataformas con ``supports_reconciliation``,
   ver ``stores.enqueue_due_reconciliations``): reactiva los webhooks y trae
   los pedidos modificados desde el repaso anterior, por si algún aviso no
-  llegó.
+  llegó (en VTEX, lo que quedó en su feed de pedidos).
 - ``internal/push_fulfillment`` (ver ``fulfillment``): informa a la tienda
   que el pedido se despachó/entregó, con su tracking.
-- ``internal/generate_label`` + ``fulfillment_order/label_status_updated``
-  (ver ``store_labels``): el rótulo que pidió el comerciante desde el admin
-  de su propia tienda.
+- ``internal/push_shipping_rates`` (plataformas con ``supports_rates_push``,
+  ver ``shipping_rates.rates_changed``): publica la tabla de tarifas.
+- ``internal/generate_label`` + ``fulfillment_order/label_status_updated``:
+  el rótulo que pidió el comerciante desde el admin de su propia tienda
+  (solo Tiendanube: están en ``providers/tiendanube/handlers.py``, que se
+  importa al final de este módulo para registrarlos).
 - Privacidad (``privacy_events`` del proveedor: ``store/redact`` o
   ``shop/redact``, ``customers/redact``, ``customers/data_request``): ver
   ``privacy``. Funcionan aunque la tienda ya esté desconectada (el borrado
@@ -42,16 +45,15 @@ from apps.audit.services import record
 from apps.orders.ingestion import upsert_store_order
 from apps.orders.models import Order
 
-from . import privacy, store_labels
+from . import privacy, shipping_rates
 from .events import PermanentEventError, enqueue_event, register_handler
-from .models import StoreConnection, StoreLabelRequest
+from .models import StoreConnection
 from .providers import all_providers, get_provider
-from .providers.tiendanube import LABEL_STATUS_EVENT, TiendanubeProvider
 from .providers.base import ProviderAuthError, ProviderError, ProviderNotFoundError, ProviderRejectedError
 from .stores import (
-    GENERATE_LABEL_EVENT,
     IMPORT_ORDERS_EVENT,
     PUSH_FULFILLMENT_EVENT,
+    PUSH_SHIPPING_RATES_EVENT,
     RECONCILE_ORDERS_EVENT,
     STORE_SETUP_EVENT,
     disconnect_store,
@@ -59,15 +61,6 @@ from .stores import (
 )
 
 logger = logging.getLogger(__name__)
-
-TIENDANUBE = StoreConnection.Platform.TIENDANUBE
-
-# Los que se registran en una tienda Tiendanube (se definen en su proveedor).
-WEBHOOK_EVENTS = TiendanubeProvider().webhook_events
-
-# Estados de la plataforma en los que ya tiene el PDF guardado ella: a
-# partir de ahí dejamos de publicarlo (ver store_labels.release_download).
-LABEL_RELEASED_STATUSES = ("READY_TO_USE", "DOWNLOADED")
 
 MISSING_BASE_URL_ERROR = (
     "No se registraron los webhooks: falta INTEGRATIONS_PUBLIC_BASE_URL (la URL pública HTTPS del backend)."
@@ -117,8 +110,24 @@ def sync_order(event):
         normalized = provider.normalize_order(raw)
     except ValueError as exc:
         raise PermanentEventError(str(exc)) from exc
-    upsert_store_order(connection, normalized)
+    _store_order(connection, provider, normalized)
     _mark_synced(connection)
+
+
+def _store_order(connection, provider, normalized):
+    """Crea o actualiza el pedido y, si la tienda recién ahora puede recibir
+    el despacho que ya se hizo acá (VTEX: llegó la factura), se lo vuelve a
+    informar. ``upsert_store_order`` no lo hace solo: un cambio que viene de
+    la tienda nunca se le devuelve a ella."""
+    order, _ = upsert_store_order(connection, normalized)
+    if provider.needs_fulfillment_push(normalized, order):
+        enqueue_event(
+            platform=connection.platform,
+            event_type=PUSH_FULFILLMENT_EVENT,
+            connection=connection,
+            resource_id=order.external_id or "",
+            payload={"order_id": order.pk},
+        )
 
 
 def app_uninstalled(event):
@@ -130,6 +139,10 @@ def app_uninstalled(event):
 def _register_webhooks(connection, provider):
     """Registra (o reactiva) los webhooks de la tienda. Sin URL pública no se
     puede: queda el aviso en ``last_error``."""
+    if not provider.webhook_events:
+        # Plataforma sin avisos (Magento, fase 1): todo entra por el repaso,
+        # así que tampoco hace falta la URL pública.
+        return
     base_url = str(getattr(settings, "INTEGRATIONS_PUBLIC_BASE_URL", "") or "").rstrip("/")
     if base_url:
         webhook_url = f"{base_url}{reverse(f'{provider.platform}-webhooks')}"
@@ -230,7 +243,7 @@ def reconcile_orders(event):
         except ValueError:
             logger.warning("Pedido sin id en el repaso de la tienda %s.", connection.pk)
             continue
-        upsert_store_order(connection, normalized)
+        _store_order(connection, provider, normalized)
     _mark_synced(connection)
 
     if result.next_cursor:
@@ -269,63 +282,34 @@ def push_fulfillment(event):
     )
 
 
-# ---------------------------------------------------------------------------
-# Rótulos pedidos desde el admin de la tienda (ver store_labels)
-# ---------------------------------------------------------------------------
-
-
-@register_handler(TIENDANUBE, GENERATE_LABEL_EVENT)
-def generate_store_label(event):
-    """Dibuja el rótulo que pidió la tienda y le avisa dónde bajarlo.
-
-    Un rótulo que no se puede dibujar ya quedó informado como fallido del
-    lado de la plataforma (``store_labels.generate``), así que acá solo se
-    traduce a un error que la cola no reintenta.
-    """
-    connection = _connection_for(event, require_owner=False)
-    label_request = StoreLabelRequest.objects.filter(
-        pk=event.payload.get("label_request_id"), connection=connection
-    ).first()
-    if label_request is None:
-        raise PermanentEventError("El rótulo pedido ya no existe o no es de esta tienda.")
-
+def push_shipping_rates(event):
+    """Publica la tabla de tarifas en una plataforma que cotiza con una tabla
+    propia (VTEX). Lee la tabla en el momento: varios cambios seguidos se
+    publican juntos. Despublicada (``enabled`` falso) manda una tabla vacía,
+    que borra lo que habíamos subido."""
+    connection = _connection_for(event, require_owner=True)
+    provider = get_provider(connection.platform)
+    enabled = bool(shipping_rates.rates_push_state(connection).get("enabled"))
+    rates = list(connection.shipping_rates.filter(is_active=True).order_by("option_code", "pk")) if enabled else []
     try:
-        store_labels.generate(label_request)
-    except store_labels.LabelGenerationError as exc:
-        raise PermanentEventError(str(exc)) from exc
+        summary = provider.push_shipping_rates(connection, rates)
     except (ProviderAuthError, ProviderNotFoundError, ProviderRejectedError) as exc:
-        # La plataforma rechazó el aviso (etiqueta vencida, cancelada o un
-        # token que ya no sirve): reintentar no lo arregla.
-        store_labels.fail(label_request, str(exc))
+        # Sin ``_call_api``: un permiso de logística que falta no es una
+        # tienda caída (los pedidos siguen entrando), así que no la marca
+        # "con errores". El motivo queda en el estado de la publicación.
+        shipping_rates.save_rates_push_state(connection, status="failed", error=str(exc)[:500])
         raise PermanentEventError(str(exc)) from exc
-
-
-@register_handler(TIENDANUBE, LABEL_STATUS_EVENT)
-def label_status_updated(event):
-    """La plataforma avisa en qué quedó una etiqueta. Solo nos importa para
-    dejar de publicar el PDF: una vez que lo tiene ella, nuestra URL
-    pública no tiene por qué seguir existiendo."""
-    connection = event.connection
-    if connection is None:
-        return  # No es una tienda nuestra: no hay nada que liberar.
-
-    payload = event.payload or {}
-    label_id = str(payload.get("label_id") or payload.get("id") or event.resource_id or "").strip()
-    if not label_id:
-        return
-
-    label_request = StoreLabelRequest.objects.filter(
-        connection=connection, external_label_id=label_id
-    ).first()
-    if label_request is None:
-        return
-
-    # Solo con un estado conocido: sin estado no se sabe si la plataforma
-    # alcanzó a bajar el PDF, y dejar de publicarlo antes de tiempo le
-    # rompería la etiqueta al comerciante.
-    status = str(payload.get("status") or "").strip().upper()
-    if status in LABEL_RELEASED_STATUSES:
-        store_labels.release_download(label_request)
+    except Exception as exc:
+        shipping_rates.save_rates_push_state(connection, status="failed", error=str(exc)[:500])
+        raise
+    shipping_rates.save_rates_push_state(
+        connection,
+        status="published",
+        error="",
+        published_at=timezone.now().isoformat(),
+        rows=summary["rows"],
+        unlinked_policies=summary["unlinked_policies"],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -411,3 +395,8 @@ for _provider in all_providers():
     register_handler(_provider.platform, PUSH_FULFILLMENT_EVENT)(push_fulfillment)
     if _provider.supports_reconciliation:
         register_handler(_provider.platform, RECONCILE_ORDERS_EVENT)(reconcile_orders)
+    if _provider.supports_rates_push:
+        register_handler(_provider.platform, PUSH_SHIPPING_RATES_EVENT)(push_shipping_rates)
+
+# Los handlers propios de una plataforma viven en su carpeta; importarlos los
+# registra.

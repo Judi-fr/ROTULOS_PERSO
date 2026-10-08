@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Envíos Andreani</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/pedidos.css" />
+    <link rel="stylesheet" href="assets/css/imprimir_rotulos.css" />
+    <link rel="stylesheet" href="assets/css/acciones_masivas.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar" id="appTopbar" data-links='[{"href": "andreani.html", "label": "Cuenta de Andreani"}, {"href": "pedidos.html", "label": "Mis pedidos"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Envíos Andreani</h1>
+          <p>
+            Elegí pedidos y creá sus envíos en Andreani con tu cuenta. El número de envío queda como
+            seguimiento del pedido —es el que imprime el rótulo debajo del código de barras— y el
+            estado se actualiza solo a medida que Andreani lo mueve.
+          </p>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+        <p id="accountNotice" class="filters-hint" style="display:none;"></p>
+
+        <!-- Backend: apps/carriers/andreani/ (POST carriers/andreani/shipments/). -->
+        <div id="pickerRoot"></div>
+
+        <section class="profile-card">
+          <div class="profile-card-title">
+            <span>Crear los envíos</span>
+            <span class="selection-count" id="selectionCount">0 pedidos elegidos</span>
+          </div>
+          <div class="profile-card-body">
+            <div class="filters-row">
+              <div class="field">
+                <label for="contractSelect">Servicio (contrato)</label>
+                <select id="contractSelect"></select>
+              </div>
+              <div class="field">
+                <label for="packageCount">Bultos por pedido</label>
+                <input type="number" id="packageCount" min="1" max="20" value="1" />
+              </div>
+            </div>
+            <!-- Solo para contratos de sucursal: una sucursal o punto HOP por pedido. -->
+            <div id="branchSection" style="display:none;">
+              <p class="filters-hint">
+                Elegí dónde retira cada comprador. Se buscan las sucursales y los puntos HOP que atienden
+                su código postal.
+              </p>
+              <div class="form-actions" style="justify-content:flex-start;">
+                <button type="button" class="btn btn-outline btn-small" id="loadBranchesBtn">Buscar sucursales de los pedidos elegidos</button>
+              </div>
+              <div id="branchRows"></div>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn btn-primary" id="createBtn" disabled>Crear envíos</button>
+            </div>
+            <div id="createResult"></div>
+          </div>
+        </section>
+
+        <section class="profile-card">
+          <div class="profile-card-title">
+            <span>Mis envíos Andreani</span>
+            <button type="button" class="btn btn-outline btn-small" id="reloadShipmentsBtn">Actualizar</button>
+          </div>
+          <div class="profile-card-body">
+            <div class="filters-row">
+              <div class="field">
+                <label for="labelFormat">Formato de etiqueta</label>
+                <select id="labelFormat">
+                  <option value="pdf">PDF (impresora común)</option>
+                  <option value="zpl">ZPL (impresora térmica)</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-actions" style="justify-content:flex-start;">
+              <button type="button" class="btn btn-outline btn-small" id="labelsBtn" disabled>Bajar etiquetas de los tildados</button>
+            </div>
+            <div class="tracking-table-wrap">
+              <table class="tracking-table">
+                <thead>
+                  <tr>
+                    <th><input type="checkbox" id="selectAllShipments" title="Todos" /></th>
+                    <th>Envío</th>
+                    <th>Pedido</th>
+                    <th>Destino</th>
+                    <th>Estado</th>
+                    <th>Último movimiento</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="shipmentsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/andreani/envios_andreani.js"></script>
+  </body>
+</html>

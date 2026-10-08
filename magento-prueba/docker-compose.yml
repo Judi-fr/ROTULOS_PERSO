@@ -1,0 +1,40 @@
+# Magento de prueba: Mage-OS (Magento Open Source sin cuenta de Adobe) + MariaDB
+# + OpenSearch. Lo levanta instalar.sh; no se usa a mano.
+services:
+  db:
+    image: docker.io/library/mariadb:11.4
+    environment:
+      MARIADB_DATABASE: magento
+      MARIADB_USER: magento
+      MARIADB_PASSWORD: magento
+      MARIADB_ROOT_PASSWORD: magento
+    volumes:
+      - db-data:/var/lib/mysql
+    restart: unless-stopped
+
+  opensearch:
+    image: docker.io/opensearchproject/opensearch:2.19.1
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - search-data:/usr/share/opensearch/data
+    restart: unless-stopped
+
+  web:
+    build: ./web
+    ports:
+      - "8080:80"
+    volumes:
+      - code:/var/www/html
+    depends_on:
+      - db
+      - opensearch
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  search-data:
+  code:

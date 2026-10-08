@@ -52,6 +52,7 @@ IMPORT_ORDERS_EVENT = "internal/import_orders"
 PUSH_FULFILLMENT_EVENT = "internal/push_fulfillment"
 GENERATE_LABEL_EVENT = "internal/generate_label"
 RECONCILE_ORDERS_EVENT = "internal/reconcile_orders"
+PUSH_SHIPPING_RATES_EVENT = "internal/push_shipping_rates"
 
 
 def enqueue_store_setup(connection):
@@ -305,20 +306,34 @@ def connect_with_credentials(provider, user, site_url, key, secret, auth_mode="b
     chico pedirle algo en ese momento puede trabar las dos puntas. Los datos
     de la tienda, los webhooks y la importación los hace el worker
     (``enqueue_store_setup``)."""
-    from .providers.woocommerce import credentials_token, external_store_id_for
+    from .providers.woocommerce.provider import credentials_token, external_store_id_for
+
+    return connect_with_api_credentials(
+        provider,
+        user,
+        external_store_id=external_store_id_for(site_url),
+        store_url=site_url,
+        token=credentials_token(key, secret),
+        scopes="read_write",
+        preferences={"woo_auth": auth_mode},
+    )
+
+
+def connect_with_api_credentials(provider, user, *, external_store_id, store_url, token, scopes="", preferences=None):
+    """Guarda las credenciales permanentes de una tienda (claves de API que
+    no vencen: WooCommerce, VTEX) y lanza su configuración en el worker.
+    ``token`` es lo que el proveedor sabe leer de ``access_token``."""
 
     def apply(connection):
-        connection.access_token = credentials_token(key, secret)
+        connection.access_token = token
         connection.refresh_token = ""
         connection.token_expires_at = None
         connection.refresh_token_expires_at = None
-        connection.store_url = site_url[:200]
-        connection.scopes = "read_write"
-        connection.preferences = dict(connection.preferences or {}, woo_auth=auth_mode)
+        connection.store_url = store_url[:200]
+        connection.scopes = scopes[:500]
+        connection.preferences = dict(connection.preferences or {}, **(preferences or {}))
 
-    connection, created, owner_conflict = _upsert_connection(
-        provider.platform, external_store_id_for(site_url), user, apply
-    )
+    connection, created, owner_conflict = _upsert_connection(provider.platform, external_store_id, user, apply)
     enqueue_store_setup(connection)
     return ConnectResult(
         connection=connection,
@@ -331,20 +346,26 @@ def connect_with_credentials(provider, user, site_url, key, secret, auth_mode="b
 def enqueue_due_reconciliations(now=None):
     """Encola el repaso de las tiendas cuyos webhooks no alcanzan
     (``StoreProvider.supports_reconciliation``) y no se repasaron hace
-    ``INTEGRATIONS_RECONCILE_MINUTES``. Lo llama el worker en cada vuelta. El
+    ``StoreProvider.reconcile_minutes``. Lo llama el worker en cada vuelta. El
     repaso trae los pedidos modificados desde el anterior (con 10 minutos de
     margen: un pedido modificado mientras corría el anterior no se pierde) y
     vuelve a activar los webhooks. Devuelve cuántas tiendas encoló."""
     from .providers import all_providers
 
     now = now or timezone.now()
-    interval = timedelta(minutes=getattr(settings, "INTEGRATIONS_RECONCILE_MINUTES", 30))
-    platforms = [provider.platform for provider in all_providers() if provider.supports_reconciliation]
+    # Cada plataforma con su intervalo: VTEX lee su feed seguido, WooCommerce
+    # repasa pedidos cada media hora (``StoreProvider.reconcile_minutes``).
+    intervals = {
+        provider.platform: timedelta(minutes=provider.reconcile_minutes)
+        for provider in all_providers()
+        if provider.supports_reconciliation
+    }
     count = 0
     connections = StoreConnection.objects.filter(
-        platform__in=platforms, status=StoreConnection.Status.ACTIVE, owner__isnull=False
+        platform__in=list(intervals), status=StoreConnection.Status.ACTIVE, owner__isnull=False
     )
     for connection in connections:
+        interval = intervals[connection.platform]
         preferences = connection.preferences or {}
         last = parse_datetime(str(preferences.get("reconciled_at") or ""))
         if last is not None and now - last < interval:

@@ -63,6 +63,7 @@ LOCAL_APPS = [
     "apps.orders",      # direcciones y pedidos del cliente final
     "apps.audit",       # registro de auditoría (solo lectura)
     "apps.integrations",  # claves de API y webhooks (entrada/salida)
+    "apps.carriers",    # transportistas (Andreani): envíos, etiquetas y seguimiento
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -162,7 +163,7 @@ REST_FRAMEWORK = {
         # tumbar la API. Configurable por .env porque el volumen esperado
         # varía mucho de un cliente a otro.
         "ingest": env("INGEST_THROTTLE_RATE", default="120/min"),
-        # Rótulos que pide la tienda (apps.integrations.store_labels): un
+        # Rótulos que pide la tienda (apps.integrations.providers.tiendanube.labels): un
         # lote masivo son hasta 50 etiquetas y la plataforma se baja UN PDF
         # por etiqueta, así que el límite anónimo por defecto (60/min) la
         # dejaría afuera a mitad de camino.
@@ -325,7 +326,7 @@ TIENDANUBE_HTTP_TIMEOUT_SECONDS = env.int("TIENDANUBE_HTTP_TIMEOUT_SECONDS", def
 # OAuth, la apertura de la app (hmac en la query string) y los webhooks
 # (header X-Shopify-Hmac-Sha256). En el panel se configuran como App URL
 # {INTEGRATIONS_PUBLIC_BASE_URL}/api/v1/integrations/shopify/launch/ y como
-# redirect URL .../shopify/callback/. Ver apps.integrations.providers.shopify.
+# redirect URL .../shopify/callback/. Ver apps.integrations.providers.shopify.provider.
 SHOPIFY_CLIENT_ID = env("SHOPIFY_CLIENT_ID", default="")
 SHOPIFY_CLIENT_SECRET = env("SHOPIFY_CLIENT_SECRET", default="")
 # Versión de la GraphQL Admin API (trimestral: AAAA-01/04/07/10).
@@ -344,17 +345,53 @@ SHOPIFY_HTTP_TIMEOUT_SECONDS = env.int("SHOPIFY_HTTP_TIMEOUT_SECONDS", default=1
 # GraphQL crece con pedidos x productos por pedido, y Shopify corta en 1000.
 SHOPIFY_ORDERS_PAGE_SIZE = env.int("SHOPIFY_ORDERS_PAGE_SIZE", default=25)
 # Vida del enlace al PDF que carga la vista previa de impresión del admin de
-# Shopify (apps.integrations.shopify_print). Corto: lleva datos de compradores.
+# Shopify (apps.integrations.store_print, común a las tres plataformas). Corto: lleva datos de compradores.
 SHOPIFY_PRINT_LINK_MAX_AGE_SECONDS = env.int("SHOPIFY_PRINT_LINK_MAX_AGE_SECONDS", default=900)
 
-# WooCommerce (apps.integrations.providers.woocommerce). No hay app que
+# WooCommerce (apps.integrations.providers.woocommerce/). No hay app que
 # registrar: cada tienda autoriza en su propio sitio. El nombre es el que ve
 # el comerciante al aprobar.
 WOOCOMMERCE_APP_NAME = env("WOOCOMMERCE_APP_NAME", default="Rotulos perso")
 # Más que en las plataformas grandes: muchos WordPress son hostings chicos.
 WOOCOMMERCE_HTTP_TIMEOUT_SECONDS = env.int("WOOCOMMERCE_HTTP_TIMEOUT_SECONDS", default=15)
 WOOCOMMERCE_ORDERS_PAGE_SIZE = env.int("WOOCOMMERCE_ORDERS_PAGE_SIZE", default=50)
-# Cada cuánto el worker repasa los pedidos de las tiendas cuyos webhooks no
+# VTEX (apps.integrations.providers.vtex). Tampoco hay app que registrar: cada
+# comerciante crea un appKey/appToken en su cuenta y lo pega. La API se llama
+# en {account}.vtexcommercestable.com.br (el host de la API de VTEX, distinto
+# del de la tienda).
+VTEX_API_HOST_TEMPLATE = env("VTEX_API_HOST_TEMPLATE", default="https://{account}.vtexcommercestable.com.br")
+VTEX_HTTP_TIMEOUT_SECONDS = env.int("VTEX_HTTP_TIMEOUT_SECONDS", default=15)
+# La lista de pedidos de VTEX admite hasta 100 por página y 30 páginas.
+VTEX_ORDERS_PAGE_SIZE = env.int("VTEX_ORDERS_PAGE_SIZE", default=50)
+# Cada cuánto se lee el feed de pedidos, el respaldo del hook (ver
+# VtexProvider.list_updated_orders_page). Más seguido que WooCommerce: leer el
+# feed es barato y, sin hook (sin URL pública), es lo único que trae pedidos.
+VTEX_RECONCILE_MINUTES = env.int("VTEX_RECONCILE_MINUTES", default=5)
+# Tabla de fletes que publicamos para el checkout de VTEX (VtexProvider.push_shipping_rates).
+# VTEX pesa en la unidad del catálogo de la cuenta, normalmente gramos (A CONFIRMAR
+# con una cuenta real), y exige un plazo por fila: el de las tarifas sin días cargados.
+VTEX_FREIGHT_WEIGHT_UNITS_PER_KG = env.int("VTEX_FREIGHT_WEIGHT_UNITS_PER_KG", default=1000)
+VTEX_DEFAULT_DELIVERY_DAYS = env.int("VTEX_DEFAULT_DELIVERY_DAYS", default=5)
+# Andreani (apps.carriers.andreani). Cada cliente usa su cuenta y sus contratos;
+# el ambiente (QA o producción) se elige por cuenta. A CONFIRMAR: la URL pública
+# de seguimiento que se le muestra al comprador.
+ANDREANI_API_BASE_PRODUCTION = env("ANDREANI_API_BASE_PRODUCTION", default="https://apis.andreani.com")
+ANDREANI_API_BASE_QA = env("ANDREANI_API_BASE_QA", default="https://apisqa.andreani.com")
+ANDREANI_HTTP_TIMEOUT_SECONDS = env.int("ANDREANI_HTTP_TIMEOUT_SECONDS", default=20)
+ANDREANI_TRACKING_URL_TEMPLATE = env("ANDREANI_TRACKING_URL_TEMPLATE", default="https://www.andreani.com/envio/{numero}")
+# Cada cuánto el worker consulta el seguimiento de un envío abierto, y hasta
+# cuántos días después de creado lo sigue haciendo.
+ANDREANI_TRACKING_POLL_MINUTES = env.int("ANDREANI_TRACKING_POLL_MINUTES", default=30)
+ANDREANI_TRACKING_MAX_DAYS = env.int("ANDREANI_TRACKING_MAX_DAYS", default=60)
+
+# Magento (apps.integrations.providers.magento). Como WooCommerce: cada tienda es
+# un sitio propio y el comerciante pega las credenciales de una Integración.
+# Sin webhooks en la fase 1, el repaso es lo que trae los pedidos: por eso
+# seguido (es una consulta por fecha de modificación, barata).
+MAGENTO_HTTP_TIMEOUT_SECONDS = env.int("MAGENTO_HTTP_TIMEOUT_SECONDS", default=15)
+MAGENTO_ORDERS_PAGE_SIZE = env.int("MAGENTO_ORDERS_PAGE_SIZE", default=50)
+MAGENTO_RECONCILE_MINUTES = env.int("MAGENTO_RECONCILE_MINUTES", default=5)
+
 # alcanzan (WooCommerce los desactiva tras 5 fallas; ver stores.enqueue_due_reconciliations).
 INTEGRATIONS_RECONCILE_MINUTES = env.int("INTEGRATIONS_RECONCILE_MINUTES", default=30)
 
@@ -384,7 +421,7 @@ INTEGRATIONS_INITIAL_IMPORT_DAYS = env.int("INTEGRATIONS_INITIAL_IMPORT_DAYS", d
 # Pedidos por página al importar (máximo de la API de Tiendanube: 200).
 TIENDANUBE_ORDERS_PAGE_SIZE = env.int("TIENDANUBE_ORDERS_PAGE_SIZE", default=200)
 
-# Rótulos que pide la tienda desde su propio admin (apps.integrations.store_labels).
+# Rótulos que pide la tienda desde su propio admin (apps.integrations.providers.tiendanube.labels).
 # Plazo propio para resolver un rótulo: pasado esto se informa "falló" con el
 # motivo. Va con margen sobre los 30 minutos en que Tiendanube lo da por
 # vencido solo, para que el comerciante vea SIEMPRE por qué no le salió.
