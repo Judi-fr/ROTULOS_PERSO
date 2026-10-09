@@ -449,9 +449,11 @@ def register_carrier(connection):
     enciende cliente por cliente y a conciencia, no como efecto secundario
     de instalar la app.
 
-    Exige que la tienda tenga tarifas cargadas: darla de alta sin tabla la
+    Exige que la tienda tenga tarifas cargadas (o un transportista que cotice): darla de alta sin tabla la
     dejaría ofreciendo un medio de envío que nunca cotiza (ver
-    ``shipping_rates.quote``). Devuelve el carrier de la plataforma.
+    ``shipping_rates.quote``). Después crea las opciones del carrier, sin las
+    que Tiendanube descarta las tarifas (``carrier_options``). Devuelve el
+    carrier de la plataforma.
     """
     labels_url = callback_base_url(connection)
     if not labels_url:
@@ -466,10 +468,13 @@ def register_carrier(connection):
         raise LabelGenerationError(
             "No se puede dar de alta el medio de envío: falta INTEGRATIONS_PUBLIC_BASE_URL."
         )
-    if not connection.shipping_rates.filter(is_active=True).exists():
+    from ...shipping_rates import has_checkout_prices
+
+    if not has_checkout_prices(connection):
         raise LabelGenerationError(
-            "Esta tienda no tiene tarifas de envío cargadas. Sin tabla no podemos cotizar, y el "
-            "medio de envío aparecería en el checkout sin precio. Cargalas antes de darlo de alta."
+            "Esta tienda no tiene tarifas de envío cargadas ni un transportista que cotice. Sin eso "
+            "no podemos cotizar, y el medio de envío aparecería en el checkout sin precio. Cargalas "
+            "(o activá Andreani en el checkout) antes de darlo de alta."
         )
 
     carrier = get_provider(connection.platform).register_shipping_carrier(
@@ -483,4 +488,19 @@ def register_carrier(connection):
         preferences[CARRIER_ID_PREFERENCE] = str(carrier["id"])
         connection.preferences = preferences
         connection.save(update_fields=["preferences", "updated_at"])
+        _sync_carrier_options(connection)
     return carrier
+
+
+def _sync_carrier_options(connection):
+    """Sin una opción activa por código, Tiendanube descarta nuestras
+    tarifas (ver ``carrier_options``). El carrier ya quedó dado de alta, así
+    que si esto falla no se deshace: el error queda en
+    ``preferences["shipping_carrier_options"]`` y el worker lo reintenta."""
+    from . import carrier_options
+
+    try:
+        carrier_options.sync(connection)
+    except ProviderError as exc:
+        logger.warning("Tienda %s: no se pudieron crear las opciones del carrier: %s", connection.pk, exc)
+        carrier_options.enqueue_sync(connection)

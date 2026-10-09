@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name:       Rótulos de envío
- * Description:       Print shipping labels for the selected orders straight from the WooCommerce order list, and quote shipping at checkout from your rates table.
- * Version:           1.1.0
+ * Description:       Print shipping labels, the pickup sheet or ship with Andreani for the selected orders straight from the WooCommerce order list, and quote shipping at checkout from your rates table.
+ * Version:           1.3.0
  * Requires at least: 6.5
  * Requires PHP:      7.4
  * Requires Plugins:  woocommerce
@@ -13,9 +13,15 @@
  * Text Domain:       rotulos-envio
  * Domain Path:       /languages
  *
- * How it works: the merchant ticks orders in WooCommerce → Orders, picks the
- * "Print shipping labels" bulk action, and this plugin asks the Rótulos
- * service for a short-lived link to the PDF, then sends the browser there.
+ * How it works: the merchant ticks orders in WooCommerce → Orders, picks one
+ * of our bulk actions, and this plugin asks the Rótulos service for a
+ * short-lived link to the PDF, then sends the browser there (in a new tab):
+ * - "Print shipping labels": the labels.
+ * - "Print pickup sheet": the list the carrier signs when picking up.
+ * - "Ship with Andreani": the service creates the Andreani shipments with the
+ *   merchant's own Andreani account (set up in the service), loads the
+ *   tracking numbers into the orders, and returns the label + Andreani's
+ *   label to print.
  *
  * Nothing to configure by hand: the service writes this plugin's settings
  * (endpoint URL, store id, shared secret) through the WooCommerce REST API
@@ -30,6 +36,13 @@
 defined( 'ABSPATH' ) || exit;
 
 const ROTULOS_BULK_ACTION   = 'rotulos_print';
+// Bulk action => the service's action. The first one keeps its old key so
+// existing installs and habits don't change.
+const ROTULOS_ACTIONS = array(
+	ROTULOS_BULK_ACTION => 'labels',
+	'rotulos_manifest'  => 'manifest',
+	'rotulos_dispatch'  => 'dispatch',
+);
 const ROTULOS_OPTION_URL    = 'rotulos_print_link_url';
 const ROTULOS_OPTION_STORE  = 'rotulos_store_id';
 const ROTULOS_OPTION_SECRET = 'rotulos_secret';
@@ -108,6 +121,8 @@ add_filter(
 function rotulos_add_bulk_action( $actions ) {
 	if ( current_user_can( 'edit_shop_orders' ) ) {
 		$actions[ ROTULOS_BULK_ACTION ] = __( 'Print shipping labels', 'rotulos-envio' );
+		$actions['rotulos_manifest']    = __( 'Print pickup sheet', 'rotulos-envio' );
+		$actions['rotulos_dispatch']    = __( 'Ship with Andreani (labels + tracking)', 'rotulos-envio' );
 	}
 	return $actions;
 }
@@ -115,9 +130,10 @@ add_filter( 'bulk_actions-woocommerce_page_wc-orders', 'rotulos_add_bulk_action'
 add_filter( 'bulk_actions-edit-shop_order', 'rotulos_add_bulk_action' );
 
 function rotulos_handle_bulk_action( $redirect_to, $action, $ids ) {
-	if ( ROTULOS_BULK_ACTION !== $action ) {
+	if ( ! array_key_exists( $action, ROTULOS_ACTIONS ) ) {
 		return $redirect_to;
 	}
+	$service_action = ROTULOS_ACTIONS[ $action ];
 	if ( ! current_user_can( 'edit_shop_orders' ) ) {
 		return rotulos_fail( $redirect_to, __( 'You are not allowed to print shipping labels.', 'rotulos-envio' ) );
 	}
@@ -136,7 +152,8 @@ function rotulos_handle_bulk_action( $redirect_to, $action, $ids ) {
 		);
 	}
 
-	$response = rotulos_signed_post( $url, array( 'ids' => $ids ), 30 );
+	// Shipping calls Andreani once per order: give it more time.
+	$response = rotulos_signed_post( $url, array( 'ids' => $ids, 'action' => $service_action ), 'dispatch' === $service_action ? 90 : 30 );
 	if ( is_wp_error( $response ) ) {
 		return rotulos_fail( $redirect_to, __( 'Could not reach the shipping labels service. Please try again in a few minutes.', 'rotulos-envio' ) );
 	}
@@ -148,6 +165,16 @@ function rotulos_handle_bulk_action( $redirect_to, $action, $ids ) {
 			? (string) $data['detail']
 			: __( 'The shipping labels service could not prepare the labels.', 'rotulos-envio' );
 		return rotulos_fail( $redirect_to, $detail );
+	}
+
+	// Shipped some but not all: say which ones failed next time the order
+	// list loads (the PDF opens in its own tab).
+	if ( ! empty( $data['failed'] ) && is_array( $data['failed'] ) ) {
+		$details = array();
+		foreach ( $data['failed'] as $item ) {
+			$details[] = '#' . ( isset( $item['number'] ) ? $item['number'] : '?' ) . ': ' . ( isset( $item['detail'] ) ? $item['detail'] : '' );
+		}
+		rotulos_fail( $redirect_to, __( 'Some orders could not be shipped:', 'rotulos-envio' ) . ' ' . implode( ' · ', $details ) );
 	}
 
 	wp_safe_redirect( esc_url_raw( $data['url'] ) );
@@ -225,7 +252,7 @@ add_action(
 		if ( ! $screen || ! in_array( $screen->id, array( 'woocommerce_page_wc-orders', 'edit-shop_order' ), true ) ) {
 			return;
 		}
-		wp_register_script( 'rotulos-envio', false, array(), '1.1.0', true );
+		wp_register_script( 'rotulos-envio', false, array(), '1.3.0', true );
 		wp_enqueue_script( 'rotulos-envio' );
 		wp_add_inline_script(
 			'rotulos-envio',
@@ -235,7 +262,7 @@ add_action(
 				var top = form.querySelector(\'select[name="action"]\');
 				var bottom = form.querySelector(\'select[name="action2"]\');
 				var chosen = (event.submitter && event.submitter.id === "doaction2" && bottom) ? bottom.value : (top ? top.value : "");
-				if (chosen === ' . wp_json_encode( ROTULOS_BULK_ACTION ) . ') {
+				if (' . wp_json_encode( array_keys( ROTULOS_ACTIONS ) ) . '.indexOf(chosen) !== -1) {
 					form.target = "_blank";
 					setTimeout(function () { form.removeAttribute("target"); }, 0);
 				}

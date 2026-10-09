@@ -236,6 +236,70 @@ class ShipmentTests(AndreaniTestMixin, APITestCase):
         self.assertEqual(self.andreani.logins, 2)
 
 
+class QuoteTests(AndreaniTestMixin, APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.user = make_user("comercio@example.com")
+        self.account = self.make_account(self.user)
+        self.order = make_order(self.user)
+
+    def _quote(self, **data):
+        payload = {"order_ids": [self.order.pk], "contract": "400006709"}
+        payload.update(data)
+        return self.client.post(f"{API}/shipments/quote/", payload, format="json", **auth_headers_for(self.user))
+
+    def test_cotiza_con_el_contrato_el_cliente_y_el_peso_del_pedido(self):
+        response = self._quote()
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["quoted"], 1, response.data)
+        result = response.data["results"][0]
+        # 2,5 kg x 1000 x 1,21
+        self.assertEqual(result["price"], "3025.00")
+        self.assertEqual(result["price_without_tax"], "2500.00")
+        self.assertEqual(response.data["total"], "3025.00")
+        params = self.andreani.calls_to("GET", "/v1/tarifas")[0]["params"]
+        self.assertEqual(
+            (params["cpDestino"], params["contrato"], params["cliente"], params["bultos[0][kilos]"], params["bultos[0][volumen]"]),
+            ("5000", "400006709", "CL0001", "2.5", "4000"),
+        )
+        # Cotizar no crea nada.
+        self.assertFalse(CarrierShipment.objects.exists())
+        self.assertFalse(self.andreani.orders)
+
+    def test_el_peso_se_reparte_entre_los_bultos(self):
+        self._quote(package_count=2)
+        params = self.andreani.calls_to("GET", "/v1/tarifas")[0]["params"]
+        self.assertEqual((params["bultos[0][kilos]"], params["bultos[1][kilos]"]), ("1.25", "1.25"))
+
+    def test_sin_codigo_de_cliente_no_cotiza_y_un_pedido_ajeno_tampoco(self):
+        foreign = make_order(make_user("otro@example.com"))
+        self.account.client_code = ""
+        self.account.save()
+        response = self._quote(order_ids=[self.order.pk, foreign.pk])
+
+        self.assertEqual((response.data["quoted"], response.data["failed"]), (0, 2))
+        details = {item["order_id"]: item["detail"] for item in response.data["results"]}
+        self.assertIn("código de cliente", details[self.order.pk])
+        self.assertIn("no es tuyo", details[foreign.pk])
+        self.assertFalse(self.andreani.calls_to("GET", "/v1/tarifas"))
+
+    def test_al_crear_queda_lo_cotizado_y_sin_cotizacion_igual_se_crea(self):
+        created = self.client.post(
+            f"{API}/shipments/", {"order_ids": [self.order.pk], "contract": "400006709"}, format="json", **auth_headers_for(self.user)
+        )
+        self.assertEqual(created.data["results"][0]["quoted_price"], "3025.00", created.data)
+
+        other = make_order(self.user)
+        self.account.client_code = ""
+        self.account.save()
+        again = self.client.post(
+            f"{API}/shipments/", {"order_ids": [other.pk], "contract": "400006709"}, format="json", **auth_headers_for(self.user)
+        )
+        self.assertEqual(again.data["created"], 1, again.data)
+        self.assertIsNone(CarrierShipment.objects.get(order=other).quoted_price)
+
+
 class BranchTests(AndreaniTestMixin, APITestCase):
     def test_sucursales_y_puntos_hop_por_codigo_postal(self):
         user = make_user("comercio@example.com")

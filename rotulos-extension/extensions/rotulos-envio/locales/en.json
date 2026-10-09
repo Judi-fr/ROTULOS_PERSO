@@ -6,5 +6,22 @@
   "missingTitle": "Some orders won't be printed",
   "missingBody": "{{count}} of the selected orders no longer exist in Shopify.",
   "errorTitle": "The labels couldn't be generated",
-  "genericError": "Please try again in a few minutes."
+  "genericError": "Please try again in a few minutes.",
+  "name_manifest": "Pickup sheet",
+  "name_dispatch": "Ship with Andreani",
+  "manifest_loading": "Preparing the pickup sheet…",
+  "manifest_ready": "Pickup sheet with {{count}} orders ready to print.",
+  "manifest_readyOne": "Pickup sheet with 1 order ready to print.",
+  "manifest_errorTitle": "The pickup sheet couldn't be generated",
+  "dispatch_heading": "Ship with Andreani",
+  "dispatch_confirm": "{{count}} shipments will be created in Andreani with your account. Each order gets its tracking number and link, and the buyer receives it when Andreani picks the parcel up.",
+  "dispatch_confirmOne": "1 shipment will be created in Andreani with your account. The order gets its tracking number and link, and the buyer receives it when Andreani picks the parcel up.",
+  "dispatch_button": "Ship",
+  "dispatch_working": "Creating the shipments in Andreani… this can take a few seconds.",
+  "dispatch_errorTitle": "Couldn't ship",
+  "dispatch_done": "{{count}} shipments ready",
+  "dispatch_doneBody": "Open the PDF to print each label with its Andreani label.",
+  "dispatch_failedTitle": "These orders were not shipped",
+  "dispatch_open": "Open labels",
+  "close": "Close"
 }

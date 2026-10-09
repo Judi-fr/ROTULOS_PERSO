@@ -6,5 +6,22 @@
   "missingTitle": "Algunos pedidos no se imprimen",
   "missingBody": "{{count}} de los pedidos elegidos ya no existen en Shopify.",
   "errorTitle": "No se pudieron generar los rótulos",
-  "genericError": "Probá de nuevo en unos minutos."
+  "genericError": "Probá de nuevo en unos minutos.",
+  "name_manifest": "Planilla de retiro",
+  "name_dispatch": "Despachar con Andreani",
+  "manifest_loading": "Preparando la planilla de retiro…",
+  "manifest_ready": "Planilla con {{count}} pedidos lista para imprimir.",
+  "manifest_readyOne": "Planilla con 1 pedido lista para imprimir.",
+  "manifest_errorTitle": "No se pudo armar la planilla",
+  "dispatch_heading": "Despachar con Andreani",
+  "dispatch_confirm": "Se van a crear {{count}} envíos en Andreani con tu cuenta. Cada pedido queda con su número y link de seguimiento, y el comprador lo recibe cuando Andreani retire el paquete.",
+  "dispatch_confirmOne": "Se va a crear 1 envío en Andreani con tu cuenta. El pedido queda con su número y link de seguimiento, y el comprador lo recibe cuando Andreani retire el paquete.",
+  "dispatch_button": "Despachar",
+  "dispatch_working": "Creando los envíos en Andreani… puede tardar unos segundos.",
+  "dispatch_errorTitle": "No se pudo despachar",
+  "dispatch_done": "{{count}} envíos listos",
+  "dispatch_doneBody": "Abrí el PDF para imprimir cada rótulo con su etiqueta de Andreani.",
+  "dispatch_failedTitle": "Estos pedidos no se despacharon",
+  "dispatch_open": "Abrir rótulos y etiquetas",
+  "close": "Cerrar"
 }

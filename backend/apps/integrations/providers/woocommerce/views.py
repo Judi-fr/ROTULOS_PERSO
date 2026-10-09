@@ -178,7 +178,10 @@ class WooCommercePluginDownloadView(APIView):
 
 
 class WooCommercePrintLinkView(APIView):
-    """POST /api/v1/integrations/woocommerce/print-link/  ``{"store", "ids", "ts"}``
+    """POST /api/v1/integrations/woocommerce/print-link/  ``{"store", "ids", "ts", "action"?}``
+
+    ``action``: ``labels`` (por defecto), ``manifest`` o ``dispatch`` — una
+    acción masiva del plugin por cada una (``store_print.ACTIONS``).
 
     Lo llama nuestro plugin de WordPress desde el servidor de la tienda (ver
     ``admin_print``). Sin JWT: la identidad es la firma
@@ -199,10 +202,11 @@ class WooCommercePrintLinkView(APIView):
             return Response({"detail": str(exc)}, status=status.HTTP_401_UNAUTHORIZED)
 
         try:
+            action = store_print.parse_action(data.get("action"))
             orders, missing = store_print.resolve_orders(connection, store_print.order_ids(data.get("ids")))
             if not orders:
                 raise store_print.PrintError("Ninguno de los pedidos elegidos existe en la tienda.")
-            url = store_print.print_url(store_print.make_print_token(connection, orders), route="woocommerce-print")
+            url, summary = store_print.action_link(connection, orders, action, route="woocommerce-print")
         except store_print.PrintError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -214,9 +218,9 @@ class WooCommercePrintLinkView(APIView):
             target=connection,
             target_type="storeconnection",
             target_repr=str(connection),
-            changes={"woocommerce_print": {"from": None, "to": len(orders)}},
+            changes={f"woocommerce_{action}": {"from": None, "to": len(orders)}},
         )
-        return Response({"url": url, "count": len(orders), "missing": missing})
+        return Response({"url": url, "count": len(orders), "missing": missing, "action": action, **summary})
 
 
 class WooCommerceRatesView(APIView):

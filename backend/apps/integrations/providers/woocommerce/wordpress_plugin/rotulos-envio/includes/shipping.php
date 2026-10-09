@@ -90,8 +90,10 @@ function rotulos_quote_package( $package ) {
 	}
 	$country = isset( $destination['country'] ) ? (string) $destination['country'] : '';
 	$weight  = rotulos_package_weight_kg( $package );
+	// The cart subtotal, for "free shipping from $X" rules set in the service.
+	$total = isset( $package['contents_cost'] ) ? round( (float) $package['contents_cost'], 2 ) : 0.0;
 
-	$cache_key = 'rotulos_rates_' . md5( wp_json_encode( array( $url, $postcode, $country, $weight ) ) );
+	$cache_key = 'rotulos_rates_' . md5( wp_json_encode( array( $url, $postcode, $country, $weight, $total ) ) );
 	$cached    = get_transient( $cache_key );
 	if ( is_array( $cached ) ) {
 		return $cached;
@@ -100,10 +102,11 @@ function rotulos_quote_package( $package ) {
 	$response = rotulos_signed_post(
 		$url,
 		array(
-			'postcode'  => $postcode,
-			'country'   => $country,
-			'weight_kg' => $weight,
-			'currency'  => get_woocommerce_currency(),
+			'postcode'   => $postcode,
+			'country'    => $country,
+			'weight_kg'  => $weight,
+			'cart_total' => $total,
+			'currency'   => get_woocommerce_currency(),
 		),
 		ROTULOS_RATES_TIMEOUT
 	);

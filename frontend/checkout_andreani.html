@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Andreani en el checkout</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/pedidos.css" />
+    <link rel="stylesheet" href="assets/css/imprimir_rotulos.css" />
+    <link rel="stylesheet" href="assets/css/acciones_masivas.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar" id="appTopbar" data-links='[{"href": "tarifas_envio.html", "label": "Tarifas de envío"}, {"href": "pedidos.html", "label": "Volver a Mis pedidos"}]'></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Andreani en el checkout</h1>
+          <p>
+            Ofrecé a tus compradores un envío por Andreani con el precio real de <strong>tu</strong> cuenta,
+            cotizado en el momento para su código postal y el peso del carrito. Se suma a las opciones de tu
+            tabla de tarifas; si Andreani no contesta a tiempo, esa opción no aparece y las demás siguen.
+          </p>
+          <p class="filters-hint">
+            Funciona en las tiendas que nos preguntan el precio en cada compra: Tiendanube (con nuestro medio de
+            envío dado de alta) y WooCommerce (con el método de envío de nuestro plugin agregado a sus zonas).
+            Solo contratos de entrega a domicilio. El precio es con IVA.
+          </p>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+        <p id="accountNotice" class="filters-hint" style="display:none;"></p>
+
+        <!-- Backend: apps/carriers/andreani/checkout.py (GET/PUT carriers/andreani/checkout/). -->
+        <div id="storeCards"></div>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/andreani/checkout_andreani.js"></script>
+  </body>
+</html>

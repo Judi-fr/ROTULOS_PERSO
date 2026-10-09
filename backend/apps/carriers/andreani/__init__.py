@@ -13,7 +13,9 @@ de almacén, Warehouse, queda para más adelante):
 Fuera de esta carpeta: los modelos y la migración (``apps/carriers/models.py``,
 compartidos por todos los transportistas), el seguimiento automático que llama
 el worker (``apps/carriers/tracking.py``), los ``ANDREANI_*`` de la
-configuración, y las páginas ``frontend/andreani.html`` (la cuenta) y
-``frontend/envios_andreani.html`` (los envíos), con su JS en
-``frontend/assets/js/andreani/``.
+configuración, y el frontend: se despacha desde Mis pedidos
+(``frontend/assets/js/pedidos/envios.js`` y ``despacho.js``), y la cuenta y el
+precio en el checkout son ``frontend/andreani.html`` y ``checkout_andreani.html``
+(JS en ``frontend/assets/js/andreani/``). Para probar sin credenciales:
+``manage.py fake_andreani_server``.
 """

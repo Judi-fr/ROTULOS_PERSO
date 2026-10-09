@@ -168,6 +168,7 @@ def _remember_print_plugin(connection, linked):
 
 class WooCommerceProvider(StoreProvider):
     platform = "woocommerce"
+    quotes_at_checkout = True  # el plugin pregunta: rates.py
     order_sync_events = ORDER_SYNC_EVENTS
     requires_shop_domain = True
     requires_oauth_state = True

@@ -15,6 +15,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.permissions_map import user_has_permission
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
 
@@ -35,7 +36,12 @@ class TiendanubePrintLinkView(APIView):
     sale de él: sale del JWT del comerciante logueado en nuestra app, y la
     tienda tiene que ser suya. ``store`` es el id de la tienda en Tiendanube;
     si no llega y el usuario tiene una sola Tiendanube activa, es esa.
-    ``ids`` son los ids de pedido de Tiendanube (``external_id``)."""
+    ``ids`` son los ids de pedido de Tiendanube (``external_id``).
+
+    ``action``: ``labels`` (por defecto), ``manifest`` o ``dispatch`` — cada
+    una es otro link de acciones masivas que abre su página
+    (``imprimir_tiendanube.html``, ``planilla_tiendanube.html``,
+    ``despachar_tiendanube.html``). Despachar pide además ``orders.create``."""
 
     def get_permissions(self):
         return [IsAuthenticated(), HasRolePermission("labels.batch")]
@@ -55,10 +61,13 @@ class TiendanubePrintLinkView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         try:
+            action = store_print.parse_action(request.data.get("action"))
+            if action == store_print.DISPATCH and not user_has_permission(request.user, "orders.create"):
+                return Response({"detail": "Tu usuario no puede despachar pedidos."}, status=status.HTTP_403_FORBIDDEN)
             orders, missing = store_print.resolve_orders(connection, store_print.order_ids(request.data.get("ids")))
             if not orders:
                 raise store_print.PrintError("Ninguno de los pedidos elegidos existe en la tienda.")
-            url = store_print.print_url(store_print.make_print_token(connection, orders), route="tiendanube-print")
+            url, summary = store_print.action_link(connection, orders, action, route="tiendanube-print")
         except store_print.PrintError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -69,9 +78,9 @@ class TiendanubePrintLinkView(APIView):
             target=connection,
             target_type="storeconnection",
             target_repr=str(connection),
-            changes={"tiendanube_print": {"from": None, "to": len(orders)}},
+            changes={f"tiendanube_{action}": {"from": None, "to": len(orders)}},
         )
-        return Response({"url": url, "count": len(orders), "missing": missing})
+        return Response({"url": url, "count": len(orders), "missing": missing, "action": action, **summary})
 
 
 def tiendanube_print_document(request, token):

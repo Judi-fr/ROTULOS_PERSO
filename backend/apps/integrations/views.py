@@ -846,12 +846,11 @@ def _print_document(request, token, platform):
     if request.method != "GET":
         return HttpResponse(status=405)
     try:
-        connection, orders = store_print.read_print_token(token, platform)
-        pdf_bytes, _count = store_print.render_pdf(connection, orders)
+        pdf_bytes, filename = store_print.render_document(token, platform)
     except store_print.PrintError as exc:
         return HttpResponse(str(exc), status=410, content_type="text/plain; charset=utf-8")
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
-    response["Content-Disposition"] = 'inline; filename="rotulos.pdf"'
+    response["Content-Disposition"] = f'inline; filename="{filename}"'
     # Datos del comprador: que ningún proxy ni el navegador lo guarde.
     response["Cache-Control"] = "no-store"
     return response

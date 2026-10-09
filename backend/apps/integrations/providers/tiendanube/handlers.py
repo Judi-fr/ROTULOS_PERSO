@@ -1,5 +1,6 @@
 """Handlers de la cola propios de Tiendanube: los rótulos que pide la tienda
-desde su admin (Labels API, ver ``labels``). Se registran al importar este
+desde su admin (Labels API, ver ``labels``) y las opciones del carrier
+(``carrier_options``). Se registran al importar este
 módulo, cosa que hace ``apps.integrations.handlers`` al final."""
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from ...handlers import _connection_for
 from ...models import StoreConnection, StoreLabelRequest
 from ...stores import GENERATE_LABEL_EVENT
 from ..base import ProviderAuthError, ProviderNotFoundError, ProviderRejectedError
+from . import carrier_options
 from . import labels as store_labels
 from .provider import LABEL_STATUS_EVENT, TiendanubeProvider
 
@@ -76,3 +78,15 @@ def label_status_updated(event):
         store_labels.release_download(label_request)
 
 
+@register_handler(TIENDANUBE, carrier_options.SYNC_EVENT)
+def sync_carrier_options(event):
+    """Pone las opciones del carrier al día con los códigos que cotizamos
+    (cambió la tabla o un transportista del checkout). Lee todo en el
+    momento: varios cambios seguidos se sincronizan juntos."""
+    connection = _connection_for(event, require_owner=False)
+    try:
+        carrier_options.sync(connection)
+    except (ProviderAuthError, ProviderNotFoundError, ProviderRejectedError) as exc:
+        # Carrier borrado desde el panel, token revocado o un nombre que la
+        # plataforma no acepta: reintentar no lo arregla. Queda en el estado.
+        raise PermanentEventError(str(exc)) from exc

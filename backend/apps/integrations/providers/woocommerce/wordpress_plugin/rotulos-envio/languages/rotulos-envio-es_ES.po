@@ -72,3 +72,15 @@ msgid "%1$s (%2$d business day)"
 msgid_plural "%1$s (%2$d business days)"
 msgstr[0] "%1$s (%2$d día hábil)"
 msgstr[1] "%1$s (%2$d días hábiles)"
+
+msgid "Print pickup sheet"
+msgstr "Imprimir planilla de retiro"
+
+msgid "Ship with Andreani (labels + tracking)"
+msgstr "Despachar con Andreani (rótulos + seguimiento)"
+
+msgid "Some orders could not be shipped:"
+msgstr "Algunos pedidos no se pudieron despachar:"
+
+msgid "Print shipping labels, the pickup sheet or ship with Andreani for the selected orders straight from the WooCommerce order list, and quote shipping at checkout from your rates table."
+msgstr "Imprime los rótulos, la planilla de retiro o despacha con Andreani los pedidos elegidos desde la lista de pedidos de WooCommerce, y cotiza el envío en el checkout con tu tabla de tarifas."

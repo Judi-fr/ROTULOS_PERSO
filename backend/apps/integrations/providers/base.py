@@ -203,6 +203,10 @@ class StoreProvider:
     # con una tabla propia, y la nuestra hay que publicársela
     # (``push_shipping_rates``, VTEX). Ver ``shipping_rates.rates_changed``.
     supports_rates_push = False
+    # True = la plataforma nos pregunta el precio en vivo en cada checkout
+    # (Tiendanube como carrier, WooCommerce desde nuestro plugin): ahí se
+    # puede ofrecer el precio de un transportista (``apps.carriers.checkout``).
+    quotes_at_checkout = False
 
     @property
     def webhook_events(self):
@@ -310,6 +314,12 @@ class StoreProvider:
         de la conexión; vacía = despublicar). Idempotente. Devuelve un resumen
         para mostrarle al comerciante. Solo con ``supports_rates_push``."""
         raise NotImplementedError
+
+    def checkout_prices_changed(self, connection):
+        """Cambió con qué cotiza la tienda en el checkout (su tabla o un
+        transportista activado). Para las plataformas que necesitan saberlo
+        (Tiendanube: una opción del carrier por código). Por defecto, nada."""
+        return None
 
     def register_webhooks(self, connection, url, events):
         """Registra en la tienda los ``events`` que todavía no apunten a

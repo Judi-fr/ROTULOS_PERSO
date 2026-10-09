@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 from decimal import Decimal, InvalidOperation
 
-from ...shipping_rates import matching_rates, normalize_postal_code
+from ...shipping_rates import matching_rates, normalize_postal_code, with_carrier_rates
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,18 @@ def cart_weight_kg(data):
     return weight if weight.is_finite() and weight > 0 else Decimal("0")
 
 
+def cart_total(data):
+    """El subtotal del carrito que manda el plugin desde la 1.2.0 (``None``
+    con uno más viejo: sin total no se aplica un envío gratis)."""
+    if data.get("cart_total") in (None, ""):
+        return None
+    try:
+        total = Decimal(str(data.get("cart_total")))
+    except (InvalidOperation, ValueError):
+        return None
+    return total if total.is_finite() and total >= 0 else None
+
+
 def quote(connection, data):
     """``{"rates": [...]}`` para el plugin: cada tarifa con su código,
     nombre, precio, moneda y plazo en días. Lista vacía = no llegamos a ese
@@ -46,7 +58,9 @@ def quote(connection, data):
     if country and country != "AR":
         return {"rates": []}
 
-    rates = matching_rates(connection, postal_code, weight_kg)
+    rates = with_carrier_rates(
+        connection, matching_rates(connection, postal_code, weight_kg), postal_code, weight_kg, cart_total(data)
+    )
     if not rates:
         logger.info("Sin tarifa para la tienda %s: CP %r, %s kg.", connection.pk, postal_code, weight_kg)
     return {

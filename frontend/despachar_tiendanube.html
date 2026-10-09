@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Despachar con Andreani</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Reusa el mismo estilo de tarjeta que perfil.html/tienda_conectada.html. -->
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/perfil.css" />
+  </head>
+  <body data-action="dispatch">
+    <div class="layout">
+      <!-- Destino del link de app "Despachar con Andreani" de las acciones masivas
+           de Ventas en el admin de Tiendanube. Tiendanube abre esta página con
+           la tienda y los pedidos elegidos en la query string; la identidad sale
+           de la sesión de nuestra app, nunca del link (ver assets/js/tiendanube/imprimir_tiendanube.js). -->
+      <header class="topbar">
+        <div class="topbar-user">
+          <div class="topbar-user-info">
+            <span class="topbar-user-name">Despachar con Andreani</span>
+          </div>
+        </div>
+      </header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1 id="printTitle">Despachando con Andreani…</h1>
+        </div>
+
+        <p id="pageMessage" class="page-message" hidden></p>
+
+        <section class="profile-card">
+          <div class="profile-card-body">
+            <p id="printText">Estamos creando los envíos en Andreani con tu cuenta y armando el PDF con cada rótulo y su etiqueta de Andreani. Puede tardar unos segundos.</p>
+            <div class="profile-card-actions" id="printActions" hidden>
+              <a class="btn btn-primary" id="printOpenLink" href="#">Abrir rótulos y etiquetas</a>
+            </div>
+            <!-- Lo que llegó en el link, para diagnosticar si Tiendanube manda
+                 los pedidos con otro nombre de parámetro. -->
+            <pre id="printReceived" hidden></pre>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/tiendanube/imprimir_tiendanube.js"></script>
+  </body>
+</html>

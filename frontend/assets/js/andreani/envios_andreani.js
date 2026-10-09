@@ -1,6 +1,6 @@
 // Envíos por Andreani (envios_andreani.html). Backend: /api/v1/carriers/andreani/
 // (apps/carriers/andreani/). Arriba se eligen pedidos (createOrderPicker de
-// utils.js) y se crean sus envíos; abajo, los envíos ya creados con su estado,
+// utils.js), se cotizan con el contrato elegido y se crean sus envíos; abajo, los envíos ya creados con su estado,
 // etiquetas, actualizar y cancelar.
 //
 // Todo texto que viene de un pedido o de Andreani se inserta con textContent.
@@ -28,6 +28,7 @@ function updateCreateButton() {
   const count = picker ? picker.selectedIds().length : 0;
   el("selectionCount").textContent = count === 1 ? "1 pedido elegido" : `${count} pedidos elegidos`;
   el("createBtn").disabled = !count || !selectedContract() || Boolean(account?.missing?.length);
+  el("quoteBtn").disabled = !count || !selectedContract() || !account?.exists;
   el("branchSection").style.display = selectedContract()?.kind === "branch" ? "" : "none";
 }
 
@@ -132,6 +133,112 @@ function branchRow(order, branches) {
 }
 
 // ---------------------------------------------------------------------------
+// Cotizar
+// ---------------------------------------------------------------------------
+const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" });
+
+function formatMoney(value) {
+  return value === null || value === undefined || value === "" ? "—" : money.format(Number(value));
+}
+
+// Una cotización vale para la selección, el contrato y los bultos con que se
+// pidió: si cambia algo, se borra para no mostrar un precio que ya no es.
+function clearQuote() {
+  el("quoteResult").innerHTML = "";
+}
+
+function renderQuote(data) {
+  const container = el("quoteResult");
+  container.innerHTML = "";
+  const quoted = (data.results || []).filter((item) => item.ok);
+  if (quoted.length) {
+    const wrap = document.createElement("div");
+    wrap.className = "tracking-table-wrap";
+    const table = document.createElement("table");
+    table.className = "tracking-table";
+    const head = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    ["Pedido", "Destino", "Peso aforado", "Sin IVA", "Con IVA"].forEach((text) => {
+      const th = document.createElement("th");
+      th.textContent = text;
+      headRow.appendChild(th);
+    });
+    head.appendChild(headRow);
+    const body = document.createElement("tbody");
+    quoted.forEach((item) => {
+      const tr = document.createElement("tr");
+      tr.className = "row-ok";
+      tr.append(
+        cell(`#${item.number}${item.recipient ? ` · ${item.recipient}` : ""}`),
+        cell(item.postal_code ? `CP ${item.postal_code}` : "—"),
+        cell(item.chargeable_weight_kg ? `${item.chargeable_weight_kg} kg` : "—"),
+        cell(formatMoney(item.price_without_tax)),
+        cell(formatMoney(item.price))
+      );
+      body.appendChild(tr);
+    });
+    const totalRow = document.createElement("tr");
+    const label = cell(quoted.length === 1 ? "Total" : `Total (${quoted.length} envíos)`);
+    label.colSpan = 4;
+    const total = cell(formatMoney(data.total));
+    label.style.fontWeight = total.style.fontWeight = "700";
+    totalRow.append(label, total);
+    body.appendChild(totalRow);
+    table.append(head, body);
+    wrap.appendChild(table);
+    container.appendChild(wrap);
+  }
+  const failed = (data.results || []).filter((item) => !item.ok);
+  if (failed.length) {
+    const box = document.createElement("div");
+    box.className = "bulk-result";
+    const title = document.createElement("p");
+    title.className = "bulk-result-title";
+    title.textContent = failed.length === 1 ? "1 pedido no se pudo cotizar:" : `${failed.length} pedidos no se pudieron cotizar:`;
+    const list = document.createElement("ul");
+    failed.forEach((item) => {
+      const li = document.createElement("li");
+      li.textContent = `#${item.number ?? item.order_id}: ${item.detail}`;
+      list.appendChild(li);
+    });
+    box.append(title, list);
+    container.appendChild(box);
+  }
+}
+
+async function quoteShipments() {
+  const ids = picker.selectedIds();
+  const contract = selectedContract();
+  if (!ids.length || !contract) return;
+  const button = el("quoteBtn");
+  button.disabled = true;
+  button.textContent = "Cotizando...";
+  clearQuote();
+  try {
+    const response = await apiFetch(`${ANDREANI_API}/shipments/quote/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_ids: ids, contract: contract.code, package_count: Number(el("packageCount").value) || 1 }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(getErrorMessage(data, "No se pudo cotizar."));
+    renderQuote(data);
+    showMessage(
+      data.failed
+        ? `Se cotizaron ${data.quoted} de ${ids.length} pedido(s). Abajo, por qué no los demás.`
+        : `Andreani cobra ${formatMoney(data.total)} con IVA por ${data.quoted} envío(s).`,
+      data.quoted ? "success" : "error"
+    );
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    showMessage(err.message || "No se pudo cotizar.");
+  } finally {
+    button.textContent = "Cotizar";
+    updateCreateButton();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Crear envíos
 // ---------------------------------------------------------------------------
 async function createShipments() {
@@ -156,6 +263,7 @@ async function createShipments() {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(getErrorMessage(data, "No se pudieron crear los envíos."));
+    clearQuote();
     renderBulkResult(el("createResult"), data);
     showMessage(
       data.failed
@@ -199,7 +307,7 @@ function renderShipments(shipments) {
   if (!shipments.length) {
     const tr = document.createElement("tr");
     const td = cell("Todavía no creaste envíos por Andreani.");
-    td.colSpan = 7;
+    td.colSpan = 8;
     tr.appendChild(td);
     body.appendChild(tr);
   }
@@ -227,6 +335,7 @@ function renderShipments(shipments) {
 
     tr.appendChild(cell(`#${shipment.order_number}${shipment.recipient ? ` · ${shipment.recipient}` : ""}`));
     tr.appendChild(cell(shipment.delivery_kind === "branch" ? `Sucursal: ${shipment.branch_name || "—"}` : "A domicilio"));
+    tr.appendChild(cell(formatMoney(shipment.quoted_price)));
     const statusTd = cell(shipment.status_label);
     if (shipment.last_error) {
       const detail = document.createElement("small");
@@ -357,7 +466,12 @@ async function cancelShipment(shipment, button) {
 // ---------------------------------------------------------------------------
 // Inicio
 // ---------------------------------------------------------------------------
-el("contractSelect").addEventListener("change", updateCreateButton);
+el("contractSelect").addEventListener("change", () => {
+  clearQuote();
+  updateCreateButton();
+});
+el("packageCount").addEventListener("input", clearQuote);
+el("quoteBtn").addEventListener("click", quoteShipments);
 el("loadBranchesBtn").addEventListener("click", loadBranches);
 el("createBtn").addEventListener("click", createShipments);
 el("reloadShipmentsBtn").addEventListener("click", loadShipments);
@@ -373,7 +487,12 @@ document.getElementById("logoutBtn")?.addEventListener("click", () => window.Aut
 if (!window.Auth.getAccessToken()) {
   window.location.replace("index.html");
 } else {
-  picker = createOrderPicker(el("pickerRoot"), { onSelectionChange: updateCreateButton });
+  picker = createOrderPicker(el("pickerRoot"), {
+    onSelectionChange: () => {
+      clearQuote();
+      updateCreateButton();
+    },
+  });
   loadAccount();
   loadShipments();
   apiFetch(`${API_BASE}/auth/me/`)

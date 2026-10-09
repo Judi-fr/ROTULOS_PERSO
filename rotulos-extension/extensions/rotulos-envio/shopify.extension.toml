@@ -14,3 +14,27 @@ uid = "427c870c-2df5-21c0-5023-973edce6213e3c07ac80"
 [[extensions.targeting]]
 module = "./src/PrintActionExtension.jsx"
 target = "admin.order-index.selection-print-action.render"
+
+# "Planilla de retiro": segunda opción del mismo menú Imprimir (otro PDF del
+# mismo backend, action "manifest"). Sin uid: lo agrega el CLI en el próximo
+# ``shopify app deploy``.
+[[extensions]]
+name = "t:name_manifest"
+handle = "rotulos-planilla"
+type = "ui_extension"
+
+[[extensions.targeting]]
+module = "./src/ManifestPrintAction.jsx"
+target = "admin.order-index.selection-print-action.render"
+
+# "Despachar con Andreani": acción masiva de la lista de pedidos (menú "Más
+# acciones"), no de Imprimir — despachar cambia los pedidos y se confirma con
+# un botón. El backend crea los envíos (action "dispatch") y devuelve el PDF.
+[[extensions]]
+name = "t:name_dispatch"
+handle = "rotulos-despachar"
+type = "ui_extension"
+
+[[extensions.targeting]]
+module = "./src/DispatchAction.jsx"
+target = "admin.order-index.selection-action.render"

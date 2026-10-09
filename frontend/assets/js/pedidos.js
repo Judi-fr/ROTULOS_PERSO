@@ -268,13 +268,8 @@ function renderOrderList(orders) {
       .map((event) => `<span class="order-timeline-step">${escapeHtml(event.status_label || STATUS_LABELS[event.status] || event.status)}</span>`)
       .join("");
 
-    // Acciones: despacho/seguimiento en su propia página (despachar.html).
+    // Despachar, seguimiento y etiqueta los agrega pedidos/envios.js (decorate).
     const actions = [];
-    if (order.is_shippable) {
-      actions.push(
-        `<a class="btn btn-outline btn-small" href="despachar.html?pedido=${encodeURIComponent(order.id)}">Despachar / seguimiento</a>`
-      );
-    }
     if (order.is_cancellable) {
       actions.push(
         `<button type="button" class="btn btn-outline btn-small" data-cancel-order="${escapeHtml(order.id)}">Cancelar pedido</button>`
@@ -300,8 +295,9 @@ function renderOrderList(orders) {
         <span class="status-badge ${escapeHtml(statusKey)}"><span class="dot"></span>${escapeHtml(statusLabel)}</span>
       </div>
       ${timeline ? `<div class="order-timeline">${timeline}</div>` : ""}
-      ${actions.length ? `<div class="order-item-footer">${actions.join("")}</div>` : ""}
+      <div class="order-item-footer">${actions.join("")}</div>
     `;
+    window.OrderShipping.decorate(order, item);
     container.appendChild(item);
   });
 }
@@ -323,7 +319,10 @@ async function loadOrders() {
     const response = await apiFetch(`${ORDERS_URL}?${params.toString()}`);
     if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
     const data = await response.json();
-    renderOrderList(extractResults(data));
+    const orders = extractResults(data);
+    // El envío de cada pedido (Andreani) se pide antes de dibujar la lista.
+    await window.OrderShipping.prepare(orders);
+    renderOrderList(orders);
     renderOrdersPager(data);
   } catch (err) {
     if (err.isSessionExpired) return;
@@ -545,6 +544,7 @@ async function init() {
   }
   await loadAddresses();
   await loadStoreFilter();
+  window.OrderShipping.init({ reloadOrders: loadOrders });
   await loadOrders();
 }
 

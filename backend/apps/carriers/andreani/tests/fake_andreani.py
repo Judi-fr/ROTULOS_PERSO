@@ -1,6 +1,6 @@
 """La Andreani simulada de los tests: atiende ``requests.get``/``requests.request``
 con las formas de su documentación oficial (login, orden de envío v2,
-etiquetas, trazas v3, sucursales v2, nueva-acción). Nunca sale un pedido real."""
+etiquetas, trazas v3, sucursales v2, cotizador v1, nueva-acción). Nunca sale un pedido real."""
 
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlparse
@@ -28,6 +28,11 @@ class FakeAndreani:
         self.orders = []
         self.traces = {}
         self.cancelled = []
+        # Precio por kilo aforado (con IVA = x 1.21), como para que el total
+        # dependa del peso que se mandó.
+        self.price_per_kg = 1000
+        # Para simular a Andreani caída en el cotizador.
+        self.quote_down = False
         self.next_number = 360000101651600
         self.branches = [
             {"id": 96, "codigo": "TIG", "descripcion": "TIGRE (AV PRES J D PERON)", "direccion": {"calle": "Av. Perón", "numero": "100", "localidad": "Tigre", "codigoPostal": "1648"}, "horarioDeAtencion": "Lunes a Viernes 8 a 18"},
@@ -45,6 +50,7 @@ class FakeAndreani:
         return response(200, {}, headers={"x-authorization-token": self.valid_token})
 
     def request(self, method, url, params=None, json=None, headers=None, timeout=None):
+        self.last_timeout = timeout
         parsed = urlparse(url)
         assert f"{parsed.scheme}://{parsed.netloc}" == QA, url
         path = parsed.path
@@ -55,6 +61,24 @@ class FakeAndreani:
         if headers.get("x-authorization-token") != self.valid_token:
             return response(401, {"message": "Token inválido"})
 
+        if method == "GET" and path == "/v1/tarifas":
+            if self.quote_down:
+                return response(503, {})
+            for name in ("cpDestino", "contrato", "cliente", "bultos[0][volumen]"):
+                if not params.get(name):
+                    return response(400, {"detail": f"Falta {name}."})
+            if params["contrato"] == "000":
+                return response(400, {"detail": "El contrato es incorrecto."})
+            kilos = sum(float(value) for key, value in params.items() if key.endswith("[kilos]"))
+            net = kilos * self.price_per_kg
+            return response(
+                200,
+                {
+                    "pesoAforado": f"{kilos:.2f}",
+                    "tarifaSinIva": {"seguroDistribucion": "0.00", "distribucion": f"{net:.2f}", "total": f"{net:.2f}"},
+                    "tarifaConIva": {"seguroDistribucion": "0.00", "distribucion": f"{net * 1.21:.2f}", "total": f"{net * 1.21:.2f}"},
+                },
+            )
         if method == "POST" and path == "/v2/ordenes-de-envio":
             if json["contrato"] == "000":
                 return response(400, {"detail": "El contrato es incorrecto."})

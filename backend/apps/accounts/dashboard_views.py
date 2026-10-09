@@ -115,15 +115,8 @@ class DashboardView(APIView):
         menu.append(
             {"key": "orders", "label": "Mis pedidos", "url": "pedidos.html", "enabled": True}
         )
-        # Envíos por Andreani con la cuenta del propio cliente (apps.carriers):
-        # mismo permiso que despachar.
-        if user_has_permission(user, "orders.create"):
-            menu.append(
-                {"key": "andreani_shipments", "label": "Envíos Andreani", "url": "envios_andreani.html", "enabled": True}
-            )
-            menu.append(
-                {"key": "andreani_account", "label": "Cuenta de Andreani", "url": "andreani.html", "enabled": True}
-            )
+        # Andreani (apps.carriers) no tiene botones propios: se despacha desde
+        # Mis pedidos, y su cuenta y su precio en el checkout se abren desde ahí.
         # Imprimir los rótulos de varios pedidos de una (apps.labels batch):
         # mismo permiso que exige LabelBatchView.
         if user_has_permission(user, "labels.batch"):
@@ -139,24 +132,11 @@ class DashboardView(APIView):
         # con el mismo permiso que exige cada endpoint: la planilla de retiro
         # y la exportación solo leen; cargar seguimientos y cambiar estados
         # despachan, como POST /orders/<id>/ship/.
-        if user_has_permission(user, "orders.view"):
-            menu.append(
-                {
-                    "key": "dispatch_manifest",
-                    "label": "Planilla de retiro",
-                    "url": "planilla_retiro.html",
-                    "enabled": True,
-                }
-            )
+        # La planilla de retiro no tiene botón propio: se arma en Mis pedidos
+        # con los pedidos elegidos (assets/js/pedidos/planilla.js).
         if user_has_permission(user, "orders.create"):
-            menu.append(
-                {
-                    "key": "tracking_import",
-                    "label": "Cargar seguimientos",
-                    "url": "cargar_seguimientos.html",
-                    "enabled": True,
-                }
-            )
+            # Cargar seguimientos tampoco: es un botón de Mis pedidos
+            # (assets/js/pedidos/seguimientos.js).
             menu.append(
                 {
                     "key": "orders_bulk_status",

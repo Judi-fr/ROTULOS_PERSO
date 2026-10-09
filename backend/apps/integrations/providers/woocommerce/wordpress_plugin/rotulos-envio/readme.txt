@@ -3,7 +3,7 @@ Tags: woocommerce, shipping, shipping labels, labels, print
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -11,7 +11,11 @@ Print shipping labels for the selected orders straight from the WooCommerce orde
 
 == Description ==
 
-Adds a "Print shipping labels" bulk action to WooCommerce → Orders. Tick the orders, choose the action, and a PDF with one label per order opens in a new tab, in the order you picked them.
+Adds three bulk actions to WooCommerce → Orders. Tick the orders, choose one, and a PDF opens in a new tab, in the order you picked them:
+
+* "Print shipping labels": one label per order.
+* "Print pickup sheet": the list of parcels the carrier signs when picking them up, with each tracking number.
+* "Ship with Andreani (labels + tracking)": creates the Andreani shipments with your own Andreani account, loads the tracking number into each order, and prints each label followed by Andreani's own label.
 
 Each label carries what the carrier needs to deliver the parcel: sender, recipient, address, postal code, city and province, order number, QR and barcode. Products, prices, payment details and the buyer's email or phone are never printed.
 
@@ -30,7 +34,7 @@ This plugin connects to the shipping labels service the store was connected to, 
 * What is sent, and when: only when someone with permission to manage orders runs the "Print shipping labels" bulk action, the plugin sends the IDs of the selected orders, the store's number in the service and a timestamp, signed with the store's secret. No buyer data is sent by the plugin; the service already holds the orders it needs through the WooCommerce REST API keys the store owner granted when connecting.
 * Where: the address the service wrote in this plugin's settings when the store was connected (WooCommerce → REST API settings group "Shipping labels").
 * The browser is then sent to a short-lived link on that same service, which returns the PDF.
-* At checkout, only when this plugin's shipping method is added to the buyer's shipping zone: the plugin sends the destination postal code and country, the total cart weight and the store currency, signed the same way, to get the shipping prices. No name, address line, email or phone of the buyer is sent. Answers are cached for 5 minutes.
+* At checkout, only when this plugin's shipping method is added to the buyer's shipping zone: the plugin sends the destination postal code and country, the total cart weight, the cart subtotal (for free shipping rules) and the store currency, signed the same way, to get the shipping prices. No name, address line, email or phone of the buyer is sent. Answers are cached for 5 minutes.
 
 == Installation ==
 
@@ -50,9 +54,15 @@ Check that it is added to the buyer's shipping zone, that the service has a rate
 
 = Does it change my orders? =
 
-No. Printing only reads the selected orders. Marking an order as shipped is done from the service.
+Printing the labels or the pickup sheet only reads the selected orders. "Ship with Andreani" does change them: it creates each shipment in Andreani with your own Andreani account (connected in the service), and the order gets the carrier, the tracking number and its link. When Andreani picks the parcel up, the order is marked as shipped. Shipments to an Andreani branch are made from the service, where the branch can be chosen.
 
 == Changelog ==
+
+= 1.3.0 =
+* New bulk actions: "Print pickup sheet" and "Ship with Andreani (labels + tracking)".
+
+= 1.2.0 =
+* Sends the cart subtotal when quoting, so the service can apply free shipping from an amount.
 
 = 1.1.0 =
 * Shipping method that quotes shipping at checkout from the store's rates table.

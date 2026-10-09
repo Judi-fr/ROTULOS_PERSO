@@ -5,7 +5,8 @@ cliente de la API (``api_request``) y datos de la tienda, verificación de
 la firma de un webhook, traducción de un pedido a ``NormalizedOrder``,
 devolución del estado de despacho y tracking (``push_fulfillment``) y los
 rótulos que pide la tienda (``normalize_label_request``,
-``push_label_status``, ``register_shipping_carrier`` — ver ``labels``).
+``push_label_status``, ``register_shipping_carrier`` — ver ``labels`` — y sus
+opciones, ``sync_shipping_carrier_options`` — ver ``carrier_options``).
 """
 
 from __future__ import annotations
@@ -149,6 +150,7 @@ def _shipping_option(value):
 
 class TiendanubeProvider(StoreProvider):
     platform = "tiendanube"
+    quotes_at_checkout = True  # carrier: rates.py
     order_sync_events = ORDER_SYNC_EVENTS
     uninstall_events = ("app/uninstalled",)
     extra_webhook_events = (LABEL_STATUS_EVENT,)
@@ -524,6 +526,49 @@ class TiendanubeProvider(StoreProvider):
                 connection, "PUT", f"shipping_carriers/{current['id']}", json=body
             )
         return self.api_request(connection, "POST", "shipping_carriers", json=body)
+
+    def sync_shipping_carrier_options(self, connection, carrier_id, options):
+        """Deja una opción del carrier por cada ``(code, name)`` de
+        ``options``. Tiendanube descarta del checkout toda tarifa cuyo
+        ``code`` no tenga una opción activa, así que sin esto no se ve
+        ninguna (ver ``carrier_options``).
+
+        Idempotente: un código que ya existe solo se renombra (si cambió el
+        nombre). Nunca se tocan ``active``, ``additional_days``,
+        ``additional_cost`` ni ``allow_free_shipping``: son del comerciante,
+        que los ajusta en su panel. Tampoco se borran opciones de códigos que
+        ya no cotizamos: sin tarifa con ese código no aparecen, y borrarlas le
+        haría perder esos ajustes si el código vuelve.
+
+        Devuelve ``{"created": [...], "renamed": [...], "inactive": [...]}``
+        (códigos); ``inactive`` = existen pero el comerciante las apagó.
+        """
+        path = f"shipping_carriers/{carrier_id}/options"
+        existing = self.api_request(connection, "GET", path)
+        by_code = {}
+        for option in existing if isinstance(existing, list) else []:
+            if isinstance(option, dict) and _text(option.get("code")) and option.get("id") is not None:
+                by_code.setdefault(_text(option.get("code")), option)
+
+        summary = {"created": [], "renamed": [], "inactive": []}
+        for code, name in options:
+            current = by_code.get(code)
+            if current is None:
+                self.api_request(connection, "POST", path, json={"code": code, "name": name})
+                summary["created"].append(code)
+                continue
+            if _text(current.get("name")) != name:
+                self.api_request(connection, "PUT", f"{path}/{current['id']}", json={"name": name})
+                summary["renamed"].append(code)
+            if current.get("active") is False:
+                summary["inactive"].append(code)
+        return summary
+
+    def checkout_prices_changed(self, connection):
+        # Las opciones del carrier siguen a los códigos que cotizamos.
+        from .carrier_options import enqueue_sync
+
+        return enqueue_sync(connection)
 
     def push_label_status(self, connection, fulfillment_order_id, label_id, *, status, documents=None, reason=None):
         body = {"status": status}

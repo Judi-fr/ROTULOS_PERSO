@@ -8,6 +8,10 @@ se cotiza, comunes a todas las plataformas.
   esa opción en vez de inventar un precio: preferimos que el comerciante
   vea que le falta una zona a venderle un envío a pérdida.
 
+Además de la tabla, la tienda puede ofrecer el precio de un transportista con
+la cuenta de su dueño (hoy Andreani, ``apps.carriers.checkout``):
+``with_carrier_rates`` las suma a las de la tabla y es lo que contestan los callbacks.
+
 Cómo le llega esa respuesta a cada checkout es de cada plataforma: Tiendanube
 nos llama como carrier (``providers/tiendanube/rates.py``), WooCommerce
 pregunta desde nuestro plugin (``providers/woocommerce/rates.py``) y a VTEX
@@ -76,6 +80,28 @@ def matching_rates(connection, postal_code, weight_kg):
     return [best[code] for code in sorted(best)]
 
 
+def with_carrier_rates(connection, rates, postal_code, weight_kg, cart_total=None):
+    """Lo que se le ofrece al comprador: ``rates`` (las de la tabla, de
+    ``matching_rates``) más las de los transportistas que la tienda activó
+    (``ShippingRate`` sin guardar). Un transportista que falla no saca a la
+    tabla del checkout. ``cart_total``: el total del carrito, si la plataforma
+    lo manda (para el envío gratis desde cierto monto)."""
+    from apps.carriers.checkout import carrier_rates
+
+    taken = {rate.option_code for rate in rates}
+    # Si la tabla ya usa ese código, gana la tabla: la plataforma no admite
+    # dos tarifas con el mismo código.
+    return list(rates) + [rate for rate in carrier_rates(connection, postal_code, weight_kg, cart_total) if rate.option_code not in taken]
+
+
+def has_checkout_prices(connection):
+    """Si la tienda tiene con qué cotizar: tarifas activas o un transportista
+    activado. Sin nada, dar de alta el carrier dejaría una opción sin precio."""
+    from apps.carriers.checkout import carrier_quotes_enabled
+
+    return connection.shipping_rates.filter(is_active=True).exists() or carrier_quotes_enabled(connection)
+
+
 # ---------------------------------------------------------------------------
 # Plataformas que cotizan con una tabla propia (VTEX)
 # ---------------------------------------------------------------------------
@@ -115,11 +141,15 @@ def enqueue_rates_push(connection):
 
 
 def rates_changed(connection):
-    """La tabla de ``connection`` cambió: si su plataforma necesita que se la
-    publiquen y el comerciante la publicó, se vuelve a publicar. Varios
-    cambios seguidos encolan un solo evento (el pendiente se reutiliza)."""
+    """La tabla de ``connection`` (o un transportista de su checkout) cambió:
+    si su plataforma necesita que se la publiquen y el comerciante la
+    publicó, se vuelve a publicar; y se le avisa al proveedor
+    (``checkout_prices_changed``). Varios cambios seguidos encolan un solo
+    evento (el pendiente se reutiliza)."""
     from .providers import get_provider
 
-    if get_provider(connection.platform).supports_rates_push and rates_push_state(connection).get("enabled"):
+    provider = get_provider(connection.platform)
+    provider.checkout_prices_changed(connection)
+    if provider.supports_rates_push and rates_push_state(connection).get("enabled"):
         return enqueue_rates_push(connection)
     return None

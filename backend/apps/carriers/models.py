@@ -126,6 +126,8 @@ class CarrierShipment(models.Model):
     # Andreani: agrupa los bultos de una orden (sus etiquetas salen juntas).
     group_number = models.CharField(max_length=50, blank=True, default="")
     package_count = models.PositiveSmallIntegerField(default=1)
+    # Lo que cotizó el transportista al crearlo, con IVA (null si no se pudo).
+    quoted_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     # Lo último que dijo el transportista, en sus palabras.
     carrier_status = models.CharField(max_length=120, blank=True, default="")

@@ -383,6 +383,11 @@ ANDREANI_TRACKING_URL_TEMPLATE = env("ANDREANI_TRACKING_URL_TEMPLATE", default="
 # cuántos días después de creado lo sigue haciendo.
 ANDREANI_TRACKING_POLL_MINUTES = env.int("ANDREANI_TRACKING_POLL_MINUTES", default=30)
 ANDREANI_TRACKING_MAX_DAYS = env.int("ANDREANI_TRACKING_MAX_DAYS", default=60)
+# Precio de Andreani en el checkout de las tiendas (apps/carriers/andreani/checkout.py):
+# está en medio de una venta ajena, así que espera poco y guarda las respuestas.
+ANDREANI_CHECKOUT_TIMEOUT_SECONDS = env.int("ANDREANI_CHECKOUT_TIMEOUT_SECONDS", default=4)
+ANDREANI_CHECKOUT_CACHE_SECONDS = env.int("ANDREANI_CHECKOUT_CACHE_SECONDS", default=1800)
+ANDREANI_CHECKOUT_FAILURE_CACHE_SECONDS = env.int("ANDREANI_CHECKOUT_FAILURE_CACHE_SECONDS", default=120)
 
 # Magento (apps.integrations.providers.magento). Como WooCommerce: cada tienda es
 # un sitio propio y el comerciante pega las credenciales de una Integración.

@@ -7,10 +7,19 @@
 - ``shipments/`` GET (los envíos propios, ``?order=``/``?status=``) y POST
   ``{order_ids, contract, branches?: {order_id: {id, name}}, package_count?}``:
   crea un envío por pedido; uno que falla no frena a los demás.
+- ``shipments/quote/`` POST ``{order_ids, contract, package_count?}``: cuánto
+  cobra Andreani por cada pedido (y el total), sin crear nada. Lo mismo que
+  después se manda al crear.
 - ``shipments/<id>/`` GET (con sus movimientos), ``.../label/?file_type=pdf|zpl``,
   ``.../refresh/`` POST (seguimiento ya), ``.../cancel/`` POST.
 - ``shipments/labels/`` POST ``{shipment_ids, file_type}``: las etiquetas de varios
   envíos (ZPL en un solo archivo; PDF en un zip, uno por envío).
+
+- ``checkout/`` GET (las tiendas propias cuyo checkout nos pregunta el precio,
+  con su configuración) y PUT ``{store, enabled, contract, name,
+  delivery_days_min?, delivery_days_max?}``: ofrecer Andreani en el checkout
+  de esa tienda (``checkout.py``).
+- ``checkout/test/`` POST ``{store, postal_code, weight_kg?}``: lo que cotizaría.
 
 Todo con ``orders.create`` (es despachar) y siempre sobre lo del usuario.
 """
@@ -32,6 +41,11 @@ from apps.audit.services import record
 from apps.orders.models import Order
 
 from ..models import CarrierAccount, CarrierShipment
+from apps.integrations.models import StoreConnection
+from apps.integrations.providers import get_provider
+
+from . import checkout as checkout_service
+from . import printing
 from . import shipments as service
 from .client import AndreaniClient, AndreaniError
 
@@ -82,6 +96,7 @@ def shipment_data(shipment, *, events=False):
         "delivery_kind": shipment.delivery_kind,
         "branch_name": shipment.branch_name,
         "package_count": shipment.package_count,
+        "quoted_price": str(shipment.quoted_price) if shipment.quoted_price is not None else None,
         "status": shipment.status,
         "status_label": shipment.get_status_display(),
         "carrier_status": shipment.carrier_status,
@@ -222,6 +237,70 @@ class BranchesView(_AndreaniView):
         return Response({"results": [branch for branch in results if branch["id"]]})
 
 
+def _requested_orders(request, data):
+    """``(ids, orders_by_id, package_count)`` del cuerpo, o una ``Response`` 400."""
+    ids = data.get("order_ids")
+    if not isinstance(ids, list) or not ids:
+        return Response({"order_ids": ["Elegí al menos un pedido."]}, status=status.HTTP_400_BAD_REQUEST)
+    if len(ids) > MAX_ORDERS:
+        return Response({"order_ids": [f"Se pueden procesar hasta {MAX_ORDERS} pedidos por vez."]}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        package_count = min(max(int(data.get("package_count") or 1), 1), 20)
+    except (TypeError, ValueError):
+        package_count = 1
+    orders = {
+        order.pk: order
+        for order in Order.objects.filter(pk__in=[i for i in ids if str(i).isdigit()], user=request.user).select_related("address")
+    }
+    return ids, orders, package_count
+
+
+def _money(value):
+    return str(value) if value is not None else None
+
+
+class ShipmentQuoteView(_AndreaniView):
+    def post(self, request):
+        account = self.account(request)
+        if account is None:
+            return Response({"detail": "Primero cargá tu cuenta de Andreani."}, status=status.HTTP_400_BAD_REQUEST)
+        data = request.data if isinstance(request.data, dict) else {}
+        parsed = _requested_orders(request, data)
+        if isinstance(parsed, Response):
+            return parsed
+        ids, orders, package_count = parsed
+        client = AndreaniClient(account)
+        results, total, quoted = [], Decimal("0"), 0
+        for raw_id in ids:
+            order = orders.get(int(raw_id)) if str(raw_id).isdigit() else None
+            if order is None:
+                results.append({"order_id": raw_id, "ok": False, "detail": "El pedido no existe o no es tuyo."})
+                continue
+            number = order.external_number or str(order.pk)
+            try:
+                quote = service.quote_order(account, order, data.get("contract"), package_count=package_count, client=client)
+            except service.ShipmentError as exc:
+                results.append({"order_id": order.pk, "number": number, "ok": False, "detail": str(exc)})
+                continue
+            quoted += 1
+            total += quote["price"]
+            results.append(
+                {
+                    "order_id": order.pk,
+                    "number": number,
+                    "recipient": order.address.recipient_name if order.address_id else "",
+                    "postal_code": order.address.postal_code if order.address_id else "",
+                    "ok": True,
+                    "detail": f"$ {quote['price']} con IVA",
+                    "price": _money(quote["price"]),
+                    "price_without_tax": _money(quote["price_without_tax"]),
+                    "insurance": _money(quote["insurance"]),
+                    "chargeable_weight_kg": _money(quote["chargeable_weight_kg"]),
+                }
+            )
+        return Response({"quoted": quoted, "failed": len(ids) - quoted, "total": _money(total), "results": results})
+
+
 class ShipmentCollectionView(_AndreaniView):
     def get(self, request):
         queryset = CarrierShipment.objects.filter(account__owner=request.user, carrier=ANDREANI).select_related(
@@ -240,21 +319,11 @@ class ShipmentCollectionView(_AndreaniView):
         if account is None:
             return Response({"detail": "Primero cargá tu cuenta de Andreani."}, status=status.HTTP_400_BAD_REQUEST)
         data = request.data if isinstance(request.data, dict) else {}
-        ids = data.get("order_ids")
-        if not isinstance(ids, list) or not ids:
-            return Response({"order_ids": ["Elegí al menos un pedido."]}, status=status.HTTP_400_BAD_REQUEST)
-        if len(ids) > MAX_ORDERS:
-            return Response({"order_ids": [f"Se pueden crear hasta {MAX_ORDERS} envíos por vez."]}, status=status.HTTP_400_BAD_REQUEST)
+        parsed = _requested_orders(request, data)
+        if isinstance(parsed, Response):
+            return parsed
+        ids, orders, package_count = parsed
         branches = data.get("branches") if isinstance(data.get("branches"), dict) else {}
-        try:
-            package_count = min(max(int(data.get("package_count") or 1), 1), 20)
-        except (TypeError, ValueError):
-            package_count = 1
-
-        orders = {
-            order.pk: order
-            for order in Order.objects.filter(pk__in=[i for i in ids if str(i).isdigit()], user=request.user).select_related("address")
-        }
         results, created = [], 0
         for raw_id in ids:
             order = orders.get(int(raw_id)) if str(raw_id).isdigit() else None
@@ -352,6 +421,32 @@ class ShipmentLabelsView(_AndreaniView):
         return response
 
 
+class ShipmentPrintView(_AndreaniView):
+    """``POST shipments/print/ {shipment_ids}``: un PDF para imprimir de una
+    vez, con el rótulo de cada pedido seguido de su etiqueta de Andreani
+    (``printing.bundle``)."""
+
+    def post(self, request):
+        data = request.data if isinstance(request.data, dict) else {}
+        ids = [int(i) for i in data.get("shipment_ids") or [] if str(i).isdigit()][:MAX_ORDERS]
+        found = {
+            shipment.pk: shipment
+            for shipment in CarrierShipment.objects.filter(pk__in=ids, account__owner=request.user, carrier=ANDREANI)
+            .exclude(status=CarrierShipment.Status.CANCELLED)
+            .select_related("account", "order", "order__address", "order__store_connection", "order__user")
+        }
+        # En el orden en que se pidieron: es el orden de las hojas.
+        shipments = [found[pk] for pk in dict.fromkeys(ids) if pk in found]
+        if not shipments:
+            return Response({"shipment_ids": ["Elegí al menos un envío."]}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            content = printing.bundle(shipments)
+        except AndreaniError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        name = f"envio-{shipments[0].tracking_number}.pdf" if len(shipments) == 1 else f"envios-{len(shipments)}.pdf"
+        return _label_response(content, "pdf", name)
+
+
 class ShipmentRefreshView(_OwnShipmentView):
     def post(self, request, pk):
         shipment = self.shipment(request, pk)
@@ -375,3 +470,143 @@ class ShipmentCancelView(_OwnShipmentView):
         except service.ShipmentError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(shipment_data(shipment))
+
+
+# --- Precio de Andreani en el checkout de las tiendas -----------------------
+
+
+def _checkout_stores(user):
+    """Las tiendas activas del usuario cuyo checkout nos pregunta el precio."""
+    stores = StoreConnection.objects.filter(owner=user, status=StoreConnection.Status.ACTIVE).order_by("pk")
+    return [store for store in stores if getattr(get_provider(store.platform), "quotes_at_checkout", False)]
+
+
+def _checkout_data(store, account):
+    values = checkout_service.config(store)
+    return {
+        "store": store.pk,
+        "store_name": store.name or store.external_store_id,
+        "platform": store.platform,
+        "platform_label": store.get_platform_display(),
+        "enabled": bool(values.get("enabled")),
+        "contract": values.get("contract") or "",
+        "name": values.get("name") or checkout_service.DEFAULT_NAME,
+        "delivery_days_min": values.get("delivery_days_min"),
+        "delivery_days_max": values.get("delivery_days_max"),
+        "surcharge_percent": values.get("surcharge_percent"),
+        "surcharge_amount": values.get("surcharge_amount"),
+        "free_shipping_from": values.get("free_shipping_from"),
+        "problems": checkout_service.problems(store, account, values) if values.get("enabled") else [],
+    }
+
+
+def _optional_days(value):
+    if value in (None, ""):
+        return None
+    days = int(value)
+    if days < 0 or days > 90:
+        raise ValueError
+    return days
+
+
+def _optional_money(value, maximum):
+    """``None`` si viene vacío; si no, un ``Decimal`` entre 0 y ``maximum``
+    como string con dos decimales. ``ValueError`` si no sirve."""
+    if value in (None, ""):
+        return None
+    try:
+        number = Decimal(str(value).replace(",", "."))
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError from exc
+    if not number.is_finite() or number < 0 or number > maximum:
+        raise ValueError
+    return str(number.quantize(Decimal("0.01")))
+
+
+class CheckoutView(_AndreaniView):
+    def get(self, request):
+        account = self.account(request)
+        return Response({"results": [_checkout_data(store, account) for store in _checkout_stores(request.user)]})
+
+    def put(self, request):
+        data = request.data if isinstance(request.data, dict) else {}
+        store = next((item for item in _checkout_stores(request.user) if str(item.pk) == str(data.get("store"))), None)
+        if store is None:
+            return Response({"store": ["Esa tienda no es tuya o su checkout no nos pregunta el precio."]}, status=status.HTTP_400_BAD_REQUEST)
+        account = self.account(request)
+        try:
+            days_min = _optional_days(data.get("delivery_days_min"))
+            days_max = _optional_days(data.get("delivery_days_max"))
+        except (TypeError, ValueError):
+            return Response({"delivery_days_min": ["Los días van de 0 a 90."]}, status=status.HTTP_400_BAD_REQUEST)
+        if days_min is not None and days_max is not None and days_min > days_max:
+            return Response({"delivery_days_max": ["El máximo no puede ser menor que el mínimo."]}, status=status.HTTP_400_BAD_REQUEST)
+        money_fields = {}
+        for name, maximum, message in (
+            ("surcharge_percent", Decimal("300"), "El recargo va de 0 a 300 %."),
+            ("surcharge_amount", Decimal("10000000"), "El recargo fijo tiene que ser un monto en pesos, cero o más."),
+            ("free_shipping_from", Decimal("1000000000"), "El monto para el envío gratis tiene que ser cero o más."),
+        ):
+            try:
+                money_fields[name] = _optional_money(data.get(name), maximum)
+            except ValueError:
+                return Response({name: [message]}, status=status.HTTP_400_BAD_REQUEST)
+        values = {
+            "enabled": bool(data.get("enabled")),
+            "contract": str(data.get("contract") or "").strip()[:50],
+            "name": str(data.get("name") or "").strip()[:100] or checkout_service.DEFAULT_NAME,
+            "delivery_days_min": days_min,
+            "delivery_days_max": days_max,
+            **money_fields,
+        }
+        if values["enabled"]:
+            found = checkout_service.problems(store, account, values)
+            if found:
+                return Response({"detail": "No se puede activar: " + "; ".join(found) + "."}, status=status.HTTP_400_BAD_REQUEST)
+        before = checkout_service.config(store)
+        checkout_service.save_config(store, values)
+        if before.get("enabled") != values["enabled"] or before.get("name") != values["name"]:
+            # Cambió qué opciones cotizamos en el checkout (Tiendanube necesita
+            # una opción del carrier con ese código para mostrar la tarifa).
+            get_provider(store.platform).checkout_prices_changed(store)
+        # Qué cambió (habilitado, contrato, recargo, envío gratis...), para la auditoría.
+        changes = {
+            f"andreani_checkout.{key}": {"from": before.get(key), "to": value}
+            for key, value in values.items()
+            if before.get(key) != value
+        }
+        record(
+            request,
+            category="integrations",
+            action="store.update",
+            target=store,
+            target_type="storeconnection",
+            target_repr=str(store.name or store.pk),
+            changes=changes or None,
+        )
+        return Response(_checkout_data(store, account))
+
+
+class CheckoutTestView(_AndreaniView):
+    def post(self, request):
+        data = request.data if isinstance(request.data, dict) else {}
+        store = next((item for item in _checkout_stores(request.user) if str(item.pk) == str(data.get("store"))), None)
+        if store is None:
+            return Response({"store": ["Esa tienda no es tuya o su checkout no nos pregunta el precio."]}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            weight = Decimal(str(data.get("weight_kg") or 0))
+        except (InvalidOperation, ValueError):
+            weight = Decimal("0")
+        try:
+            cart_total = Decimal(str(data["cart_total"])) if data.get("cart_total") not in (None, "") else None
+            if cart_total is not None and not cart_total.is_finite():
+                cart_total = None
+        except (InvalidOperation, ValueError):
+            cart_total = None
+        try:
+            result = checkout_service.test_quote(
+                store, data.get("postal_code"), weight if weight.is_finite() else Decimal("0"), cart_total
+            )
+        except service.ShipmentError as exc:
+            return Response({"ok": False, "detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(dict(result, ok=True))

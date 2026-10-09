@@ -159,7 +159,11 @@ def _own_app_error_message(detail):
 
 
 class ShopifyPrintLinkView(APIView):
-    """POST /api/v1/integrations/shopify/print-link/  ``{"ids": ["gid://shopify/Order/…", …]}``
+    """POST /api/v1/integrations/shopify/print-link/  ``{"ids": ["gid://shopify/Order/…", …], "action"?}``
+
+    ``action``: ``labels`` (por defecto), ``manifest`` o ``dispatch`` (ver
+    ``store_print.ACTIONS``). La planilla sale de una segunda opción del menú
+    Imprimir y despachar, de una acción masiva de la lista de pedidos.
 
     Lo llama la extensión de impresión del admin de Shopify (ver
     ``store_print``). Sin JWT nuestro: la identidad es el ID token de
@@ -183,12 +187,13 @@ class ShopifyPrintLinkView(APIView):
             return Response({"detail": str(exc)}, status=status.HTTP_401_UNAUTHORIZED)
 
         try:
+            action = store_print.parse_action((request.data or {}).get("action"))
             connection = admin_print.connection_for_shop(shop_domain)
             legacy_ids = admin_print.legacy_order_ids((request.data or {}).get("ids"))
             orders, missing = store_print.resolve_orders(connection, legacy_ids)
             if not orders:
                 raise store_print.PrintError("Ninguno de los pedidos elegidos existe en Shopify.")
-            url = store_print.print_url(store_print.make_print_token(connection, orders))
+            url, summary = store_print.action_link(connection, orders, action, route="shopify-print")
         except store_print.PrintError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -200,9 +205,9 @@ class ShopifyPrintLinkView(APIView):
             target=connection,
             target_type="storeconnection",
             target_repr=str(connection),
-            changes={"shopify_print": {"from": None, "to": len(orders)}},
+            changes={f"shopify_{action}": {"from": None, "to": len(orders)}},
         )
-        return Response({"url": url, "count": len(orders), "missing": missing})
+        return Response({"url": url, "count": len(orders), "missing": missing, "action": action, **summary})
 
 
 @xframe_options_exempt

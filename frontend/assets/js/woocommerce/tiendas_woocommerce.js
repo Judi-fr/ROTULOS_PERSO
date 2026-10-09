@@ -78,8 +78,9 @@ async function connectWooManual(event) {
 // Plugin de WordPress para imprimir desde WooCommerce
 // ---------------------------------------------------------------------------
 
-// El plugin agrega "Imprimir rótulos" a las acciones masivas de WooCommerce →
-// Pedidos. El comerciante no lo configura: "Verificar plugin" le pide al
+// El plugin agrega a las acciones masivas de WooCommerce → Pedidos "Imprimir
+// rótulos", "Imprimir planilla de retiro" y "Despachar con Andreani" (desde la
+// 1.3.0). El comerciante no lo configura: "Verificar plugin" le pide al
 // backend que le escriba la configuración (si no, lo hace el repaso cada 30
 // minutos). print_plugin_linked: true = vinculado, false = no está instalado,
 // null = todavía no se sabe.
@@ -93,7 +94,7 @@ function renderPrintPlugin(store) {
       "p",
       "store-sender-help",
       linked
-        ? "En WooCommerce → Pedidos tildá los pedidos y elegí “Imprimir rótulos” en Acciones masivas."
+        ? "En WooCommerce → Pedidos tildá los pedidos y elegí en Acciones masivas “Imprimir rótulos”, “Imprimir planilla de retiro” o “Despachar con Andreani”. Si no ves las dos últimas, bajá el plugin de nuevo y subilo encima del que tenés."
         : "Instalá nuestro plugin en tu WordPress para imprimir los rótulos desde tu lista de pedidos, sin entrar acá."
     )
   );

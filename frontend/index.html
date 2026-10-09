@@ -79,7 +79,7 @@
       // el enlace de vinculación), vuelve a terminar ese paso.
       // Lo mismo si venía de "Imprimir rótulos" en las acciones masivas de
         // Tiendanube (assets/js/tiendanube/imprimir_tiendanube.js guardó los pedidos elegidos).
-        window.location.replace(localStorage.getItem('pendingTiendanubePrint') ? 'imprimir_tiendanube.html' : localStorage.getItem('pendingStoreClaim') ? 'tiendas.html' : (isAdmin ? 'gestionuser.html' : 'dashboard.html'));
+        window.location.replace(localStorage.getItem('pendingTiendanubePrint') ? (localStorage.getItem('pendingTiendanubePage') || 'imprimir_tiendanube.html') : localStorage.getItem('pendingStoreClaim') ? 'tiendas.html' : (isAdmin ? 'gestionuser.html' : 'dashboard.html'));
     }
 
     // Callback de Google Identity Services: response.credential es el ID
@@ -160,7 +160,7 @@
         // el enlace de vinculación), vuelve a terminar ese paso.
         // Lo mismo si venía de "Imprimir rótulos" en las acciones masivas de
         // Tiendanube (assets/js/tiendanube/imprimir_tiendanube.js guardó los pedidos elegidos).
-        window.location.replace(localStorage.getItem('pendingTiendanubePrint') ? 'imprimir_tiendanube.html' : localStorage.getItem('pendingStoreClaim') ? 'tiendas.html' : (isAdmin ? 'gestionuser.html' : 'dashboard.html'));
+        window.location.replace(localStorage.getItem('pendingTiendanubePrint') ? (localStorage.getItem('pendingTiendanubePage') || 'imprimir_tiendanube.html') : localStorage.getItem('pendingStoreClaim') ? 'tiendas.html' : (isAdmin ? 'gestionuser.html' : 'dashboard.html'));
       } catch (error) {
         alert(error.message || 'Error en usuario o clave - Reingrese');
       }

@@ -402,7 +402,9 @@ class BulkMenuTests(BulkTestBase):
     def test_el_menu_ofrece_las_acciones_masivas(self):
         response = self.client.get("/api/v1/auth/users/me/dashboard/", **auth_headers_for(self.user))
         urls = {item["key"]: item["url"] for item in response.data["menu"]}
-        self.assertEqual(urls["dispatch_manifest"], "planilla_retiro.html")
-        self.assertEqual(urls["tracking_import"], "cargar_seguimientos.html")
+        # La planilla de retiro y cargar seguimientos se hacen desde Mis
+        # pedidos, sin botón propio (decidido 2026-10-09).
+        self.assertNotIn("dispatch_manifest", urls)
+        self.assertNotIn("tracking_import", urls)
         self.assertEqual(urls["orders_bulk_status"], "estado_pedidos.html")
         self.assertEqual(urls["orders_export"], "exportar_pedidos.html")

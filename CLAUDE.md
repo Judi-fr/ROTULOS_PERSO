@@ -453,6 +453,27 @@ Empretienda (no API: its exported sales spreadsheet is imported).
   (`_needs_new_scopes`; Shopify only asks for what's missing and the callback updates the same row).
   Not for empty `scopes` (unknown — it would loop) nor for own-app connections. `missing_scopes`
   treats a granted `write_x` as covering `read_x`.
+- **Bulk actions from the store's own admin = three actions over the print-link flow** (2026-10-09, user:
+  "agregá todas las acciones masivas posibles"). `POST <platform>/print-link/` takes `action`:
+  `labels` (default, as before), `manifest` (planilla de retiro, `apps.orders.manifest`, carrier filled when
+  all orders share one) or `dispatch` (Andreani). Shared in `store_print.py`: `parse_action`,
+  `action_link(connection, orders, action, route)` → `(url, summary)` and `render_document(token, platform)`
+  (what `_print_document` serves; the token carries `a` and, for dispatch, the shipment ids `s`).
+  **Dispatching happens in the POST, never in the GET of the link** (it creates Andreani shipments); the
+  link only prints them (`andreani/printing.bundle`: rótulo + Andreani label). `andreani/store_dispatch.py`
+  picks the contract by itself — the store's `andreani_checkout.contract` if it's a home contract, else
+  the account's first home one (branch contracts need a branch per order: only from Mis pedidos) —, reuses
+  an order's open shipment instead of creating another, and returns `failed: [{number, detail}]`; no
+  Andreani account → 400 "Conectá tu cuenta de Andreani…". Max `MAX_ORDERS_PER_DISPATCH` (30) per action.
+  Cambiar estado / Exportar were left out on purpose: every store already has them and the store owns the
+  status. Not available in Magento/VTEX (no admin module of ours yet) nor Empretienda (no API). Per platform:
+  WooCommerce plugin 1.3.0 (three bulk actions, dispatch with a 90 s timeout, failures shown as an admin
+  notice); Tiendanube = one Partner Portal link per action, each to its page (`imprimir_tiendanube.html`,
+  `planilla_tiendanube.html`, `despachar_tiendanube.html`, same JS with `<body data-action>`; the user
+  must register the two new links); Shopify = a second Print option (`rotulos-planilla`) and an admin
+  action (`rotulos-despachar`, target `admin.order-index.selection-action.render`, confirms with a button)
+  in `rotulos-extension/` — needs `shopify app deploy` (the CLI adds their `uid`). Tests:
+  `apps/integrations/tests/test_store_actions.py`.
 - **Printing labels from Shopify's own admin (`providers/shopify/admin_print.py` + the shared `store_print.py`).** The merchant ticks orders in their
   Shopify order list → Print menu → our labels. That menu entry is an *admin print action extension*
   (target `admin.order-index.selection-print-action.render`), a separate Shopify CLI project in
@@ -536,7 +557,7 @@ Empretienda (no API: its exported sales spreadsheet is imported).
   - **Checkout quotes (`providers/woocommerce/rates.py`, plugin `includes/shipping.php`).** WooCommerce has
     no carrier API, so the plugin registers a shipping method ("Shipping labels (rates table)",
     id `rotulos`) the merchant adds to their zones. At checkout it POSTs `woocommerce/rates/`
-    `{postcode, country, weight_kg, currency}` signed like the print request (the cart weight is
+    `{postcode, country, weight_kg, cart_total, currency}` signed like the print request (the cart weight is
     converted to kg in WordPress with `wc_get_weight`), and the backend answers from the same
     `ShippingRate` table and `matching_rates` rule as Tiendanube. Same rule as there: **it never
     breaks the sale** — only a bad signature is 401; any other failure answers `{"rates": []}`, and
@@ -766,6 +787,27 @@ is why the view **never returns 5xx**: an unreadable cart or an unexpected excep
   **refuses if the store has no active rates** — a carrier with no table would offer a shipping method that
   never answers a price. It is manual because registering flips that store's checkout on: it is turned on
   client by client, never as a side effect of installing the app.
+- **Carrier options (`providers/tiendanube/carrier_options.py`) — without them nothing shows.** Tiendanube
+  docs: "post all your available rates, our API will filter by carrier options active" — a rate whose
+  `code` has no ACTIVE option of our carrier (`/shipping_carriers/{id}/options`) is dropped silently. So
+  `register_carrier`, after registering, syncs one option per code the callback can answer: each distinct
+  `option_code` of the store's active `ShippingRate`s (name = its first row's `option_name`) plus each
+  enabled checkout carrier (`apps.carriers.checkout.CARRIERS`: `"andreani"` with
+  `preferences["andreani_checkout"]["name"]`; a table row with the same code wins, as in
+  `with_carrier_rates`). Idempotent (`TiendanubeProvider.sync_shipping_carrier_options`): an existing
+  code is only renamed; `active`/`additional_days`/`additional_cost`/`allow_free_shipping` are never sent
+  (they're the merchant's, set in their panel — an option they switched off is NOT re-activated, it's
+  reported as `inactive`), and options for codes we no longer quote are never deleted (no rate = not
+  shown; deleting would lose their settings). Result in `preferences["shipping_carrier_options"]`
+  (`status` synced/failed, `codes`, `created`, `renamed`, `inactive`, `error`); the command prints it.
+  If the sync fails the carrier stays registered and `internal/sync_carrier_options` is enqueued.
+  **Re-sync**: `shipping_rates.rates_changed` (every `ShippingRateViewSet` write) and the Andreani
+  checkout `PUT` (only when `enabled` or `name` change) call `StoreProvider.checkout_prices_changed`
+  (no-op by default); Tiendanube's enqueues that event if the store has a carrier id — the worker
+  (`tiendanube/handlers.sync_carrier_options`) does the API calls, never the merchant's request nor the
+  checkout callback. 401/403/404/422 (e.g. the carrier was deleted from the panel) fail the event without
+  retries. Diagnostic: the cart Tiendanube sends lists `carrier.options`; `rates.quote` logs a WARNING
+  when it answers a code missing there.
 - **Plan gating.** `connect_store` saves the store's `features` into `StoreConnection.preferences`, and
   `tiendanube.labels.supports_label_api()` reads `fulfillment_order_label_api` off it (`None` = unknown, for
   stores connected before this existed). Surfaced as `label_api_enabled` on the store serializer.
@@ -811,6 +853,37 @@ real account. Their Warehouse service (stock, order preparation) is another API,
   created is not dispatched. **The label's barcode is the Andreani number with no extra code**: the
   rótulo prints `{{tracking}}` = `Order.tracking_number` (that's the "number under the barcode" the user
   asked for). One open shipment per order; cancelling clears the order's tracking so it can be sent again.
+- **Quoting** (`shipments.quote_order`, `POST carriers/andreani/shipments/quote/` `{order_ids, contract,
+  package_count?}`): `GET /v1/tarifas` (official sheet `api-cotizador-v2-1.xlsx`) with `cpDestino` = the
+  order's postal code (also for branch contracts: the rate is by destination zone), `contrato`,
+  `cliente` = `CarrierAccount.client_code` (required to quote, not to ship), and one `bultos[i][kilos|volumen]`
+  per package (the same weight split as the order). Answers per order `price` (with VAT),
+  `price_without_tax`, `insurance`, `chargeable_weight_kg` and the `total`; creates nothing.
+  The "Despachar" dialog in `pedidos.html` quotes on opening and shows each order's price and the total
+  before "Crear envíos" (re-quoted when the contract or packages change). On create the quote is repeated and stored as
+  `CarrierShipment.quoted_price` — **best-effort**: a failed quote never blocks the shipment
+  (`quoted_price` null). A CONFIRMAR: whether `/v1/tarifas` needs the token (it's sent anyway).
+- **Andreani's price in the store checkout (`andreani/checkout.py`).** On platforms whose checkout asks
+  us live (`StoreProvider.quotes_at_checkout`: Tiendanube's carrier callback, WooCommerce's plugin) a
+  store can add an "Andreani" option quoted with the STORE OWNER's account. Turned on per store in
+  `preferences["andreani_checkout"]` (`enabled`, `contract` — home contracts only, a branch would need
+  the buyer to pick it —, `name`, `delivery_days_min/max`) via `GET/PUT carriers/andreani/checkout/`
+  (+ `checkout/test/`, uncached) and `checkout_andreani.html`. Both callbacks still call
+  `matching_rates` and then `shipping_rates.with_carrier_rates`, which appends
+  `apps.carriers.checkout.carrier_rates` as unsaved `ShippingRate`s (a table rate with the same
+  `option_code` wins). Because it sits in someone else's sale: `ANDREANI_CHECKOUT_TIMEOUT_SECONDS` (4),
+  answers cached by account+contract+CP+weight rounded UP to 0.5 kg (`ANDREANI_CHECKOUT_CACHE_SECONDS`,
+  30 min; Django's default cache, per process), failures cached too
+  (`ANDREANI_CHECKOUT_FAILURE_CACHE_SECONDS`, 2 min) so a down Andreani doesn't cost 4 s on every
+  checkout; any failure just drops the option. A cart without weights quotes the account's default
+  package. **What the buyer pays** (`buyer_price`) = Andreani's total with VAT × (1 + `surcharge_percent`)
+  + `surcharge_amount`, or 0 when the cart reaches `free_shipping_from` (the merchant pays). The real
+  cost travels as `merchant_price` on the unsaved rate, sent to Tiendanube as `price_merchant` (table
+  rates keep price_merchant = price). The cart total comes from Tiendanube's `total_price` (else the
+  items' `price` × `quantity`) and from the WooCommerce plugin's `cart_total` (plugin 1.2.0+); without it
+  there is no free shipping. The cache stores the cost, not the final price. Tiendanube's own panel
+  additional cost / free shipping per carrier option apply on top of ours. `register_carrier` now accepts a store with no table if a carrier
+  quote is enabled (`has_checkout_prices`), and creates the `andreani` carrier option (see "Carrier options"). VTEX isn't covered (it quotes from published tables).
 - **HOP points are just Andreani branches** (nomenclature `HOPxxxx`, "PUNTO ANDREANI HOP …"): a branch
   contract sends to `destino.sucursal.id`, and `branches/?cp=` marks them `is_hop`.
 - **Tracking** (`shipments.sync_shipment`): the worker calls `apps.carriers.tracking.sync_due_shipments`
@@ -822,13 +895,37 @@ real account. Their Warehouse service (stock, order preparation) is another API,
   delivered to the buyer → delivered; returns and issues stay visible on the shipment only. A rejected
   login deactivates the account (`last_error`, shown in `andreani.html`) until the client saves it again;
   any other failure is noted and the shipment is retried on the next interval, not every loop.
-- Frontend: `andreani.html` (the account: credentials, contracts, sender/origin, default package; "Probar
-  conexión") and `envios_andreani.html` (pick orders with `createOrderPicker`, choose contract and, for
-  branch contracts, a branch/HOP per order by its postal code; then the shipments table with status, last
-  movement, label PDF/ZPL — several at once as a zip or one ZPL file —, refresh and cancel). JS in
-  `assets/js/andreani/`. Menu entries "Envíos Andreani" and "Cuenta de Andreani" (`orders.create`).
-- Not done yet: the quote API (`/v1/tarifas`) for checkout prices, the push "novedades" (Andreani
-  configures them by hand per client), and Warehouse.
+- Frontend — **everything Andreani lives in "Mis pedidos", no menu entries of its own** (decided
+  2026-10-09: separate "Envíos/Cuenta/Checkout Andreani" buttons made the user pick the same orders in
+  another page and still type the tracking by hand in `despachar.html`). In `pedidos.html`:
+  `assets/js/pedidos/envios.js` (`window.OrderShipping`) draws, per order, the carrier + tracking link +
+  Andreani's status (from `GET shipments/`, latest non-cancelled per order), the buttons "Despachar" /
+  "Imprimir" / "Actualizar seguimiento" / "Cancelar envío", the checkbox + sticky selection bar
+  ("Despachar (n)", "Imprimir (n)") and a strip with the account state linking to `andreani.html`
+  and `checkout_andreani.html` (those two pages remain, reached only from there, topbar back to
+  `pedidos.html`). Both dialogs refresh the list from their own close() (and from the `close` event, for
+  Esc) — the event alone didn't fire in a hidden browser pane. `assets/js/pedidos/despacho.js`
+  (`window.OrderDispatch`) is the `<dialog>`: account
+  not ready → "Conectar Andreani"; ready → service (contract, home first; hidden if only one), packages,
+  per-order branch/HOP for branch contracts, automatic quote, "Crear envíos" → result with the tracking
+  numbers and "Imprimir rótulos y etiquetas".
+- **Printing = OUR rótulo + Andreani's label** (decided 2026-10-09, "los dos"): `POST shipments/print/
+  {shipment_ids}` (`andreani/printing.py`) returns ONE PDF with, per shipment in the requested order, the
+  rótulo drawn with the store's template (`store_print.resolve_template`, else the default public one;
+  `{{tracking}}` is already Andreani's number) followed by Andreani's label pages, joined with `pypdf`.
+  No template / a broken design → only Andreani's label; an unreadable Andreani PDF → 502, never half a
+  batch. `GET shipments/<id>/label/` and `POST shipments/labels/` (Andreani's alone, zip/ZPL) remain.
+  A CONFIRMAR with Andreani whether one of the two is enough. For one order it also links "Otro transportista: cargar el seguimiento a
+  mano" (`despachar.html`, kept for carriers without API). `envios_andreani.html` is no longer linked
+  from anywhere. JS for the account/checkout pages in `assets/js/andreani/`.
+- **Trying it without credentials**: `python manage.py fake_andreani_server` (`apps/carriers/management/`)
+  serves `FakeAndreani` on `http://127.0.0.1:8099` (real PDF labels saying "PRUEBA"; every tracking query
+  advances one step: admitted → in transit → delivered; shipment numbers start from the clock so a
+  restart never repeats one already in the DB). Set `ANDREANI_API_BASE_QA=http://127.0.0.1:8099`
+  in `.env`, restart the backend, and save the account in QA with `cliente-prueba` /
+  `Clave-Andreani-1` and contract `400006709` (home) or `400006710` (branch). Local only.
+- Not done yet: the push "novedades" (Andreani configures them by hand per client), and
+  Warehouse (stock management is not part of the product for now).
 
 ### Frontend
 
@@ -866,7 +963,8 @@ permission (UI-only gating; the backend re-checks every permission server-side).
   stylesheet by the pages whose CSS had these rules byte-identical (`documentos`/`importar`/`integraciones`/
   `labels_shared`/`pedidos`/`perfil`). Color tokens (`:root`) stay per file — not every screen uses the same
   palette, and `tiendas.css`/`despachar.css`/`gestionuser.css` keep their own variants and don't load it.
-- `pedidos.html` paginates its order history (`?page=`, Anterior/Siguiente driven by the API's `next`).
+- `pedidos.html` is the work screen: the order list comes first (dispatch, see Carriers → Frontend),
+  then "Mis direcciones" and "Nuevo pedido". It paginates its order history (`?page=`, Anterior/Siguiente driven by the API's `next`).
   Its store filter is one button per store (plus "Todas" and "Cargados a mano"), built from
   `GET /integrations/stores/` — never a hardcoded list — and rebuilt when the tab becomes visible again,
   so a store connected in `tiendas.html` shows up by itself. Each store gets a color (`store-color-N` in
@@ -932,8 +1030,18 @@ permission (UI-only gating; the backend re-checks every permission server-side).
   places things (one mm→px factor for everything), the server says what comes out — so this screen cannot
   drift from the print output the way `editor_rotulos.html` does (see below).
 - **Bulk order actions, one page each** (backend in `apps/orders/bulk_views.py`):
-  `cargar_seguimientos.html` + `tracking_import.js` (upload → review/remap columns → confirm),
-  `planilla_retiro.html` + `dispatch_manifest.js` (optionally also marks them dispatched),
+  `cargar_seguimientos.html` + `tracking_import.js` (no longer linked: **since 2026-10-09 it's the
+  "Cargar seguimientos desde planilla" button of Mis pedidos** → `assets/js/pedidos/seguimientos.js`, a wide
+  `<dialog>`: picking/dropping the file already previews it; the column mapping only opens when
+  `order`/`tracking_number` weren't detected (else behind "Cambiar las columnas"); the store question only
+  appears when there are `ambiguous` rows and 2+ stores; "Transportista" only when no carrier column is
+  mapped, applied client-side to rows without one on confirm. Button shown with `orders.create`, taken
+  from the Andreani account check. No menu entry),
+  `planilla_retiro.html` + `dispatch_manifest.js` (no longer linked: **the manifest is built from Mis
+  pedidos** since 2026-10-09 — selection bar "Planilla de retiro (n)" → `assets/js/pedidos/planilla.js`,
+  a `<dialog>` whose carrier is prefilled when all ticked orders share one, and "Marcarlos como
+  despachados" ticked by default, applied only to the ticked `created`/`preparing` ones via
+  `bulk-status`; no menu entry),
   `estado_pedidos.html` + `bulk_status.js` (asks before cancelling) and `exportar_pedidos.html` +
   `export_orders.js` (by filter, no ticking). The two that work on ticked orders draw their filters and
   list with `createOrderPicker(root)` from `utils.js` (selection survives paging/filters); results go

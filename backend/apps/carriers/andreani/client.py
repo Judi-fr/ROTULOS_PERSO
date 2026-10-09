@@ -3,7 +3,8 @@
 Escrito el 2026-10-08 SIN credenciales (Andreani solo se las da a clientes, por
 su ejecutivo comercial): sale de la documentación oficial, que Andreani publica
 como planillas en https://developers.andreani.com/document (orden de envío v2,
-etiquetas v2, tracking v3, sucursales v2, cotizador v1, nueva-acción v2), y está
+etiquetas v2, tracking v3, sucursales v2, cotizador v1 —planilla
+``api-cotizador-v2-1.xlsx``—, nueva-acción v2), y está
 probado contra una Andreani simulada (``tests/fake_andreani.py``). Lo que hay que
 confirmar con la primera cuenta está marcado "A CONFIRMAR".
 
@@ -74,9 +75,11 @@ def _error_detail(response):
 
 
 class AndreaniClient:
-    def __init__(self, account):
+    def __init__(self, account, *, timeout=None):
         self.account = account
         self.base = base_url(account.environment)
+        # El checkout pasa uno corto: está en medio de la venta de otro.
+        self.timeout = timeout or _setting("ANDREANI_HTTP_TIMEOUT_SECONDS", 20)
 
     # --- Sesión ------------------------------------------------------------
 
@@ -89,7 +92,7 @@ class AndreaniClient:
             response = requests.get(
                 f"{self.base}/login",
                 auth=(self.account.username, self.account.password),
-                timeout=_setting("ANDREANI_HTTP_TIMEOUT_SECONDS", 20),
+                timeout=self.timeout,
             )
         except requests.RequestException as exc:
             raise AndreaniError(f"No se pudo contactar a Andreani: {exc.__class__.__name__}.") from exc
@@ -127,7 +130,7 @@ class AndreaniClient:
                 params=params or None,
                 json=json_body,
                 headers=headers,
-                timeout=_setting("ANDREANI_HTTP_TIMEOUT_SECONDS", 20),
+                timeout=self.timeout,
             )
         except requests.RequestException as exc:
             raise AndreaniError(f"No se pudo contactar a Andreani: {exc.__class__.__name__}.") from exc
@@ -168,6 +171,24 @@ class AndreaniClient:
         data = _json(self.request("GET", f"v3/envios/{quote(str(number), safe='')}/trazas"))
         events = data.get("eventos") if isinstance(data, dict) else data
         return [event for event in events or [] if isinstance(event, dict)]
+
+    def quote(self, *, contract, client_code, postal_code, packages):
+        """``GET /v1/tarifas`` -> lo que costaría el envío (dict): ``pesoAforado``
+        y ``tarifaSinIva``/``tarifaConIva`` con ``seguroDistribucion``,
+        ``distribucion`` y ``total`` (strings). ``packages``: dicts con
+        ``volumen`` (cm³, obligatorio), ``kilos`` y opcionalmente
+        ``valorDeclarado``. Los bultos van como ``bultos[0][kilos]``, como pide
+        la documentación. A CONFIRMAR: la planilla no dice si el cotizador pide
+        token; se manda igual (es la misma cuenta que crea los envíos)."""
+        params = {"cpDestino": str(postal_code), "contrato": str(contract), "cliente": str(client_code)}
+        for index, package in enumerate(packages):
+            for key, value in package.items():
+                if value not in (None, ""):
+                    params[f"bultos[{index}][{key}]"] = str(value)
+        data = _json(self.request("GET", "v1/tarifas", params=params))
+        if not isinstance(data, dict) or not isinstance(data.get("tarifaConIva"), dict):
+            raise AndreaniError("Andreani no devolvió la tarifa.")
+        return data
 
     def branches(self, postal_code=""):
         """Sucursales y puntos HOP (``GET /v2/sucursales``, no pide token). Con

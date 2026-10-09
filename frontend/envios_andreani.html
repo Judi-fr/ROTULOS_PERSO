@@ -25,7 +25,7 @@
         <div class="main-heading">
           <h1>Envíos Andreani</h1>
           <p>
-            Elegí pedidos y creá sus envíos en Andreani con tu cuenta. El número de envío queda como
+            Elegí pedidos, cotizá cuánto te cobra Andreani y creá sus envíos con tu cuenta. El número de envío queda como
             seguimiento del pedido —es el que imprime el rótulo debajo del código de barras— y el
             estado se actualiza solo a medida que Andreani lo mueve.
           </p>
@@ -65,8 +65,11 @@
               <div id="branchRows"></div>
             </div>
             <div class="form-actions">
+              <button type="button" class="btn btn-outline" id="quoteBtn" disabled>Cotizar</button>
               <button type="button" class="btn btn-primary" id="createBtn" disabled>Crear envíos</button>
             </div>
+            <!-- Lo que cobra Andreani por cada pedido elegido (POST carriers/andreani/shipments/quote/). -->
+            <div id="quoteResult"></div>
             <div id="createResult"></div>
           </div>
         </section>
@@ -97,6 +100,7 @@
                     <th>Envío</th>
                     <th>Pedido</th>
                     <th>Destino</th>
+                    <th>Costo</th>
                     <th>Estado</th>
                     <th>Último movimiento</th>
                     <th></th>

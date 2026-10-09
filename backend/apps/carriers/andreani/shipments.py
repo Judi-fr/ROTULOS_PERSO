@@ -9,6 +9,10 @@ de los movimientos de Andreani al estado del pedido.
   ``apps.labels.label_rendering``). El pedido pasa a "en preparación", no a
   despachado: recién está despachado cuando Andreani lo admite (lo dice el
   seguimiento), y ahí se le informa a la tienda.
+- **Cotizar** (``quote_order``): cuánto cobra Andreani por ese pedido con ese
+  contrato (``GET /v1/tarifas``, con el código de cliente de la cuenta). Se
+  muestra antes de crear y, al crear, lo cotizado queda en el envío
+  (``quoted_price``): si la cotización falla el envío se crea igual.
 - **Seguir** (``sync_shipment``): lee las trazas, guarda los movimientos nuevos y
   mueve el envío y el pedido SOLO hacia adelante.
 - Del comprador va a Andreani lo necesario para entregar: nombre, domicilio y,
@@ -123,6 +127,58 @@ def _weight(order, account):
     return max(weight, Decimal("0.001"))
 
 
+def _packages(order, account, package_count):
+    """Los bultos del pedido: el peso repartido en partes iguales y el volumen
+    por defecto de la cuenta en cada uno."""
+    count = max(int(package_count or 1), 1)
+    weight = round(_weight(order, account) / count, 3)
+    return count, weight
+
+
+def _decimal(value):
+    try:
+        return Decimal(str(value).replace(",", "."))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+
+
+def quote_order(account, order, contract_code, *, package_count=1, client=None):
+    """Lo que cobra Andreani por ``order`` con el contrato ``contract_code``:
+    ``{"price", "price_without_tax", "insurance", "chargeable_weight_kg"}``
+    (``Decimal``; ``price`` es con IVA, lo que paga el cliente). Se cotiza al
+    código postal del pedido también para los contratos de sucursal: la tarifa
+    es por zona de destino. ``ShipmentError`` con el motivo si no se puede."""
+    if not account.username or not account.password_encrypted:
+        raise ShipmentError("A tu cuenta de Andreani le falta el usuario y la contraseña.")
+    if not account.client_code:
+        raise ShipmentError("Para cotizar, a tu cuenta de Andreani le falta el código de cliente.")
+    contract = account.contract(contract_code)
+    if contract is None:
+        raise ShipmentError("Ese contrato no está en tu cuenta de Andreani.")
+    postal_code = postal_code_digits(order.address.postal_code if order.address_id else "")
+    if not postal_code:
+        raise ShipmentError("El pedido no tiene código postal: Andreani cotiza por destino.")
+    count, weight = _packages(order, account, package_count)
+    packages = [{"volumen": int(account.default_volume_cm3), "kilos": float(weight)} for _index in range(count)]
+    try:
+        data = (client or AndreaniClient(account)).quote(
+            contract=contract["code"], client_code=account.client_code, postal_code=postal_code, packages=packages
+        )
+    except AndreaniError as exc:
+        raise ShipmentError(str(exc)) from exc
+    with_tax = data.get("tarifaConIva") or {}
+    without_tax = data.get("tarifaSinIva") or {}
+    price = _decimal(with_tax.get("total"))
+    if price is None:
+        raise ShipmentError("Andreani no devolvió el precio del envío.")
+    return {
+        "price": price.quantize(Decimal("0.01")),
+        "price_without_tax": _decimal(without_tax.get("total")),
+        "insurance": _decimal(with_tax.get("seguroDistribucion")),
+        "chargeable_weight_kg": _decimal(data.get("pesoAforado")),
+    }
+
+
 def build_order_payload(account, order, contract, *, branch_id="", package_count=1):
     """La orden de envío (``POST /v2/ordenes-de-envio``) para ``order``."""
     address = order.address
@@ -171,12 +227,11 @@ def build_order_payload(account, order, contract, *, branch_id="", package_count
     if order.contact_phone:
         recipient["telefonos"] = [{"tipo": 2, "numero": _text(order.contact_phone, 15)}]
 
-    count = max(int(package_count or 1), 1)
-    weight = _weight(order, account) / count
+    count, weight = _packages(order, account, package_count)
     packages = []
     for index in range(count):
         package = {
-            "kilos": float(round(weight, 3)),
+            "kilos": float(weight),
             "volumenCm": int(account.default_volume_cm3),
             # B2C: la referencia del cliente va como "idCliente" del bulto y
             # Andreani la muestra en su seguimiento.
@@ -219,8 +274,16 @@ def create_shipment(request, account, order, contract_code, *, branch_id="", bra
         raise ShipmentError("El pedido no tiene destinatario.")
 
     payload = build_order_payload(account, order, contract["code"], branch_id=branch_id, package_count=package_count)
+    client = AndreaniClient(account)
     try:
-        response = AndreaniClient(account).create_order(payload)
+        quoted_price = quote_order(account, order, contract["code"], package_count=package_count, client=client)["price"]
+    except ShipmentError as exc:
+        # Sin precio el envío igual sale: la cotización es para que el cliente
+        # sepa cuánto le cuesta, no una condición para despachar.
+        logger.info("No se pudo cotizar el pedido %s en Andreani: %s", order.pk, exc)
+        quoted_price = None
+    try:
+        response = client.create_order(payload)
     except AndreaniError as exc:
         raise ShipmentError(str(exc)) from exc
 
@@ -241,6 +304,7 @@ def create_shipment(request, account, order, contract_code, *, branch_id="", bra
             group_number=str(response.get("agrupadorDeBultos") or ""),
             package_count=len(packages) or 1,
             carrier_status=_text(response.get("estado"), 120),
+            quoted_price=quoted_price,
             raw_response=response,
         )
         target = order.status
