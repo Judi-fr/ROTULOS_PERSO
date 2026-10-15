@@ -10,29 +10,21 @@ type = "ui_extension"
 uid = "427c870c-2df5-21c0-5023-973edce6213e3c07ac80"
 
 # Una extensión de impresión admite un solo lugar: la lista de pedidos con
-# selección múltiple (para un pedido suelto, se tilda uno solo).
+# selección múltiple (para un pedido suelto, se tilda uno solo). Y Shopify
+# admite UNA sola extensión de impresión por app: la planilla de retiro no es
+# otra opción del menú sino un documento a elegir dentro de esta
+# (src/PrintAction.jsx).
 [[extensions.targeting]]
 module = "./src/PrintActionExtension.jsx"
 target = "admin.order-index.selection-print-action.render"
 
-# "Planilla de retiro": segunda opción del mismo menú Imprimir (otro PDF del
-# mismo backend, action "manifest"). Sin uid: lo agrega el CLI en el próximo
-# ``shopify app deploy``.
-[[extensions]]
-name = "t:name_manifest"
-handle = "rotulos-planilla"
-type = "ui_extension"
-
-[[extensions.targeting]]
-module = "./src/ManifestPrintAction.jsx"
-target = "admin.order-index.selection-print-action.render"
-
-# "Despachar con Andreani": acción masiva de la lista de pedidos (menú "Más
+# "Despachar con tu transportista": acción masiva de la lista de pedidos (menú "Más
 # acciones"), no de Imprimir — despachar cambia los pedidos y se confirma con
 # un botón. El backend crea los envíos (action "dispatch") y devuelve el PDF.
 [[extensions]]
 name = "t:name_dispatch"
 handle = "rotulos-despachar"
+uid = "f55248e1-9ecf-c558-beed-f796a583de821bef0fc7"
 type = "ui_extension"
 
 [[extensions.targeting]]

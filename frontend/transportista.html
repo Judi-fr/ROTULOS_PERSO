@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Cuenta del transportista</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/pedidos.css" />
+    <link rel="stylesheet" href="assets/css/imprimir_rotulos.css" />
+    <link rel="stylesheet" href="assets/css/acciones_masivas.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar" id="appTopbar" data-links='[{"href": "pedidos.html", "label": "Volver a Mis pedidos"}]'></header>
+
+      <main class="main">
+        <!-- La cuenta del comerciante en UN transportista (?carrier=andreani|correo_argentino|oca).
+             Qué datos pide cada uno lo dice el backend (GET /carriers/accounts/<carrier>/ ->
+             carrier_info, de apps/carriers/<carrier>/provider.py): esta página no nombra a ninguno. -->
+        <div class="main-heading">
+          <h1 id="pageTitle">Cuenta del transportista</h1>
+          <p id="accountHelp"></p>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+        <p id="missingNotice" class="filters-hint" style="display:none;"></p>
+
+        <form id="accountForm" novalidate hidden>
+          <section class="profile-card">
+            <div class="profile-card-title">Acceso a la API</div>
+            <div class="profile-card-body">
+              <div class="filters-row" id="accessFields">
+                <div class="field">
+                  <label for="environment">Ambiente</label>
+                  <select id="environment">
+                    <option value="production">Producción</option>
+                    <option value="qa">Pruebas (QA)</option>
+                  </select>
+                </div>
+              </div>
+              <div id="accessHints"></div>
+              <p class="filters-hint">Las claves no se muestran nunca: dejalas vacías para no cambiarlas.</p>
+            </div>
+          </section>
+
+          <section class="profile-card">
+            <div class="profile-card-title" id="contractsTitle">Contratos</div>
+            <div class="profile-card-body">
+              <p class="filters-hint" id="contractsHelp"></p>
+              <div id="contractsList"></div>
+              <div class="form-actions" style="justify-content:flex-start;">
+                <button type="button" class="btn btn-outline btn-small" id="addContractBtn">+ Agregar</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="profile-card">
+            <div class="profile-card-title">Remitente y origen</div>
+            <div class="profile-card-body">
+              <div class="filters-row">
+                <div class="field"><label for="sender_name">Remitente (nombre o razón social)</label><input type="text" id="sender_name" maxlength="150" /></div>
+                <div class="field"><label for="sender_document">CUIT</label><input type="text" id="sender_document" maxlength="20" /></div>
+                <div class="field"><label for="sender_email">Email</label><input type="email" id="sender_email" /></div>
+                <div class="field"><label for="sender_phone">Teléfono</label><input type="text" id="sender_phone" maxlength="30" /></div>
+              </div>
+              <div class="filters-row">
+                <div class="field"><label for="origin_street">Calle</label><input type="text" id="origin_street" maxlength="120" /></div>
+                <div class="field"><label for="origin_number">Número</label><input type="text" id="origin_number" maxlength="20" /></div>
+                <div class="field"><label for="origin_floor">Piso</label><input type="text" id="origin_floor" maxlength="20" /></div>
+                <div class="field"><label for="origin_apartment">Depto</label><input type="text" id="origin_apartment" maxlength="20" /></div>
+              </div>
+              <div class="filters-row">
+                <div class="field"><label for="origin_postal_code">Código postal</label><input type="text" id="origin_postal_code" maxlength="10" /></div>
+                <div class="field"><label for="origin_city">Localidad</label><input type="text" id="origin_city" maxlength="120" /></div>
+                <div class="field"><label for="origin_state">Provincia</label><input type="text" id="origin_state" maxlength="100" /></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="profile-card">
+            <div class="profile-card-title">Paquete por defecto</div>
+            <div class="profile-card-body">
+              <div class="filters-row">
+                <div class="field"><label for="default_weight_kg">Peso (kg)</label><input type="number" id="default_weight_kg" step="0.001" min="0.001" /></div>
+                <div class="field" data-package="volume"><label for="default_volume_cm3">Volumen (cm³)</label><input type="number" id="default_volume_cm3" step="1" min="1" /></div>
+                <div class="field" data-package="dimensions"><label for="default_length_cm">Largo (cm)</label><input type="number" id="default_length_cm" step="1" min="1" /></div>
+                <div class="field" data-package="dimensions"><label for="default_width_cm">Ancho (cm)</label><input type="number" id="default_width_cm" step="1" min="1" /></div>
+                <div class="field" data-package="dimensions"><label for="default_height_cm">Alto (cm)</label><input type="number" id="default_height_cm" step="1" min="1" /></div>
+              </div>
+              <p class="filters-hint">Se usa cuando el pedido no dice cuánto pesa: es tu caja habitual.</p>
+              <div class="form-actions">
+                <button type="button" class="btn btn-outline" id="testBtn">Probar conexión</button>
+                <button type="submit" class="btn btn-primary" id="saveBtn">Guardar</button>
+              </div>
+            </div>
+          </section>
+        </form>
+
+        <!-- Novedades push (solo los transportistas que las mandan): la dirección y
+             credenciales que el comerciante le pasa a su ejecutivo comercial. -->
+        <section class="profile-card" id="pushCard" hidden>
+          <div class="profile-card-title">Novedades al instante</div>
+          <div class="profile-card-body">
+            <p class="filters-hint" id="pushHelp"></p>
+            <div id="pushInfo"></div>
+            <div class="form-actions" style="justify-content:flex-start;">
+              <button type="button" class="btn btn-outline btn-small" id="pushBtn">Generar dirección y credenciales</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/transportista.js"></script>
+  </body>
+</html>

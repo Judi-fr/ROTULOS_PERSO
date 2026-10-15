@@ -3,7 +3,7 @@ Tags: woocommerce, shipping, shipping labels, labels, print
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.3.0
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -15,7 +15,7 @@ Adds three bulk actions to WooCommerce → Orders. Tick the orders, choose one, 
 
 * "Print shipping labels": one label per order.
 * "Print pickup sheet": the list of parcels the carrier signs when picking them up, with each tracking number.
-* "Ship with Andreani (labels + tracking)": creates the Andreani shipments with your own Andreani account, loads the tracking number into each order, and prints each label followed by Andreani's own label.
+* "Ship with your carrier (labels + tracking)": creates the shipments with your own carrier account (Andreani, Correo Argentino or OCA), loads the tracking number into each order, and prints each label followed by the carrier's own label.
 
 Each label carries what the carrier needs to deliver the parcel: sender, recipient, address, postal code, city and province, order number, QR and barcode. Products, prices, payment details and the buyer's email or phone are never printed.
 
@@ -54,9 +54,12 @@ Check that it is added to the buyer's shipping zone, that the service has a rate
 
 = Does it change my orders? =
 
-Printing the labels or the pickup sheet only reads the selected orders. "Ship with Andreani" does change them: it creates each shipment in Andreani with your own Andreani account (connected in the service), and the order gets the carrier, the tracking number and its link. When Andreani picks the parcel up, the order is marked as shipped. Shipments to an Andreani branch are made from the service, where the branch can be chosen.
+Printing the labels or the pickup sheet only reads the selected orders. "Ship with your carrier" does change them: it creates each shipment with your own carrier account (connected in the service; you choose which carrier each store ships with), and the order gets the carrier, the tracking number and its link. When the carrier picks the parcel up, the order is marked as shipped. Shipments to a branch are made from the service, where the branch can be chosen.
 
 == Changelog ==
+
+= 1.4.0 =
+* "Ship with your carrier": also Correo Argentino and OCA, not only Andreani.
 
 = 1.3.0 =
 * New bulk actions: "Print pickup sheet" and "Ship with Andreani (labels + tracking)".

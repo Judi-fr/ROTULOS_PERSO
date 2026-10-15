@@ -2,14 +2,23 @@ import {useEffect, useState} from "preact/hooks";
 
 import {PRINT_LINK_URL, requestLink} from "./printLink.js";
 
-// Una opción del menú "Imprimir" de la lista de pedidos: rótulos
-// (PrintActionExtension.jsx) o planilla de retiro (ManifestPrintAction.jsx).
-// ``prefix`` elige los textos en locales/ ("" o "manifest_").
-export function PrintAction({action, prefix = ""}) {
+// La opción de la app en el menú "Imprimir" de la lista de pedidos. Shopify
+// admite UNA sola extensión de impresión por app (el deploy rechaza una
+// segunda), así que acá se elige qué documento sale: los rótulos o la
+// planilla de retiro. Cada documento tiene sus textos en locales/ con su
+// prefijo ("" o "manifest_").
+const DOCUMENTS = [
+  {action: "labels", prefix: ""},
+  {action: "manifest", prefix: "manifest_"},
+];
+
+export function PrintAction() {
   const {i18n, data} = shopify;
-  const t = (key, options) => i18n.translate(`${prefix}${key}`, options);
   const ids = (data.selected || []).map((item) => item.id);
   const selectionKey = ids.join(",");
+  const [action, setAction] = useState("labels");
+  const prefix = DOCUMENTS.find((doc) => doc.action === action).prefix;
+  const t = (key, options) => i18n.translate(`${prefix}${key}`, options);
   const [src, setSrc] = useState(null);
   const [state, setState] = useState({status: "loading"});
 
@@ -36,11 +45,20 @@ export function PrintAction({action, prefix = ""}) {
     return () => {
       cancelled = true;
     };
-  }, [selectionKey]);
+  }, [selectionKey, action]);
+
+  function onDocumentChange(event) {
+    const [value] = event.currentTarget.values || [];
+    if (value) setAction(value);
+  }
 
   return (
     <s-admin-print-action src={src}>
-      <s-stack direction="block">
+      <s-stack direction="block" gap="base">
+        <s-choice-list label={i18n.translate("documentLabel")} name="document" onChange={onDocumentChange}>
+          <s-choice value="labels" selected={action === "labels"}>{i18n.translate("documentLabels")}</s-choice>
+          <s-choice value="manifest" selected={action === "manifest"}>{i18n.translate("documentManifest")}</s-choice>
+        </s-choice-list>
         {state.status === "loading" && <s-text>{t("loading")}</s-text>}
         {state.status === "error" && (
           <s-banner tone="critical" heading={t("errorTitle")}>

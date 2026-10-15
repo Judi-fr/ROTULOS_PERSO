@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name:       Rótulos de envío
- * Description:       Print shipping labels, the pickup sheet or ship with Andreani for the selected orders straight from the WooCommerce order list, and quote shipping at checkout from your rates table.
- * Version:           1.3.0
+ * Description:       Print shipping labels, the pickup sheet or ship with your carrier (Andreani, Correo Argentino or OCA) for the selected orders straight from the WooCommerce order list, and quote shipping at checkout.
+ * Version:           1.4.0
  * Requires at least: 6.5
  * Requires PHP:      7.4
  * Requires Plugins:  woocommerce
@@ -18,10 +18,10 @@
  * short-lived link to the PDF, then sends the browser there (in a new tab):
  * - "Print shipping labels": the labels.
  * - "Print pickup sheet": the list the carrier signs when picking up.
- * - "Ship with Andreani": the service creates the Andreani shipments with the
- *   merchant's own Andreani account (set up in the service), loads the
- *   tracking numbers into the orders, and returns the label + Andreani's
- *   label to print.
+ * - "Ship with your carrier": the service creates the shipments with the
+ *   merchant's own carrier account (Andreani, Correo Argentino or OCA, set up
+ *   in the service), loads the tracking numbers into the orders, and returns
+ *   each label + the carrier's label to print.
  *
  * Nothing to configure by hand: the service writes this plugin's settings
  * (endpoint URL, store id, shared secret) through the WooCommerce REST API
@@ -122,7 +122,7 @@ function rotulos_add_bulk_action( $actions ) {
 	if ( current_user_can( 'edit_shop_orders' ) ) {
 		$actions[ ROTULOS_BULK_ACTION ] = __( 'Print shipping labels', 'rotulos-envio' );
 		$actions['rotulos_manifest']    = __( 'Print pickup sheet', 'rotulos-envio' );
-		$actions['rotulos_dispatch']    = __( 'Ship with Andreani (labels + tracking)', 'rotulos-envio' );
+		$actions['rotulos_dispatch']    = __( 'Ship with your carrier (labels + tracking)', 'rotulos-envio' );
 	}
 	return $actions;
 }
@@ -152,7 +152,7 @@ function rotulos_handle_bulk_action( $redirect_to, $action, $ids ) {
 		);
 	}
 
-	// Shipping calls Andreani once per order: give it more time.
+	// Shipping calls the carrier once per order: give it more time.
 	$response = rotulos_signed_post( $url, array( 'ids' => $ids, 'action' => $service_action ), 'dispatch' === $service_action ? 90 : 30 );
 	if ( is_wp_error( $response ) ) {
 		return rotulos_fail( $redirect_to, __( 'Could not reach the shipping labels service. Please try again in a few minutes.', 'rotulos-envio' ) );
@@ -252,7 +252,7 @@ add_action(
 		if ( ! $screen || ! in_array( $screen->id, array( 'woocommerce_page_wc-orders', 'edit-shop_order' ), true ) ) {
 			return;
 		}
-		wp_register_script( 'rotulos-envio', false, array(), '1.3.0', true );
+		wp_register_script( 'rotulos-envio', false, array(), '1.4.0', true );
 		wp_enqueue_script( 'rotulos-envio' );
 		wp_add_inline_script(
 			'rotulos-envio',

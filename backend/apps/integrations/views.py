@@ -492,14 +492,28 @@ class StoreConnectionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, v
 
         Cómo salen los rótulos de ESTA tienda: remitente
         (``sender_name``/``sender_address``/``sender_phone``), ``logo``,
-        ``default_template`` y ``label_printer_dpmm`` (la densidad de su
-        impresora térmica, ver apps.labels.zpl). Solo el dueño de la tienda:
+        ``default_template``, ``label_printer_dpmm`` (la densidad de su
+        impresora térmica, ver apps.labels.zpl) y ``dispatch_carrier`` (con
+        qué transportista se despacha desde el admin de la tienda). Solo el dueño de la tienda:
         el queryset ya está recortado a ``request.user``."""
         connection = self.get_object()
         serializer = StoreSettingsSerializer(
             connection, data=request.data, partial=True, context=self.get_serializer_context()
         )
         serializer.is_valid(raise_exception=True)
+        # El transportista para despachar desde la tienda vive en
+        # ``preferences`` (no es una columna): se valida y se guarda aparte,
+        # con un UPDATE, porque el worker tiene copias viejas de la conexión.
+        carrier_change = None
+        if isinstance(request.data, dict) and "dispatch_carrier" in request.data:
+            from apps.carriers.providers import get_provider as get_carrier
+
+            code = str(request.data.get("dispatch_carrier") or "")
+            if code and get_carrier(code) is None:
+                return Response({"dispatch_carrier": ["Ese transportista no existe."]}, status=status.HTTP_400_BAD_REQUEST)
+            before = str((connection.preferences or {}).get("dispatch_carrier") or "")
+            if code != before:
+                carrier_change = {"from": before, "to": code}
         tracked = (
             "sender_name",
             "sender_address",
@@ -516,6 +530,15 @@ class StoreConnectionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, v
             for field in tracked
             if previous[field] != getattr(connection, field)
         }
+        if carrier_change:
+            # Después de ``serializer.save()``, que guarda la fila entera y
+            # pisaría estas ``preferences`` con las que tenía en memoria.
+            connection.refresh_from_db(fields=["preferences"])
+            preferences = dict(connection.preferences or {})
+            preferences["dispatch_carrier"] = carrier_change["to"]
+            StoreConnection.objects.filter(pk=connection.pk).update(preferences=preferences)
+            connection.preferences = preferences
+            changes["dispatch_carrier"] = carrier_change
         if changes:
             record(
                 request,

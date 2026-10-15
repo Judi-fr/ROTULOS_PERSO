@@ -21,6 +21,9 @@
 const INTEGRATIONS_API = `${window.APP_CONFIG.API_BASE}/integrations`;
 const STORES_URL = `${INTEGRATIONS_API}/stores/`;
 const TEMPLATES_URL = `${window.APP_CONFIG.API_BASE}/labels/templates/`;
+// Transportistas (apps/carriers): para elegir con cuál se despacha desde el
+// admin de cada tienda.
+const CARRIERS_URL = `${window.APP_CONFIG.API_BASE}/carriers/`;
 const PENDING_CLAIM_KEY = "pendingStoreClaim";
 const PLATFORM_LABELS = { tiendanube: "Tiendanube", shopify: "Shopify", woocommerce: "WooCommerce", vtex: "VTEX", magento: "Magento", empretienda: "Empretienda" };
 
@@ -340,7 +343,8 @@ function renderSenderForm(store) {
       "p",
       "store-sender-help",
       "Remitente, logo, plantilla e impresora que se usan al imprimir los rótulos de esta " +
-        "tienda. Si dejás el remitente vacío se usa el nombre de la tienda."
+        "tienda, y con qué transportista se despacha desde su panel. Si dejás el remitente " +
+        "vacío se usa el nombre de la tienda."
     )
   );
 
@@ -393,6 +397,31 @@ function renderSenderForm(store) {
   printerField.appendChild(printerSelect);
   wrapper.appendChild(printerField);
 
+  // Con qué transportista sale "Despachar" desde el admin de la tienda (sin
+  // elegir: el único conectado, o el que la tienda ofrece en su checkout).
+  let carrierSelect = null;
+  if (carriersCache.length) {
+    const carrierField = createElement("div", "field");
+    const carrierLabel = createElement("label", null, "Despachar desde la tienda con");
+    carrierLabel.setAttribute("for", `dispatch_carrier_${store.id}`);
+    carrierSelect = document.createElement("select");
+    carrierSelect.id = `dispatch_carrier_${store.id}`;
+    const automatic = document.createElement("option");
+    automatic.value = "";
+    automatic.textContent = "Que se elija solo (el único conectado)";
+    carrierSelect.appendChild(automatic);
+    carriersCache.forEach((carrier) => {
+      const option = document.createElement("option");
+      option.value = carrier.code;
+      option.textContent = carrier.account.ready ? carrier.name : `${carrier.name} (sin cuenta lista)`;
+      carrierSelect.appendChild(option);
+    });
+    carrierSelect.value = store.dispatch_carrier || "";
+    carrierField.appendChild(carrierLabel);
+    carrierField.appendChild(carrierSelect);
+    wrapper.appendChild(carrierField);
+  }
+
   // Logo: archivo de imagen. Se manda como data URL, igual que el editor.
   const logoField = createElement("div", "field");
   const logoLabel = createElement("label", null, "Logo");
@@ -430,6 +459,7 @@ function renderSenderForm(store) {
     });
     payload.default_template = templateSelect.value ? Number(templateSelect.value) : null;
     payload.label_printer_dpmm = printerSelect.value ? Number(printerSelect.value) : null;
+    if (carrierSelect) payload.dispatch_carrier = carrierSelect.value;
     if (logoInput.files && logoInput.files[0]) {
       try {
         payload.logo = await readFileAsDataUrl(logoInput.files[0]);
@@ -491,6 +521,21 @@ function fillTemplateOptions(select, selectedId) {
     if (template.id === selectedId) option.selected = true;
     select.appendChild(option);
   });
+}
+
+// Los transportistas y el estado de la cuenta del usuario en cada uno
+// (GET /carriers/, permiso orders.create): sin permiso, no hay selector.
+let carriersCache = [];
+
+async function loadCarriers() {
+  try {
+    const response = await apiFetch(CARRIERS_URL);
+    if (!response.ok) return;
+    carriersCache = (await response.json()).results || [];
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    console.error("Error al cargar transportistas:", err);
+  }
 }
 
 async function loadTemplates() {
@@ -585,8 +630,8 @@ async function init() {
   const claimToken = result.claim || localStorage.getItem(PENDING_CLAIM_KEY);
   if (claimToken) await claimStore(claimToken);
 
-  // Las plantillas primero: el select de cada tienda las necesita.
-  await loadTemplates();
+  // Las plantillas y los transportistas primero: los selects de cada tienda los necesitan.
+  await Promise.all([loadTemplates(), loadCarriers()]);
   await loadStores();
 }
 

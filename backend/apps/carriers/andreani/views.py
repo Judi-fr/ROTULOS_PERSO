@@ -41,13 +41,13 @@ from apps.audit.services import record
 from apps.orders.models import Order
 
 from ..models import CarrierAccount, CarrierShipment
-from apps.integrations.models import StoreConnection
-from apps.integrations.providers import get_provider
 
+from ..checkout_views import checkout_stores, save_checkout, validated_values
 from . import checkout as checkout_service
 from . import printing
 from . import shipments as service
 from .client import AndreaniClient, AndreaniError
+from .provider import AndreaniProvider
 
 PERMISSION = "orders.create"
 MAX_ORDERS = 100
@@ -213,28 +213,10 @@ class BranchesView(_AndreaniView):
             return Response({"cp": ["Indicá un código postal."]}, status=status.HTTP_400_BAD_REQUEST)
         account = self.account(request) or CarrierAccount(owner=request.user, carrier=ANDREANI)
         try:
-            branches = AndreaniClient(account).branches(postal_code)
+            branches = AndreaniProvider().branches(account, postal_code)
         except AndreaniError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
-        results = []
-        for branch in branches:
-            address = branch.get("direccion") or {}
-            code = str(branch.get("codigo") or branch.get("nomenclatura") or "")
-            name = str(branch.get("descripcion") or "")
-            results.append(
-                {
-                    "id": str(branch.get("id") or ""),
-                    "code": code,
-                    "name": name,
-                    "address": " ".join(str(address.get(key) or "") for key in ("calle", "numero")).strip(),
-                    "city": str(address.get("localidad") or ""),
-                    "postal_code": str(address.get("codigoPostal") or ""),
-                    "hours": str(branch.get("horarioDeAtencion") or ""),
-                    # Los puntos HOP son sucursales más para Andreani.
-                    "is_hop": code.upper().startswith("HOP") or "HOP" in name.upper(),
-                }
-            )
-        return Response({"results": [branch for branch in results if branch["id"]]})
+        return Response({"results": branches})
 
 
 def _requested_orders(request, data):
@@ -475,10 +457,7 @@ class ShipmentCancelView(_OwnShipmentView):
 # --- Precio de Andreani en el checkout de las tiendas -----------------------
 
 
-def _checkout_stores(user):
-    """Las tiendas activas del usuario cuyo checkout nos pregunta el precio."""
-    stores = StoreConnection.objects.filter(owner=user, status=StoreConnection.Status.ACTIVE).order_by("pk")
-    return [store for store in stores if getattr(get_provider(store.platform), "quotes_at_checkout", False)]
+_checkout_stores = checkout_stores
 
 
 def _checkout_data(store, account):
@@ -500,29 +479,6 @@ def _checkout_data(store, account):
     }
 
 
-def _optional_days(value):
-    if value in (None, ""):
-        return None
-    days = int(value)
-    if days < 0 or days > 90:
-        raise ValueError
-    return days
-
-
-def _optional_money(value, maximum):
-    """``None`` si viene vacío; si no, un ``Decimal`` entre 0 y ``maximum``
-    como string con dos decimales. ``ValueError`` si no sirve."""
-    if value in (None, ""):
-        return None
-    try:
-        number = Decimal(str(value).replace(",", "."))
-    except (InvalidOperation, ValueError) as exc:
-        raise ValueError from exc
-    if not number.is_finite() or number < 0 or number > maximum:
-        raise ValueError
-    return str(number.quantize(Decimal("0.01")))
-
-
 class CheckoutView(_AndreaniView):
     def get(self, request):
         account = self.account(request)
@@ -534,56 +490,14 @@ class CheckoutView(_AndreaniView):
         if store is None:
             return Response({"store": ["Esa tienda no es tuya o su checkout no nos pregunta el precio."]}, status=status.HTTP_400_BAD_REQUEST)
         account = self.account(request)
-        try:
-            days_min = _optional_days(data.get("delivery_days_min"))
-            days_max = _optional_days(data.get("delivery_days_max"))
-        except (TypeError, ValueError):
-            return Response({"delivery_days_min": ["Los días van de 0 a 90."]}, status=status.HTTP_400_BAD_REQUEST)
-        if days_min is not None and days_max is not None and days_min > days_max:
-            return Response({"delivery_days_max": ["El máximo no puede ser menor que el mínimo."]}, status=status.HTTP_400_BAD_REQUEST)
-        money_fields = {}
-        for name, maximum, message in (
-            ("surcharge_percent", Decimal("300"), "El recargo va de 0 a 300 %."),
-            ("surcharge_amount", Decimal("10000000"), "El recargo fijo tiene que ser un monto en pesos, cero o más."),
-            ("free_shipping_from", Decimal("1000000000"), "El monto para el envío gratis tiene que ser cero o más."),
-        ):
-            try:
-                money_fields[name] = _optional_money(data.get(name), maximum)
-            except ValueError:
-                return Response({name: [message]}, status=status.HTTP_400_BAD_REQUEST)
-        values = {
-            "enabled": bool(data.get("enabled")),
-            "contract": str(data.get("contract") or "").strip()[:50],
-            "name": str(data.get("name") or "").strip()[:100] or checkout_service.DEFAULT_NAME,
-            "delivery_days_min": days_min,
-            "delivery_days_max": days_max,
-            **money_fields,
-        }
+        values, error = validated_values(data, checkout_service)
+        if error is not None:
+            return error
         if values["enabled"]:
             found = checkout_service.problems(store, account, values)
             if found:
                 return Response({"detail": "No se puede activar: " + "; ".join(found) + "."}, status=status.HTTP_400_BAD_REQUEST)
-        before = checkout_service.config(store)
-        checkout_service.save_config(store, values)
-        if before.get("enabled") != values["enabled"] or before.get("name") != values["name"]:
-            # Cambió qué opciones cotizamos en el checkout (Tiendanube necesita
-            # una opción del carrier con ese código para mostrar la tarifa).
-            get_provider(store.platform).checkout_prices_changed(store)
-        # Qué cambió (habilitado, contrato, recargo, envío gratis...), para la auditoría.
-        changes = {
-            f"andreani_checkout.{key}": {"from": before.get(key), "to": value}
-            for key, value in values.items()
-            if before.get(key) != value
-        }
-        record(
-            request,
-            category="integrations",
-            action="store.update",
-            target=store,
-            target_type="storeconnection",
-            target_repr=str(store.name or store.pk),
-            changes=changes or None,
-        )
+        save_checkout(request, store, checkout_service, values)
         return Response(_checkout_data(store, account))
 
 

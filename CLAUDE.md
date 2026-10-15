@@ -16,11 +16,11 @@ Backend: Django REST API (`backend/`), all routes under `/api/v1/` (`backend/con
 creation, CSV/Excel import, store sync, dispatch), `audit` (read-only trail), `labels` (two independent
 label-rendering systems, see below), `integrations` (store connections, webhooks, event queue),
 `documents` (generated batch output + uploaded source files), `processing` (Claude vision agent that
-reads a photographed label) and `carriers` (shipping companies the clients dispatch with: Andreani). Frontend: static multi-page app (`frontend/`), plain HTML/CSS/JS, no build
+reads a photographed label) and `carriers` (shipping companies the clients dispatch with: Andreani, Correo Argentino, OCA). Frontend: static multi-page app (`frontend/`), plain HTML/CSS/JS, no build
 step.
 
 Don't assume: there is no point-of-sale/destination catalog (`Address` stores city/state as free text),
-the only carrier API is Andreani's (`apps/carriers`, see below; for anything else `Order.carrier`/
+the carrier APIs are Andreani's, Correo Argentino's and OCA's (`apps/carriers`, see below; for anything else `Order.carrier`/
 `tracking_number` are typed in when dispatching), and the app is not scoped to one client or one carrier.
 
 ## Commands
@@ -128,7 +128,8 @@ and `/static` → 8000 and `/` → 8001 under one domain, so someone else's brow
   `admin/`, `render/`, `barcode/`, `batch/`, `fonts/`)
 - `api/v1/integrations/` → `apps.integrations.urls` (admin ABM + store connections, plus
   `<platform>/install-url|callback|webhooks/` per provider and `shopify/launch/`)
-- `api/v1/carriers/` → `apps.carriers.urls` (`andreani/account/`, `andreani/branches/`, `andreani/shipments/`...)
+- `api/v1/carriers/` → `apps.carriers.urls` (common: ``, `accounts/<carrier>/`, `branches/<carrier>/`, `shipments/...`,
+  `push/<carrier>/<key>/`; plus Andreani's original `andreani/...`)
 - `api/v1/ingest/` → `apps.integrations.ingest_urls` (API-key/webhook order ingest, separate auth)
 - `api/v1/integrations/` → `apps.integrations.providers.tiendanube.label_urls` and `.rate_urls` (Tiendanube Labels API callbacks + public PDF
   download, separate auth — see "Labels the store asks for" below)
@@ -456,23 +457,30 @@ Empretienda (no API: its exported sales spreadsheet is imported).
 - **Bulk actions from the store's own admin = three actions over the print-link flow** (2026-10-09, user:
   "agregá todas las acciones masivas posibles"). `POST <platform>/print-link/` takes `action`:
   `labels` (default, as before), `manifest` (planilla de retiro, `apps.orders.manifest`, carrier filled when
-  all orders share one) or `dispatch` (Andreani). Shared in `store_print.py`: `parse_action`,
+  all orders share one) or `dispatch` (any carrier, since 2026-10-14). Shared in `store_print.py`: `parse_action`,
   `action_link(connection, orders, action, route)` → `(url, summary)` and `render_document(token, platform)`
   (what `_print_document` serves; the token carries `a` and, for dispatch, the shipment ids `s`).
-  **Dispatching happens in the POST, never in the GET of the link** (it creates Andreani shipments); the
-  link only prints them (`andreani/printing.bundle`: rótulo + Andreani label). `andreani/store_dispatch.py`
-  picks the contract by itself — the store's `andreani_checkout.contract` if it's a home contract, else
+  **Dispatching happens in the POST, never in the GET of the link** (it creates carrier shipments); the
+  link only prints them (`apps.carriers.printing.bundle`: rótulo + carrier label). `apps.carriers.store_dispatch`
+  picks **the carrier** by itself — the store's `preferences["dispatch_carrier"]` (chosen in `tiendas.html`,
+  "Despachar desde la tienda con"; a chosen carrier whose account isn't ready is an error, never a silent
+  fallback), else the owner's only ready carrier, else the only one this store offers in its checkout, else
+  400 "elegí con cuál…" — and **the contract** — that carrier's checkout contract if it's a home one, else
   the account's first home one (branch contracts need a branch per order: only from Mis pedidos) —, reuses
-  an order's open shipment instead of creating another, and returns `failed: [{number, detail}]`; no
-  Andreani account → 400 "Conectá tu cuenta de Andreani…". Max `MAX_ORDERS_PER_DISPATCH` (30) per action.
+  an order's open shipment (any carrier) instead of creating another, and returns `failed: [{number,
+  detail}]`; no account at all → 400 "Conectá tu cuenta de Andreani, Correo Argentino u OCA…". Max
+  `MAX_ORDERS_PER_DISPATCH` (30) per action. The store-facing texts say "Despachar con tu transportista"
+  (Woo plugin 1.4.0, Shopify `rotulos-perso-8`, the Tiendanube link renamed in the Partner Portal).
   Cambiar estado / Exportar were left out on purpose: every store already has them and the store owns the
   status. Not available in Magento/VTEX (no admin module of ours yet) nor Empretienda (no API). Per platform:
-  WooCommerce plugin 1.3.0 (three bulk actions, dispatch with a 90 s timeout, failures shown as an admin
+  WooCommerce plugin 1.4.0 (three bulk actions, dispatch with a 90 s timeout, failures shown as an admin
   notice); Tiendanube = one Partner Portal link per action, each to its page (`imprimir_tiendanube.html`,
   `planilla_tiendanube.html`, `despachar_tiendanube.html`, same JS with `<body data-action>`; the user
-  must register the two new links); Shopify = a second Print option (`rotulos-planilla`) and an admin
-  action (`rotulos-despachar`, target `admin.order-index.selection-action.render`, confirms with a button)
-  in `rotulos-extension/` — needs `shopify app deploy` (the CLI adds their `uid`). Tests:
+  must register the two new links); Shopify = a document choice ("Rótulos" / "Planilla de retiro") INSIDE the
+  one print action — **Shopify allows a single print-action extension per app**: a second one
+  (`rotulos-planilla`) made `shopify app deploy` fail, 2026-10-14 — and an admin action
+  (`rotulos-despachar`, target `admin.order-index.selection-action.render`, confirms with a button) in
+  `rotulos-extension/`, released as version `rotulos-perso-7` (2026-10-14). Tests:
   `apps/integrations/tests/test_store_actions.py`.
 - **Printing labels from Shopify's own admin (`providers/shopify/admin_print.py` + the shared `store_print.py`).** The merchant ticks orders in their
   Shopify order list → Print menu → our labels. That menu entry is an *admin print action extension*
@@ -706,9 +714,11 @@ Empretienda (no API: its exported sales spreadsheet is imported).
   from `INTEGRATIONS_PUBLIC_BASE_URL` (503 without it). The button lives in `tiendas.html`'s Tiendanube row. already-owned stores redirect with `store_connected=<id>`, failures with
   `store_error=<code>`. `POST stores/<id>/disconnect/` revokes (never deletes). `PATCH stores/<id>/settings/` saves how that store's
   labels print — `sender_name`/`sender_address`/`sender_phone`, `logo` (file or the editor's base64 data
-  URL, 2 MB cap), `default_template` (must be public or the caller's) and `label_printer_dpmm` (its
+  URL, 2 MB cap), `default_template` (must be public or the caller's), `label_printer_dpmm` (its
   thermal printer's density, a column rather than a `preferences` key because the merchant edits it and
-  it has to be validated; `null` = not configured) — never token/status; audited as `store.update` (the
+  it has to be validated; `null` = not configured) and `dispatch_carrier` (a carrier code or "", kept in
+  `preferences` and written with an UPDATE AFTER `serializer.save()`, which saves the whole row and would
+  overwrite it) — never token/status; audited as `store.update` (the
   logo logs its filename, not the bytes). Edited per store in `tiendas.html`.
   `batch_views` uses them when printing: the store's logo goes on its orders' labels, and with no
   `template_id` the batch falls back to the store's `default_template` when every order shares it, else
@@ -821,7 +831,83 @@ is why the view **never returns 5xx**: an unreadable cart or an unexpected excep
   JSON report to the store owner (no owner → fails without retry, report stays in `event.result`). Orders
   are anonymized, never deleted.
 
-### Carriers (`apps/carriers`) — Andreani
+### Carriers (`apps/carriers`) — common layer, Andreani, Correo Argentino, OCA
+
+**Common layer** (added 2026-10-14, user's choice over copying the Andreani model): like `StoreProvider` for
+stores, each carrier is a `CarrierProvider` (`base.py`) in its own folder, registered in `providers.py`
+(`get_provider`/`all_providers`). The provider declares what its account needs (`account_fields`: each
+`AccountField` stored in a `CarrierAccount` column, the encrypted `password`, the encrypted JSON
+`secrets_encrypted` via `secret()`/`set_secret()`, or `extra`; `required_for="quote"` = only needed to
+quote), its "contract" vocabulary (`contract_label`, `contract_one`, `default_contracts`,
+`contracts_from_test`), `uses_volume`/`uses_dimensions` (`default_length/width/height_cm`), and
+implements the remote calls (`quote`, `submit` → `CreatedShipment`, `label`, `fetch_events` →
+`CarrierEvent`s already mapped to shipment/order status, `cancel_remote`, `branches(account, cp, state)`,
+`test_credentials`). The orchestration is inherited: `validate_new_shipment`, `create_shipment` (quote
+best-effort, then `apply_shipping` → order PREPARING with `carrier`/tracking/URL), `apply_events`
+(forward-only, returns/cancellation override), `cancel_shipment`, `due_shipments`. Andreani predates it:
+`andreani/provider.py` wraps its existing `shipments.py` and keeps its own routes.
+- **Common API** (`views.py`, `orders.create`): `GET carriers/` (catalog + the user's account state per
+  carrier: `ready`, `missing`, `quote_missing`), `GET/PUT accounts/<carrier>/` (+ `carrier_info`),
+  `POST accounts/<carrier>/test/`, `GET branches/<carrier>/?cp=&state=`, `GET/POST shipments/` (POST
+  takes `carrier`), `shipments/quote/`, `shipments/print/` (`printing.bundle`: our rótulo + each
+  shipment's carrier label, any mix of carriers), `shipments/<id>/`, `.../label/`, `.../refresh/`,
+  `.../cancel/`. **The carrier goes AFTER a prefix** (`accounts/andreani/`) on purpose: `andreani/account/`
+  is Andreani's original view (registered first), and a common `<carrier>/account/` collided with it.
+- `tracking.sync_due_shipments` loops every provider; a `CarrierAuthError` deactivates only that account.
+  Provider errors subclass `CarrierError`/`CarrierAuthError`/`CarrierRejectedError` (Andreani's too).
+- `common.py`: `postal_code_digits`, `province_code` (name/alias/CPA letter → ISO 3166-2:AR letter, what
+  Correo needs), `split_packages`, `box_cm`. `CarrierAccount.origin_state` is the origin province.
+- **Novedades push** (`push_views.py`, `CarrierPushToken`): `GET/POST accounts/<carrier>/push/` generates
+  ONE public URL per account (`push/<carrier>/<key>/`) + Basic credentials (password hashed, shown once).
+  Only providers with `supports_push` (Andreani). The receiver applies each novelty to the shipment of
+  THAT account with that number (`receive_push`; Andreani's maps `{NumeroDeEnvio, Estado, FechaEstado,
+  Motivo, SubMotivo, Ciclo}` to a trace and reuses `shipments.apply_traces`), answers
+  `{"status": "OK"|"ERROR", "message", "error"}` with 200 (Andreani only retries 5xx), 401 on bad
+  credentials. Andreani's push is a PAID service the client asks their sales rep for (doc v1.6).
+- **OCA (`oca/`)** — e-Pak web services, HTTP POST form → .NET DataSet XML (`client.dataset_rows`;
+  DOCTYPE rejected, stdlib ElementTree). **Tested live against OCA's public QA** (2026-10-14: test user
+  `test@oca.com.ar`/`123456`, account `111757/001`, CUIT `30-53625919-4`): operativas, quote, create, PDF
+  and ZPL labels, tracking, cancel, branches. Account: e-Pak user/password, account number
+  (`client_code`), CUIT (`sender_document`, needed to quote), `extra` cost center / pickup slot /
+  origin branch. Contracts = **operativas**; "Probar conexión" returns them (`GetOperativasByUsuario`,
+  with `ASucursal` → kind branch, `OrigenSucursal` → `origin: "branch"`). Create =
+  `IngresoORMultiplesRetiros_v2` confirmed (**needs the undocumented `compatMode` param**): `group_number`
+  = OrdenRetiro (labels and cancel use it), tracking = 19-digit NumeroEnvio. XML attributes are cut by
+  UTF-8 **bytes** (`fit`) and the province goes **without accents, uppercase, CABA = "CAPITAL FEDERAL"**
+  (`oca_province`): "Ciudad Autónoma de Buenos Aire" fails with "Error al actualizar @TabEnvios".
+  No public IdEstado table: mapped by text (`classify`); confirmed 1 = en proceso de retiro, 54 =
+  cancelado. `OCA_TRACKING_URL_TEMPLATE` A CONFIRMAR.
+- **Correo Argentino (`correo_argentino/`)** — **two APIs, decided 2026-10-14**: **Paq.ar** (`/paqar/v1`,
+  agreement in `client_code` + API key in `password`, headers `Authorization: Apikey`/`agreement`) creates
+  orders, labels (`POST /labels?labelFormat=10x15`, base64 PDF), tracking (`GET /tracking` with a JSON
+  body), cancel (`PATCH /orders/{tn}/cancel`) and agencies; it does NOT quote. **MiCorreo**
+  (`/micorreo/v1`, its API user/password → JWT kept in `token_encrypted`, plus `customer_id`) only quotes
+  (`/rates`). Without MiCorreo credentials it dispatches without a price. Contracts = service type +
+  delivery: stored as `CP-D`/`CP-S` (`normalize_contracts`), the merchant types `CP`. Paq.ar takes ONE
+  parcel per order (total weight), a declared value (`extra.declared_value`), and province letters for
+  sender and (home) recipient. Written WITHOUT credentials from the official manuals (Paq.ar 2.0, Apr
+  2023; MiCorreo 2025): **A CONFIRMAR** the create response field (`trackingNumber` assumed), the
+  `order` wrapper (the manual's example and schema disagree; schema used), `labelFormat` as query
+  param, `stateId` format and the status texts. Tests against `FakeCorreo`.
+- Frontend: **one account page for every carrier**, `transportista.html?carrier=<code>` +
+  `assets/js/transportista.js`, built from `carrier_info` (fields, contract labels, package fields,
+  push section). `andreani.html` now only redirects there. In Mis pedidos the strip lists every carrier
+  with its state and the "Despachar" dialog picks the carrier (hidden when only one is ready; the last
+  one used is remembered in localStorage), its services, branches and quote — all through the common API.
+- **Price in the store checkout for every carrier** (2026-10-14): `checkout.CARRIERS` = Andreani's own
+  module + a `CarrierCheckout(provider)` per provider with `supports_checkout` (Correo, OCA), all with the
+  same shape (`OPTION_CODE`, `DEFAULT_NAME`, `config`/`save_config`/`account_for`/`problems`/
+  `checkout_rate`/`test_quote`), so `carrier_rates`, Tiendanube's carrier options and the views don't care
+  which. The provider supplies `checkout_quote(account, contract, cp, kg, timeout)` (OCA: Tarifar with the
+  CUIT; Correo: MiCorreo `/rates` type D) and `checkout_problems`. Config per store in
+  `preferences["<code>_checkout"]`; cache/timeouts `CARRIER_CHECKOUT_*`; buyer price and weight rounding
+  shared in `pricing.py`. API `GET/PUT carriers/checkout/` + `POST carriers/checkout/test/` (with
+  `carrier`; `checkout_views.py`, whose validation/saving Andreani's old `andreani/checkout/` view now
+  reuses). Page `checkout_transportistas.html` (one card per store, one collapsible block per carrier
+  with an account); `checkout_andreani.html` only redirects there.
+- Not done yet: real-account checks of every "A CONFIRMAR".
+
+#### Andreani
 
 The opposite direction from `apps.integrations`: there a store sends us orders; here we ask a **shipping
 company** to carry them. **Each client uses their OWN account and contracts** (decided 2026-10-08; never
@@ -868,7 +954,7 @@ real account. Their Warehouse service (stock, order preparation) is another API,
   store can add an "Andreani" option quoted with the STORE OWNER's account. Turned on per store in
   `preferences["andreani_checkout"]` (`enabled`, `contract` — home contracts only, a branch would need
   the buyer to pick it —, `name`, `delivery_days_min/max`) via `GET/PUT carriers/andreani/checkout/`
-  (+ `checkout/test/`, uncached) and `checkout_andreani.html`. Both callbacks still call
+  (+ `checkout/test/`, uncached) and the common `checkout_transportistas.html`. Both callbacks still call
   `matching_rates` and then `shipping_rates.with_carrier_rates`, which appends
   `apps.carriers.checkout.carrier_rates` as unsaved `ShippingRate`s (a table rate with the same
   `option_code` wins). Because it sits in someone else's sale: `ANDREANI_CHECKOUT_TIMEOUT_SECONDS` (4),
@@ -893,7 +979,7 @@ real account. Their Warehouse service (stock, order preparation) is another API,
   sender, not delivered. Order status moves forward only: admitted (`Admision`/`AltaAutomatica`) →
   dispatched (that's when the store gets the tracking), moving or waiting at a branch/HOP → in transit,
   delivered to the buyer → delivered; returns and issues stay visible on the shipment only. A rejected
-  login deactivates the account (`last_error`, shown in `andreani.html`) until the client saves it again;
+  login deactivates the account (`last_error`, shown in its account page) until the client saves it again;
   any other failure is noted and the shipment is retried on the next interval, not every loop.
 - Frontend — **everything Andreani lives in "Mis pedidos", no menu entries of its own** (decided
   2026-10-09: separate "Envíos/Cuenta/Checkout Andreani" buttons made the user pick the same orders in
@@ -901,8 +987,8 @@ real account. Their Warehouse service (stock, order preparation) is another API,
   `assets/js/pedidos/envios.js` (`window.OrderShipping`) draws, per order, the carrier + tracking link +
   Andreani's status (from `GET shipments/`, latest non-cancelled per order), the buttons "Despachar" /
   "Imprimir" / "Actualizar seguimiento" / "Cancelar envío", the checkbox + sticky selection bar
-  ("Despachar (n)", "Imprimir (n)") and a strip with the account state linking to `andreani.html`
-  and `checkout_andreani.html` (those two pages remain, reached only from there, topbar back to
+  ("Despachar (n)", "Imprimir (n)") and a strip with each carrier's account state linking to
+  `transportista.html?carrier=…` and `checkout_transportistas.html` (reached only from there, topbar back to
   `pedidos.html`). Both dialogs refresh the list from their own close() (and from the `close` event, for
   Esc) — the event alone didn't fire in a hidden browser pane. `assets/js/pedidos/despacho.js`
   (`window.OrderDispatch`) is the `<dialog>`: account
@@ -917,15 +1003,15 @@ real account. Their Warehouse service (stock, order preparation) is another API,
   batch. `GET shipments/<id>/label/` and `POST shipments/labels/` (Andreani's alone, zip/ZPL) remain.
   A CONFIRMAR with Andreani whether one of the two is enough. For one order it also links "Otro transportista: cargar el seguimiento a
   mano" (`despachar.html`, kept for carriers without API). `envios_andreani.html` is no longer linked
-  from anywhere. JS for the account/checkout pages in `assets/js/andreani/`.
+  from anywhere. JS for the checkout page in `assets/js/andreani/` (the account page is the common one).
 - **Trying it without credentials**: `python manage.py fake_andreani_server` (`apps/carriers/management/`)
   serves `FakeAndreani` on `http://127.0.0.1:8099` (real PDF labels saying "PRUEBA"; every tracking query
   advances one step: admitted → in transit → delivered; shipment numbers start from the clock so a
   restart never repeats one already in the DB). Set `ANDREANI_API_BASE_QA=http://127.0.0.1:8099`
   in `.env`, restart the backend, and save the account in QA with `cliente-prueba` /
   `Clave-Andreani-1` and contract `400006709` (home) or `400006710` (branch). Local only.
-- Not done yet: the push "novedades" (Andreani configures them by hand per client), and
-  Warehouse (stock management is not part of the product for now).
+- Push "novedades": done in the common layer (see above). Not done: Warehouse (stock management is not
+  part of the product for now).
 
 ### Frontend
 

@@ -388,6 +388,32 @@ ANDREANI_TRACKING_MAX_DAYS = env.int("ANDREANI_TRACKING_MAX_DAYS", default=60)
 ANDREANI_CHECKOUT_TIMEOUT_SECONDS = env.int("ANDREANI_CHECKOUT_TIMEOUT_SECONDS", default=4)
 ANDREANI_CHECKOUT_CACHE_SECONDS = env.int("ANDREANI_CHECKOUT_CACHE_SECONDS", default=1800)
 ANDREANI_CHECKOUT_FAILURE_CACHE_SECONDS = env.int("ANDREANI_CHECKOUT_FAILURE_CACHE_SECONDS", default=120)
+# Correo Argentino (apps.carriers.correo_argentino): Paq.ar despacha (acuerdo +
+# API key) y MiCorreo solo cotiza (usuario/clave de su API + customerId). A
+# CONFIRMAR: la URL pública de seguimiento.
+CORREO_ARGENTINO_PAQAR_BASE_PRODUCTION = env("CORREO_ARGENTINO_PAQAR_BASE_PRODUCTION", default="https://api.correoargentino.com.ar/paqar/v1")
+CORREO_ARGENTINO_PAQAR_BASE_QA = env("CORREO_ARGENTINO_PAQAR_BASE_QA", default="https://apitest.correoargentino.com.ar/paqar/v1")
+CORREO_ARGENTINO_MICORREO_BASE_PRODUCTION = env("CORREO_ARGENTINO_MICORREO_BASE_PRODUCTION", default="https://api.correoargentino.com.ar/micorreo/v1")
+CORREO_ARGENTINO_MICORREO_BASE_QA = env("CORREO_ARGENTINO_MICORREO_BASE_QA", default="https://apitest.correoargentino.com.ar/micorreo/v1")
+CORREO_ARGENTINO_HTTP_TIMEOUT_SECONDS = env.int("CORREO_ARGENTINO_HTTP_TIMEOUT_SECONDS", default=20)
+CORREO_ARGENTINO_TRACKING_URL_TEMPLATE = env(
+    "CORREO_ARGENTINO_TRACKING_URL_TEMPLATE", default="https://www.correoargentino.com.ar/formularios/e-commerce?id={numero}"
+)
+# OCA e-Pak (apps.carriers.oca). Su QA es público (developers.oca.com.ar). A
+# CONFIRMAR: la URL pública de seguimiento.
+OCA_API_BASE_PRODUCTION = env("OCA_API_BASE_PRODUCTION", default="https://webservice.oca.com.ar/ePak_tracking/Oep_TrackEPak.asmx")
+OCA_API_BASE_QA = env("OCA_API_BASE_QA", default="https://integraciones.ocadev.com.ar/epak_tracking_test/Oep_TrackEPak.asmx")
+OCA_HTTP_TIMEOUT_SECONDS = env.int("OCA_HTTP_TIMEOUT_SECONDS", default=30)
+OCA_TRACKING_URL_TEMPLATE = env("OCA_TRACKING_URL_TEMPLATE", default="https://www1.oca.com.ar/OEPTrackingWeb/detalleenviore.asp?numero={numero}")
+# Seguimiento de los transportistas que no tienen su propio valor (Andreani usa
+# los ANDREANI_TRACKING_*).
+CARRIER_TRACKING_POLL_MINUTES = env.int("CARRIER_TRACKING_POLL_MINUTES", default=30)
+CARRIER_TRACKING_MAX_DAYS = env.int("CARRIER_TRACKING_MAX_DAYS", default=60)
+# Precio de Correo Argentino y OCA en el checkout de las tiendas (apps/carriers/checkout.py):
+# como el de Andreani, espera poco y guarda las respuestas (y las fallas, menos tiempo).
+CARRIER_CHECKOUT_TIMEOUT_SECONDS = env.int("CARRIER_CHECKOUT_TIMEOUT_SECONDS", default=4)
+CARRIER_CHECKOUT_CACHE_SECONDS = env.int("CARRIER_CHECKOUT_CACHE_SECONDS", default=1800)
+CARRIER_CHECKOUT_FAILURE_CACHE_SECONDS = env.int("CARRIER_CHECKOUT_FAILURE_CACHE_SECONDS", default=120)
 
 # Magento (apps.integrations.providers.magento). Como WooCommerce: cada tienda es
 # un sitio propio y el comerciante pega las credenciales de una Integración.

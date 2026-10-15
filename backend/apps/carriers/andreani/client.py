@@ -25,6 +25,8 @@ import requests
 from django.conf import settings
 from django.utils import timezone
 
+from ..base import CarrierAuthError, CarrierError, CarrierRejectedError
+
 logger = logging.getLogger(__name__)
 
 TOKEN_HEADER = "x-authorization-token"
@@ -32,15 +34,15 @@ TOKEN_HEADER = "x-authorization-token"
 TOKEN_LIFETIME = timedelta(hours=23)
 
 
-class AndreaniError(Exception):
+class AndreaniError(CarrierError):
     """Falla hablando con Andreani (red, 5xx): en general se puede reintentar."""
 
 
-class AndreaniAuthError(AndreaniError):
+class AndreaniAuthError(AndreaniError, CarrierAuthError):
     """Andreani rechazó las credenciales: reintentar no lo arregla."""
 
 
-class AndreaniRejectedError(AndreaniError):
+class AndreaniRejectedError(AndreaniError, CarrierRejectedError):
     """Andreani rechazó el pedido por inválido (400/404/422); el mensaje es suyo."""
 
 

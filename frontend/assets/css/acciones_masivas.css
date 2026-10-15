@@ -135,3 +135,63 @@
   font-weight: 400;
   color: var(--text-muted);
 }
+
+/* transportista.html: dirección y credenciales de las novedades push. */
+.push-credentials {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 14px;
+  margin: 6px 0 10px;
+  font-size: 14px;
+}
+
+.push-credentials dt {
+  font-weight: 700;
+}
+
+.push-credentials dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* checkout_transportistas.html: un bloque desplegable por transportista. */
+.carrier-checkout {
+  border-top: 1px solid var(--border, #e5e7eb);
+  padding: 10px 0;
+}
+
+.carrier-checkout:first-child {
+  border-top: none;
+}
+
+.carrier-checkout-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 4px 0;
+}
+
+.carrier-checkout-summary::before {
+  content: "▸";
+  color: var(--text-muted, #64748b);
+}
+
+.carrier-checkout[open] > .carrier-checkout-summary::before {
+  content: "▾";
+}
+
+.carrier-checkout-summary::-webkit-details-marker {
+  display: none;
+}
+
+.carrier-checkout-summary .selection-count {
+  margin-left: auto;
+}
+
+.carrier-checkout[open] > .carrier-checkout-summary {
+  margin-bottom: 8px;
+}

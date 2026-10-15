@@ -56,6 +56,13 @@ class StoreConnectionSerializer(serializers.ModelSerializer):
     def get_rates_push(self, connection):
         return shipping_rates.rates_push_state(connection) or None
 
+    # Con qué transportista se despacha desde el admin de la tienda ("" = que
+    # se decida solo, ver apps.carriers.store_dispatch).
+    dispatch_carrier = serializers.SerializerMethodField()
+
+    def get_dispatch_carrier(self, connection):
+        return str((connection.preferences or {}).get("dispatch_carrier") or "")
+
     class Meta:
         model = StoreConnection
         fields = [
@@ -79,6 +86,7 @@ class StoreConnectionSerializer(serializers.ModelSerializer):
             "print_plugin_linked",
             "supports_rates_push",
             "rates_push",
+            "dispatch_carrier",
             "last_error",
             "connected_at",
             "disconnected_at",

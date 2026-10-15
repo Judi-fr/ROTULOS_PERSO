@@ -3,7 +3,8 @@ import {render} from "preact";
 
 import {PrintAction} from "./PrintAction.jsx";
 
-// "Rótulos de envío" en el menú Imprimir: un rótulo por pedido elegido.
+// "Rótulos de envío" en el menú Imprimir: los rótulos o la planilla de
+// retiro de los pedidos elegidos (se elige en PrintAction.jsx).
 export default async () => {
-  render(<PrintAction action="labels" />, document.body);
+  render(<PrintAction />, document.body);
 };

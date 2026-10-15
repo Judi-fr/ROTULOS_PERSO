@@ -1,25 +1,30 @@
 // El diálogo "Despachar" de Mis pedidos (pedidos.html, <dialog id="dispatchDialog">).
 //
-// Con la cuenta de Andreani lista: muestra los pedidos con lo que cobra
-// Andreani por cada uno (cotiza solo al abrir), y al confirmar crea los envíos
-// (POST /carriers/andreani/shipments/). El pedido queda con transportista,
-// número y link de seguimiento cargados; cuando Andreani lo retira, el
-// seguimiento lo pasa a Despachado y se le avisa a la tienda. Al terminar
-// ofrece imprimir: un PDF con nuestro rótulo y la etiqueta de Andreani de cada pedido.
+// Con al menos un transportista listo (Andreani, Correo Argentino, OCA: los dice
+// GET /carriers/): se elige con cuál (si hay más de uno), el servicio y los
+// bultos; muestra lo que cobra por cada pedido (cotiza solo al abrir, si ese
+// transportista cotiza) y al confirmar crea los envíos (POST /carriers/shipments/).
+// El pedido queda con transportista, número y link de seguimiento; cuando el
+// transportista lo retira, el seguimiento lo pasa a Despachado y se le avisa a
+// la tienda. Al terminar ofrece imprimir: un PDF con nuestro rótulo y la
+// etiqueta del transportista de cada pedido.
 //
-// Sin cuenta lista: ofrece conectarla o, para un solo pedido, cargar el
+// Sin ninguno listo: ofrece conectar uno o, para un solo pedido, cargar el
 // seguimiento a mano (despachar.html), que queda para transportistas sin API.
 //
-// Todo texto que viene de un pedido o de Andreani se inserta con textContent.
+// Todo texto que viene de un pedido o de un transportista se inserta con textContent.
 
 window.OrderDispatch = (() => {
   const API_BASE = window.APP_CONFIG.API_BASE;
-  const ANDREANI_API = `${API_BASE}/carriers/andreani`;
+  const CARRIERS_API = `${API_BASE}/carriers`;
+  const LAST_CARRIER_KEY = "dispatchCarrier";
   const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
   const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" });
 
   let orders = [];
+  // {allowed, carriers}: lo mismo que GET /carriers/.
   let account = null;
+  let carrier = null;
   // Sucursal elegida por pedido (contratos de sucursal): {orderId: {id, name}}.
   let branches = {};
   let quoteRun = 0;
@@ -80,30 +85,50 @@ window.OrderDispatch = (() => {
   }
 
   // ---------------------------------------------------------------------------
-  // Sin cuenta lista
+  // Sin ningún transportista listo
   // ---------------------------------------------------------------------------
   function renderNotReady() {
     const { body, footer } = frame(orders.length === 1 ? `Despachar ${orderNumber(orders[0])}` : `Despachar ${orders.length} pedidos`);
-    let text;
-    if (!account.allowed) text = "Tu usuario no puede despachar con un transportista.";
-    else if (!account.exists) text = "Conectá tu cuenta de Andreani y despachá con un clic: el envío se crea solo y el pedido queda con su número y link de seguimiento.";
-    else if (account.last_error) text = `Andreani rechazó tu cuenta: ${account.last_error}`;
-    else text = `A tu cuenta de Andreani le falta: ${account.missing.join(", ")}.`;
-    body.appendChild(node("p", { text }));
+    if (!account.allowed) {
+      body.appendChild(node("p", { text: "Tu usuario no puede despachar con un transportista." }));
+    } else {
+      body.appendChild(
+        node("p", {
+          text: "Conectá tu cuenta de un transportista y despachá con un clic: el envío se crea solo y el pedido queda con su número y link de seguimiento.",
+        })
+      );
+      const list = node("ul", { className: "dispatch-carriers" });
+      account.carriers.forEach((item) => {
+        const entry = node("li");
+        const link = node("a", { text: item.account.exists ? `Completar la cuenta de ${item.name}` : `Conectar ${item.name}` });
+        link.href = window.OrderShipping.accountPage(item);
+        entry.appendChild(link);
+        const problem = item.account.last_error
+          ? `${item.name} rechazó tu cuenta: ${item.account.last_error}`
+          : item.account.exists && item.account.missing?.length
+            ? `Falta: ${item.account.missing.join(", ")}.`
+            : "";
+        if (problem) entry.appendChild(node("small", { text: ` ${problem}` }));
+        list.appendChild(entry);
+      });
+      body.appendChild(list);
+    }
     const manual = manualLink();
     if (manual) footer.appendChild(manual);
-    if (account.allowed) {
-      const connect = node("a", { className: "btn btn-primary", text: account.exists ? "Completar la cuenta" : "Conectar Andreani" });
-      connect.href = "andreani.html";
-      footer.appendChild(connect);
-    }
+    const done = node("button", { className: "btn btn-outline", text: "Cerrar", attrs: { type: "button" } });
+    done.onclick = close;
+    footer.appendChild(done);
   }
 
   // ---------------------------------------------------------------------------
-  // Con Andreani
+  // Con un transportista listo
   // ---------------------------------------------------------------------------
+  function readyCarriers() {
+    return (account.carriers || []).filter((item) => item.account.ready);
+  }
+
   function contracts() {
-    return account.contracts || [];
+    return carrier?.account.contracts || [];
   }
 
   function selectedContract() {
@@ -116,30 +141,27 @@ window.OrderDispatch = (() => {
   }
 
   function renderReady() {
-    const { body, footer } = frame(
-      orders.length === 1 ? `Despachar ${orderNumber(orders[0])} con Andreani` : `Despachar ${orders.length} pedidos con Andreani`
-    );
+    const { body, footer } = frame(orders.length === 1 ? `Despachar ${orderNumber(orders[0])}` : `Despachar ${orders.length} pedidos`);
 
     const options = node("div", { className: "dispatch-options" });
-    const contractField = node("label", { className: "dispatch-field", text: "Servicio" });
+    const carrierField = node("label", { className: "dispatch-field", text: "Transportista" });
+    const carrierSelect = node("select", { attrs: { id: "dispatchCarrier" } });
+    readyCarriers().forEach((item) => {
+      const option = node("option", { text: item.name });
+      option.value = item.code;
+      carrierSelect.appendChild(option);
+    });
+    carrierSelect.value = carrier.code;
+    carrierField.appendChild(carrierSelect);
+    // Uno solo listo: no hay nada que elegir.
+    carrierField.hidden = readyCarriers().length < 2;
+    const contractField = node("label", { className: "dispatch-field", text: "Servicio", attrs: { id: "dispatchContractField" } });
     const contractSelect = node("select", { attrs: { id: "dispatchContract" } });
-    // Primero los de domicilio: es lo que se usa casi siempre.
-    [...contracts()]
-      .sort((a, b) => (a.kind === "home" ? 0 : 1) - (b.kind === "home" ? 0 : 1))
-      .forEach((contract) => {
-        const option = node("option", {
-          text: `${contract.label || contract.code} (${contract.kind === "branch" ? "a sucursal / punto HOP" : "a domicilio"})`,
-        });
-        option.value = contract.code;
-        contractSelect.appendChild(option);
-      });
     contractField.appendChild(contractSelect);
-    // Un solo contrato: no hay nada que elegir.
-    contractField.hidden = contracts().length < 2;
     const packagesField = node("label", { className: "dispatch-field", text: "Bultos por pedido" });
     const packagesInput = node("input", { attrs: { id: "dispatchPackages", type: "number", min: "1", max: "20", value: "1" } });
     packagesField.appendChild(packagesInput);
-    options.append(contractField, packagesField);
+    options.append(carrierField, contractField, packagesField);
 
     const list = node("ul", { className: "dispatch-orders" });
     orders.forEach((order) => {
@@ -152,10 +174,7 @@ window.OrderDispatch = (() => {
       list.appendChild(item);
     });
     const total = node("p", { className: "dispatch-total", attrs: { id: "dispatchTotal" } });
-    const hint = node("p", {
-      className: "dispatch-hint",
-      text: "Al confirmar se crean los envíos en Andreani y cada pedido queda con su número y link de seguimiento. Cuando Andreani lo retire, pasa a Despachado y se le avisa a la tienda.",
-    });
+    const hint = node("p", { className: "dispatch-hint", attrs: { id: "dispatchHint" } });
     body.append(options, list, total, hint);
 
     const manual = manualLink();
@@ -170,8 +189,46 @@ window.OrderDispatch = (() => {
     confirm.onclick = createShipments;
     footer.append(cancel, confirm);
 
+    carrierSelect.addEventListener("change", () => {
+      carrier = readyCarriers().find((item) => item.code === carrierSelect.value) || carrier;
+      try {
+        localStorage.setItem(LAST_CARRIER_KEY, carrier.code);
+      } catch (_err) {
+        // Sin almacenamiento local se elige de nuevo la próxima vez.
+      }
+      onCarrierChange();
+    });
     contractSelect.addEventListener("change", onOptionsChange);
     packagesInput.addEventListener("change", onOptionsChange);
+    onCarrierChange();
+  }
+
+  // Cambió el transportista: sus servicios, su texto y las sucursales de nuevo.
+  function onCarrierChange() {
+    const contractSelect = document.getElementById("dispatchContract");
+    contractSelect.replaceChildren();
+    // Primero los de domicilio: es lo que se usa casi siempre.
+    [...contracts()]
+      .sort((a, b) => (a.kind === "home" ? 0 : 1) - (b.kind === "home" ? 0 : 1))
+      .forEach((contract) => {
+        const option = node("option", {
+          text: `${contract.label || contract.code} (${contract.kind === "branch" ? `a ${carrier.branch_label}` : "a domicilio"})`,
+        });
+        option.value = contract.code;
+        contractSelect.appendChild(option);
+      });
+    // Un solo servicio: no hay nada que elegir.
+    document.getElementById("dispatchContractField").hidden = contracts().length < 2;
+    document.getElementById("dispatchHint").textContent =
+      `Al confirmar se crean los envíos en ${carrier.name} y cada pedido queda con su número y link de seguimiento. ` +
+      `Cuando ${carrier.name} lo retire, pasa a Despachado y se le avisa a la tienda.`;
+    branches = {};
+    dialog()
+      .querySelectorAll(".dispatch-branch")
+      .forEach((box) => {
+        delete box.dataset.loaded;
+        box.replaceChildren();
+      });
     onOptionsChange();
   }
 
@@ -197,12 +254,29 @@ window.OrderDispatch = (() => {
     });
     const total = document.getElementById("dispatchTotal");
     total.textContent = "";
+    total.classList.remove("error");
     if (!contract) return;
+    // Sin cotizador (o sin sus credenciales) igual se despacha: el precio es informativo.
+    const missing = carrier.supports_quote ? carrier.account.quote_missing || [] : ["un cotizador"];
+    if (missing.length) {
+      prices.forEach((price) => {
+        price.textContent = "—";
+      });
+      total.textContent = carrier.supports_quote
+        ? `Sin precio: a tu cuenta de ${carrier.name} le falta ${missing.join(", ")} para cotizar.`
+        : "";
+      return;
+    }
     try {
-      const response = await apiFetch(`${ANDREANI_API}/shipments/quote/`, {
+      const response = await apiFetch(`${CARRIERS_API}/shipments/quote/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ order_ids: orders.map((order) => order.id), contract: contract.code, package_count: packageCount() }),
+        body: JSON.stringify({
+          carrier: carrier.code,
+          order_ids: orders.map((order) => order.id),
+          contract: contract.code,
+          package_count: packageCount(),
+        }),
       });
       const data = await response.json().catch(() => ({}));
       if (run !== quoteRun) return; // Cambiaron las opciones mientras cotizaba.
@@ -210,11 +284,12 @@ window.OrderDispatch = (() => {
       (data.results || []).forEach((result) => {
         const price = dialog().querySelector(`li[data-order="${CSS.escape(String(result.order_id))}"] .dispatch-price`);
         if (!price) return;
-        price.textContent = result.ok ? money.format(Number(result.price)) : "Sin cotización";
-        price.title = result.ok ? "Con IVA" : result.detail || "";
+        const days = result.delivery_days ? ` · ${result.delivery_days} ${result.delivery_days === 1 ? "día" : "días"}` : "";
+        price.textContent = result.ok ? `${money.format(Number(result.price))}${days}` : "Sin cotización";
+        price.title = result.ok ? "" : result.detail || "";
         price.classList.toggle("error", !result.ok);
       });
-      if (data.quoted) total.textContent = `Total con IVA: ${money.format(Number(data.total))}`;
+      if (data.quoted) total.textContent = `Total: ${money.format(Number(data.total))}`;
     } catch (err) {
       if (err.isSessionExpired || run !== quoteRun) return;
       // Sin precio igual se puede despachar: la cotización es informativa.
@@ -232,19 +307,22 @@ window.OrderDispatch = (() => {
       if (!box || box.dataset.loaded) continue;
       box.dataset.loaded = "1";
       const postalCode = order.address?.postal_code || "";
+      const state = order.address?.state || "";
+      const key = `${postalCode}|${state}`;
       const select = node("select");
       select.appendChild(node("option", { text: "Buscando sucursales…" }));
       box.replaceChildren(select);
       try {
-        if (postalCode && !byPostalCode[postalCode]) {
-          const response = await apiFetch(`${ANDREANI_API}/branches/?${new URLSearchParams({ cp: postalCode })}`);
-          byPostalCode[postalCode] = response.ok ? (await response.json()).results || [] : [];
+        if (postalCode && !byPostalCode[key]) {
+          const query = new URLSearchParams({ cp: postalCode, state });
+          const response = await apiFetch(`${CARRIERS_API}/branches/${encodeURIComponent(carrier.code)}/?${query}`);
+          byPostalCode[key] = response.ok ? (await response.json()).results || [] : [];
         }
       } catch (err) {
         if (err.isSessionExpired) return;
       }
-      const found = byPostalCode[postalCode] || [];
-      select.replaceChildren(node("option", { text: found.length ? "Elegí la sucursal o punto HOP" : "No hay sucursales para ese código postal" }));
+      const found = byPostalCode[key] || [];
+      select.replaceChildren(node("option", { text: found.length ? `Elegí la ${carrier.branch_label}` : "No hay sucursales para ese código postal" }));
       select.firstChild.value = "";
       found.forEach((branch) => {
         const option = node("option", { text: `${branch.is_hop ? "Punto HOP · " : ""}${branch.name} — ${branch.address}, ${branch.city}` });
@@ -266,10 +344,15 @@ window.OrderDispatch = (() => {
     const confirm = document.getElementById("dispatchConfirm");
     confirm.disabled = true;
     confirm.textContent = "Creando…";
-    const payload = { order_ids: orders.map((order) => order.id), contract: contract.code, package_count: packageCount() };
+    const payload = {
+      carrier: carrier.code,
+      order_ids: orders.map((order) => order.id),
+      contract: contract.code,
+      package_count: packageCount(),
+    };
     if (contract.kind === "branch") payload.branches = branches;
     try {
-      const response = await apiFetch(`${ANDREANI_API}/shipments/`, {
+      const response = await apiFetch(`${CARRIERS_API}/shipments/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -345,17 +428,28 @@ window.OrderDispatch = (() => {
     created = [];
     frame("Despachar").body.appendChild(node("p", { text: "Cargando…" }));
     dialog().showModal();
-    // La cuenta se pide de nuevo: puede haberse conectado en otra pestaña.
+    // Las cuentas se piden de nuevo: puede haberse conectado una en otra pestaña.
     try {
-      const response = await apiFetch(`${ANDREANI_API}/account/`);
-      account = response.ok ? { allowed: true, ...(await response.json()) } : { allowed: false };
+      const response = await apiFetch(`${CARRIERS_API}/`);
+      account = response.ok ? { allowed: true, carriers: (await response.json()).results || [] } : { allowed: false };
     } catch (err) {
       if (err.isSessionExpired) return;
       account = { allowed: false };
     }
-    const ready = account.allowed && account.exists && !account.missing?.length && !account.last_error;
-    if (ready) renderReady();
-    else renderNotReady();
+    const ready = account.allowed ? readyCarriers() : [];
+    if (!ready.length) {
+      renderNotReady();
+      return;
+    }
+    let last = "";
+    try {
+      last = localStorage.getItem(LAST_CARRIER_KEY) || "";
+    } catch (_err) {
+      last = "";
+    }
+    // El último con el que se despachó, si sigue listo.
+    carrier = ready.find((item) => item.code === last) || ready[0];
+    renderReady();
   }
 
   dialog()?.addEventListener("close", afterClose);

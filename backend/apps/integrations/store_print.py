@@ -18,8 +18,9 @@ imprimirlo, no puede faltar del PDF.
 
 **Tres acciones** por la misma vía (``action`` en el pedido del enlace, ver
 ``ACTIONS``): ``labels`` (los rótulos, lo de siempre), ``manifest`` (la
-planilla de retiro) y ``dispatch`` (despachar con Andreani y bajar rótulo +
-etiqueta de Andreani). Despachar cambia cosas, así que se hace en el POST del
+planilla de retiro) y ``dispatch`` (despachar con el transportista de la
+tienda, ``apps.carriers.store_dispatch``, y bajar rótulo + etiqueta del
+transportista). Despachar cambia cosas, así que se hace en el POST del
 paso 1, nunca en el GET del enlace: el enlace solo lleva los envíos ya creados
 para imprimirlos.
 
@@ -50,7 +51,7 @@ PRINT_TOKEN_SALT = "apps.integrations.shopify-print"
 # Lo que Shopify deja seleccionar de una vez en la lista de pedidos ronda los
 # 250; más que eso es un pedido raro o malicioso, y cada uno es una página.
 MAX_ORDERS_PER_PRINT = 250
-# Despachar llama a Andreani por cada pedido dentro del pedido de la tienda
+# Despachar llama al transportista por cada pedido dentro del pedido de la tienda
 # (el plugin de WooCommerce espera 90 s): de a tandas chicas.
 MAX_ORDERS_PER_DISPATCH = 30
 
@@ -201,7 +202,7 @@ def action_link(connection, orders, action, route):
     summary = {}
     shipments = ()
     if action == DISPATCH:
-        from apps.carriers.andreani.store_dispatch import DispatchError, dispatch
+        from apps.carriers.store_dispatch import DispatchError, dispatch
 
         if len(orders) > MAX_ORDERS_PER_DISPATCH:
             raise PrintError(f"Se pueden despachar hasta {MAX_ORDERS_PER_DISPATCH} pedidos por vez.")
@@ -228,8 +229,8 @@ def render_document(token, platform):
         carrier = carriers.pop() if len(carriers) == 1 else ""
         return render_manifest_pdf(orders, connection.owner, carrier=carrier), "planilla-retiro.pdf"
     if action == DISPATCH:
-        from apps.carriers.andreani import printing
-        from apps.carriers.andreani.client import AndreaniError
+        from apps.carriers import printing
+        from apps.carriers.base import CarrierError, ShipmentError
         from apps.carriers.models import CarrierShipment
 
         found = {
@@ -242,8 +243,8 @@ def render_document(token, platform):
         if not shipments:
             raise PrintError("Los envíos de este enlace ya no existen o se cancelaron.")
         try:
-            return printing.bundle(shipments), "envios-andreani.pdf"
-        except AndreaniError as exc:
+            return printing.bundle(shipments), "envios.pdf"
+        except (CarrierError, ShipmentError) as exc:
             raise PrintError(str(exc)) from exc
     pdf_bytes, _count = render_pdf(connection, orders)
     return pdf_bytes, "rotulos.pdf"

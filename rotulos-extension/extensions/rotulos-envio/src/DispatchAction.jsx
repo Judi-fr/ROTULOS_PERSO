@@ -4,11 +4,12 @@ import {useState} from "preact/hooks";
 
 import {PRINT_LINK_URL, requestLink} from "./printLink.js";
 
-// "Despachar con Andreani" en las acciones masivas de la lista de pedidos.
-// Despachar cambia cosas (crea los envíos en Andreani con la cuenta del
-// comerciante y les carga el seguimiento a los pedidos), así que no arranca
-// solo al abrir: se confirma con el botón. Después ofrece abrir el PDF con
-// cada rótulo y la etiqueta de Andreani.
+// "Despachar con tu transportista" en las acciones masivas de la lista de
+// pedidos. Despachar cambia cosas (crea los envíos con la cuenta del comerciante
+// en el transportista de la tienda —Andreani, Correo Argentino u OCA, lo decide
+// el backend: apps/carriers/store_dispatch.py— y les carga el seguimiento a los
+// pedidos), así que no arranca solo al abrir: se confirma con el botón.
+// Después ofrece abrir el PDF con cada rótulo y la etiqueta del transportista.
 export default async () => {
   render(<Extension />, document.body);
 };

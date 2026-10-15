@@ -1,4 +1,5 @@
-"""Transportistas (correos) con los que despachan los clientes: hoy Andreani.
+"""Transportistas (correos) con los que despachan los clientes: Andreani, Correo
+Argentino y OCA.
 
 Es lo opuesto a ``apps.integrations``: ahí la tienda nos manda pedidos; acá
 nosotros le pedimos al CORREO que los lleve. Cada cliente usa SU cuenta y SUS
@@ -12,11 +13,15 @@ nuestra por defecto), así que todo cuelga de ``CarrierAccount.owner``.
   su número de seguimiento (el que va debajo del código de barras del rótulo).
 - ``CarrierShipmentEvent``: los movimientos que informa el transportista.
 
-Lo propio de cada transportista vive en su carpeta (``andreani/``).
+Lo propio de cada transportista vive en su carpeta (``andreani/``,
+``correo_argentino/``, ``oca/``) y se usa a través de su ``CarrierProvider``
+(``base.py``, ``providers.py``): qué datos pide la cuenta, cómo se cotiza, se
+crea, se imprime, se sigue y se cancela un envío.
 """
 
 from __future__ import annotations
 
+import json
 from decimal import Decimal
 
 from django.conf import settings
@@ -28,6 +33,8 @@ from apps.integrations import crypto
 class CarrierAccount(models.Model):
     class Carrier(models.TextChoices):
         ANDREANI = "andreani", "Andreani"
+        CORREO_ARGENTINO = "correo_argentino", "Correo Argentino"
+        OCA = "oca", "OCA"
 
     class Environment(models.TextChoices):
         PRODUCTION = "production", "Producción"
@@ -56,9 +63,23 @@ class CarrierAccount(models.Model):
     origin_apartment = models.CharField(max_length=20, blank=True, default="")
     origin_postal_code = models.CharField(max_length=10, blank=True, default="")
     origin_city = models.CharField(max_length=120, blank=True, default="")
-    # El paquete que se informa cuando el pedido no dice cuánto pesa.
+    # Provincia del origen, como la escribe el cliente (Correo Argentino y OCA
+    # la piden; ``common.province_code`` la lleva a su código).
+    origin_state = models.CharField(max_length=100, blank=True, default="")
+    # El paquete que se informa cuando el pedido no dice cuánto pesa. Andreani
+    # pide el volumen; Correo Argentino y OCA, las medidas de la caja.
     default_weight_kg = models.DecimalField(max_digits=8, decimal_places=3, default=Decimal("1"))
     default_volume_cm3 = models.PositiveIntegerField(default=4000)
+    default_length_cm = models.PositiveSmallIntegerField(default=20)
+    default_width_cm = models.PositiveSmallIntegerField(default=20)
+    default_height_cm = models.PositiveSmallIntegerField(default=10)
+    # Datos propios de cada transportista que no son secretos (el número de
+    # cuenta de OCA, el customerId de MiCorreo...): las claves las declara su
+    # ``CarrierProvider.account_fields``.
+    extra = models.JSONField(default=dict, blank=True)
+    # Secretos además de ``password`` (la clave de MiCorreo de Correo
+    # Argentino): un JSON cifrado, leer/escribir vía ``secret()``/``set_secret()``.
+    secrets_encrypted = models.TextField(blank=True, default="")
     # Token de sesión del transportista (Andreani: dura 24 horas).
     token_encrypted = models.TextField(blank=True, default="")
     token_expires_at = models.DateTimeField(null=True, blank=True)
@@ -90,6 +111,28 @@ class CarrierAccount(models.Model):
     @token.setter
     def token(self, value):
         self.token_encrypted = crypto.encrypt(value)
+
+    def _secrets(self):
+        raw = crypto.decrypt(self.secrets_encrypted) if self.secrets_encrypted else ""
+        try:
+            data = json.loads(raw) if raw else {}
+        except ValueError:
+            data = {}
+        return data if isinstance(data, dict) else {}
+
+    def secret(self, name):
+        return str(self._secrets().get(name) or "")
+
+    def has_secret(self, name):
+        return bool(self.secret(name))
+
+    def set_secret(self, name, value):
+        data = self._secrets()
+        if value:
+            data[name] = str(value)
+        else:
+            data.pop(name, None)
+        self.secrets_encrypted = crypto.encrypt(json.dumps(data)) if data else ""
 
     def contract(self, code):
         """El contrato ``code`` de la cuenta, o ``None``."""
@@ -155,6 +198,28 @@ class CarrierShipment(models.Model):
     @property
     def is_final(self):
         return self.status in self.FINAL_STATUSES
+
+
+class CarrierPushToken(models.Model):
+    """Credenciales con las que un transportista nos avisa las novedades de los
+    envíos de UNA cuenta (Andreani "Novedades Push": Basic auth contra
+    ``/api/v1/carriers/<carrier>/push/<key>/``). La contraseña se guarda solo
+    como hash; se muestra una vez, al generarla."""
+
+    account = models.OneToOneField(CarrierAccount, on_delete=models.CASCADE, related_name="push_token")
+    key = models.CharField(max_length=40, unique=True)
+    username = models.CharField(max_length=40)
+    password_hash = models.CharField(max_length=128)
+    last_received_at = models.DateTimeField(null=True, blank=True)
+    received_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "credencial de novedades push"
+        verbose_name_plural = "credenciales de novedades push"
+
+    def __str__(self):
+        return f"Push de {self.account}"
 
 
 class CarrierShipmentEvent(models.Model):

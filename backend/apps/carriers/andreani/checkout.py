@@ -29,12 +29,16 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from decimal import ROUND_UP, Decimal
+from decimal import Decimal
 
 from django.conf import settings
 from django.core.cache import cache
 
 from ..models import CarrierAccount
+# El precio del comprador y el peso redondeado son los mismos para todos los
+# transportistas (``apps.carriers.pricing``); ``buyer_price`` sigue
+# exportándose desde acá.
+from ..pricing import buyer_price, decimal_or_none, rounded_weight  # noqa: F401
 from .client import AndreaniClient, AndreaniError
 from .shipments import ShipmentError, postal_code_digits
 
@@ -43,10 +47,6 @@ logger = logging.getLogger(__name__)
 PREF = "andreani_checkout"
 OPTION_CODE = "andreani"
 DEFAULT_NAME = "Andreani a domicilio"
-# Peso redondeado hacia arriba a esta fracción de kilo para la clave de la
-# caché: 1,23 kg y 1,27 kg cotizan igual (Andreani cobra por franja), y se
-# cotiza con el peso redondeado para no cobrar de menos.
-WEIGHT_STEP = Decimal("0.5")
 _FAILED = "failed"
 
 
@@ -97,14 +97,7 @@ def problems(connection, account=None, settings_values=None):
     return found
 
 
-def _rounded_weight(weight_kg, account):
-    weight = Decimal(str(weight_kg or 0))
-    if weight <= 0:
-        # El carrito sin pesos cargados: se cotiza el paquete por defecto de la
-        # cuenta, el mismo que se manda al crear el envío.
-        weight = Decimal(account.default_weight_kg)
-    steps = (weight / WEIGHT_STEP).to_integral_value(rounding=ROUND_UP)
-    return max(steps, 1) * WEIGHT_STEP
+_rounded_weight = rounded_weight
 
 
 def _cache_key(account, contract, postal_code, weight):
@@ -142,26 +135,7 @@ def quote_price(account, contract, postal_code, weight_kg):
     return price
 
 
-def _decimal_or_none(value):
-    if value in (None, ""):
-        return None
-    try:
-        number = Decimal(str(value))
-    except (ArithmeticError, ValueError):
-        return None
-    return number if number.is_finite() else None
-
-
-def buyer_price(cost, values, cart_total=None):
-    """Lo que paga el comprador por un envío que a la tienda le cuesta
-    ``cost``, con su recargo y su envío gratis."""
-    free_from = _decimal_or_none(values.get("free_shipping_from"))
-    if free_from is not None and cart_total is not None and cart_total >= free_from:
-        return Decimal("0.00")
-    percent = _decimal_or_none(values.get("surcharge_percent")) or Decimal("0")
-    amount = _decimal_or_none(values.get("surcharge_amount")) or Decimal("0")
-    price = cost * (Decimal("1") + percent / Decimal("100")) + amount
-    return max(price, Decimal("0")).quantize(Decimal("0.01"))
+_decimal_or_none = decimal_or_none
 
 
 def checkout_rate(connection, postal_code, weight_kg, cart_total=None):

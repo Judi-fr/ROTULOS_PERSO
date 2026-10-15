@@ -11,7 +11,7 @@
 //
 // Lo usan tres páginas, una por link de acciones masivas (cada link abre una
 // URL fija): imprimir_tiendanube.html (rótulos), planilla_tiendanube.html
-// (planilla de retiro) y despachar_tiendanube.html (despachar con Andreani:
+// (planilla de retiro) y despachar_tiendanube.html (despachar con el transportista de la tienda:
 // crea los envíos y baja rótulo + etiqueta). La acción sale de
 // <body data-action>; los textos, de ACTION_TEXTS.
 
@@ -37,7 +37,7 @@ const ACTION_TEXTS = {
   },
   dispatch: {
     noIds: "No llegaron pedidos para despachar",
-    again: "\"Despachar con Andreani\"",
+    again: "\"Despachar\"",
     failed: "No se pudo despachar",
     ready: (count) => `${count} envío(s) listos para imprimir`,
   },

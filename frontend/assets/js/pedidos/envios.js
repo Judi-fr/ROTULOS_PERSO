@@ -1,21 +1,23 @@
 // El envío de cada pedido en "Mis pedidos" (pedidos.html): con qué transportista
-// salió, su número y link de seguimiento, la impresión (rótulo + etiqueta de Andreani) y la selección de
-// pedidos para despacharlos juntos. El diálogo de despacho es pedidos/despacho.js.
+// salió, su número y link de seguimiento, la impresión (rótulo + etiqueta del
+// transportista) y la selección de pedidos para despacharlos juntos. El diálogo
+// de despacho es pedidos/despacho.js.
 //
-// Hoy el único transportista con API es Andreani (backend:
-// /api/v1/carriers/andreani/, apps/carriers/andreani/). Con la cuenta conectada,
-// despachar crea el envío y el pedido queda con transportista, número y link
-// cargados solos; sin ella, el diálogo ofrece conectarla o cargar el
-// seguimiento a mano (despachar.html).
+// Los transportistas con API (Andreani, Correo Argentino, OCA) salen de
+// GET /api/v1/carriers/ (apps/carriers/views.py): este archivo no nombra a
+// ninguno. Con una cuenta lista, despachar crea el envío y el pedido queda con
+// transportista, número y link cargados solos; sin ninguna, el diálogo ofrece
+// conectar una o cargar el seguimiento a mano (despachar.html).
 //
-// Todo texto que viene de un pedido o de Andreani se inserta con textContent.
+// Todo texto que viene de un pedido o de un transportista se inserta con textContent.
 // apiFetch sale de auth.js; showMessage, getErrorMessage y downloadResponse, de utils.js.
 
 window.OrderShipping = (() => {
-  const ANDREANI_API = `${window.APP_CONFIG.API_BASE}/carriers/andreani`;
+  const CARRIERS_API = `${window.APP_CONFIG.API_BASE}/carriers`;
   const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
-  // null = todavía no se sabe; {allowed: false} = el rol no despacha por API.
+  // null = todavía no se sabe; {allowed: false} = el rol no despacha por API;
+  // {allowed: true, carriers: [...]} = GET /carriers/ (cada uno con su cuenta).
   let account = null;
   let shipmentsByOrder = new Map();
   let ordersById = new Map();
@@ -36,12 +38,12 @@ window.OrderShipping = (() => {
   }
 
   // ---------------------------------------------------------------------------
-  // Cuenta de Andreani
+  // Transportistas y sus cuentas
   // ---------------------------------------------------------------------------
   async function loadAccount() {
     try {
-      const response = await apiFetch(`${ANDREANI_API}/account/`);
-      account = response.ok ? { allowed: true, ...(await response.json()) } : { allowed: false };
+      const response = await apiFetch(`${CARRIERS_API}/`);
+      account = response.ok ? { allowed: true, carriers: (await response.json()).results || [] } : { allowed: false };
     } catch (err) {
       if (err.isSessionExpired) return;
       account = { allowed: false };
@@ -49,11 +51,21 @@ window.OrderShipping = (() => {
     renderStrip();
   }
 
-  // Lista para despachar con un clic: cuenta cargada, completa y aceptada.
-  function accountReady() {
-    return Boolean(account?.allowed && account.exists && !account.missing?.length && !account.last_error);
+  // Los transportistas con la cuenta cargada, completa y aceptada.
+  function readyCarriers() {
+    return (account?.carriers || []).filter((carrier) => carrier.account.ready);
   }
 
+  function accountReady() {
+    return Boolean(account?.allowed && readyCarriers().length);
+  }
+
+  function accountPage(carrier) {
+    return `transportista.html?carrier=${encodeURIComponent(carrier.code)}`;
+  }
+
+  // Una línea con cada transportista y el estado de su cuenta: el nombre lleva a
+  // su página (conectar, completar o revisar).
   function renderStrip() {
     // Mismo permiso (orders.create) que cargar seguimientos desde planilla.
     el("trackingImportBtn").hidden = !account?.allowed;
@@ -63,28 +75,35 @@ window.OrderShipping = (() => {
       return;
     }
     strip.replaceChildren();
+    const ready = readyCarriers();
     const text = document.createElement("span");
+    text.textContent = ready.length
+      ? `Despachás con ${new Intl.ListFormat("es", { type: "conjunction" }).format(ready.map((carrier) => carrier.name))}: al despachar se crea el envío y el seguimiento se carga solo.`
+      : "Conectá tu cuenta de un transportista para despachar con un clic.";
     const links = document.createElement("span");
     links.className = "carrier-strip-links";
-    const link = (href, label) => {
-      const a = document.createElement("a");
-      a.href = href;
-      a.textContent = label;
-      return a;
-    };
-    if (accountReady()) {
-      strip.className = "carrier-strip ok";
-      text.textContent = "Andreani conectada: al despachar se crea el envío y el seguimiento se carga solo.";
-      links.append(link("andreani.html", "Cuenta"), link("checkout_andreani.html", "Precio en el checkout"));
-    } else {
-      strip.className = "carrier-strip";
-      text.textContent = !account.exists
-        ? "Conectá tu cuenta de Andreani para despachar con un clic."
-        : account.last_error
-          ? `Andreani rechazó tu cuenta: ${account.last_error}`
-          : `A tu cuenta de Andreani le falta: ${account.missing.join(", ")}.`;
-      links.append(link("andreani.html", account.exists ? "Completar cuenta" : "Conectar Andreani"));
+    account.carriers.forEach((carrier) => {
+      const link = document.createElement("a");
+      link.href = accountPage(carrier);
+      const state = carrier.account.ready
+        ? "✓"
+        : !carrier.account.exists
+          ? "conectar"
+          : carrier.account.last_error
+            ? "revisar"
+            : "completar";
+      link.textContent = `${carrier.name} (${state})`;
+      link.title = carrier.account.last_error || (carrier.account.missing || []).join(", ");
+      links.appendChild(link);
+    });
+    // El precio de los transportistas en el checkout de las tiendas.
+    if (ready.some((carrier) => carrier.supports_checkout)) {
+      const checkout = document.createElement("a");
+      checkout.href = "checkout_transportistas.html";
+      checkout.textContent = "Precio en el checkout";
+      links.appendChild(checkout);
     }
+    strip.className = ready.length ? "carrier-strip ok" : "carrier-strip";
     strip.append(text, links);
     strip.hidden = false;
   }
@@ -97,7 +116,7 @@ window.OrderShipping = (() => {
     shipmentsByOrder = new Map();
     if (account && !account.allowed) return;
     try {
-      const response = await apiFetch(`${ANDREANI_API}/shipments/`);
+      const response = await apiFetch(`${CARRIERS_API}/shipments/`);
       if (!response.ok) return;
       // Vienen del más nuevo al más viejo: por pedido queda el vigente (o el
       // último, si todos están cancelados).
@@ -181,7 +200,7 @@ window.OrderShipping = (() => {
     if (shipment) {
       actions.push(button("Imprimir", "btn btn-outline btn-small", (node) => downloadLabels([shipment], node)));
       actions.push(button("Actualizar seguimiento", "btn btn-outline btn-small", (node) => refreshShipment(shipment, node)));
-      if (shipment.status === "pending") {
+      if (shipment.can_cancel) {
         actions.push(button("Cancelar envío", "btn-danger-text", (node) => cancelShipment(shipment, node)));
       }
     } else if (order.is_shippable) {
@@ -225,11 +244,11 @@ window.OrderShipping = (() => {
   // Imprimir, seguimiento y cancelación
   // ---------------------------------------------------------------------------
   // Un solo PDF para mandar a la impresora: por cada envío, nuestro rótulo
-  // (con el número de Andreani) y después la etiqueta de Andreani.
+  // (con el número del transportista) y después la etiqueta del transportista.
   async function downloadLabels(shipments, node) {
     if (node) node.disabled = true;
     try {
-      const response = await apiFetch(`${ANDREANI_API}/shipments/print/`, {
+      const response = await apiFetch(`${CARRIERS_API}/shipments/print/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ shipment_ids: shipments.map((shipment) => shipment.id) }),
@@ -253,7 +272,7 @@ window.OrderShipping = (() => {
   async function refreshShipment(shipment, node) {
     node.disabled = true;
     try {
-      const response = await apiFetch(`${ANDREANI_API}/shipments/${shipment.id}/refresh/`, { method: "POST" });
+      const response = await apiFetch(`${CARRIERS_API}/shipments/${shipment.id}/refresh/`, { method: "POST" });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(getErrorMessage(data, "No se pudo consultar el seguimiento."));
       showMessage(`Envío ${data.tracking_number}: ${data.status_label}.`, "success");
@@ -266,12 +285,12 @@ window.OrderShipping = (() => {
   }
 
   async function cancelShipment(shipment, node) {
-    if (!window.confirm(`¿Cancelar el envío ${shipment.tracking_number} en Andreani? El pedido queda sin seguimiento y se puede volver a despachar.`)) {
+    if (!window.confirm(`¿Cancelar el envío ${shipment.tracking_number} en ${shipment.carrier_name}? El pedido queda sin seguimiento y se puede volver a despachar.`)) {
       return;
     }
     node.disabled = true;
     try {
-      const response = await apiFetch(`${ANDREANI_API}/shipments/${shipment.id}/cancel/`, { method: "POST" });
+      const response = await apiFetch(`${CARRIERS_API}/shipments/${shipment.id}/cancel/`, { method: "POST" });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(getErrorMessage(data, "No se pudo cancelar el envío."));
       showMessage(`Envío ${shipment.tracking_number} cancelado.`, "success");
@@ -310,6 +329,9 @@ window.OrderShipping = (() => {
     downloadLabels,
     account: () => account,
     accountReady,
+    readyCarriers,
+    accountPage,
+    loadAccount,
     reload: () => reloadOrders(),
   };
 })();

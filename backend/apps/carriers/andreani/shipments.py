@@ -36,6 +36,7 @@ from django.utils.dateparse import parse_datetime
 from apps.orders.models import Order
 from apps.orders.shipping import apply_shipping
 
+from ..base import ShipmentError
 from ..models import CarrierAccount, CarrierShipment, CarrierShipmentEvent
 from .client import AndreaniClient, AndreaniError
 
@@ -77,10 +78,6 @@ STATUS_RANK = {
     CarrierShipment.Status.DELIVERED: 5,
     CarrierShipment.Status.CANCELLED: 6,
 }
-
-
-class ShipmentError(Exception):
-    """El envío no se puede crear o actualizar; el mensaje es para el comerciante."""
 
 
 def _text(value, limit=MAX_TEXT):
@@ -409,6 +406,12 @@ def sync_shipment(shipment, *, client=None):
     estado del envío cambió. Los errores de Andreani se propagan (el llamador
     decide si los anota y sigue)."""
     events = (client or AndreaniClient(shipment.account)).traces(shipment.tracking_number)
+    return apply_traces(shipment, events)
+
+
+def apply_traces(shipment, events):
+    """Guarda los movimientos (con la forma de las trazas de Andreani) y mueve
+    envío y pedido. Lo usan el seguimiento y las novedades push."""
     parsed = _store_events(shipment, events)
     now = timezone.now()
     new_status = shipment.status

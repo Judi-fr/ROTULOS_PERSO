@@ -76,11 +76,11 @@ msgstr[1] "%1$s (%2$d días hábiles)"
 msgid "Print pickup sheet"
 msgstr "Imprimir planilla de retiro"
 
-msgid "Ship with Andreani (labels + tracking)"
-msgstr "Despachar con Andreani (rótulos + seguimiento)"
+msgid "Ship with your carrier (labels + tracking)"
+msgstr "Despachar con tu transportista (rótulos + seguimiento)"
 
 msgid "Some orders could not be shipped:"
 msgstr "Algunos pedidos no se pudieron despachar:"
 
-msgid "Print shipping labels, the pickup sheet or ship with Andreani for the selected orders straight from the WooCommerce order list, and quote shipping at checkout from your rates table."
-msgstr "Imprime los rótulos, la planilla de retiro o despacha con Andreani los pedidos elegidos desde la lista de pedidos de WooCommerce, y cotiza el envío en el checkout con tu tabla de tarifas."
+msgid "Print shipping labels, the pickup sheet or ship with your carrier (Andreani, Correo Argentino or OCA) for the selected orders straight from the WooCommerce order list, and quote shipping at checkout."
+msgstr "Imprime los rótulos, la planilla de retiro o despacha con tu transportista (Andreani, Correo Argentino u OCA) los pedidos elegidos desde la lista de pedidos de WooCommerce, y cotiza el envío en el checkout."

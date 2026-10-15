@@ -1,4 +1,4 @@
-// Lo común a las tres opciones de la app en el admin de Shopify (imprimir
+// Lo común a las opciones de la app en el admin de Shopify (imprimir
 // rótulos, planilla de retiro, despachar con Andreani): pedirle al backend el
 // enlace al PDF para los pedidos elegidos. El backend es
 // backend/apps/integrations/providers/shopify/views.py (ShopifyPrintLinkView)
