@@ -9,8 +9,6 @@ comerciante puede corregir lo que se detectó.
 
 from __future__ import annotations
 
-import csv
-import io
 import re
 import unicodedata
 
@@ -18,7 +16,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import URLValidator
 from django.db.models import Q
 from django.utils import timezone
-from openpyxl import Workbook
+
+from apps.common.spreadsheet import csv_bytes, xlsx_bytes
 
 from .models import Order
 
@@ -113,54 +112,12 @@ def export_row(order):
     ]
 
 
-# Un valor que empieza con estos caracteres una planilla lo toma como
-# fórmula. Los datos del comprador los escribe un tercero, así que se
-# neutralizan (inyección de CSV). Un teléfono "+54 11 ..." es solo números
-# y no se toca, para no ensuciarlo con la comilla.
-_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
-_HARMLESS_NUMBER = re.compile(r"^[+-]?[\d\s().-]+$")
-
-
-def _safe_cell(value):
-    if not isinstance(value, str):
-        return value
-    if value.startswith(_FORMULA_PREFIXES) and not _HARMLESS_NUMBER.match(value):
-        return "'" + value
-    return value
-
-
 def export_csv(orders):
-    """CSV con ``;`` y BOM: es lo que Excel en español abre bien con doble
-    clic (con ``,`` y sin BOM mete todo en una columna y rompe los acentos)."""
-    buffer = io.StringIO()
-    buffer.write("﻿")
-    writer = csv.writer(buffer, delimiter=";")
-    writer.writerow(EXPORT_COLUMNS)
-    for order in orders:
-        writer.writerow([_safe_cell(value) for value in export_row(order)])
-    return buffer.getvalue().encode("utf-8")
+    return csv_bytes(EXPORT_COLUMNS, (export_row(order) for order in orders))
 
 
 def export_xlsx(orders):
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "Pedidos"
-    sheet.append(EXPORT_COLUMNS)
-    for order in orders:
-        sheet.append([_safe_cell(value) for value in export_row(order)])
-    # Todo texto queda como texto: openpyxl escribe como fórmula cualquier
-    # cadena que empiece con "=", aun después de _safe_cell.
-    for row in sheet.iter_rows(min_row=2):
-        for cell in row:
-            if isinstance(cell.value, str):
-                cell.data_type = "s"
-    sheet.freeze_panes = "A2"
-    for column_cells in sheet.columns:
-        width = max(len(str(cell.value or "")) for cell in column_cells[:200])
-        sheet.column_dimensions[column_cells[0].column_letter].width = min(max(width + 2, 8), 50)
-    buffer = io.BytesIO()
-    workbook.save(buffer)
-    return buffer.getvalue()
+    return xlsx_bytes(EXPORT_COLUMNS, (export_row(order) for order in orders), "Pedidos")
 
 
 # ---------------------------------------------------------------------------

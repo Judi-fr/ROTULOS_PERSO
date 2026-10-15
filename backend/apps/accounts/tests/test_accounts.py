@@ -5,8 +5,10 @@ Cubren el "Bloque 1" de endurecimiento: no dependen del frontend ni de
 cookies (eso es una fase posterior); ejercitan el contrato JSON actual.
 """
 
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.contrib.auth.tokens import default_token_generator
@@ -3472,6 +3474,23 @@ class PasswordResetConfirmTests(AuthTestCase):
 
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password(self.NUEVA))
+
+    def test_enlace_vencido_no_sirve_y_no_cambia_la_contrasenia(self):
+        """El token lleva su fecha: pasado PASSWORD_RESET_TIMEOUT caduca solo,
+        aunque nadie lo haya usado. Se adelanta el reloj del generador."""
+        vencido = datetime.now() + timedelta(seconds=settings.PASSWORD_RESET_TIMEOUT + 60)
+        with patch.object(default_token_generator, "_now", return_value=vencido):
+            resp = self._post()
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(STRONG_PASSWORD))
+
+    def test_enlace_dentro_del_plazo_todavia_sirve(self):
+        casi = datetime.now() + timedelta(seconds=settings.PASSWORD_RESET_TIMEOUT - 60)
+        with patch.object(default_token_generator, "_now", return_value=casi):
+            resp = self._post()
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
 
     def test_token_invalido_devuelve_400(self):
         resp = self._post(token="no-es-el-token")

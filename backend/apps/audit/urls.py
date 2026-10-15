@@ -2,10 +2,11 @@
 
 from django.urls import path
 
-from .views import AuditActionsView, AuditLogListView, AuditMetricsView
+from .views import AuditActionsView, AuditLogExportView, AuditLogListView, AuditMetricsView
 
 urlpatterns = [
     path("logs/", AuditLogListView.as_view(), name="audit-log-list"),
+    path("logs/export/", AuditLogExportView.as_view(), name="audit-log-export"),
     path("actions/", AuditActionsView.as_view(), name="audit-actions"),
     path("metrics/", AuditMetricsView.as_view(), name="audit-metrics"),
 ]

@@ -79,6 +79,11 @@ MAX_DESIGN_LINES = 20
 # puede apuntarles.
 DECORATION_KEYS = {"texts", "lines", "border"}
 
+# Claves que solo usa el editor y el render ignora: ``locked`` es la lista de
+# campos bloqueados (no se arrastran por accidente). Una regla tampoco puede
+# apuntarles.
+EDITOR_ONLY_KEYS = {"locked"}
+
 
 def _validate_text_style(label, entry):
     text = entry.get("text")
@@ -88,7 +93,7 @@ def _validate_text_style(label, entry):
         _validate_number_range(entry["font_size"], f"{label}.font_size", FONT_SIZE_MIN, FONT_SIZE_MAX)
     if "width" in entry:
         _validate_number_range(entry["width"], f"{label}.width", 1, 100)
-    for flag in ("bold", "hide_if_empty", "shrink_to_fit"):
+    for flag in ("bold", "hide_if_empty", "shrink_to_fit", "locked"):
         if flag in entry and not isinstance(entry[flag], bool):
             raise serializers.ValidationError(f"'{label}.{flag}' debe ser verdadero/falso.")
     if "align" in entry and entry["align"] not in VALID_TEXT_ALIGNS:
@@ -132,8 +137,19 @@ def _validate_lines(value):
         _validate_number_range(right, f"{label}.right", 0, 100)
         if left >= right:
             raise serializers.ValidationError(f"'{label}.left' debe ser menor que '{label}.right'.")
-        if "dashed" in entry and not isinstance(entry["dashed"], bool):
-            raise serializers.ValidationError(f"'{label}.dashed' debe ser verdadero/falso.")
+        for flag in ("dashed", "locked"):
+            if flag in entry and not isinstance(entry[flag], bool):
+                raise serializers.ValidationError(f"'{label}.{flag}' debe ser verdadero/falso.")
+
+
+def _validate_locked(value):
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise serializers.ValidationError("'locked' debe ser una lista de nombres de campo.")
+    unknown = set(value) - KNOWN_DESIGN_FIELDS
+    if unknown:
+        raise serializers.ValidationError(
+            f"'locked' tiene campos que no existen: {', '.join(sorted(unknown))}."
+        )
 
 
 def _validate_border(value):
@@ -267,7 +283,11 @@ def validate_design(value):
     ``shrink_to_fit``.
     Decoración opcional: ``texts`` (textos extra con la misma forma),
     ``lines`` (separadores horizontales ``{top, left, right, dashed}``) y
-    ``border`` (``{dashed}``, borde de corte). El editor no las usa todavía.
+    ``border`` (``{dashed}``, borde de corte). Un texto extra o una línea
+    pueden llevar ``locked`` (booleano).
+
+    ``"locked"`` (opcional): lista de campos bloqueados en el editor. Solo la
+    usa el editor; el render la ignora.
 
     Además, ``"rules"`` (opcional, lista, Historia 28) — reglas
     condicionales que ``apps.labels.label_rendering.apply_design_rules`` evalúa
@@ -289,10 +309,13 @@ def validate_design(value):
         raise serializers.ValidationError(
             f"'rules' admite como máximo {MAX_DESIGN_RULES} reglas."
         )
-    known_targets = set(value.keys()) - {"rules"} - DECORATION_KEYS
+    known_targets = set(value.keys()) - {"rules"} - DECORATION_KEYS - EDITOR_ONLY_KEYS
 
     for key, entry in value.items():
         if key == "rules":
+            continue
+        if key == "locked":
+            _validate_locked(entry)
             continue
         if key == "texts":
             _validate_extra_texts(entry)

@@ -5,10 +5,12 @@
 // ahora es pedidos_admin.html.)
 // ---------------------------------------------------------------------------
 const AUDIT_LOGS_URL = `${window.APP_CONFIG.API_BASE}/audit/logs/`;
+const AUDIT_EXPORT_URL = `${window.APP_CONFIG.API_BASE}/audit/logs/export/`;
 
 let auditPage = 1;
 
-function auditQueryString() {
+// Los filtros de la barra, sin la página: los usa el listado y la descarga.
+function auditFilterParams() {
   const params = new URLSearchParams();
   const search = document.getElementById("auditSearchInput")?.value.trim();
   const category = document.getElementById("auditCategoryFilter")?.value;
@@ -22,6 +24,11 @@ function auditQueryString() {
   if (actor) params.set("actor", actor);
   if (dateFrom) params.set("date_from", dateFrom);
   if (dateTo) params.set("date_to", dateTo);
+  return params;
+}
+
+function auditQueryString() {
+  const params = auditFilterParams();
   if (auditPage > 1) params.set("page", auditPage);
   const qs = params.toString();
   return qs ? `${AUDIT_LOGS_URL}?${qs}` : AUDIT_LOGS_URL;
@@ -110,6 +117,45 @@ document.getElementById("clearAuditFiltersBtn")?.addEventListener("click", () =>
     .forEach((id) => { const el = document.getElementById(id); if (el) el.value = ""; });
   auditPage = 1;
   loadAuditLogs();
+});
+
+// Descarga lo que está filtrado (todas las páginas, hasta el tope del backend).
+async function exportAuditLogs(button) {
+  const fileType = button.dataset.fileType;
+  const params = auditFilterParams();
+  params.set("file_type", fileType);
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = "Descargando...";
+  try {
+    const response = await apiFetch(`${AUDIT_EXPORT_URL}?${params.toString()}`);
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(getErrorMessage(data, "No se pudo descargar la auditoría."));
+    }
+    const count = Number(response.headers.get("X-Audit-Count") || 0);
+    const truncated = response.headers.get("X-Audit-Truncated") === "1";
+    await downloadResponse(response, `auditoria.${fileType}`);
+    if (truncated) {
+      showMessage(
+        `Se descargaron los ${count} registros más recientes; hay más. Acotá las fechas para bajar el resto.`,
+        "error"
+      );
+    } else {
+      showMessage(`Se descargaron ${count} registros.`, "success");
+    }
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    showMessage(err.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+["exportAuditCsvBtn", "exportAuditXlsxBtn"].forEach((id) => {
+  const button = document.getElementById(id);
+  button?.addEventListener("click", () => exportAuditLogs(button));
 });
 
 function bootstrap() {

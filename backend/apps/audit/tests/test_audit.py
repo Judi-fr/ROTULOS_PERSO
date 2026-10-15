@@ -2,8 +2,13 @@
 de lectura. Los tests de integración (qué vistas de otras apps disparan qué
 acción) viven en los tests de esas apps (accounts, orders)."""
 
+import csv
+import io
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from openpyxl import load_workbook
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -66,7 +71,9 @@ class RecordServiceTests(APITestCase):
         self.assertEqual(log.target_id, str(user.pk))
 
 
-class AuditEndpointsTests(APITestCase):
+class AuditFixtures(APITestCase):
+    """Un admin con ``audit.view``, un usuario sin permiso y dos registros."""
+
     def setUp(self):
         for name in ("admin", "designer", "operator", "subscriber"):
             Group.objects.get_or_create(name=name)
@@ -107,6 +114,8 @@ class AuditEndpointsTests(APITestCase):
             target_repr="nuevo@example.com",
         )
 
+
+class AuditEndpointsTests(AuditFixtures):
     def test_no_admin_recibe_403(self):
         self.client.force_authenticate(user=self.plain_user)
         resp = self.client.get("/api/v1/audit/logs/")
@@ -140,3 +149,67 @@ class AuditEndpointsTests(APITestCase):
         self.assertIn("actions", resp.data)
         keys = {a["key"] for a in resp.data["actions"]}
         self.assertIn("user.create", keys)
+
+
+class AuditExportTests(AuditFixtures):
+    """GET /api/v1/audit/logs/export/ — los mismos filtros que el listado."""
+
+    URL = "/api/v1/audit/logs/export/"
+
+    def _csv_rows(self, resp):
+        text = resp.content.decode("utf-8")
+        self.assertTrue(text.startswith("﻿"), "el CSV tiene que traer BOM para Excel")
+        return list(csv.reader(io.StringIO(text.lstrip("﻿")), delimiter=";"))
+
+    def test_sin_permiso_403(self):
+        self.client.force_authenticate(user=self.plain_user)
+        self.assertEqual(self.client.get(self.URL).status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_csv_con_los_filtros_del_listado(self):
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.get(self.URL, {"category": "users", "search": "nuevo"})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn("auditoria-", resp["Content-Disposition"])
+        self.assertEqual(resp["X-Audit-Count"], "1")
+        self.assertEqual(resp["X-Audit-Truncated"], "0")
+
+        rows = self._csv_rows(resp)
+        self.assertEqual(rows[0][0], "Fecha")
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[1][1], self.admin_user.email)
+        self.assertEqual(rows[1][6], "nuevo@example.com")
+
+    def test_cambios_legibles_y_formula_neutralizada(self):
+        AuditLog.objects.create(
+            category=AuditLog.Category.USERS,
+            action=AuditLog.Action.USER_CREATE,
+            actor_email="=HYPERLINK(\"http://malo\")",
+            target_repr="x",
+            changes={"status": {"from": "active", "to": "inactive"}, "email": {"from": None, "to": "a@b.com"}},
+        )
+        self.client.force_authenticate(user=self.admin_user)
+        rows = self._csv_rows(self.client.get(self.URL, {"search": "HYPERLINK"}))
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(rows[1][1].startswith("'="), "una fórmula no puede llegar viva a la planilla")
+        self.assertIn("status: active → inactive", rows[1][7])
+        self.assertIn("email: — → a@b.com", rows[1][7])
+
+    def test_xlsx(self):
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.get(self.URL, {"file_type": "xlsx"})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        sheet = load_workbook(io.BytesIO(resp.content)).active
+        self.assertEqual(sheet.title, "Auditoría")
+        self.assertEqual(sheet.max_row, 3)
+
+    def test_tipo_de_archivo_invalido_400(self):
+        self.client.force_authenticate(user=self.admin_user)
+        resp = self.client.get(self.URL, {"file_type": "pdf"})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_se_corta_en_el_tope_y_lo_avisa(self):
+        self.client.force_authenticate(user=self.admin_user)
+        with patch("apps.audit.views.AUDIT_EXPORT_MAX_ROWS", 1):
+            resp = self.client.get(self.URL)
+        self.assertEqual(resp["X-Audit-Count"], "1")
+        self.assertEqual(resp["X-Audit-Truncated"], "1")

@@ -41,6 +41,10 @@ source venv/bin/activate
 - Django shell: `python manage.py shell`
 - Store integrations worker (processes `IntegrationEvent`, retries): `python manage.py run_integrations_worker`
   (`--once` for a single batch, `--limit`, `--sleep`)
+- Demo data: `python manage.py seed_demo` (`apps/orders/management/commands/seed_demo.py`) — a merchant account
+  (`demo@rotulos.local`, password in the command, `--email`/`--password`), an Empretienda store (the only platform
+  that calls no API) with sender and rates, its orders in every status through `upsert_store_order`, two manual
+  orders and an own address. Idempotent; refuses with `DEBUG` off unless `--force`.
 
 `DJANGO_SETTINGS_MODULE` selects `config.settings.dev` or `config.settings.prod`; both import from
 `config/settings/base.py`. `manage.py` defaults to `dev`.
@@ -54,6 +58,20 @@ is only safe if someone can read the logs: before, outside production there was 
 so Python fell back to `lastResort` — every `INFO` was dropped in silence, including
 the rate callbacks' (`providers/tiendanube/rates.py`, `providers/woocommerce/rates.py`) "no rate for this postal code", which is the diagnostic for why a store's shipping
 option never appeared.
+`LOG_FORMAT=json` (default `text`) switches both handlers to `config/log_format.JsonFormatter`: one JSON object
+per line with `ts`/`level`/`logger`/`message`, every `extra={...}` the code passes, and the traceback in
+`exception` — for a log collector on a server. Stdlib only; any other value refuses to start.
+
+### API errors are always JSON (`config/errors.py`)
+
+DRF already answers its own errors in JSON and the frontend reads that shape (`getErrorMessage`), so that is
+untouched. What used to come out as Django's HTML page was the unexpected: an exception in a view and an unknown
+`/api/` route. `ApiExceptionMiddleware` (last in `MIDDLEWARE`, so first to see a view's exception) logs it under
+`apps.errors` with a 12-char `error_id` and answers 500 `{detail, error_id}` — the merchant can quote the code
+and it's in the log; the response is marked `_has_been_logged` so `django.request` doesn't log it a second time
+without trace or code. `handler404`/`handler500` (in `config/urls.py`) answer JSON for `/api/` only; the admin
+keeps Django's pages. With `DEBUG` on the exception goes through (the debug page is more useful while
+developing).
 
 ### Health probes (`config/health.py`)
 
@@ -125,12 +143,15 @@ and `/static` → 8000 and `/` → 8001 under one domain, so someone else's brow
 - `api/v1/documents/` → `apps.documents.urls` (generated batch output)
 - `api/v1/processing/` → `apps.processing.urls` (photo → label-layout agent)
 - `api/v1/labels/` → `apps.labels.urls` (`labels/`, `templates/`, `element-layouts/`, `layout-variables/`,
-  `admin/`, `render/`, `barcode/`, `batch/`, `fonts/`)
+  `admin/`, `render/`, `preview/`, `barcode/`, `batch/`, `fonts/`, `sequence/`)
 - `api/v1/integrations/` → `apps.integrations.urls` (admin ABM + store connections, plus
   `<platform>/install-url|callback|webhooks/` per provider and `shopify/launch/`)
 - `api/v1/carriers/` → `apps.carriers.urls` (common: ``, `accounts/<carrier>/`, `branches/<carrier>/`, `shipments/...`,
   `push/<carrier>/<key>/`; plus Andreani's original `andreani/...`)
-- `api/v1/ingest/` → `apps.integrations.ingest_urls` (API-key/webhook order ingest, separate auth)
+- `api/v1/ingest/` → `apps.integrations.ingest_urls` (API-key/webhook order ingest, separate auth; its OpenAPI 3
+  contract at `GET openapi.json`, public, built by `ingest_openapi.py` from `ingestion.TARGET_FIELDS` and the
+  `ingest` throttle rate so it can't drift — what can't be derived (per-item result, webhook signature) is
+  written once and tested)
 - `api/v1/integrations/` → `apps.integrations.providers.tiendanube.label_urls` and `.rate_urls` (Tiendanube Labels API callbacks + public PDF
   download, separate auth — see "Labels the store asks for" below)
 
@@ -145,7 +166,11 @@ A plain package, not a Django app (no models, not in `INSTALLED_APPS`). `date_fi
 `parse_date_range` and `date_range_q(query_params, field="created_at", ...)`, which returns a `Q` — empty
 when no dates came, so a caller filters with it unconditionally. Seven views across six apps each carried
 their own copy, five of them identical character for character, with two different error messages and one
-endpoint that silently accepted a reversed range. The comparison is always `__date__gte`/`__date__lte` on
+endpoint that silently accepted a reversed range.
+`spreadsheet.py` holds the downloadable-sheet rules every export follows: `csv_bytes(columns, rows)` (`;` + BOM,
+what Spanish Excel opens on double click), `xlsx_bytes(columns, rows, title)` (text forced to string) and
+`safe_cell` (values starting with `= + - @` neutralized — CSV injection). Used by the order export and the audit
+export. The comparison is always `__date__gte`/`__date__lte` on
 a `DateTimeField`: with a plain `__lte`, "up to the 24th" would exclude everything on the 24th except
 exact midnight. It reads `.get()`, so it takes query params or a JSON body dict (`batch_views` passes
 `filters` from the body).
@@ -196,7 +221,9 @@ There is **no `role` field on `User`** — it's derived, never stored directly:
   `GenericForeignKey`/contenttypes), a `changes` diff (`{"field": {"from", "to"}}`, never
   passwords/hashes/tokens), IP/user-agent, `created_at`.
 - `GET /audit/logs/` (filters: `search`, `category`, `action`, `actor`, `target_type`, `date_from`/`to`,
-  `ordering`; permission `audit.view`), `GET /audit/actions/` (catalog for frontend selects), `GET
+  `ordering`; permission `audit.view`), `GET /audit/logs/export/?file_type=csv|xlsx` + the same filters
+  (`filter_logs`, shared, so the file is exactly what the screen shows; capped at `AUDIT_EXPORT_MAX_ROWS`, 10 000,
+  count/cut in `X-Audit-Count`/`X-Audit-Truncated`; "Descargar CSV/Excel" in `auditoria.html`), `GET /audit/actions/` (catalog for frontend selects), `GET
   /audit/metrics/` (admin activity + login events by month).
 - The only way to create a row is `apps.audit.services.record(request=None, *, actor=None, category,
   action, target=None, ..., changes=None)`, called explicitly from the views that need it (no signals).
@@ -283,8 +310,31 @@ change in `label_rendering.py`, change them in the editor too.** `renderDecorati
   the same select-then-configure pattern as the QR/barcode panel beside it. An empty or unchecked control
   **deletes** the key instead of storing a falsy value, so the design keeps only what the user actually
   chose and the renderer's defaults (proportional size, full width to the right edge) stay in force.
-- `collectFields()` re-emits the styles and the decorations. Before, opening a template and saving it
-  silently stripped its border, rules and fixed texts.
+- `collectFields()` re-emits the styles, the decorations, `rules` and `locked`. Before, opening a template and
+  saving it silently stripped its border, rules and fixed texts. It also flattens each text to one line: the
+  default fields carry the HTML's line breaks and indentation, and the PDF drew them as "■".
+- **Pieces of the editor in their own files** (the page is already large): `label_editor_markers.js` (the
+  `{{...}}` catalogue — shipment data from `build_label_context` + the computed ones from
+  `build_computed_context`; if one is added there, add it here —, "Insertar dato" in the field, fixed-text and
+  code panels, and the `{{secuencia}}` numbering section), `label_editor_rules.js` (the "Reglas según los datos
+  del envío" section: one row per rule, reorderable because the last one touching an element wins; a "mover"
+  without both coordinates is dropped on save, with a confirm first) and `label_editor_snap.js` (snapping to the
+  other fields' edges, the centre and the separator lines, with guides; Alt turns it off; texts only offer their
+  left/top edge because their box runs to the right edge).
+- **Locking**: `design.locked` is a list of field names (lines and fixed texts carry `locked: true` instead). A
+  locked element is still selected (to unlock it or edit its text) but not dragged nor moved with the arrows
+  (0.5 %, Shift 5 %; Alt+arrows while typing in a text). Editor-only: the PDF and the ZPL ignore it, and a rule
+  can't target it (`serializers.EDITOR_ONLY_KEYS`). **There is no per-element layer order on purpose**: the PDF
+  draws decorations, logo, codes and then texts, so text is always on top, and a thermal printer doesn't depend
+  on order.
+- `GET/PUT /labels/sequence/` (`LabelSequenceView`, `labels.edit`): `{prefix, padding, next}` of the user's
+  `LabelSequence` key `default`, the only one the render uses; `next` is stored as `current = next - 1`, so it's
+  the same counter `next_value` increments. Audited as `label.update`.
+- Fixed while adding the above: `.tool-group { display: flex }` beat the `hidden` attribute, so every
+  select-to-show panel (QR, field, decoration) was always visible; and `selectDeco`/`refreshDecoPanel` live in the
+  module but the classic script calls them — module functions aren't global, so clicking a line or fixed text threw
+  and decorations couldn't be dragged (now exposed on `window`). A text field's box reaches the right edge, so the
+  drag clamp never let a text move right (`maxLeftFor`).
 - The **decorations panel** (`decoGroup` + `decoPropsGroup`) creates them: a "Recuadro" checkbox (plus
   "Punteado"), `+ Línea` and `+ Texto fijo`. A line or a fixed text is selected by clicking it on the canvas
   and dragged from there — the drag writes into `decorations` and re-renders, because the decoration layer

@@ -40,6 +40,7 @@
         </div>
 
         <section aria-labelledby="auditTitle">
+          <div id="pageMessage" class="page-message" hidden></div>
           <div class="roles-card">
             <div class="roles-card-title">Filtros</div>
             <div class="filter-bar">
@@ -55,6 +56,9 @@
               <label>Hasta <input type="date" id="auditDateTo" /></label>
               <button type="button" class="btn btn-outline" id="applyAuditFiltersBtn">Aplicar</button>
               <button type="button" class="btn btn-outline" id="clearAuditFiltersBtn">Limpiar</button>
+              <!-- Descarga lo filtrado, sin paginar (GET /audit/logs/export/). -->
+              <button type="button" class="btn btn-outline" id="exportAuditCsvBtn" data-file-type="csv">Descargar CSV</button>
+              <button type="button" class="btn btn-outline" id="exportAuditXlsxBtn" data-file-type="xlsx">Descargar Excel</button>
             </div>
           </div>
 

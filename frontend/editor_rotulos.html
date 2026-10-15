@@ -17,6 +17,11 @@
     <script src="assets/js/utils.js"></script>
     <script src="assets/js/topbar.js"></script>
     <script src="assets/js/print.js"></script>
+    <!-- Partes del editor que viven en su propio archivo: datos insertables y
+         numeración, reglas condicionales e imán al arrastrar. -->
+    <script src="assets/js/label_editor_markers.js"></script>
+    <script src="assets/js/label_editor_rules.js"></script>
+    <script src="assets/js/label_editor_snap.js"></script>
 
     <!-- Estilos comunes del frontend (header/topbar, botones, avatar). Va
          ANTES del <style> propio del editor para que este último (más
@@ -117,6 +122,13 @@
         display: flex;
         align-items: center;
         gap: 6px;
+      }
+      /* El display:flex de arriba le gana al atributo hidden: los paneles
+         que aparecen al elegir algo (QR, campo, decoración, bloqueo) y sus
+         controles por tipo se veían siempre. */
+      .tool-group[hidden],
+      .tool-group label[hidden] {
+        display: none;
       }
       .tool-group input[type="number"] {
         width: 60px;
@@ -357,6 +369,139 @@
         color: var(--muted);
         text-align: center;
       }
+
+      /* Campo bloqueado: no se arrastra ni se mueve con el teclado. Se ve
+         con un borde continuo gris para que no parezca un error. */
+      .field.locked {
+        cursor: default;
+        outline-style: solid;
+        outline-color: rgba(143, 137, 168, 0.7);
+      }
+      .deco-line.locked,
+      .deco-text.locked {
+        cursor: default;
+      }
+      .field.selected-el {
+        outline: 2px solid var(--accent);
+      }
+
+      /* Guías del imán (label_editor_snap.js). */
+      .snap-guide {
+        position: absolute;
+        pointer-events: none;
+        z-index: 60;
+        background: #ff3d7f;
+      }
+      .snap-guide-x {
+        top: 0;
+        bottom: 0;
+        width: 1px;
+      }
+      .snap-guide-y {
+        left: 0;
+        right: 0;
+        height: 1px;
+      }
+      .label.exporting .snap-guide {
+        display: none;
+      }
+
+      /* Secciones debajo del lienzo: reglas y numeración. */
+      .editor-extra {
+        margin-top: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .editor-extra details {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px 18px;
+      }
+      .editor-extra summary {
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 14px;
+      }
+      .editor-extra .section-help {
+        font-size: 12.5px;
+        color: var(--muted);
+        margin: 10px 0 12px;
+      }
+      .rule-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 0;
+        border-top: 1px solid #efedf7;
+      }
+      .rule-row select,
+      .rule-row input,
+      .seq-form input,
+      .tool-group select {
+        padding: 6px 8px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-size: 13px;
+        background: #fff;
+      }
+      .rule-row .rule-value,
+      .rule-row .rule-text {
+        width: 180px;
+      }
+      .rule-row .rule-num {
+        width: 76px;
+      }
+      .rule-word {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .rule-tools {
+        margin-left: auto;
+        display: flex;
+        gap: 4px;
+      }
+      .rule-tools button {
+        padding: 5px 9px;
+      }
+      .rules-empty {
+        font-size: 13px;
+        color: var(--muted);
+        margin: 4px 0 10px;
+      }
+      .seq-form {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 12px;
+      }
+      .seq-form label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .seq-example {
+        font-family: ui-monospace, monospace;
+        font-size: 15px;
+        padding: 6px 10px;
+        background: #f4f3f9;
+        border-radius: 6px;
+      }
+      .rules-message {
+        margin: 10px 0 0;
+        font-size: 13px;
+      }
+      .rules-message.success {
+        color: #16a34a;
+      }
+      .rules-message.error {
+        color: #dc2626;
+      }
     </style>
   </head>
   <body>
@@ -460,17 +605,9 @@
           </label>
           <label
             >Insertar marcador
-            <select id="codeMarkerSelect">
-              <option value="">— elegir —</option>
-              <option value="remitente">Remitente</option>
-              <option value="destinatario">Destinatario</option>
-              <option value="domicilio">Domicilio</option>
-              <option value="cp">CP</option>
-              <option value="localidad">Localidad</option>
-              <option value="pedido">N° de pedido</option>
-              <option value="tracking">Código de seguimiento</option>
-              <option value="tracking_url">URL de seguimiento</option>
-            </select>
+            <!-- Las opciones las pone label_editor_markers.js: los mismos
+                 datos (y calculados) que entiende el render. -->
+            <select id="codeMarkerSelect"></select>
           </label>
         </div>
 
@@ -527,6 +664,26 @@
             <input type="checkbox" id="propShrink" />
             Achicar para que entre
           </label>
+          <label title="Se inserta donde estaba el cursor en el texto del campo">
+            Insertar dato
+            <select id="propMarkerSelect"></select>
+          </label>
+        </div>
+
+        <!-- Bloqueo del elemento elegido en el lienzo (cualquiera: texto,
+             logo, QR o código). Bloqueado no se arrastra ni se mueve con las
+             flechas; el texto se sigue pudiendo editar. -->
+        <div class="tool-group" id="lockGroup" hidden>
+          <span class="code-config-label"
+            >Elemento: <strong id="lockGroupTitle"></strong></span
+          >
+          <label>
+            <input type="checkbox" id="lockFieldInput" />
+            Bloquear posición
+          </label>
+          <span class="code-config-label" title="Con Alt: sin imán al arrastrar. Flechas: mover 0,5 % (con Mayúscula, 5 %).">
+            Flechas para mover · Alt para soltar el imán
+          </span>
         </div>
         <!-- Decoraciones: recuadro de corte, líneas separadoras y textos
              fijos. El render las dibujaba desde siempre y el editor pasó a
@@ -558,6 +715,10 @@
           <label id="decoTextLabel" hidden>
             Contenido
             <input type="text" id="decoText" style="width: 190px" />
+          </label>
+          <label id="decoMarkerLabel" hidden>
+            Insertar dato
+            <select id="decoMarkerSelect"></select>
           </label>
           <label id="decoFontSizeLabel" hidden>
             Tamaño (pt)
@@ -594,6 +755,10 @@
           <label id="decoDashedLabel" hidden>
             <input type="checkbox" id="decoDashed" />
             Punteada
+          </label>
+          <label id="decoLockedLabel" hidden>
+            <input type="checkbox" id="decoLocked" />
+            Bloquear posición
           </label>
           <button type="button" class="btn btn-outline" id="decoDeleteBtn">
             Eliminar
@@ -709,6 +874,43 @@
         Los campos se guardan en % del rótulo, así que si cambiás el tamaño, la
         posición relativa se mantiene.
       </p>
+
+      <div class="editor-extra">
+        <!-- Reglas condicionales (design.rules): las arma
+             label_editor_rules.js; el backend las aplica al imprimir. -->
+        <details id="rulesPanel">
+          <summary>Reglas según los datos del envío <span id="rulesCount"></span></summary>
+          <p class="section-help">
+            Cambian el rótulo según cada pedido: por ejemplo, ocultar el QR si
+            no hay código de seguimiento, o cambiar un texto según la localidad.
+            Se aplican al imprimir, en orden; si dos tocan el mismo elemento,
+            gana la de más abajo. Para verlas con datos de muestra usá
+            "Ver cómo sale impreso".
+          </p>
+          <div id="rulesList"></div>
+          <button type="button" id="addRuleBtn">+ Agregar regla</button>
+        </details>
+
+        <!-- Numeración de {{secuencia}}: es una sola por cuenta, la comparten
+             todas las plantillas (label_editor_markers.js). -->
+        <details id="sequencePanel">
+          <summary>Número correlativo ({{secuencia}})</summary>
+          <p class="section-help">
+            Cada rótulo impreso que tenga el dato "Número correlativo" lleva el
+            número siguiente. Es uno solo para toda tu cuenta: lo comparten
+            todas tus plantillas. La vista previa muestra un número de muestra
+            y no gasta ninguno.
+          </p>
+          <div class="seq-form">
+            <label>Prefijo <input type="text" id="seqPrefix" maxlength="20" placeholder="ENV-" style="width: 110px" /></label>
+            <label>Cifras <input type="number" id="seqPadding" min="0" max="12" step="1" style="width: 70px" /></label>
+            <label>Próximo número <input type="number" id="seqNext" min="1" step="1" style="width: 110px" /></label>
+            <label>Así se va a ver <span class="seq-example" id="seqExample">000001</span></label>
+            <button type="button" id="seqSaveBtn">Guardar numeración</button>
+          </div>
+          <p id="seqMessage" class="rules-message" hidden></p>
+        </details>
+      </div>
     </main>
 
     <div class="preview-overlay" id="serverPreviewOverlay" hidden>
@@ -950,6 +1152,7 @@
           if (selectedDeco?.type === "line" && selectedDeco.index === index) {
             el.classList.add("selected");
           }
+          el.classList.toggle("locked", Boolean(line.locked));
           attachDecoPointer(el, "line", index);
           layer.appendChild(el);
         });
@@ -967,6 +1170,7 @@
           if (selectedDeco?.type === "text" && selectedDeco.index === index) {
             el.classList.add("selected");
           }
+          el.classList.toggle("locked", Boolean(item.locked));
           attachDecoPointer(el, "text", index);
           layer.appendChild(el);
         });
@@ -989,7 +1193,11 @@
         el.addEventListener("pointerdown", (event) => {
           event.stopPropagation();
           selectDeco(type, index);
+          selectField(null);
           const entry = decorations[type === "line" ? "lines" : "texts"][index];
+          // Bloqueada: se elige (para configurarla o desbloquearla) pero no
+          // se arrastra.
+          if (entry.locked) return;
           activeDeco = { type, index };
           decoStartX = event.clientX;
           decoStartY = event.clientY;
@@ -1032,8 +1240,12 @@
         refreshDecoPanel();
       });
 
-      // Un click en el lienzo, fuera de una decoración, deselecciona.
-      label.addEventListener("pointerdown", () => selectDeco(null));
+      // Un click en el lienzo, fuera de una decoración o un campo,
+      // deselecciona (los campos frenan el evento, ver más abajo).
+      label.addEventListener("pointerdown", () => {
+        selectDeco(null);
+        selectField(null);
+      });
 
       function updateLabelSize() {
         label.style.width = (parseFloat(widthCmInput.value) || 10) + "cm";
@@ -1048,6 +1260,109 @@
         .getElementById("resetBtn")
         .addEventListener("click", applyDefaultPositions);
 
+      // --- Bloqueo y elemento elegido -------------------------------------
+      // Campos bloqueados (design.locked): no se arrastran ni se mueven con
+      // las flechas. Solo lo usa el editor, el render lo ignora.
+      const lockedFields = new Set();
+      let selectedFieldKey = null;
+      const ELEMENT_LABELS = {
+        logo: "Logo",
+        qr: "QR",
+        barcode: "Código de barras",
+        remitente: "Remitente",
+        destinatario: "Destinatario",
+        domicilio: "Domicilio",
+        cp: "CP",
+        localidad: "Localidad/Provincia",
+        pedido: "N° de pedido",
+      };
+      const lockGroup = document.getElementById("lockGroup");
+      const lockFieldInput = document.getElementById("lockFieldInput");
+
+      function fieldEl(key) {
+        return document.querySelector(`.field[data-field="${key}"]`);
+      }
+
+      // Hasta dónde puede ir el borde izquierdo de un campo (en %). Un texto
+      // se mide hasta el borde derecho del rótulo (applyRenderMetrics le pone
+      // ese ancho), así que su caja no sirve de tope: con ella un texto nunca
+      // se podía arrastrar hacia la derecha. Se le deja un margen mínimo.
+      const TEXT_MAX_LEFT = 95;
+      function maxLeftFor(el, elWpct) {
+        return TEXT_FIELDS.includes(el.dataset.field) ? TEXT_MAX_LEFT : 100 - elWpct;
+      }
+
+      function syncLockedClasses() {
+        document.querySelectorAll(".field").forEach((el) => {
+          el.classList.toggle("locked", lockedFields.has(el.dataset.field));
+        });
+      }
+
+      function selectField(key) {
+        selectedFieldKey = key;
+        document.querySelectorAll(".field").forEach((el) => {
+          el.classList.toggle("selected-el", el.dataset.field === key);
+        });
+        lockGroup.hidden = !key;
+        if (!key) return;
+        document.getElementById("lockGroupTitle").textContent = ELEMENT_LABELS[key] || key;
+        lockFieldInput.checked = lockedFields.has(key);
+      }
+
+      lockFieldInput.addEventListener("change", () => {
+        if (!selectedFieldKey) return;
+        if (lockFieldInput.checked) lockedFields.add(selectedFieldKey);
+        else lockedFields.delete(selectedFieldKey);
+        syncLockedClasses();
+      });
+
+      // Flechas: mueven el elemento elegido 0,5 % (con Mayúscula, 5 %).
+      // Mientras se escribe en un texto las flechas mueven el cursor, así
+      // que ahí hace falta Alt.
+      document.addEventListener("keydown", (event) => {
+        const deltas = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+        const delta = deltas[event.key];
+        if (!delta) return;
+        const active = document.activeElement;
+        const typing =
+          active && (active.isContentEditable || ["INPUT", "SELECT", "TEXTAREA"].includes(active.tagName));
+        if (typing && !(event.altKey && active.isContentEditable)) return;
+        const step = event.shiftKey ? 5 : 0.5;
+
+        if (selectedDeco) {
+          const entry = decorations[selectedDeco.type === "line" ? "lines" : "texts"]?.[selectedDeco.index];
+          if (!entry || entry.locked) return;
+          event.preventDefault();
+          entry.top = Math.max(0, Math.min(100, (parseFloat(entry.top) || 0) + delta[1] * step));
+          if (selectedDeco.type === "line") {
+            const left = entry.left != null ? parseFloat(entry.left) : LINE_DEFAULT_LEFT;
+            const right = entry.right != null ? parseFloat(entry.right) : LINE_DEFAULT_RIGHT;
+            const shift = Math.max(-left, Math.min(100 - right, delta[0] * step));
+            entry.left = left + shift;
+            entry.right = right + shift;
+          } else {
+            entry.left = Math.max(0, Math.min(100, (parseFloat(entry.left) || 0) + delta[0] * step));
+          }
+          applyRenderMetrics();
+          refreshDecoPanel();
+          return;
+        }
+
+        if (!selectedFieldKey || lockedFields.has(selectedFieldKey)) return;
+        const el = fieldEl(selectedFieldKey);
+        if (!el) return;
+        event.preventDefault();
+        const rect = label.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        const maxLeft = maxLeftFor(el, (elRect.width / rect.width) * 100);
+        const maxTop = 100 - (elRect.height / rect.height) * 100;
+        const left = Math.max(0, Math.min(maxLeft, (parseFloat(el.style.left) || 0) + delta[0] * step));
+        const top = Math.max(0, Math.min(maxTop, (parseFloat(el.style.top) || 0) + delta[1] * step));
+        el.style.left = left + "%";
+        el.style.top = top + "%";
+        applyRenderMetrics();
+      });
+
       // --- Arrastrar campos ---
       let activeEl = null,
         startX = 0,
@@ -1058,6 +1373,13 @@
 
       document.querySelectorAll(".field").forEach((el) => {
         el.addEventListener("pointerdown", (e) => {
+          // El lienzo deselecciona en pointerdown; esto corre antes (el
+          // campo está adentro), así que se frena acá para no perder la
+          // selección recién hecha.
+          e.stopPropagation();
+          selectDeco(null);
+          selectField(el.dataset.field);
+          if (lockedFields.has(el.dataset.field)) return;
           activeEl = el;
           startX = e.clientX;
           startY = e.clientY;
@@ -1082,14 +1404,23 @@
         const elWpct = (elRect.width / rect.width) * 100;
         const elHpct = (elRect.height / rect.height) * 100;
 
-        const newLeft = Math.max(0, Math.min(100 - elWpct, startLeft + dxPct));
-        const newTop = Math.max(0, Math.min(100 - elHpct, startTop + dyPct));
+        let newLeft = startLeft + dxPct;
+        let newTop = startTop + dyPct;
+        // Imán contra los otros campos y el centro (Alt lo apaga).
+        const snapped = window.LabelEditorSnap.snap(label, activeEl, newLeft, newTop, e.altKey);
+        newLeft = Math.max(0, Math.min(maxLeftFor(activeEl, elWpct), snapped.left));
+        newTop = Math.max(0, Math.min(100 - elHpct, snapped.top));
         activeEl.style.left = newLeft + "%";
         activeEl.style.top = newTop + "%";
       });
 
       document.addEventListener("pointerup", () => {
-        if (activeEl) activeEl.classList.remove("dragging");
+        if (activeEl) {
+          activeEl.classList.remove("dragging");
+          window.LabelEditorSnap.clearGuides(label);
+          // El ancho de un texto depende de su X: se recalcula al soltar.
+          applyRenderMetrics();
+        }
         activeEl = null;
       });
 
@@ -1214,6 +1545,7 @@
 
       // --- Guardar como plantilla propia (privada) ------------------------
       saveAsTemplateBtn.addEventListener("click", async () => {
+        if (!confirmIncompleteRules()) return;
         const suggestedName = nombreInput.value.trim() || "Plantilla sin nombre";
         const name = window.prompt("Nombre de la plantilla:", suggestedName);
         if (!name) return;
@@ -1364,6 +1696,17 @@
         updateSelectedFieldStyle("shrink_to_fit", event.target.checked),
       );
 
+      // "Insertar dato": pone {{dato}} donde estaba el cursor en el texto del
+      // campo elegido (o al final), incluidos los calculados al imprimir.
+      const propMarkerSelect = document.getElementById("propMarkerSelect");
+      window.LabelEditorMarkers.fillMarkerSelect(propMarkerSelect);
+      propMarkerSelect.addEventListener("change", () => {
+        const key = propMarkerSelect.value;
+        propMarkerSelect.value = "";
+        const el = selectedTextField && document.querySelector(`.field[data-field="${selectedTextField}"]`);
+        if (key && el) window.LabelEditorMarkers.insertIntoEditable(el, key);
+      });
+
       // --- Decoraciones: crear, configurar y borrar -----------------------
       // Escriben en `decorations`, que es lo que renderDecorations dibuja y lo
       // que collectFields devuelve al guardar.
@@ -1377,12 +1720,14 @@
         left: document.getElementById("decoLeft"),
         right: document.getElementById("decoRight"),
         dashed: document.getElementById("decoDashed"),
+        locked: document.getElementById("decoLocked"),
+        marker: document.getElementById("decoMarkerSelect"),
       };
       // Cada control vive dentro de su <label>: lo que se muestra u oculta es
       // la etiqueta, no el input suelto.
       const DECO_FIELDS_BY_TYPE = {
-        line: ["left", "right", "dashed"],
-        text: ["text", "font_size", "bold", "align"],
+        line: ["left", "right", "dashed", "locked"],
+        text: ["text", "marker", "font_size", "bold", "align", "locked"],
       };
 
       function decoEntry() {
@@ -1393,6 +1738,9 @@
 
       function selectDeco(type, index) {
         selectedDeco = type ? { type, index } : null;
+        // Una decoración y un campo no se eligen a la vez (las flechas
+        // moverían los dos).
+        if (type) selectField(null);
         refreshDecoPanel();
         applyRenderMetrics();
       }
@@ -1419,6 +1767,7 @@
             entry.right != null ? entry.right : LINE_DEFAULT_RIGHT,
           );
           decoInputs.dashed.checked = Boolean(entry.dashed);
+          decoInputs.locked.checked = Boolean(entry.locked);
         } else {
           decoPropsTitle.textContent = "Texto fijo";
           decoInputs.text.value = entry.text || "";
@@ -1427,8 +1776,15 @@
           decoInputs.font_size.value = entry.font_size != null ? entry.font_size : "";
           decoInputs.bold.checked = Boolean(entry.bold);
           decoInputs.align.value = entry.align || "left";
+          decoInputs.locked.checked = Boolean(entry.locked);
         }
       }
+
+      // El script clásico de arriba (arrastre, clic en el lienzo, flechas)
+      // llama a estas dos. Las funciones de un módulo no son globales: sin
+      // esto, tocar una línea o un texto fijo tiraba un ReferenceError y no
+      // se podían arrastrar.
+      Object.assign(window, { selectDeco, refreshDecoPanel });
 
       function updateDeco(key, value) {
         const entry = decoEntry();
@@ -1521,6 +1877,15 @@
       decoInputs.dashed.addEventListener("change", (event) =>
         updateDeco("dashed", event.target.checked),
       );
+      decoInputs.locked.addEventListener("change", (event) =>
+        updateDeco("locked", event.target.checked),
+      );
+      window.LabelEditorMarkers.fillMarkerSelect(decoInputs.marker);
+      decoInputs.marker.addEventListener("change", () => {
+        const key = decoInputs.marker.value;
+        decoInputs.marker.value = "";
+        if (key) window.LabelEditorMarkers.insertIntoInput(decoInputs.text, key);
+      });
 
       document.querySelectorAll(".field").forEach((el) => {
         const key = el.dataset.field;
@@ -1604,7 +1969,9 @@
 
       // Marcadores disponibles listados en un select, para no tener que
       // escribirlos de memoria: al elegir uno se inserta en el punto del
-      // cursor del campo "Contenido".
+      // cursor del campo "Contenido". La lista es la compartida
+      // (label_editor_markers.js), con los calculados al imprimir.
+      window.LabelEditorMarkers.fillMarkerSelect(codeMarkerSelect);
       codeMarkerSelect.addEventListener("change", () => {
         const marker = codeMarkerSelect.value;
         if (!marker) return;
@@ -1671,6 +2038,12 @@
           lines: Array.isArray(fields.lines) ? fields.lines : null,
           texts: Array.isArray(fields.texts) ? fields.texts : null,
         };
+        // Reglas y bloqueos: el editor no los mostraba y al guardar se
+        // perdían (collectFields no los devolvía).
+        window.LabelEditorRules.load(fields.rules);
+        lockedFields.clear();
+        (Array.isArray(fields.locked) ? fields.locked : []).forEach((key) => lockedFields.add(key));
+        syncLockedClasses();
         // La barra tiene que reflejar el diseño que se acaba de abrir: si no,
         // el recuadro se ve en el lienzo con la casilla en "no".
         syncDecoToolbar();
@@ -1832,7 +2205,11 @@
             // borraba el formato.
             const previous = fieldStyles[key] || {};
             const { left, top, text, ...keep } = previous;
-            fields[key] = { ...keep, ...fields[key], text: el.textContent };
+            // Una sola línea, sin los saltos y la sangría del HTML: los
+            // campos nuevos los traen de su <div> y el PDF los dibujaba como
+            // "■" (el render no hace saltos de línea, recorta).
+            const flatText = el.textContent.replace(/\s+/g, " ").trim();
+            fields[key] = { ...keep, ...fields[key], text: flatText };
           }
         });
         fields.qr = {
@@ -1854,10 +2231,27 @@
         if (decorations.border) fields.border = decorations.border;
         if (decorations.lines) fields.lines = decorations.lines;
         if (decorations.texts) fields.texts = decorations.texts;
+        // Reglas y bloqueos: sin la clave cuando no hay ninguno, igual que
+        // las decoraciones.
+        const rules = window.LabelEditorRules.collect();
+        if (rules.length) fields.rules = rules;
+        if (lockedFields.size) fields.locked = [...lockedFields];
         return fields;
       }
 
+      // Una regla "mover" sin las dos coordenadas no se puede guardar
+      // (collectFields la descarta): se avisa antes en vez de perderla.
+      function confirmIncompleteRules() {
+        const incomplete = window.LabelEditorRules.incompleteCount();
+        if (!incomplete) return true;
+        return window.confirm(
+          `${incomplete === 1 ? "Hay una regla" : `Hay ${incomplete} reglas`} de "mover" sin la posición completa. ` +
+            "Si seguís, no se guardan. ¿Seguir?",
+        );
+      }
+
       document.getElementById("saveBtn").addEventListener("click", async () => {
+        if (!confirmIncompleteRules()) return;
         const thumbnail = await generateThumbnail();
         const payload = {
           nombre: nombreInput.value.trim() || "Rótulo sin nombre",
@@ -1887,6 +2281,8 @@
         window.location.href = "mis_rotulos.html";
       });
 
+      window.LabelEditorRules.init(document.getElementById("rulesPanel"));
+      window.LabelEditorMarkers.initSequencePanel(document.getElementById("sequencePanel"));
       loadExisting();
     </script>
   </body>

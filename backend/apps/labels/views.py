@@ -28,7 +28,7 @@ from apps.audit.services import record
 from apps.common.date_filters import date_range_q
 from apps.orders.models import Order
 
-from .models import ElementLayout, Label, LabelTemplate, LayoutElement, LayoutVariable
+from .models import ElementLayout, Label, LabelSequence, LabelTemplate, LayoutElement, LayoutVariable
 from .label_rendering import (
     BARCODE_HEIGHT_RANGE_CM,
     BARCODE_WIDTH_RANGE_CM,
@@ -401,6 +401,79 @@ class AdminLabelListView(ListAPIView):
         queryset = queryset.filter(date_range_q(params))
 
         return queryset.order_by("-created_at")
+
+
+# Tope del prefijo y de los ceros de {{secuencia}}: los mismos límites que el
+# modelo (prefix max_length=20) y un número que entre en un rótulo.
+SEQUENCE_PADDING_MAX = 12
+
+
+class LabelSequenceView(APIView):
+    """GET/PUT /api/v1/labels/sequence/
+
+    La numeración de ``{{secuencia}}`` del usuario (``LabelSequence`` con
+    ``key="default"``, la única que usa el render hoy): ``prefix``,
+    ``padding`` (ceros a la izquierda) y ``next`` (el número que va a llevar
+    el próximo rótulo impreso). ``next`` se guarda como ``current = next - 1``,
+    así el contador sigue siendo el mismo que incrementa
+    ``LabelSequence.next_value``. Bajar ``next`` permite repetir números: es
+    decisión del usuario (p. ej. empezar de nuevo cada año), no se impide."""
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission("labels.edit")]
+
+    @staticmethod
+    def _payload(seq):
+        return {
+            "prefix": seq.prefix,
+            "padding": seq.padding,
+            "next": seq.current + 1,
+            "example": f"{seq.prefix}{seq.current + 1:0{seq.padding}d}",
+        }
+
+    def get(self, request):
+        seq = LabelSequence.objects.filter(owner=request.user, key="default").first()
+        if seq is None:
+            seq = LabelSequence(owner=request.user, key="default")
+        return Response(self._payload(seq))
+
+    def put(self, request):
+        data = request.data if isinstance(request.data, dict) else {}
+        errors = {}
+        prefix = data.get("prefix", "")
+        if not isinstance(prefix, str) or len(prefix.strip()) > 20:
+            errors["prefix"] = "Hasta 20 caracteres."
+        padding, next_value = data.get("padding"), data.get("next")
+        if isinstance(padding, bool) or not isinstance(padding, int) or not 0 <= padding <= SEQUENCE_PADDING_MAX:
+            errors["padding"] = f"Un número entero entre 0 y {SEQUENCE_PADDING_MAX}."
+        if isinstance(next_value, bool) or not isinstance(next_value, int) or next_value < 1:
+            errors["next"] = "Un número entero desde 1."
+        if errors:
+            raise ValidationError(errors)
+
+        seq, _ = LabelSequence.objects.get_or_create(owner=request.user, key="default")
+        before = self._payload(seq)
+        seq.prefix = prefix.strip()
+        seq.padding = padding
+        seq.current = next_value - 1
+        seq.save(update_fields=["prefix", "padding", "current", "updated_at"])
+        after = self._payload(seq)
+        changes = {
+            key: {"from": before[key], "to": after[key]}
+            for key in ("prefix", "padding", "next")
+            if before[key] != after[key]
+        }
+        if changes:
+            record(
+                request,
+                category="labels",
+                action="label.update",
+                target=seq,
+                target_type="label_sequence",
+                target_repr=f"Numeración de rótulos ({after['example']})",
+                changes=changes,
+            )
+        return Response(after)
 
 
 class PreviewLabelView(APIView):

@@ -9,6 +9,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 # BASE_DIR apunta a la raíz del repo (dos niveles arriba de config/settings/)
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -78,6 +79,9 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Último: es el primero en ver la excepción de una vista. Para /api/
+    # contesta un 500 JSON con código de error (ver config/errors.py).
+    "config.errors.ApiExceptionMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -200,6 +204,9 @@ CORS_EXPOSE_HEADERS = [
     # el nombre del archivo y cuántos pedidos salieron.
     "Content-Disposition",
     "X-Order-Count",
+    # Exportación de auditoría (apps.audit.views.AuditLogExportView).
+    "X-Audit-Count",
+    "X-Audit-Truncated",
 ]
 
 # ---------------------------------------------------------------------------
@@ -556,6 +563,12 @@ RENDER_FONTS_TTF = env.json("RENDER_FONTS_TTF", default={})
 # en vez de reventar (un error ahí no puede romperle el checkout a un
 # comprador), y esa decisión depende de que alguien pueda leer los logs.
 LOG_LEVEL = env("LOG_LEVEL", default="INFO")
+# "text" (legible, el default) o "json" (una línea JSON por registro, para un
+# recolector de logs en el servidor; ver config/log_format.py).
+LOG_FORMAT = env("LOG_FORMAT", default="text")
+if LOG_FORMAT not in ("text", "json"):
+    raise ImproperlyConfigured("LOG_FORMAT tiene que ser 'text' o 'json'.")
+_LOG_FORMATTER = "json" if LOG_FORMAT == "json" else "standard"
 
 LOGGING = {
     "version": 1,
@@ -565,12 +578,13 @@ LOGGING = {
             "format": "{asctime} {levelname} {name}: {message}",
             "style": "{",
         },
+        "json": {"()": "config.log_format.JsonFormatter"},
     },
     "handlers": {
         # Para nuestro código: deja pasar todo lo que el logger permita.
         "app_console": {
             "class": "logging.StreamHandler",
-            "formatter": "standard",
+            "formatter": _LOG_FORMATTER,
         },
         # Para Django y las librerías de terceros. Tiene nivel propio, y no
         # alcanza con el del logger raíz: un registro que PROPAGA hacia la
@@ -578,7 +592,7 @@ LOGGING = {
         # esto, cada aviso de Django saldría dos veces en desarrollo.
         "console": {
             "class": "logging.StreamHandler",
-            "formatter": "standard",
+            "formatter": _LOG_FORMATTER,
             "level": "WARNING",
         },
     },

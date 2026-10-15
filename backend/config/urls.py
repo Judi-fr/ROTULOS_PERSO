@@ -28,5 +28,10 @@ urlpatterns = [
     path("api/v1/ingest/", include("apps.integrations.ingest_urls")),  # entradas automáticas (API key / webhook)
 ]
 
+# Para /api/ el 404 y el 500 salen en JSON (ver config/errors.py); el resto
+# sigue con las páginas de Django.
+handler404 = "config.errors.page_not_found"
+handler500 = "config.errors.server_error"
+
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

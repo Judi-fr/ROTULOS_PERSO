@@ -478,6 +478,11 @@
   .roles-message { margin: 0 0 18px; font-size: .9rem; }
   .roles-message.success { color: var(--green); }
   .roles-message.error { color: var(--red); }
+  /* Aviso de la página (showMessage de utils.js), p. ej. el resultado de
+     descargar la auditoría. */
+  .page-message { margin: 0 0 18px; padding: 10px 14px; border-radius: 8px; font-size: .9rem; }
+  .page-message.success { background: var(--green-light); color: var(--green); border: 1px solid #bfe8cc; }
+  .page-message.error { background: var(--red-light); color: var(--red); border: 1px solid #f6c9c9; }
   .roles-create {
     display: flex;
     gap: 10px;

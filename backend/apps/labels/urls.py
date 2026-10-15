@@ -13,6 +13,7 @@ from .views import (
     AvailableFontsView,
     BarcodeImageView,
     ElementLayoutViewSet,
+    LabelSequenceView,
     LabelTemplateViewSet,
     LabelViewSet,
     LayoutVariableViewSet,
@@ -43,4 +44,6 @@ urlpatterns = [
     # Familias tipográficas para el editor de plantillas de ElementLayout (no
     # es un recurso con CRUD, va como vista suelta).
     path("fonts/", AvailableFontsView.as_view(), name="fonts"),
+    # Numeración de {{secuencia}}: prefijo, ceros y próximo número (editor).
+    path("sequence/", LabelSequenceView.as_view(), name="label-sequence"),
 ] + router.urls
