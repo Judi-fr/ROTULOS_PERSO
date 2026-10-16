@@ -315,7 +315,7 @@ el("addContractBtn").addEventListener("click", () => addContractRow());
 el("pushBtn").addEventListener("click", generatePush);
 document.getElementById("logoutBtn")?.addEventListener("click", () => window.Auth.logout());
 
-if (!window.Auth.getAccessToken()) {
+if (!window.Auth.hasSession()) {
   window.location.replace("index.html");
 } else {
   load();

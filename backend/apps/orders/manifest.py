@@ -24,6 +24,8 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from apps.accounts.models import account_settings_for
+
 from .bulk import format_weight, order_number
 
 _BODY = ParagraphStyle("body", fontName="Helvetica", fontSize=8.5, leading=10.5)
@@ -44,14 +46,13 @@ def manifest_sender(orders, user):
     la misma; si no (o son cargados a mano), el comerciante dueño de la
     cuenta. Mismo criterio de remitente que el rótulo
     (``label_rendering.build_label_context``)."""
+    from apps.labels.label_rendering import sender_fields
+
     stores = {order.store_connection_id for order in orders}
     store = orders[0].store_connection if len(stores) == 1 and orders else None
-    name = (
-        ((store.sender_name or "").strip() or (store.name or "").strip()) if store else ""
-    ) or user.get_full_name() or user.email
-    address = (store.sender_address or "").strip() if store else ""
-    phone = (store.sender_phone or "").strip() if store else ""
-    return name, address, phone
+    sender = sender_fields(user, store)
+    name = sender["remitente"] or user.get_full_name() or user.email
+    return name, sender["remitente_domicilio"], sender["remitente_telefono"]
 
 
 def _weight_text(value):
@@ -93,6 +94,13 @@ def render_manifest_pdf(orders, user, carrier=""):
         info_lines.append(f"<b>Domicilio:</b> {escape(sender_address)}")
     if sender_phone:
         info_lines.append(f"<b>Teléfono:</b> {escape(sender_phone)}")
+    # Datos fiscales de la cuenta (organizacion.html), si los cargó.
+    account = account_settings_for(user)
+    if account is not None and (account.legal_name or account.tax_id):
+        fiscal = escape(account.legal_name or "")
+        if account.tax_id:
+            fiscal = f"{fiscal} · CUIT {escape(account.tax_id)}" if fiscal else f"CUIT {escape(account.tax_id)}"
+        info_lines.append(f"<b>Razón social:</b> {fiscal}")
     info_lines.append(f"<b>Transportista:</b> {escape(carrier) if carrier else '______________________________'}")
     info_lines.append(f"<b>Fecha:</b> {now:%d/%m/%Y}")
     summary = f"<b>Pedidos:</b> {len(orders)} &nbsp;&nbsp; <b>Bultos:</b> {total_packages}"

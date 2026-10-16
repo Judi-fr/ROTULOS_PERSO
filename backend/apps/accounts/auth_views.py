@@ -27,15 +27,18 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
-from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.token_blacklist.models import (
     BlacklistedToken,
     OutstandingToken,
 )
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenRefreshView
 
 from apps.audit.services import record
 
+from .auth_cookies import clear_auth_cookies, deliver_tokens, refresh_from_request, wants_cookies
 from .models import EmailVerification, LoginLockout, user_email_verified
 
 User = get_user_model()
@@ -94,9 +97,12 @@ def user_payload(user, picture=""):
     }
 
 
-def auth_response(user, picture=""):
-    """Respuesta estándar de login: tokens JWT + objeto user."""
-    return Response({**tokens_for_user(user), "user": user_payload(user, picture)})
+def auth_response(user, picture="", request=None):
+    """Respuesta estándar de login: tokens JWT + objeto user. Con
+    ``X-Auth-Mode: cookie`` los tokens van en cookies HttpOnly y no en el
+    cuerpo (``auth_cookies.deliver_tokens``)."""
+    response = Response({**tokens_for_user(user), "user": user_payload(user, picture)})
+    return deliver_tokens(request, response) if request is not None else response
 
 
 # Formato de email: algo@algo.dominio (sin espacios ni un segundo @).
@@ -285,7 +291,7 @@ class GoogleAuthView(APIView):
 
         # URL pública del avatar en el CDN de Google. No se persiste:
         # Google puede rotarla, así que se refresca en cada login.
-        return auth_response(user, picture=claims.get("picture", ""))
+        return auth_response(user, picture=claims.get("picture", ""), request=request)
 
 
 class LoginView(APIView):
@@ -384,7 +390,7 @@ class LoginView(APIView):
             actor_email=user.email,
         )
 
-        return auth_response(user)
+        return auth_response(user, request=request)
 
 
 def _send_verification_email(user, token):
@@ -492,7 +498,7 @@ class RegisterView(APIView):
         verification.refresh_token()
         _send_verification_email(user, verification.token)
 
-        return Response(
+        response = Response(
             {
                 "detail": "Cuenta creada con éxito.",
                 **tokens_for_user(user),
@@ -500,6 +506,7 @@ class RegisterView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+        return deliver_tokens(request, response)
 
 
 class LogoutView(APIView):
@@ -510,15 +517,16 @@ class LogoutView(APIView):
     El access token que ya esté en circulación sigue siendo válido hasta que
     expire (vida corta, 15 min) — es la naturaleza de los JWT stateless.
 
-    Requiere estar autenticado (access válido en el header) y mandar el refresh
-    a revocar en el body.
+    Requiere estar autenticado (access válido en el header o en su cookie) y
+    mandar el refresh a revocar en el body — o tenerlo en su cookie, que es el
+    caso del frontend web. Siempre borra las cookies de sesión.
 
-    Body:      {"refresh": "<JWT>"}
+    Body:      {"refresh": "<JWT>"} (opcional con cookies)
     Respuesta: 205 Reset Content
     """
 
     def post(self, request):
-        refresh = request.data.get("refresh")
+        refresh = refresh_from_request(request)
         if not refresh:
             return Response(
                 {"detail": "Falta el campo 'refresh' (token a revocar)."},
@@ -539,7 +547,7 @@ class LogoutView(APIView):
             target_type="user",
             target_repr=request.user.email,
         )
-        return Response(status=status.HTTP_205_RESET_CONTENT)
+        return clear_auth_cookies(Response(status=status.HTTP_205_RESET_CONTENT))
 
 
 def blacklist_all_refresh_tokens(user):
@@ -788,3 +796,30 @@ class EmailVerificationResendView(APIView):
         _send_verification_email(request.user, verification.token)
 
         return Response({"detail": "Te reenviamos el email de verificación."})
+
+
+class CookieTokenRefreshView(TokenRefreshView):
+    """POST /api/v1/auth/refresh/ — el ``TokenRefreshView`` de simplejwt
+    (rotación + blacklist, ver ``SIMPLE_JWT``) que además toma el refresh de su
+    cookie cuando el cuerpo no lo trae, y en modo cookie devuelve los tokens
+    nuevos en cookies. Si el refresh ya no sirve, borra las cookies: así el
+    navegador no sigue mandando una sesión muerta."""
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data={"refresh": refresh_from_request(request)})
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError as error:
+            failure = InvalidToken(error.args[0])
+        except (InvalidToken, DRFValidationError) as error:
+            failure = error
+        else:
+            return deliver_tokens(request, Response(serializer.validated_data, status=status.HTTP_200_OK))
+        if wants_cookies(request):
+            return clear_auth_cookies(
+                Response(
+                    {"detail": "La sesión venció: volvé a iniciar sesión."},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+            )
+        raise failure

@@ -46,7 +46,7 @@ const MENU_GROUPS = {
 };
 const GROUP_ORDER = ["Mis cosas", "Cuenta", "Ayuda", "Administración", "Otros"];
 
-const getAccessToken = () => window.Auth.getAccessToken();
+const hasSession = () => window.Auth.hasSession();
 const getCurrentUser = () => window.Auth.getCurrentUser();
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
@@ -259,7 +259,7 @@ if (logoutBtn) {
   logoutBtn.addEventListener("click", () => window.Auth.logout());
 }
 
-if (!getAccessToken()) {
+if (!hasSession()) {
   window.location.replace("index.html");
 } else {
   loadDashboard();

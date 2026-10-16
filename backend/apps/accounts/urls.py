@@ -1,8 +1,8 @@
 """Rutas de autenticación (Google Sign-In, email/contraseña y refresh JWT)."""
 
 from django.urls import path
-from rest_framework_simplejwt.views import TokenRefreshView
 
+from .account_settings_views import AccountSettingsView
 from .dashboard_views import DashboardView
 from .profile_views import ProfileView
 from .support_views import SupportMessageView
@@ -14,6 +14,7 @@ from .role_permission_views import (
 )
 from .auth_views import (
     ChangePasswordView,
+    CookieTokenRefreshView,
     EmailVerificationConfirmView,
     EmailVerificationResendView,
     GoogleAuthView,
@@ -55,6 +56,8 @@ urlpatterns = [
     ),
     # Perfil del usuario autenticado: GET (ver) y PATCH (editar nombre/apellido).
     path("me/", ProfileView.as_view(), name="profile"),
+    # Datos de la cuenta: fiscales, remitente/logo por defecto, preferencias.
+    path("me/account/", AccountSettingsView.as_view(), name="account-settings"),
     # Cambio de contraseña del usuario autenticado (exige la actual).
     path("me/change-password/", ChangePasswordView.as_view(), name="change-password"),
     # Form de contacto del dashboard ("Ayuda/Soporte"): solo guarda el mensaje.
@@ -71,5 +74,5 @@ urlpatterns = [
     # activada (ROTATE_REFRESH_TOKENS) devuelve también un refresh nuevo y
     # revoca el anterior.
     # Body: {"refresh": "<JWT>"}  ->  {"access": "<JWT nuevo>", "refresh": "..."}
-    path("refresh/", TokenRefreshView.as_view(), name="token-refresh"),
+    path("refresh/", CookieTokenRefreshView.as_view(), name="token-refresh"),
 ]

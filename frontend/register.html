@@ -57,6 +57,8 @@
   </main>
 
   <script src="assets/js/config.js"></script>
+  <!-- window.Auth: la sesión viaja en cookies HttpOnly (withSession/saveSession). -->
+  <script src="assets/js/auth.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     // Formato de email: mismo criterio (básico, de UX) que usa el backend
@@ -73,9 +75,7 @@
     // backend): el endpoint de Google hace get_or_create, así que este mismo
     // callback sirve para "iniciar sesión" y para "crear cuenta" con Google.
     function handleAuthSuccess(data) {
-      localStorage.setItem('access', data.access || '');
-      localStorage.setItem('refresh', data.refresh || '');
-      localStorage.setItem('user', JSON.stringify(data.user || {}));
+      window.Auth.saveSession(data.user);
       if (data.user && data.user.must_change_password) {
         window.location.replace('cambiar-password.html');
         return;
@@ -89,13 +89,13 @@
     // token (JWT) que el backend verifica en /api/v1/auth/google/.
     async function handleGoogleCredential(response) {
       try {
-        const apiResponse = await fetch(`${window.APP_CONFIG.API_BASE}/auth/google/`, {
+        const apiResponse = await fetch(`${window.APP_CONFIG.API_BASE}/auth/google/`, window.Auth.withSession({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({ credential: response.credential })
-        });
+        }));
 
         const data = await apiResponse.json().catch(() => ({}));
 
@@ -153,7 +153,7 @@
       const lastName = spaceIndex === -1 ? '' : fullName.slice(spaceIndex + 1).trim();
 
       try {
-        const response = await fetch(`${window.APP_CONFIG.API_BASE}/auth/register/`, {
+        const response = await fetch(`${window.APP_CONFIG.API_BASE}/auth/register/`, window.Auth.withSession({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -164,7 +164,7 @@
             first_name: firstName,
             last_name: lastName
           })
-        });
+        }));
 
         const data = await response.json().catch(() => ({}));
 
@@ -174,9 +174,7 @@
 
         // Mismo patrón que index.html: el registro ya devuelve tokens + user
         // (auto-login), así que se guarda y redirige igual que el login.
-        localStorage.setItem('access', data.access || '');
-        localStorage.setItem('refresh', data.refresh || '');
-        localStorage.setItem('user', JSON.stringify(data.user || {}));
+        window.Auth.saveSession(data.user);
 
         // Aviso breve de verificación suave (ver EmailVerificationConfirmView
         // en el backend): no bloquea el flujo, la redirección por rol sigue

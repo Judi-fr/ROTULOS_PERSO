@@ -13,7 +13,7 @@ const POLL_INTERVAL_MS = 4000;
 const SEARCH_DEBOUNCE_MS = 300;
 
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
-const getAccessToken = () => window.Auth.getAccessToken();
+const hasSession = () => window.Auth.hasSession();
 const getCurrentUser = () => window.Auth.getCurrentUser();
 
 let searchTerm = "";
@@ -230,7 +230,7 @@ if (logoutBtn) {
   logoutBtn.addEventListener("click", () => window.Auth.logout());
 }
 
-// Vuelta de imprimir_rotulos.html: ?labels=<pedidos>[&dispatched=<n>]. Se
+// Vuelta de imprimir_rotulos.html: ?labels=<pedidos>[&dispatched=<n>][&generating=1]. Se
 // confirma lo que se hizo y se limpia la URL, para que recargar no lo repita.
 function showBatchResult() {
   const params = new URLSearchParams(window.location.search);
@@ -238,7 +238,11 @@ function showBatchResult() {
   if (!labels) return;
   window.history.replaceState(null, "", window.location.pathname);
   const dispatched = Number(params.get("dispatched"));
-  let text = `Listo: generamos los rótulos de ${labels} ${labels === 1 ? "pedido" : "pedidos"}. Descargalos desde la lista de abajo.`;
+  // Un lote grande se genera en segundo plano (apps.labels.batch_jobs): queda
+  // "Procesando" en la lista, que se actualiza sola hasta que está listo.
+  let text = params.get("generating")
+    ? `Estamos generando los rótulos de ${labels} pedidos: el archivo aparece abajo como "Procesando" y se puede descargar apenas esté listo (no hace falta quedarse en esta página).`
+    : `Listo: generamos los rótulos de ${labels} ${labels === 1 ? "pedido" : "pedidos"}. Descargalos desde la lista de abajo.`;
   if (dispatched) {
     text += ` Además se ${dispatched === 1 ? "marcó 1 pedido" : `marcaron ${dispatched} pedidos`} como despachado${dispatched === 1 ? "" : "s"}.`;
   }
@@ -258,7 +262,7 @@ async function init() {
   await loadDocuments();
 }
 
-if (!getAccessToken()) {
+if (!hasSession()) {
   window.location.replace("index.html");
 } else {
   init();

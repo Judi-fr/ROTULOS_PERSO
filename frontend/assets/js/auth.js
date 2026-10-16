@@ -1,4 +1,4 @@
-// Sesión compartida del frontend: acceso a los tokens, apiFetch con
+// Sesión compartida del frontend: quién está logueado, apiFetch con
 // renovación automática del access token vía refresh (en vez de expulsar al
 // usuario en cualquier 401) y logout. Se carga como script CLÁSICO antes que
 // el script propio de cada página, porque casi todo el frontend son scripts
@@ -25,12 +25,22 @@
   const REFRESH_URL = `${AUTH_BASE}/refresh/`;
   const LOGOUT_URL = `${AUTH_BASE}/logout/`;
 
-  function getAccessToken() {
-    return localStorage.getItem("access") || "";
-  }
+  // La sesión viaja en cookies HttpOnly que pone el backend
+  // (backend/apps/accounts/auth_cookies.py): este código nunca ve los tokens.
+  // Cada request a la API va con `credentials: "include"` (la API es otro
+  // origen en desarrollo) y con X-Auth-Mode: cookie, que le dice al backend
+  // que use cookies en vez de devolver los tokens en el JSON — y que además
+  // es la defensa contra requests falsificados desde otro sitio.
+  // En localStorage solo queda `user` (nombre, rol, permisos: no es secreto),
+  // que es también la marca de "hay sesión" para las páginas.
+  const AUTH_MODE_HEADERS = { "X-Auth-Mode": "cookie" };
 
-  function getRefreshToken() {
-    return localStorage.getItem("refresh") || "";
+  function withSession(options = {}) {
+    return {
+      ...options,
+      credentials: "include",
+      headers: { ...(options.headers || {}), ...AUTH_MODE_HEADERS },
+    };
   }
 
   function getCurrentUser() {
@@ -41,10 +51,23 @@
     }
   }
 
+  // Si hay sesión, del lado de esta página: el backend la confirma en cada
+  // request (y apiFetch manda al login si no).
+  function hasSession() {
+    return Boolean(getCurrentUser().id);
+  }
+
+  // Lo que hace cada login (index.html, register.html) con la respuesta: las
+  // cookies ya las dejó el navegador; acá solo se guarda quién es.
+  function saveSession(user) {
+    localStorage.setItem("user", JSON.stringify(user || {}));
+  }
+
   function clearSession() {
+    localStorage.removeItem("user");
+    // Restos de cuando los tokens vivían acá.
     localStorage.removeItem("access");
     localStorage.removeItem("refresh");
-    localStorage.removeItem("user");
   }
 
   function redirectToLogin() {
@@ -53,29 +76,22 @@
 
   // Una sola renovación concurrente: si varias llamadas reciben 401 al mismo
   // tiempo, todas esperan esta misma promesa en vez de disparar un refresh
-  // cada una. Se guarda en el módulo (closure) y se limpia al terminar.
+  // cada una. El refresh viaja en su cookie; el backend devuelve las dos
+  // cookies nuevas (rotación).
   let refreshPromise = null;
 
-  function refreshSession() {
+  function refreshSession(body = {}) {
     if (refreshPromise) return refreshPromise;
 
-    const refresh = getRefreshToken();
-    if (!refresh) return Promise.resolve(false);
-
-    refreshPromise = fetch(REFRESH_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh }),
-    })
-      .then(async (response) => {
-        if (!response.ok) return false;
-        const data = await response.json().catch(() => ({}));
-        if (!data.access) return false;
-        localStorage.setItem("access", data.access);
-        // Con ROTATE_REFRESH_TOKENS el backend manda un refresh nuevo.
-        if (data.refresh) localStorage.setItem("refresh", data.refresh);
-        return true;
+    refreshPromise = fetch(
+      REFRESH_URL,
+      withSession({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       })
+    )
+      .then((response) => response.ok)
       .catch(() => false)
       .finally(() => {
         refreshPromise = null;
@@ -84,24 +100,28 @@
     return refreshPromise;
   }
 
-  // apiFetch(url, options):
-  // - Agrega Authorization: Bearer <access>.
-  // - Ante un 401, intenta UNA renovación del access token y reintenta la
-  //   request original una sola vez. Si el refresh falla (o no hay refresh
-  //   guardado), recién ahí limpia la sesión y redirige al login. Un 401 en
-  //   la propia llamada de refresh nunca reintenta (evita el bucle).
-  // - Ante un 403 con must_change_password, redirige a cambiar-password.html
-  //   (comportamiento previo, sin cambios).
-  async function apiFetch(url, options = {}) {
-    const isRefreshCall = url === REFRESH_URL;
+  // Una sesión de antes del cambio tiene los tokens en localStorage: se
+  // canjea UNA vez su refresh por las cookies y se borran de acá, así nadie
+  // tiene que volver a loguearse.
+  const legacyRefresh = localStorage.getItem("refresh");
+  const migration = legacyRefresh
+    ? refreshSession({ refresh: legacyRefresh }).finally(() => {
+        localStorage.removeItem("access");
+        localStorage.removeItem("refresh");
+      })
+    : Promise.resolve();
 
-    const doFetch = () => {
-      const headers = {
-        ...(options.headers || {}),
-        Authorization: `Bearer ${getAccessToken()}`,
-      };
-      return fetch(url, { ...options, headers });
-    };
+  // apiFetch(url, options):
+  // - Manda las cookies de sesión (withSession).
+  // - Ante un 401, intenta UNA renovación y reintenta la request original
+  //   una sola vez. Si el refresh falla, recién ahí limpia la sesión y
+  //   redirige al login. Un 401 en la propia llamada de refresh nunca
+  //   reintenta (evita el bucle).
+  // - Ante un 403 con must_change_password, redirige a cambiar-password.html.
+  async function apiFetch(url, options = {}) {
+    await migration;
+    const isRefreshCall = url === REFRESH_URL;
+    const doFetch = () => fetch(url, withSession(options));
 
     let response = await doFetch();
 
@@ -132,32 +152,23 @@
     return response;
   }
 
-  // Invalida el refresh token en el backend (best-effort), limpia la sesión
-  // local y redirige al login. Mismo flujo que estaba duplicado en cada
-  // página (dashboard.js, pedidos.js, usuarios.js, ...).
+  // Revoca el refresh en el backend y borra las cookies (best-effort), limpia
+  // lo local y redirige al login.
   async function logout() {
-    const refresh = getRefreshToken();
-    if (refresh) {
-      try {
-        await fetch(LOGOUT_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${getAccessToken()}`,
-          },
-          body: JSON.stringify({ refresh }),
-        });
-      } catch (err) {
-        console.warn("No se pudo invalidar el refresh token en el backend:", err);
-      }
+    try {
+      // Por apiFetch: si el access ya venció, renueva y revoca igual.
+      await apiFetch(LOGOUT_URL, { method: "POST" });
+    } catch (err) {
+      if (!err.isSessionExpired) console.warn("No se pudo cerrar la sesión en el backend:", err);
     }
     clearSession();
     redirectToLogin();
   }
 
   window.Auth = {
-    getAccessToken,
-    getRefreshToken,
+    hasSession,
+    saveSession,
+    withSession,
     getCurrentUser,
     clearSession,
     logout,

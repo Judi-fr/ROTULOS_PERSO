@@ -9,7 +9,7 @@ const ME_URL = `${API_BASE}/me/`;
 const CHANGE_PASSWORD_URL = `${API_BASE}/me/change-password/`;
 const VERIFY_EMAIL_RESEND_URL = `${API_BASE}/verify-email/resend/`;
 
-const getAccessToken = () => window.Auth.getAccessToken();
+const hasSession = () => window.Auth.hasSession();
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
 // showMessage y getErrorMessage salen de assets/js/utils.js.
@@ -185,7 +185,7 @@ if (logoutBtn) {
   logoutBtn.addEventListener("click", () => window.Auth.logout());
 }
 
-if (!getAccessToken()) {
+if (!hasSession()) {
   window.location.replace("index.html");
 } else {
   loadProfile();

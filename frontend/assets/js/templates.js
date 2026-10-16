@@ -15,7 +15,7 @@ let searchTerm = "";
 let searchDebounceTimer = null;
 let currentPreviewUrl = null; // object URL del PDF de vista previa en pantalla
 
-const getAccessToken = () => window.Auth.getAccessToken();
+const hasSession = () => window.Auth.hasSession();
 const getCurrentUser = () => window.Auth.getCurrentUser();
 
 
@@ -161,6 +161,14 @@ function buildCard(template) {
   useBtn.href = `${EDITOR_URL}?template=${template.id}`;
   actions.appendChild(useBtn);
 
+  // Historial de versiones (versiones_plantilla.html): verlas, compararlas y
+  // restaurar una anterior.
+  const versionsLink = document.createElement("a");
+  versionsLink.className = "btn btn-outline";
+  versionsLink.textContent = template.currentVersion ? `Versiones (${template.currentVersion})` : "Versiones";
+  versionsLink.href = `versiones_plantilla.html?template=${template.id}`;
+  actions.appendChild(versionsLink);
+
   const duplicateBtn = document.createElement("button");
   duplicateBtn.type = "button";
   duplicateBtn.className = "btn btn-outline";
@@ -283,7 +291,7 @@ async function init() {
   await loadTemplates();
 }
 
-if (!getAccessToken()) {
+if (!hasSession()) {
   window.location.replace("index.html");
 } else {
   init();

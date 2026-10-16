@@ -18,10 +18,11 @@
     <script src="assets/js/topbar.js"></script>
     <script src="assets/js/print.js"></script>
     <!-- Partes del editor que viven en su propio archivo: datos insertables y
-         numeración, reglas condicionales e imán al arrastrar. -->
+         numeración, reglas condicionales, imán al arrastrar y medidas. -->
     <script src="assets/js/label_editor_markers.js"></script>
     <script src="assets/js/label_editor_rules.js"></script>
     <script src="assets/js/label_editor_snap.js"></script>
+    <script src="assets/js/label_editor_sizes.js"></script>
 
     <!-- Estilos comunes del frontend (header/topbar, botones, avatar). Va
          ANTES del <style> propio del editor para que este último (más
@@ -514,7 +515,7 @@
       // Sesión y logout salen de assets/js/auth.js (window.Auth). Guard de
       // sesión antes de pintar nada más.
       (function () {
-        if (!window.Auth.getAccessToken()) {
+        if (!window.Auth.hasSession()) {
           window.location.replace("index.html");
           return;
         }
@@ -776,6 +777,14 @@
           /></label>
         </div>
         <div class="tool-group">
+          <!-- Medidas del catálogo (catalogos.html): elegir una completa
+               ancho y alto; tocar los números a mano la deja en "Otra". -->
+          <label
+            >Medida
+            <select id="sizePreset">
+              <option value="">Otra medida</option>
+            </select></label
+          >
           <label
             >Ancho
             <input
@@ -809,6 +818,10 @@
         <div class="tool-group">
           <button id="saveBtn" class="primary">Guardar rótulo</button>
           <button id="saveAsTemplateBtn">Guardar como plantilla</button>
+          <!-- Solo al abrir una plantilla propia (o cualquiera, siendo admin)
+               con ?template=<id>: guarda el diseño en ESA plantilla como una
+               versión nueva de su historial (versiones_plantilla.html). -->
+          <button id="saveTemplateVersionBtn" style="display: none">Guardar cambios en la plantilla</button>
           <button id="previewServerBtn" title="Muestra el PDF que genera el servidor, que es lo que sale impreso">
             Ver cómo sale impreso
           </button>
@@ -1251,6 +1264,7 @@
         label.style.width = (parseFloat(widthCmInput.value) || 10) + "cm";
         label.style.height = (parseFloat(heightCmInput.value) || 15) + "cm";
         applyRenderMetrics();
+        window.LabelEditorSizes?.sync();
       }
       updateLabelSize();
       widthCmInput.addEventListener("input", updateLabelSize);
@@ -1494,6 +1508,7 @@
         fetchCodePreview,
         getTemplate,
         createTemplate,
+        updateTemplate,
       } from "./assets/js/labels_api.js";
 
       const params = new URLSearchParams(window.location.search);
@@ -1565,6 +1580,50 @@
           showStatus(err.message || "No se pudo guardar la plantilla.");
         } finally {
           saveAsTemplateBtn.disabled = false;
+        }
+      });
+
+      // --- Guardar el diseño como versión nueva de la plantilla abierta ----
+      const saveTemplateVersionBtn = document.getElementById("saveTemplateVersionBtn");
+      let editableTemplate = null; // la plantilla de ?template=<id>, si se puede editar
+
+      function offerTemplateVersion(template) {
+        editableTemplate = template.canEdit ? template : null;
+        if (!editableTemplate) return;
+        saveTemplateVersionBtn.textContent = `Guardar cambios en «${template.nombre}»`;
+        saveTemplateVersionBtn.title = `Queda como versión ${(template.currentVersion || 0) + 1}; las anteriores se pueden ver y restaurar desde Mis plantillas.`;
+        saveTemplateVersionBtn.style.display = "";
+      }
+
+      saveTemplateVersionBtn.addEventListener("click", async () => {
+        if (!editableTemplate || !confirmIncompleteRules()) return;
+        const note = window.prompt(
+          `¿Qué cambiaste? (opcional, queda en el historial de «${editableTemplate.nombre}»)`,
+          ""
+        );
+        if (note === null) return;
+        saveTemplateVersionBtn.disabled = true;
+        try {
+          const saved = await updateTemplate(editableTemplate.id, {
+            size: {
+              widthCm: parseFloat(document.getElementById("widthCm").value) || 10,
+              heightCm: parseFloat(document.getElementById("heightCm").value) || 15,
+            },
+            fields: collectFields(),
+            versionNote: note.trim(),
+          });
+          const changed = saved.currentVersion !== editableTemplate.currentVersion;
+          showStatus(
+            changed
+              ? `Plantilla «${saved.nombre}» guardada como versión ${saved.currentVersion}.`
+              : "No había cambios en el diseño: la plantilla queda como estaba."
+          );
+          offerTemplateVersion(saved);
+        } catch (err) {
+          if (err.isSessionExpired) return;
+          showStatus(err.message || "No se pudo guardar la plantilla.");
+        } finally {
+          saveTemplateVersionBtn.disabled = false;
         }
       });
 
@@ -2066,6 +2125,7 @@
           updateLabelSize();
         }
         applyFields(template.fields);
+        offerTemplateVersion(template);
       }
 
       // --- Cargar rótulo existente si venimos con ?id= ---

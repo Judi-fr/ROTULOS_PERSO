@@ -1,0 +1,7 @@
+# Lo de requirements.txt más lo que solo hace falta para desarrollar y testear.
+# No entra en la imagen de Docker (el Dockerfile instala requirements.txt).
+-r requirements.txt
+
+# Lector de QR y códigos de barras para las pruebas de escaneo
+# (apps/labels/tests/test_scanning.py): sin él, esos tests se saltean.
+zxing-cpp==2.3.0

@@ -93,6 +93,7 @@ function toApiTemplateUpdatePayload(plantilla) {
   if (plantilla.size?.widthCm != null) payload.width_cm = plantilla.size.widthCm;
   if (plantilla.size?.heightCm != null) payload.height_cm = plantilla.size.heightCm;
   if (plantilla.fields != null) payload.design = plantilla.fields;
+  if (plantilla.versionNote != null) payload.version_note = plantilla.versionNote;
   return payload;
 }
 
@@ -107,6 +108,10 @@ function fromApiTemplate(template) {
     size: { widthCm: Number(template.width_cm), heightCm: Number(template.height_cm) },
     fields: template.design || {},
     preview: template.preview || null,
+    // Número de la última versión del historial y si quien mira puede
+    // guardar cambios en ella (lo decide el backend, ver LabelTemplateSerializer).
+    currentVersion: template.current_version || null,
+    canEdit: Boolean(template.can_edit),
     createdAt: template.created_at,
     updatedAt: template.updated_at,
   };
@@ -190,6 +195,52 @@ export async function fetchTemplatePreviewPdf(id) {
     throw new Error(getErrorMessage(data, "No se pudo generar la vista previa."));
   }
   return response.blob();
+}
+
+// --- Versiones de una plantilla (versiones_plantilla.html) ------------------
+//
+// El historial viene de la más nueva a la más vieja, cada una con su diseño
+// completo (lo usa la comparación).
+function fromApiTemplateVersion(version) {
+  return {
+    number: version.number,
+    nombre: version.name,
+    size: { widthCm: Number(version.width_cm), heightCm: Number(version.height_cm) },
+    fields: version.design || {},
+    note: version.note || "",
+    restoredFrom: version.restored_from || null,
+    createdByEmail: version.created_by_email || null,
+    createdAt: version.created_at,
+  };
+}
+
+export async function listTemplateVersions(id) {
+  const response = await apiFetch(`${TEMPLATES_URL}${id}/versions/`);
+  const data = await response.json().catch(() => []);
+  if (!response.ok) {
+    throw new Error(getErrorMessage(data, "No se pudo leer el historial de versiones."));
+  }
+  return data.map(fromApiTemplateVersion);
+}
+
+export async function fetchTemplateVersionPreviewPdf(id, number) {
+  const response = await apiFetch(`${TEMPLATES_URL}${id}/versions/${number}/preview/`);
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(getErrorMessage(data, "No se pudo generar la vista previa de esa versión."));
+  }
+  return response.blob();
+}
+
+export async function restoreTemplateVersion(id, number) {
+  const response = await apiFetch(`${TEMPLATES_URL}${id}/versions/${number}/restore/`, {
+    method: "POST",
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(getErrorMessage(data, "No se pudo restaurar esa versión."));
+  }
+  return fromApiTemplate(data);
 }
 
 // --- API pública -------------------------------------------------------

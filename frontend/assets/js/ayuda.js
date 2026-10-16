@@ -6,7 +6,7 @@ const API_BASE = `${window.APP_CONFIG.API_BASE}/auth`;
 const ME_URL = `${API_BASE}/me/`;
 const SUPPORT_URL = `${API_BASE}/support/`;
 
-const getAccessToken = () => window.Auth.getAccessToken();
+const hasSession = () => window.Auth.hasSession();
 const getCurrentUser = () => window.Auth.getCurrentUser();
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
@@ -136,7 +136,7 @@ if (logoutBtn) {
   logoutBtn.addEventListener("click", () => window.Auth.logout());
 }
 
-if (!getAccessToken()) {
+if (!hasSession()) {
   window.location.replace("index.html");
 } else {
   window.AppTopbar.render();

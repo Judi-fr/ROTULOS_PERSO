@@ -484,7 +484,7 @@ el("selectAllShipments").addEventListener("change", (event) => {
 });
 document.getElementById("logoutBtn")?.addEventListener("click", () => window.Auth.logout());
 
-if (!window.Auth.getAccessToken()) {
+if (!window.Auth.hasSession()) {
   window.location.replace("index.html");
 } else {
   picker = createOrderPicker(el("pickerRoot"), {

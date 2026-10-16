@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Datos de la cuenta</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/pedidos.css" />
+    <link rel="stylesheet" href="assets/css/organizacion.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar" id="appTopbar" data-links='[{"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Datos de la cuenta</h1>
+          <p>
+            Los datos de tu negocio. El remitente y el logo se usan en los
+            rótulos cuando la tienda del pedido no tiene los suyos, y en los
+            pedidos que cargás a mano.
+          </p>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <form id="accountForm">
+          <section class="profile-card">
+            <div class="profile-card-title">Datos fiscales</div>
+            <div class="profile-card-body account-grid">
+              <div class="field">
+                <label for="legalName">Razón social</label>
+                <input id="legalName" type="text" maxlength="150" placeholder="Mi Negocio SRL" />
+              </div>
+              <div class="field">
+                <label for="taxId">CUIT</label>
+                <input id="taxId" type="text" maxlength="13" inputmode="numeric" placeholder="30-12345678-9" />
+              </div>
+              <p class="account-hint">Salen en la planilla de retiro que firma el transportista.</p>
+            </div>
+          </section>
+
+          <section class="profile-card">
+            <div class="profile-card-title">Remitente y logo por defecto</div>
+            <div class="profile-card-body account-grid">
+              <div class="field">
+                <label for="senderName">Nombre del remitente</label>
+                <input id="senderName" type="text" maxlength="150" placeholder="Como querés que figure en el rótulo" />
+              </div>
+              <div class="field">
+                <label for="senderAddress">Domicilio</label>
+                <input id="senderAddress" type="text" maxlength="255" placeholder="Para que te devuelvan un paquete" />
+              </div>
+              <div class="field">
+                <label for="senderPhone">Teléfono</label>
+                <input id="senderPhone" type="text" maxlength="50" />
+              </div>
+              <div class="field account-logo">
+                <label for="logoInput">Logo</label>
+                <img id="logoPreview" alt="Logo de la cuenta" hidden />
+                <input id="logoInput" type="file" accept="image/*" />
+                <button type="button" class="btn btn-outline" id="logoRemove" hidden>Quitar el logo</button>
+              </div>
+              <p class="account-hint">
+                Cada tienda puede tener su propio remitente y logo en
+                <a href="tiendas.html">Tiendas conectadas</a>: esos ganan.
+              </p>
+            </div>
+          </section>
+
+          <section class="profile-card">
+            <div class="profile-card-title">Preferencias</div>
+            <div class="profile-card-body account-grid">
+              <div class="field">
+                <label for="defaultTemplate">Plantilla de rótulo</label>
+                <select id="defaultTemplate">
+                  <option value="">La estándar</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="defaultCarrier">Transportista con el que despachás</label>
+                <select id="defaultCarrier">
+                  <option value="">Sin preferencia</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="defaultPrintFormat">Cómo imprimís</label>
+                <select id="defaultPrintFormat">
+                  <option value="">Sin preferencia</option>
+                  <option value="label">PDF, una hoja por rótulo</option>
+                  <option value="a4">PDF, varios rótulos por hoja A4</option>
+                  <option value="zpl">Térmica Zebra (ZPL)</option>
+                </select>
+              </div>
+              <p class="account-hint">
+                Son los valores con los que arrancan Imprimir rótulos y el
+                despacho de Mis pedidos; ahí los podés cambiar en cada caso.
+              </p>
+            </div>
+          </section>
+
+          <div class="form-actions account-actions">
+            <button type="submit" class="btn btn-primary" id="saveBtn">Guardar</button>
+          </div>
+        </form>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/organizacion.js"></script>
+  </body>
+</html>

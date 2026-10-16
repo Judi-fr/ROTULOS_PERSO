@@ -14,7 +14,7 @@ const importValidateUrl = (id) => `${API_BASE}/orders/imports/${id}/validate/`;
 const importConfirmUrl = (id) => `${API_BASE}/orders/imports/${id}/confirm/`;
 
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
-const getAccessToken = () => window.Auth.getAccessToken();
+const hasSession = () => window.Auth.hasSession();
 const getCurrentUser = () => window.Auth.getCurrentUser();
 
 
@@ -429,7 +429,7 @@ async function init() {
   }
 }
 
-if (!getAccessToken()) {
+if (!hasSession()) {
   window.location.replace("index.html");
 } else {
   init();

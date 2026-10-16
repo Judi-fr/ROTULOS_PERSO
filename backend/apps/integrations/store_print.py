@@ -65,12 +65,16 @@ class PrintError(Exception):
 
 def resolve_template(connection):
     """Plantilla con la que se dibuja este rótulo: la que la tienda eligió
-    en ``tiendas.html`` si sigue siendo usable, o la pública por defecto (la
-    más antigua activa). ``None`` si no hay ninguna."""
-    template = connection.default_template
-    if template is not None and template.is_active:
-        if template.is_public or template.owner_id == connection.owner_id:
-            return template
+    en ``tiendas.html`` si sigue siendo usable, si no la preferida de la
+    cuenta (``organizacion.html``), o la pública por defecto (la más antigua
+    activa). ``None`` si no hay ninguna."""
+    from apps.accounts.models import account_settings_for
+
+    account = account_settings_for(connection.owner)
+    for template in (connection.default_template, getattr(account, "default_template", None)):
+        if template is not None and template.is_active:
+            if template.is_public or template.owner_id == connection.owner_id:
+                return template
     return LabelTemplate.objects.filter(is_public=True, is_active=True).order_by("id").first()
 
 

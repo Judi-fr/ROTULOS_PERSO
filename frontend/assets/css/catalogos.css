@@ -1,0 +1,73 @@
+/* catalogos.html (admin): dos tarjetas con su tabla y su formulario. El
+   resto (sidebar, topbar, roles-card, tablas) viene de gestionuser.css. */
+
+.catalog-card {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+}
+
+.catalog-help {
+  margin: 0 20px 12px;
+  color: #64748b;
+  font-size: 13.5px;
+}
+
+.catalog-empty {
+  text-align: center;
+  padding: 20px;
+  color: #64748b;
+}
+
+.catalog-muted {
+  color: #64748b;
+  font-size: 12.5px;
+  word-break: break-all;
+}
+
+.catalog-row-inactive td {
+  opacity: 0.55;
+}
+
+.catalog-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin: 16px 20px 0;
+}
+
+.catalog-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.catalog-form input {
+  padding: 7px 10px;
+  border: 1px solid #e7eaf1;
+  border-radius: 8px;
+  font-weight: 400;
+}
+
+.catalog-wide {
+  flex: 1 1 320px;
+}
+
+.catalog-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.catalog-row-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.catalog-row-actions .btn {
+  padding: 4px 10px;
+  font-size: 12.5px;
+}

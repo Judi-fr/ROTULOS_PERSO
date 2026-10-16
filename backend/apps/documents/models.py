@@ -43,6 +43,10 @@ class Document(models.Model):
     # Qué falló (o qué se omitió, en un lote parcialmente exitoso) — nunca
     # se deja al usuario con un "falló" sin explicación.
     error_message = models.TextField(blank=True, default="")
+    # Un lote grande no se genera en el request: queda acá lo necesario para
+    # armarlo (ids, plantilla, formato...) y lo hace el worker
+    # (apps.labels.batch_jobs). Vacío cuando no hay nada pendiente.
+    job = models.JSONField(default=dict, blank=True)
     # Soft-delete, igual criterio que Label/User: un documento nunca se
     # destruye de verdad.
     is_active = models.BooleanField(default=True)

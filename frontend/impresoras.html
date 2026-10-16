@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Impresoras</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/pedidos.css" />
+    <link rel="stylesheet" href="assets/css/imprimir_rotulos.css" />
+    <link rel="stylesheet" href="assets/css/impresion.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar" id="appTopbar" data-links='[{"href": "cola_impresion.html", "label": "Cola de impresión"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Impresoras</h1>
+          <p>
+            Para mandar los rótulos directo a una impresora, sin descargar el
+            archivo, una PC de tu local tiene que tener corriendo el
+            <strong>agente de impresión</strong>: es el que habla con las
+            impresoras de tu red.
+          </p>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <section class="profile-card">
+          <div class="profile-card-title">1. Agente de impresión</div>
+          <div class="profile-card-body">
+            <ol class="print-steps">
+              <li>Creá un agente acá, con un nombre que te diga en qué PC está.</li>
+              <li>Descargá el programa y corrélo en esa PC con el comando que te mostramos (necesita Python 3).</li>
+              <li>Dejalo abierto: cuando esté "En línea", ya podés mandar rótulos.</li>
+            </ol>
+            <div id="tokenBox" class="print-token" hidden></div>
+            <div class="print-table-wrap">
+              <table class="print-table">
+                <thead>
+                  <tr><th>Agente</th><th>Estado</th><th>Última conexión</th><th></th></tr>
+                </thead>
+                <tbody id="agentsBody">
+                  <tr><td colspan="4" class="empty-state">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <form id="agentForm" class="print-form">
+              <div class="field">
+                <label for="agentName">Nombre del agente nuevo</label>
+                <input id="agentName" type="text" maxlength="100" placeholder="PC del depósito" required />
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Crear agente</button>
+                <a class="btn btn-outline" id="downloadAgent" href="#">Descargar el programa</a>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section class="profile-card">
+          <div class="profile-card-title">2. Impresoras</div>
+          <div class="profile-card-body">
+            <div class="print-table-wrap">
+              <table class="print-table">
+                <thead>
+                  <tr><th>Impresora</th><th>Formato</th><th>Conexión</th><th>Agente</th><th></th></tr>
+                </thead>
+                <tbody id="printersBody">
+                  <tr><td colspan="5" class="empty-state">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <form id="printerForm" class="print-form">
+              <input type="hidden" id="printerId" />
+              <div class="field">
+                <label for="printerName">Nombre</label>
+                <input id="printerName" type="text" maxlength="100" placeholder="Zebra del mostrador" required />
+              </div>
+              <div class="field">
+                <label for="printerLocation">Dónde está (opcional)</label>
+                <input id="printerLocation" type="text" maxlength="150" placeholder="Depósito" />
+              </div>
+              <div class="field">
+                <label for="printerFormat">Qué imprime</label>
+                <select id="printerFormat">
+                  <option value="zpl">Térmica Zebra o compatible (ZPL)</option>
+                  <option value="pdf">Impresora común (PDF)</option>
+                </select>
+              </div>
+              <div class="field" id="dpmmField">
+                <label for="printerDpmm">Resolución</label>
+                <select id="printerDpmm">
+                  <option value="8">203 dpi (la más común)</option>
+                  <option value="12">300 dpi</option>
+                  <option value="24">600 dpi</option>
+                  <option value="6">152 dpi</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="printerConnection">Cómo se conecta</label>
+                <select id="printerConnection">
+                  <option value="network">Está en la red (tiene IP)</option>
+                  <option value="system">Está instalada en la PC del agente</option>
+                </select>
+              </div>
+              <div class="field" id="hostField">
+                <label for="printerHost">IP de la impresora</label>
+                <input id="printerHost" type="text" maxlength="255" placeholder="192.168.0.50" />
+              </div>
+              <div class="field" id="portField">
+                <label for="printerPort">Puerto</label>
+                <input id="printerPort" type="number" min="1" max="65535" value="9100" />
+              </div>
+              <div class="field" id="queueField" hidden>
+                <label for="printerQueue">Nombre de la impresora en esa PC</label>
+                <input id="printerQueue" type="text" maxlength="150" placeholder="Zebra_ZD220" />
+              </div>
+              <div class="field">
+                <label for="printerAgent">Agente que la maneja</label>
+                <select id="printerAgent"></select>
+              </div>
+              <div class="field-checkbox">
+                <input type="checkbox" id="printerDefault" />
+                <label for="printerDefault" style="margin:0;">Usarla por defecto</label>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary" id="printerSubmit">Agregar impresora</button>
+                <button type="button" class="btn btn-outline" id="printerCancel" hidden>Cancelar la edición</button>
+              </div>
+            </form>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/impresoras.js"></script>
+  </body>
+</html>

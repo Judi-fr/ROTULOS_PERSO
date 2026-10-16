@@ -73,7 +73,7 @@ async function exportOrders() {
 document.getElementById("exportBtn").addEventListener("click", exportOrders);
 document.getElementById("logoutBtn")?.addEventListener("click", () => window.Auth.logout());
 
-if (!window.Auth.getAccessToken()) {
+if (!window.Auth.hasSession()) {
   window.location.replace("index.html");
 } else {
   loadStoreFilter();

@@ -569,6 +569,7 @@ class RolePermissionSystemTests(AuthTestCase):
         "support.manage",
         "labels.view_all",
         "labels.manage_templates",
+        "catalogs.manage",
         "variables.manage",
         "documents.view_all",
         "orders.create_for_others",

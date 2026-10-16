@@ -126,6 +126,8 @@ PERMISSIONS = frozenset(
         "support.manage",
         "labels.view_all",
         "labels.manage_templates",
+        # Catálogos globales (transportistas manuales, tamaños de rótulo).
+        "catalogs.manage",
         "variables.manage",
         "documents.view_all",
         # Dar de alta un pedido a nombre de OTRO usuario (0020): exclusivo

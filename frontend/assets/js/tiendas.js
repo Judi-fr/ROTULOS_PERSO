@@ -614,7 +614,7 @@ async function loadStores() {
 async function init() {
   const result = readInstallResult();
 
-  if (!window.Auth.getAccessToken()) {
+  if (!window.Auth.hasSession()) {
     // Instaló la app desde su plataforma sin haber iniciado sesión: se guarda
     // el enlace de vinculación y se retoma al volver del login.
     if (result.claim) localStorage.setItem(PENDING_CLAIM_KEY, result.claim);

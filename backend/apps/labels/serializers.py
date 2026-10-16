@@ -23,11 +23,11 @@ from django.db.models import Q
 from PIL import Image, UnidentifiedImageError
 from rest_framework import serializers
 
-from apps.accounts.permissions_map import get_effective_role
+from apps.accounts.permissions_map import get_effective_role, user_has_permission
 from apps.orders.models import Order
 
 from .styles import validate_style
-from .models import ElementLayout, Label, LabelTemplate, LayoutElement, LayoutVariable
+from .models import ElementLayout, Label, LabelTemplate, LabelTemplateVersion, LayoutElement, LayoutVariable
 
 # Campos de texto simple del diseño: solo left/top + un "text" opcional.
 TEXT_DESIGN_FIELDS = {
@@ -402,6 +402,16 @@ class LabelTemplateSerializer(serializers.ModelSerializer):
     preview = ImageOrDataUrlField(
         required=False, allow_null=True, max_bytes=300 * 1024, field_label="Miniatura"
     )
+    # Número de la última versión (template_versions.py). El viewset lo anota
+    # en la consulta; una plantilla recién creada lo lee de la base.
+    current_version = serializers.SerializerMethodField()
+    # Si quien pregunta puede guardar cambios en ella: la misma regla que
+    # LabelTemplateViewSet.perform_update, para que el frontend no la copie.
+    can_edit = serializers.SerializerMethodField()
+    # Nota de la versión que deja este guardado ("cambié el logo"). Opcional.
+    version_note = serializers.CharField(
+        write_only=True, required=False, allow_blank=True, max_length=200
+    )
 
     class Meta:
         model = LabelTemplate
@@ -416,6 +426,9 @@ class LabelTemplateSerializer(serializers.ModelSerializer):
             "height_cm",
             "design",
             "preview",
+            "current_version",
+            "can_edit",
+            "version_note",
             "created_at",
             "updated_at",
         ]
@@ -427,6 +440,49 @@ class LabelTemplateSerializer(serializers.ModelSerializer):
 
     def validate_design(self, value):
         return validate_design(value)
+
+    def get_current_version(self, obj):
+        annotated = getattr(obj, "current_version", None)
+        if annotated is not None:
+            return annotated
+        last = obj.versions.order_by("-number").values_list("number", flat=True).first()
+        return last
+
+    def get_can_edit(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not getattr(user, "is_authenticated", False):
+            return False
+        if user_has_permission(user, "labels.manage_templates"):
+            return True
+        return obj.owner_id == user.id and not obj.is_public
+
+    def create(self, validated_data):
+        validated_data.pop("version_note", None)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        validated_data.pop("version_note", None)
+        return super().update(instance, validated_data)
+
+
+class LabelTemplateVersionSerializer(serializers.ModelSerializer):
+    created_by_email = serializers.EmailField(source="created_by.email", read_only=True, default=None)
+
+    class Meta:
+        model = LabelTemplateVersion
+        fields = [
+            "number",
+            "name",
+            "width_cm",
+            "height_cm",
+            "design",
+            "note",
+            "restored_from",
+            "created_by_email",
+            "created_at",
+        ]
+        read_only_fields = fields
 
 
 class LabelSerializer(serializers.ModelSerializer):

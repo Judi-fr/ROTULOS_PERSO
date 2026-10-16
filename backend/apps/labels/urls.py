@@ -7,6 +7,8 @@ mismo patrón que ``apps.orders.urls``.
 from django.urls import path
 from rest_framework.routers import SimpleRouter
 
+from .catalog_views import LabelSizeViewSet
+
 from .batch_views import LabelBatchView
 from .views import (
     AdminLabelListView,
@@ -26,6 +28,7 @@ router.register(r"labels", LabelViewSet, basename="label")
 router.register(r"templates", LabelTemplateViewSet, basename="label-template")
 router.register(r"element-layouts", ElementLayoutViewSet, basename="element-layout")
 router.register(r"layout-variables", LayoutVariableViewSet, basename="layout-variable")
+router.register(r"sizes", LabelSizeViewSet, basename="label-size")
 
 urlpatterns = [
     # Rótulos de TODOS los usuarios (panel admin, labels.view_all). Path

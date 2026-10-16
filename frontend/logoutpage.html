@@ -64,77 +64,34 @@
   </div>
 
   <script src="assets/js/config.js"></script>
+  <script src="assets/js/auth.js"></script>
   <script>
-    function getStoredAuth() {
-      return {
-        access: localStorage.getItem("access"),
-        refresh: localStorage.getItem("refresh"),
-        user: JSON.parse(localStorage.getItem("user") || "null")
-      };
-    }
-
-    function clearAuthStorage() {
-      localStorage.removeItem("access");
-      localStorage.removeItem("refresh");
-      localStorage.removeItem("user");
-    }
-
+    // La sesión vive en cookies HttpOnly (assets/js/auth.js): acá solo se
+    // muestra quién es y se cierra con window.Auth.logout().
     function renderUser() {
-      const auth = getStoredAuth();
+      const user = window.Auth.hasSession() ? window.Auth.getCurrentUser() : null;
       const card = document.getElementById("user-card");
       const nameEl = document.getElementById("user-name");
       const emailEl = document.getElementById("user-email");
       const avatarEl = document.getElementById("avatar");
 
-      if (!auth.user) {
+      if (!user) {
         window.location.replace("index.html");
         return;
       }
 
       card.style.display = "flex";
-      const name = auth.user.display_name || "Usuario";
-      const email = auth.user.email || "sin-email";
+      const name = user.display_name || "Usuario";
+      const email = user.email || "sin-email";
 
       nameEl.textContent = name;
       emailEl.textContent = email;
-      avatarEl.textContent = auth.user.initial || "U";
+      avatarEl.textContent = user.initial || "U";
     }
 
     async function logout() {
-      const auth = getStoredAuth();
-      const statusEl = document.getElementById("status");
-
-      if (!auth.access || !auth.refresh) {
-        clearAuthStorage();
-        window.location.replace("index.html");
-        return;
-      }
-
-      statusEl.textContent = "Cerrando sesión...";
-
-      const headers = {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${auth.access}`
-      };
-
-      try {
-        const response = await fetch(`${window.APP_CONFIG.API_BASE}/auth/logout/`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ refresh: auth.refresh })
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          console.warn("Logout backend respondio con error:", errorData);
-        }
-      } catch (error) {
-        console.warn("No se pudo contactar al backend; se limpia el frontend igual:", error);
-      } finally {
-        clearAuthStorage();
-        statusEl.textContent = "Sesión cerrada.";
-        window.location.replace("index.html");
-      }
+      document.getElementById("status").textContent = "Cerrando sesión...";
+      await window.Auth.logout();
     }
 
     document.addEventListener("DOMContentLoaded", function () {

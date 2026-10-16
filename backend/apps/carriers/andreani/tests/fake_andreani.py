@@ -5,6 +5,8 @@ etiquetas, trazas v3, sucursales v2, cotizador v1, nueva-acción). Nunca sale un
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlparse
 
+from django.test import override_settings
+
 from apps.carriers.models import CarrierAccount
 
 QA = "https://apisqa.andreani.com"
@@ -116,6 +118,11 @@ class AndreaniTestMixin:
     def setUp(self):
         super().setUp()
         self.andreani = FakeAndreani()
+        # El simulado atiende la URL de QA real: un .env local que apunte a
+        # fake_andreani_server (http://127.0.0.1:8099) no debe cambiar los tests.
+        qa_base = override_settings(ANDREANI_API_BASE_QA=QA)
+        qa_base.enable()
+        self.addCleanup(qa_base.disable)
         for target in ("get", "request"):
             patcher = patch(f"apps.carriers.andreani.client.requests.{target}", side_effect=getattr(self.andreani, target))
             patcher.start()

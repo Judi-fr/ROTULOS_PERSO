@@ -272,7 +272,7 @@ el("fileInput").addEventListener("change", resetReview);
 el("storeSelect").addEventListener("change", resetReview);
 document.getElementById("logoutBtn")?.addEventListener("click", () => window.Auth.logout());
 
-if (!window.Auth.getAccessToken()) {
+if (!window.Auth.hasSession()) {
   window.location.replace("index.html");
 } else {
   loadStores();

@@ -76,10 +76,11 @@ document.getElementById("targetStatus").addEventListener("change", syncCarrierFi
 document.getElementById("applyBtn").addEventListener("click", apply);
 document.getElementById("logoutBtn")?.addEventListener("click", () => window.Auth.logout());
 
-if (!window.Auth.getAccessToken()) {
+if (!window.Auth.hasSession()) {
   window.location.replace("index.html");
 } else {
   picker = createOrderPicker(document.getElementById("orderPicker"));
+  attachCarrierSuggestions(document.getElementById("carrierInput"));
   syncCarrierField();
   apiFetch(`${API_BASE}/auth/me/`)
     .then(async (response) => {

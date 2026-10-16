@@ -216,12 +216,8 @@ def build_label_context(order=None, label=None):
     # (StoreConnection.sender_*, pantalla tiendas.html); si no lo cargaron,
     # se usa el nombre de la tienda.
     store = getattr(order, "store_connection", None)
-    sender_name = (
-        (getattr(store, "sender_name", "") or "").strip()
-        or (getattr(store, "name", "") or "").strip()
-        or order.user.get_full_name()
-        or order.user.email
-    )
+    sender = sender_fields(order.user, store)
+    sender_name = sender["remitente"] or order.user.get_full_name() or order.user.email
     # Sin tracking real, el código es el id del pedido con ceros a la
     # izquierda: es una referencia interna nuestra, no la de un courier,
     # y la app es multi-cliente (ningún prefijo de cliente acá).
@@ -231,10 +227,10 @@ def build_label_context(order=None, label=None):
     )
     context = {
         "remitente": sender_name,
-        # Domicilio/teléfono de quien despacha: solo si la tienda los cargó
-        # (un rótulo sin remitente no puede devolverse si no se entrega).
-        "remitente_domicilio": (getattr(store, "sender_address", "") or "").strip(),
-        "remitente_telefono": (getattr(store, "sender_phone", "") or "").strip(),
+        # Domicilio/teléfono de quien despacha: los de la tienda, o los de la
+        # cuenta (un rótulo sin remitente no puede devolverse si no se entrega).
+        "remitente_domicilio": sender["remitente_domicilio"],
+        "remitente_telefono": sender["remitente_telefono"],
         "destinatario": recipient_name,
         # El número que conoce el comprador (el de la tienda) si el pedido
         # vino de una; si no, el id propio.
@@ -286,6 +282,41 @@ def build_preview_context():
     }
 
 
+def sender_fields(owner, store=None):
+    """Remitente del rótulo: lo de la tienda, y lo que la tienda no tenga sale
+    de los datos de la cuenta (``AccountSettings``, ``organizacion.html``).
+    El nombre: el remitente de la tienda, el de la cuenta, el nombre de la
+    tienda, la razón social — en ese orden; vacío si no hay nada (quien llama
+    decide el último recurso)."""
+    from apps.accounts.models import account_settings_for
+
+    account = account_settings_for(owner)
+
+    def first(*values):
+        return next((value.strip() for value in values if value and value.strip()), "")
+
+    return {
+        "remitente": first(
+            getattr(store, "sender_name", ""),
+            getattr(account, "sender_name", ""),
+            getattr(store, "name", ""),
+            getattr(account, "legal_name", ""),
+        ),
+        "remitente_domicilio": first(getattr(store, "sender_address", ""), getattr(account, "sender_address", "")),
+        "remitente_telefono": first(getattr(store, "sender_phone", ""), getattr(account, "sender_phone", "")),
+    }
+
+
+def sender_logo(owner, store=None):
+    """Logo del rótulo: el de la tienda o, si no cargó uno, el de la cuenta."""
+    if store is not None and getattr(store, "logo", None):
+        return store.logo
+    from apps.accounts.models import account_settings_for
+
+    account = account_settings_for(owner)
+    return account.logo if account is not None and account.logo else None
+
+
 def build_shipment_context(shipment, store=None):
     """Igual que ``build_label_context``, pero para un envío que NO es un
     ``Order`` nuestro: el rótulo que pidió la tienda desde su propio admin
@@ -300,10 +331,8 @@ def build_shipment_context(shipment, store=None):
     Devuelve EXACTAMENTE las mismas claves que ``build_label_context``: una
     plantilla se dibuja igual venga de donde venga el envío.
     """
-    sender_name = (
-        (getattr(store, "sender_name", "") or "").strip()
-        or (getattr(store, "name", "") or "").strip()
-    )
+    sender = sender_fields(getattr(store, "owner", None), store)
+    sender_name = sender["remitente"]
     # Nunca vacío: un rótulo sin código escaneable no sirve. Si la tienda
     # todavía no tiene el código del courier, se usa el número del envío.
     tracking = shipment.tracking_code or shipment.order_number or shipment.external_label_id
@@ -314,8 +343,8 @@ def build_shipment_context(shipment, store=None):
 
     return {
         "remitente": sender_name,
-        "remitente_domicilio": (getattr(store, "sender_address", "") or "").strip(),
-        "remitente_telefono": (getattr(store, "sender_phone", "") or "").strip(),
+        "remitente_domicilio": sender["remitente_domicilio"],
+        "remitente_telefono": sender["remitente_telefono"],
         "destinatario": shipment.recipient_name,
         "domicilio": " ".join(filter(None, [shipment.street, shipment.number])),
         "referencia": shipment.reference or "",

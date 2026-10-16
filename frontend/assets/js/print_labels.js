@@ -211,7 +211,41 @@ const OUTPUT_OPTIONS = {
 };
 
 function outputOptions(value) {
+  // Una impresora configurada: el formato y la densidad salen de ella
+  // (LabelBatchView con printer_id) y el lote va directo a su cola.
+  if (value.startsWith("printer:")) return { printer_id: Number(value.slice("printer:".length)) };
   return OUTPUT_OPTIONS[value] || OUTPUT_OPTIONS.label;
+}
+
+// Las impresoras para "Mandar directo" (apps.printing); la predeterminada
+// queda elegida. Sin impresoras el grupo no aparece.
+async function loadPrinters() {
+  try {
+    const response = await apiFetch(`${API_BASE}/printing/printers/`);
+    if (!response.ok) return;
+    const printers = extractResults(await response.json());
+    const group = document.getElementById("printerOptions");
+    group.innerHTML = printers
+      .map((printer) => {
+        const where = printer.location ? ` · ${printer.location}` : "";
+        return `<option value="printer:${printer.id}">${escapeHtml(printer.name + where)}</option>`;
+      })
+      .join("");
+    group.hidden = !printers.length;
+    const preferred = printers.find((printer) => printer.is_default);
+    if (preferred) document.getElementById("pageLayoutSelect").value = `printer:${preferred.id}`;
+  } catch (err) {
+    if (err.isSessionExpired) throw err;
+  }
+}
+
+// Sin impresora predeterminada, el formato preferido de la cuenta
+// (organizacion.html) queda elegido.
+async function applyPreferredFormat() {
+  const select = document.getElementById("pageLayoutSelect");
+  if (select.value.startsWith("printer:")) return;
+  const preferred = (await loadAccountSettings()).default_print_format;
+  if (preferred && OUTPUT_OPTIONS[preferred]) select.value = preferred;
 }
 
 async function printLabels() {
@@ -245,6 +279,12 @@ async function printLabels() {
     if (!response.ok) {
       throw new Error(getErrorMessage(data, "No se pudieron generar los rótulos."));
     }
+    // Mandado a una impresora pero no encolado (el lote falló, o la
+    // impresora no tiene agente): se avisa y no se despacha nada. Un lote
+    // grande (queued) todavía no tiene trabajo: lo crea el worker al terminar.
+    if (payload.printer_id && !data.print_job && !data.queued) {
+      throw new Error(data.print_error || "No se pudo mandar a la impresora.");
+    }
 
     let dispatched = 0;
     if (document.getElementById("markDispatched").checked) {
@@ -265,9 +305,21 @@ async function printLabels() {
     }
 
     // El archivo se arma en "Mis documentos": ahí se descarga, y esa página
-    // confirma lo que se hizo (ver documentos.js, showBatchResult).
+    // confirma lo que se hizo (ver documentos.js, showBatchResult). Mandado
+    // a una impresora, se sigue en la cola (cola_impresion.js).
     const result = new URLSearchParams({ labels: String(orderIds.length) });
     if (dispatched) result.set("dispatched", String(dispatched));
+    if (data.print_job) {
+      result.set("sent", String(data.print_job.id));
+      window.location.href = `cola_impresion.html?${result}`;
+      return;
+    }
+    if (data.queued && payload.printer_id) {
+      result.set("generating", "1");
+      window.location.href = `cola_impresion.html?${result}`;
+      return;
+    }
+    if (data.queued) result.set("generating", "1");
     window.location.href = `documentos.html?${result}`;
   } catch (err) {
     if (err.isSessionExpired) return;
@@ -326,11 +378,13 @@ async function init() {
   }
   await loadStoreFilter();
   await loadTemplates();
+  await loadPrinters();
+  await applyPreferredFormat();
   await loadOrders();
   updateSelectionCount();
 }
 
-if (!window.Auth.getAccessToken()) {
+if (!window.Auth.hasSession()) {
   window.location.replace("index.html");
 } else {
   init();

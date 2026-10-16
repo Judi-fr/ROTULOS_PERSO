@@ -9,6 +9,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from corsheaders.defaults import default_headers as default_cors_headers
 from django.core.exceptions import ImproperlyConfigured
 
 # BASE_DIR apunta a la raíz del repo (dos niveles arriba de config/settings/)
@@ -65,6 +66,7 @@ LOCAL_APPS = [
     "apps.audit",       # registro de auditoría (solo lectura)
     "apps.integrations",  # claves de API y webhooks (entrada/salida)
     "apps.carriers",    # transportistas (Andreani): envíos, etiquetas y seguimiento
+    "apps.printing",    # impresión directa: impresoras, agente y cola de trabajos
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -157,6 +159,8 @@ REST_FRAMEWORK = {
         "anon": "60/min",
         "user": "1000/min",
         "login": "5/min",
+        # El agente de impresión consulta cada pocos segundos (apps.printing).
+        "print_agent": "240/min",
         # Pedir/confirmar reset de contraseña: frena el email bombing a una
         # víctima y la fuerza bruta sobre el token del link.
         "password_reset": "5/min",
@@ -188,6 +192,12 @@ REST_FRAMEWORK = {
 # ---------------------------------------------------------------------------
 
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
+
+# El frontend manda los tokens en cookies (auth_cookies.py): un request de
+# otro origen solo las lleva con credenciales, y el header X-Auth-Mode tiene
+# que estar permitido en el preflight.
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = (*default_cors_headers, "x-auth-mode")
 
 # El navegador solo le deja leer al JavaScript de otro origen un puñado de
 # cabeceras estándar. Sin esta lista, el frontend (otro puerto que la API)
@@ -279,9 +289,17 @@ ADMIN_CREATED_USER_PASSWORD = env("ADMIN_CREATED_USER_PASSWORD", default="")
 # multi-cliente, así que no hay un remitente global configurable.
 
 # Tope de rótulos por lote (POST /api/v1/labels/batch/, ver
-# apps.labels.batch_views). El lote corre síncrono, en el mismo request:
-# sin esto, un lote gigante sería un timeout en vez de un error claro.
-LABELS_BATCH_MAX_ITEMS = env.int("LABELS_BATCH_MAX_ITEMS", default=200)
+# apps.labels.batch_views). Hasta LABELS_BATCH_SYNC_MAX_ITEMS se genera en el
+# mismo request (el resultado sale enseguida); más que eso lo genera el worker
+# (apps.labels.batch_jobs) y "Mis documentos" lo muestra "Procesando" hasta
+# que está. El tope sigue existiendo: un lote gigante es un error claro, no
+# una PC trabada.
+LABELS_BATCH_MAX_ITEMS = env.int("LABELS_BATCH_MAX_ITEMS", default=1000)
+LABELS_BATCH_SYNC_MAX_ITEMS = env.int("LABELS_BATCH_SYNC_MAX_ITEMS", default=25)
+# Un lote que el worker tomó y no terminó en este tiempo (se cortó el
+# proceso) vuelve a la cola, hasta LABELS_BATCH_JOB_MAX_ATTEMPTS veces.
+LABELS_BATCH_JOB_TIMEOUT_SECONDS = env.int("LABELS_BATCH_JOB_TIMEOUT_SECONDS", default=600)
+LABELS_BATCH_JOB_MAX_ATTEMPTS = env.int("LABELS_BATCH_JOB_MAX_ATTEMPTS", default=3)
 
 # ---------------------------------------------------------------------------
 # Importación de pedidos (apps.orders.import_views) — story 21
@@ -491,6 +509,17 @@ SIMPLE_JWT = {
     "UPDATE_LAST_LOGIN": True,
 }
 
+# Tokens del frontend web en cookies HttpOnly (apps/accounts/auth_cookies.py,
+# donde está explicada cada decisión). Secure por defecto salvo en DEBUG, que
+# corre por HTTP; en un server de prueba por HTTP plano, AUTH_COOKIE_SECURE=False.
+AUTH_COOKIE_ACCESS_NAME = "rotulos_access"
+AUTH_COOKIE_REFRESH_NAME = "rotulos_refresh"
+AUTH_COOKIE_ACCESS_PATH = "/api/"
+AUTH_COOKIE_REFRESH_PATH = "/api/v1/auth/"
+AUTH_COOKIE_DOMAIN = env("AUTH_COOKIE_DOMAIN", default="") or None
+AUTH_COOKIE_SECURE = env.bool("AUTH_COOKIE_SECURE", default=not DEBUG)
+AUTH_COOKIE_SAMESITE = "Lax"
+
 # ---------------------------------------------------------------------------
 # Validación de contraseñas
 # ---------------------------------------------------------------------------
@@ -609,3 +638,12 @@ LOGGING = {
         "django": {"handlers": ["app_console"], "level": LOG_LEVEL, "propagate": False},
     },
 }
+
+# ---------------------------------------------------------------------------
+# Impresión directa (apps.printing)
+# ---------------------------------------------------------------------------
+# Un trabajo que el agente tomó y no confirmó en este tiempo pasa a "error"
+# (nunca se reimprime solo: podría duplicar rótulos, ver services.py).
+PRINT_JOB_CONFIRM_TIMEOUT_SECONDS = env.int("PRINT_JOB_CONFIRM_TIMEOUT_SECONDS", default=300)
+# Un agente cuenta como "en línea" si consultó en este lapso.
+PRINT_AGENT_ONLINE_SECONDS = env.int("PRINT_AGENT_ONLINE_SECONDS", default=60)

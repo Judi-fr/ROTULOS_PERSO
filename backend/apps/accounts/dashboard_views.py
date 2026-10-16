@@ -128,6 +128,16 @@ class DashboardView(APIView):
                     "enabled": True,
                 }
             )
+            # Lo mandado directo a una impresora (apps.printing). Las
+            # impresoras se configuran desde ahí y desde Imprimir rótulos.
+            menu.append(
+                {
+                    "key": "print_queue",
+                    "label": "Cola de impresión",
+                    "url": "cola_impresion.html",
+                    "enabled": True,
+                }
+            )
         # Acciones masivas sobre pedidos propios (apps.orders.bulk_views),
         # con el mismo permiso que exige cada endpoint: la planilla de retiro
         # y la exportación solo leen; cargar seguimientos y cambiar estados
@@ -201,6 +211,9 @@ class DashboardView(APIView):
         menu.extend(
             [
                 {"key": "profile", "label": "Mi perfil", "url": "perfil.html", "enabled": True},
+                # Datos del negocio (AccountSettings): fiscales, remitente y
+                # logo por defecto, preferencias.
+                {"key": "account_settings", "label": "Datos de la cuenta", "url": "organizacion.html", "enabled": True},
                 {"key": "support", "label": "Ayuda / Soporte", "url": "ayuda.html", "enabled": True},
             ]
         )

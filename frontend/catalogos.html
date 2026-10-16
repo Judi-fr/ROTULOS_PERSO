@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>Catálogos</title>
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
+    />
+    <link rel="stylesheet" href="assets/css/gestionuser.css" />
+    <link rel="stylesheet" href="assets/css/catalogos.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- SIDEBAR: renderizado por assets/js/admin_sidebar.js -->
+      <div id="adminSidebar" data-active="catalogs"></div>
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1 id="catalogsTitle">Catálogos</h1>
+            <p>Las opciones que se les ofrecen a todos los comerciantes. Desactivar una la saca de las listas sin borrar lo que ya se usó.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn btn-outline" id="logoutAdminBtn" type="button">Cerrar sesión</button>
+          </div>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <section class="roles-card catalog-card" aria-labelledby="carriersTitle">
+          <div class="roles-card-title" id="carriersTitle">Transportistas sin API</div>
+          <p class="catalog-help">
+            Los que se despachan cargando el seguimiento a mano. Aparecen como
+            sugerencia al escribir el transportista y, con link de seguimiento,
+            el pedido arma solo la URL que ve el comprador.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr><th>Nombre</th><th>Link de seguimiento</th><th>Estado</th><th></th></tr>
+              </thead>
+              <tbody id="carriersBody">
+                <tr><td colspan="4" class="catalog-empty">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <form id="carrierForm" class="catalog-form">
+            <input type="hidden" id="carrierId" />
+            <label>Nombre <input id="carrierName" type="text" maxlength="100" required /></label>
+            <label class="catalog-wide">Link de seguimiento (opcional)
+              <input id="carrierUrl" type="text" maxlength="500" placeholder="https://ejemplo.com/seguimiento?numero={tracking}" />
+            </label>
+            <div class="catalog-actions">
+              <button type="submit" class="btn btn-primary" id="carrierSubmit">Agregar</button>
+              <button type="button" class="btn btn-outline" id="carrierCancel" hidden>Cancelar</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="roles-card catalog-card" aria-labelledby="sizesTitle">
+          <div class="roles-card-title" id="sizesTitle">Tamaños de rótulo</div>
+          <p class="catalog-help">Las medidas que se ofrecen en el editor al diseñar una plantilla (ancho de 5 a 30 cm, alto de 5 a 40).</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr><th>Nombre</th><th>Medida</th><th>Estado</th><th></th></tr>
+              </thead>
+              <tbody id="sizesBody">
+                <tr><td colspan="4" class="catalog-empty">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <form id="sizeForm" class="catalog-form">
+            <input type="hidden" id="sizeId" />
+            <label>Nombre <input id="sizeName" type="text" maxlength="60" required /></label>
+            <label>Ancho (cm) <input id="sizeWidth" type="number" min="5" max="30" step="0.1" required /></label>
+            <label>Alto (cm) <input id="sizeHeight" type="number" min="5" max="40" step="0.1" required /></label>
+            <div class="catalog-actions">
+              <button type="submit" class="btn btn-primary" id="sizeSubmit">Agregar</button>
+              <button type="button" class="btn btn-outline" id="sizeCancel" hidden>Cancelar</button>
+            </div>
+          </form>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/admin_common.js"></script>
+    <script src="assets/js/admin_sidebar.js"></script>
+    <script src="assets/js/catalogos.js"></script>
+  </body>
+</html>

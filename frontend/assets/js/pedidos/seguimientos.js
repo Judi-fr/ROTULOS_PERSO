@@ -286,6 +286,7 @@ window.OrderTrackingImport = (() => {
       const carrierField = node("label", { className: "dispatch-field", text: "Transportista" });
       const carrierInput = node("input", { attrs: { id: "trackingCarrier", type: "text", maxlength: "100", placeholder: "Ej.: Correo Argentino" } });
       carrierField.appendChild(carrierInput);
+      attachCarrierSuggestions(carrierInput);
       options.appendChild(carrierField);
     }
     const statusField = node("label", { className: "dispatch-field", text: "Dejar los pedidos como" });

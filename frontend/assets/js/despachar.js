@@ -182,10 +182,11 @@ async function saveShipment(event) {
 document.getElementById("shipForm")?.addEventListener("submit", saveShipment);
 document.getElementById("logoutBtn")?.addEventListener("click", () => window.Auth.logout());
 
-if (!window.Auth.getAccessToken()) {
+if (!window.Auth.hasSession()) {
   window.location.replace("index.html");
 } else {
   window.AppTopbar.render();
+  attachCarrierSuggestions(document.getElementById("carrierInput"));
   const orderId = getOrderId();
   if (orderId) {
     loadOrder(orderId);

@@ -14,6 +14,16 @@ from .models import Order
 TRACKED_SHIPPING_FIELDS = ("status", "carrier", "tracking_number", "tracking_url")
 
 
+def catalog_carrier(carrier_name):
+    """El transportista del catálogo global (``ManualCarrier``) con ese
+    nombre, sin importar mayúsculas, o ``None``."""
+    from apps.carriers.models import ManualCarrier
+
+    if not carrier_name:
+        return None
+    return ManualCarrier.objects.filter(name__iexact=carrier_name.strip(), is_active=True).first()
+
+
 def apply_shipping(request, order, data):
     """Aplica ``data`` (ya validado por ``OrderShipSerializer``) y audita.
 
@@ -25,6 +35,14 @@ def apply_shipping(request, order, data):
     for field in ("carrier", "tracking_number", "tracking_url"):
         if field in data:
             setattr(order, field, data[field].strip())
+    # Un transportista del catálogo (ManualCarrier) queda con el nombre del
+    # catálogo (no "via cargo" y "Via Cargo" como dos) y, si tiene link de
+    # seguimiento, arma la URL sola cuando no vino una.
+    catalog = catalog_carrier(order.carrier) if "carrier" in data else None
+    if catalog is not None:
+        order.carrier = catalog.name
+        if order.tracking_number and not order.tracking_url:
+            order.tracking_url = catalog.tracking_url_for(order.tracking_number)
     changes = {
         field: {"from": previous[field], "to": getattr(order, field)}
         for field in TRACKED_SHIPPING_FIELDS

@@ -447,8 +447,11 @@ window.OrderDispatch = (() => {
     } catch (_err) {
       last = "";
     }
-    // El último con el que se despachó, si sigue listo.
-    carrier = ready.find((item) => item.code === last) || ready[0];
+    // El preferido de la cuenta (organizacion.html) si está listo; si no, el
+    // último con el que se despachó; si no, el primero.
+    const preferred = (await loadAccountSettings()).default_carrier || "";
+    carrier =
+      ready.find((item) => item.code === preferred) || ready.find((item) => item.code === last) || ready[0];
     renderReady();
   }
 

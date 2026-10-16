@@ -54,6 +54,8 @@
   </main>
 
   <script src="assets/js/config.js"></script>
+  <!-- window.Auth: la sesión viaja en cookies HttpOnly (withSession/saveSession). -->
+  <script src="assets/js/auth.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     // Client ID del OAuth client "Web application" (Google Cloud Console).
@@ -63,12 +65,11 @@
     const GOOGLE_CLIENT_ID = '399413683717-ook49mdogo9oierje6dh2cnn6g9djcs0.apps.googleusercontent.com';
 
     // Mismo shape de respuesta que login/register manual (auth_response del
-    // backend), así que el guardado en localStorage y la redirección por rol
-    // son idénticos a los del form de usuario/contraseña.
+    // backend), así que guardar quién es y la redirección por rol son
+    // idénticos a los del form de usuario/contraseña. Los tokens no pasan por
+    // acá: el backend los dejó en cookies HttpOnly.
     function handleAuthSuccess(data) {
-      localStorage.setItem('access', data.access || '');
-      localStorage.setItem('refresh', data.refresh || '');
-      localStorage.setItem('user', JSON.stringify(data.user || {}));
+      window.Auth.saveSession(data.user);
       if (data.user && data.user.must_change_password) {
         window.location.replace('cambiar-password.html');
         return;
@@ -86,13 +87,13 @@
     // token (JWT) que el backend verifica en /api/v1/auth/google/.
     async function handleGoogleCredential(response) {
       try {
-        const apiResponse = await fetch(`${window.APP_CONFIG.API_BASE}/auth/google/`, {
+        const apiResponse = await fetch(`${window.APP_CONFIG.API_BASE}/auth/google/`, window.Auth.withSession({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({ credential: response.credential })
-        });
+        }));
 
         const data = await apiResponse.json().catch(() => ({}));
 
@@ -124,13 +125,13 @@
       const password = document.getElementById('password').value;
 
       try {
-        const response = await fetch(`${window.APP_CONFIG.API_BASE}/auth/login/`, {
+        const response = await fetch(`${window.APP_CONFIG.API_BASE}/auth/login/`, window.Auth.withSession({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({ email, password })
-        });
+        }));
 
         const data = await response.json().catch(() => ({}));
 
@@ -138,9 +139,7 @@
           throw new Error(data.detail || 'Error en usuario o clave - Reingrese');
         }
 
-        localStorage.setItem('access', data.access || '');
-        localStorage.setItem('refresh', data.refresh || '');
-        localStorage.setItem('user', JSON.stringify(data.user || {}));
+        window.Auth.saveSession(data.user);
 
         // Cambio de contraseña obligatorio pendiente (admin creó la cuenta sin
         // password, o la marcó manualmente): el backend lo hace cumplir en

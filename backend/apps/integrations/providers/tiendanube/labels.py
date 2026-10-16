@@ -43,6 +43,7 @@ from apps.labels.label_rendering import (
     build_computed_context,
     build_shipment_context,
     render_label_pdf,
+    sender_logo,
 )
 
 from ...events import enqueue_event
@@ -203,7 +204,7 @@ def _render(connection, shipment):
         template.width_cm,
         template.height_cm,
         context=context,
-        logo_file=(connection.logo or None),
+        logo_file=sender_logo(connection.owner, connection),
         computed=computed,
     )
     return pdf_bytes

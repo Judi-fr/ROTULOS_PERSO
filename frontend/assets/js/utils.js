@@ -357,3 +357,57 @@ function renderBulkResult(container, data) {
   box.append(title, list);
   container.appendChild(box);
 }
+
+// Datos de la cuenta (GET /auth/me/account/, organizacion.html): las
+// preferencias que otras pantallas usan como valor inicial. Una sola consulta
+// por página; sin permiso o sin datos devuelve {}.
+let accountSettingsPromise = null;
+function loadAccountSettings() {
+  if (!accountSettingsPromise) {
+    accountSettingsPromise = window.Auth.apiFetch(`${window.APP_CONFIG.API_BASE}/auth/me/account/`)
+      .then((response) => (response.ok ? response.json() : {}))
+      .catch((err) => {
+        if (err.isSessionExpired) throw err;
+        return {};
+      });
+  }
+  return accountSettingsPromise;
+}
+
+// Sugerencias para un campo de texto de transportista: los del catálogo
+// global (transportistas sin API, catalogos.html) y los que tienen API. Sigue
+// siendo texto libre: es una ayuda para escribir siempre igual el mismo
+// nombre, y al despachar el backend lo normaliza al del catálogo.
+let carrierNamesPromise = null;
+function loadCarrierNames() {
+  if (!carrierNamesPromise) {
+    const base = window.APP_CONFIG.API_BASE;
+    const read = (url) =>
+      window.Auth.apiFetch(url)
+        .then((response) => (response.ok ? response.json() : []))
+        .catch(() => []);
+    carrierNamesPromise = Promise.all([read(`${base}/carriers/manual-carriers/`), read(`${base}/carriers/`)]).then(
+      ([manual, withApi]) => {
+        const names = [...extractResults(manual), ...extractResults(withApi)]
+          .map((carrier) => carrier.name)
+          .filter(Boolean);
+        return [...new Set(names)].sort((a, b) => a.localeCompare(b, "es"));
+      }
+    );
+  }
+  return carrierNamesPromise;
+}
+
+async function attachCarrierSuggestions(input) {
+  if (!input) return;
+  const names = await loadCarrierNames();
+  let list = document.getElementById("carrierSuggestions");
+  if (!list) {
+    list = document.createElement("datalist");
+    list.id = "carrierSuggestions";
+    document.body.appendChild(list);
+  }
+  list.innerHTML = names.map((name) => `<option value="${escapeHtml(name)}"></option>`).join("");
+  input.setAttribute("list", list.id);
+  input.setAttribute("autocomplete", "off");
+}

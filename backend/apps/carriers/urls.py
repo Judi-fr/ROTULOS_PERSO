@@ -7,11 +7,22 @@ manda un transportista (``push_views.py``)."""
 
 from django.urls import include, path
 
-from . import checkout_views, push_views, views
+from . import catalog_views, checkout_views, push_views, views
 
 urlpatterns = [
     path("andreani/", include("apps.carriers.andreani.urls")),
     path("", views.CarrierListView.as_view(), name="carriers"),
+    # Catálogo global de transportistas sin API (lo edita el admin).
+    path(
+        "manual-carriers/",
+        catalog_views.ManualCarrierViewSet.as_view({"get": "list", "post": "create"}),
+        name="manual-carriers",
+    ),
+    path(
+        "manual-carriers/<int:pk>/",
+        catalog_views.ManualCarrierViewSet.as_view({"get": "retrieve", "patch": "partial_update", "delete": "destroy"}),
+        name="manual-carrier",
+    ),
     path("checkout/", checkout_views.CheckoutView.as_view(), name="carrier-checkout"),
     path("checkout/test/", checkout_views.CheckoutTestView.as_view(), name="carrier-checkout-test"),
     path("shipments/", views.ShipmentCollectionView.as_view(), name="carrier-shipments"),

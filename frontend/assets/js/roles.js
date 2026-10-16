@@ -35,6 +35,7 @@ const CATEGORY_LABELS = {
   processing: "IMPORTACIÓN POR FOTO",
   support: "SOPORTE",
   integrations: "INTEGRACIONES",
+  catalogs: "CATÁLOGOS",
   audit: "AUDITORÍA",
 };
 
@@ -50,6 +51,7 @@ const CATEGORY_ORDER = [
   "support",
   "users",
   "integrations",
+  "catalogs",
   "audit",
 ];
 

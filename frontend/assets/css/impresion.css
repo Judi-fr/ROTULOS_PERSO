@@ -1,0 +1,128 @@
+/* impresoras.html y cola_impresion.html (apps.printing): la tabla de la cola,
+   las tarjetas de agentes/impresoras y el token que se muestra una vez. El
+   resto (topbar, cards, campos, botones) viene de base.css + pedidos.css. */
+
+.profile-card + .profile-card {
+  margin-top: 20px;
+}
+
+.print-table-wrap {
+  overflow-x: auto;
+}
+
+.print-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.print-table th,
+.print-table td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.print-table th {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.print-detail {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.print-error {
+  display: block;
+  color: var(--red);
+  font-size: 12.5px;
+  max-width: 420px;
+}
+
+.print-badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.print-badge-pending { background: var(--blue-light); color: var(--blue); }
+.print-badge-printing { background: var(--purple-light); color: var(--purple); }
+.print-badge-printed { background: var(--green-light); color: var(--green); }
+.print-badge-error { background: var(--red-light); color: var(--red); }
+.print-badge-cancelled { background: var(--border); color: var(--text-muted); }
+.print-badge-online { background: var(--green-light); color: var(--green); }
+.print-badge-offline { background: var(--border); color: var(--text-muted); }
+
+.print-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.print-actions .btn {
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+
+.print-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.print-token {
+  margin: 12px 0;
+  padding: 14px;
+  border: 1px solid var(--amber);
+  border-radius: 10px;
+  background: var(--amber-light);
+}
+
+.print-token code,
+.print-token pre {
+  display: block;
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12.5px;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.print-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px 16px;
+  margin-top: 12px;
+}
+
+.print-form .form-actions {
+  grid-column: 1 / -1;
+}
+
+.print-steps {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.pager {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}

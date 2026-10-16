@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Versiones de la plantilla</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/labels_shared.css" />
+    <link rel="stylesheet" href="assets/css/templates.css" />
+    <link rel="stylesheet" href="assets/css/versiones_plantilla.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar" id="appTopbar" data-links='[{"href": "mis_plantillas.html", "label": "Volver a Mis plantillas"}]'></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1 id="templateTitle">Versiones de la plantilla</h1>
+          <p>
+            Cada vez que cambia el diseño, el tamaño o el nombre de la plantilla
+            queda una versión nueva. Podés ver cómo salía impresa cada una,
+            compararlas y volver a una anterior: restaurar no borra nada, la
+            deja como la versión más nueva.
+          </p>
+        </div>
+
+        <p
+          id="pageMessage"
+          class="page-message"
+          role="status"
+          aria-live="polite"
+          style="display: none"
+        ></p>
+
+        <section class="profile-card">
+          <div class="profile-card-title">Historial</div>
+          <div class="profile-card-body">
+            <div class="versions-table-wrap">
+              <table class="versions-table">
+                <thead>
+                  <tr>
+                    <th>Versión</th>
+                    <th>Fecha</th>
+                    <th>Quién</th>
+                    <th>Nota</th>
+                    <th title="Elegí dos versiones para compararlas">Comparar</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="versionsBody">
+                  <tr><td colspan="6" class="empty-state">Cargando versiones...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="profile-card">
+          <div class="profile-card-title" id="compareTitle">Qué cambió</div>
+          <div class="profile-card-body" id="compareBody">
+            <p class="empty-state">Elegí dos versiones en la columna "Comparar".</p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal-overlay" id="previewOverlay">
+      <div class="modal-box modal-box-wide">
+        <h3 id="previewNombre"></h3>
+        <p class="preview-detail" id="previewMeta"></p>
+        <div class="preview-frame-wrap">
+          <iframe id="previewFrame" title="Vista previa de la versión" hidden></iframe>
+          <p id="previewLoading" class="empty-state">Generando vista previa...</p>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-outline" id="previewCloseBtn">Cerrar</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/versiones_plantilla.js"></script>
+  </body>
+</html>

@@ -322,10 +322,11 @@ el("fileInput").addEventListener("change", () => {
 });
 document.getElementById("logoutBtn")?.addEventListener("click", () => window.Auth.logout());
 
-if (!window.Auth.getAccessToken()) {
+if (!window.Auth.hasSession()) {
   window.location.replace("index.html");
 } else {
   loadStoreFilter();
+  attachCarrierSuggestions(document.getElementById("carrierInput"));
   apiFetch(`${API_BASE}/auth/me/`)
     .then(async (response) => {
       if (response.ok) window.AppTopbar.render(await response.json());

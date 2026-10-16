@@ -78,6 +78,7 @@ window.OrderManifest = (() => {
     carrierInput.style.width = "100%";
     carrierField.appendChild(carrierInput);
     body.appendChild(carrierField);
+    attachCarrierSuggestions(carrierInput);
 
     const pending = toDispatch();
     if (pending.length) {

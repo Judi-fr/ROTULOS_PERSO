@@ -262,3 +262,66 @@ class GroupRolePermission(models.Model):
 
     def __str__(self):
         return f"{self.group.name} -> {self.permission.key}"
+
+
+# ---------------------------------------------------------------------------
+# Datos de la cuenta del comerciante (T#351-353)
+# ---------------------------------------------------------------------------
+# Decidido 2026-10-16: la "organización" es la cuenta de UN usuario (no hay
+# equipos todavía). Si algún día pasa a ser un equipo con varios usuarios,
+# esta tabla es la que se mueve a colgar de la organización.
+
+PRINT_FORMATS = (
+    ("", "Sin preferencia"),
+    ("label", "PDF, una hoja por rótulo"),
+    ("a4", "PDF, varios rótulos por hoja A4"),
+    ("zpl", "ZPL (térmica Zebra)"),
+)
+
+
+def cuit_is_valid(value: str) -> bool:
+    """CUIT/CUIL argentino: 11 dígitos con el verificador módulo 11 de AFIP."""
+    digits = "".join(char for char in value if char.isdigit())
+    if len(digits) != 11:
+        return False
+    weights = (5, 4, 3, 2, 7, 6, 5, 4, 3, 2)
+    remainder = 11 - sum(int(d) * w for d, w in zip(digits[:10], weights)) % 11
+    check = {11: 0, 10: 9}.get(remainder, remainder)
+    return check == int(digits[10])
+
+
+class AccountSettings(models.Model):
+    """Datos de la cuenta: fiscales, el remitente/logo por defecto de los
+    rótulos (cuando la tienda no tiene el suyo, y en los pedidos cargados a
+    mano) y las preferencias de la app. Se crea al guardarla por primera vez:
+    una cuenta sin fila es una cuenta sin datos cargados."""
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="account_settings")
+    legal_name = models.CharField("razón social", max_length=150, blank=True, default="")
+    tax_id = models.CharField("CUIT", max_length=13, blank=True, default="")
+    sender_name = models.CharField(max_length=150, blank=True, default="")
+    sender_address = models.CharField(max_length=255, blank=True, default="")
+    sender_phone = models.CharField(max_length=50, blank=True, default="")
+    logo = models.ImageField(upload_to="accounts/logos/", null=True, blank=True)
+    default_template = models.ForeignKey(
+        "labels.LabelTemplate", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    # Código de un transportista con API (andreani, correo_argentino, oca) o
+    # el nombre de uno del catálogo de transportistas manuales.
+    default_carrier = models.CharField(max_length=100, blank=True, default="")
+    default_print_format = models.CharField(max_length=10, choices=PRINT_FORMATS, blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "datos de la cuenta"
+        verbose_name_plural = "datos de las cuentas"
+
+    def __str__(self):
+        return self.legal_name or self.user.email
+
+
+def account_settings_for(user):
+    """La fila de ``user`` o ``None``; nunca la crea (leer no escribe)."""
+    if user is None or not getattr(user, "pk", None):
+        return None
+    return AccountSettings.objects.filter(user_id=user.pk).select_related("default_template").first()

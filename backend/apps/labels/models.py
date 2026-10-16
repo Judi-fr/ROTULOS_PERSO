@@ -65,6 +65,67 @@ class LabelTemplate(models.Model):
         return self.name
 
 
+class LabelTemplateVersion(models.Model):
+    """Una foto de lo que dibuja una plantilla (nombre, tamaño, diseño) en un
+    momento: la 1 al crearla, y una nueva cada vez que eso cambia o se
+    restaura una anterior. Inmutable, como el historial que es: restaurar no
+    reescribe nada, crea una versión nueva con ``restored_from``.
+
+    No guarda ``is_public``/``description``/``preview``: no cambian lo que se
+    imprime, y la miniatura se rehace desde el diseño.
+    """
+
+    template = models.ForeignKey(LabelTemplate, on_delete=models.CASCADE, related_name="versions")
+    number = models.PositiveIntegerField()
+    name = models.CharField(max_length=150)
+    width_cm = models.DecimalField(max_digits=5, decimal_places=2)
+    height_cm = models.DecimalField(max_digits=5, decimal_places=2)
+    design = models.JSONField(default=dict, blank=True)
+    # Lo que el usuario escribió al guardar ("cambié el logo"), opcional.
+    note = models.CharField(max_length=200, blank=True, default="")
+    restored_from = models.PositiveIntegerField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "versión de plantilla"
+        verbose_name_plural = "versiones de plantilla"
+        ordering = ["template", "-number"]
+        constraints = [
+            models.UniqueConstraint(fields=["template", "number"], name="unique_label_template_version_number"),
+        ]
+
+    def __str__(self):
+        return f"{self.template_id} v{self.number}"
+
+
+class LabelSize(models.Model):
+    """Catálogo GLOBAL de tamaños de rótulo (lo administra el admin,
+    ``catalogs.manage``): las medidas que se ofrecen al diseñar una
+    plantilla, para no tipear 10 × 15 cada vez. Elegir uno solo completa el
+    ancho y el alto: una plantilla sigue guardando sus propios cm."""
+
+    name = models.CharField(max_length=60, unique=True)
+    width_cm = models.DecimalField(max_digits=5, decimal_places=2)
+    height_cm = models.DecimalField(max_digits=5, decimal_places=2)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "tamaño de rótulo"
+        verbose_name_plural = "tamaños de rótulo"
+        ordering = ["width_cm", "height_cm", "name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.width_cm} × {self.height_cm} cm)"
+
+
 class Label(models.Model):
     """Rótulo concreto de un envío, listo para imprimir.
 

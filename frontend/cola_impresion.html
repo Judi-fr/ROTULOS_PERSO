@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Cola de impresión</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/pedidos.css" />
+    <link rel="stylesheet" href="assets/css/imprimir_rotulos.css" />
+    <link rel="stylesheet" href="assets/css/impresion.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar" id="appTopbar" data-links='[{"href": "imprimir_rotulos.html", "label": "Imprimir rótulos"}, {"href": "impresoras.html", "label": "Impresoras"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Cola de impresión</h1>
+          <p>Lo que mandaste directo a una impresora. La lista se actualiza sola.</p>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <section class="profile-card">
+          <div class="profile-card-title">Trabajos</div>
+          <div class="profile-card-body">
+            <div class="print-toolbar">
+              <div class="field">
+                <label for="statusFilter">Mostrar</label>
+                <select id="statusFilter">
+                  <option value="">Todos</option>
+                  <option value="pending,printing">En cola o imprimiéndose</option>
+                  <option value="error">Con error</option>
+                  <option value="printed">Impresos</option>
+                  <option value="cancelled">Cancelados</option>
+                </select>
+              </div>
+              <p id="agentsSummary" class="print-detail"></p>
+            </div>
+            <div class="print-table-wrap">
+              <table class="print-table">
+                <thead>
+                  <tr><th>Trabajo</th><th>Impresora</th><th>Estado</th><th>Cuándo</th><th></th></tr>
+                </thead>
+                <tbody id="jobsBody">
+                  <tr><td colspan="5" class="empty-state">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pager" id="jobsPager"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/cola_impresion.js"></script>
+  </body>
+</html>

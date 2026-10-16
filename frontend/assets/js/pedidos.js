@@ -39,7 +39,7 @@ const STORE_COLOR_COUNT = 6;
 // no cambió nada al volver a la pestaña.
 let storesSignature = "";
 
-const getAccessToken = () => window.Auth.getAccessToken();
+const hasSession = () => window.Auth.hasSession();
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
 // showMessage, getErrorMessage y extractResults salen de assets/js/utils.js.
@@ -422,7 +422,7 @@ document.getElementById("orderStoreFilter")?.addEventListener("click", (event) =
 // tiendas.html) actualiza los botones; si cambiaron, también la lista, para
 // que los colores de los pedidos coincidan.
 document.addEventListener("visibilitychange", async () => {
-  if (document.visibilityState !== "visible" || !getAccessToken()) return;
+  if (document.visibilityState !== "visible" || !hasSession()) return;
   if (await loadStoreFilter()) loadOrders();
 });
 
@@ -548,7 +548,7 @@ async function init() {
   await loadOrders();
 }
 
-if (!getAccessToken()) {
+if (!hasSession()) {
   window.location.replace("index.html");
 } else {
   init();

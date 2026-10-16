@@ -5,13 +5,27 @@ from .models import (
     Label,
     LabelSequence,
     LabelTemplate,
+    LabelTemplateVersion,
     LayoutElement,
     LayoutVariable,
 )
 
 
+class LabelTemplateVersionInline(admin.TabularInline):
+    # El historial es inmutable: se mira, no se edita (se restaura desde la app).
+    model = LabelTemplateVersion
+    fields = ("number", "name", "width_cm", "height_cm", "note", "restored_from", "created_by", "created_at")
+    readonly_fields = fields
+    extra = 0
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(LabelTemplate)
 class LabelTemplateAdmin(admin.ModelAdmin):
+    inlines = [LabelTemplateVersionInline]
     # is_active: soft-delete (archivar), igual que Label/Document.
     list_display = ("name", "owner", "is_public", "is_active", "width_cm", "height_cm", "updated_at")
     list_filter = ("is_public", "is_active")

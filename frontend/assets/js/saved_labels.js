@@ -15,7 +15,7 @@ let labelsApi = null; // frontend/assets/js/labels_api.js, cargado en init()
 let searchTerm = "";
 let searchDebounceTimer = null;
 
-const getAccessToken = () => window.Auth.getAccessToken();
+const hasSession = () => window.Auth.hasSession();
 const getCurrentUser = () => window.Auth.getCurrentUser();
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
@@ -206,7 +206,7 @@ async function init() {
   await loadRotulos();
 }
 
-if (!getAccessToken()) {
+if (!hasSession()) {
   window.location.replace("index.html");
 } else {
   init();

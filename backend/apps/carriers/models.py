@@ -245,3 +245,34 @@ class CarrierShipmentEvent(models.Model):
 
     def __str__(self):
         return f"{self.shipment} {self.occurred_at:%Y-%m-%d %H:%M} {self.event}"
+
+
+class ManualCarrier(models.Model):
+    """Catálogo GLOBAL (lo administra el admin, ``catalogs.manage``) de
+    transportistas sin API: los que se despachan cargando el seguimiento a
+    mano (Via Cargo, un expreso, una moto). Aparecen como sugerencia donde se
+    escribe el transportista y, si tienen ``tracking_url_template``, arman el
+    link de seguimiento solos. No reemplaza a los transportistas con API
+    (``providers.py``): esos se eligen por su código."""
+
+    name = models.CharField(max_length=100, unique=True)
+    # Con {tracking} donde va el número: "https://ejemplo.com/seguimiento?n={tracking}".
+    tracking_url_template = models.CharField(max_length=500, blank=True, default="")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "transportista manual"
+        verbose_name_plural = "transportistas manuales"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    def tracking_url_for(self, tracking_number):
+        if not self.tracking_url_template or not tracking_number:
+            return ""
+        from urllib.parse import quote
+
+        return self.tracking_url_template.replace("{tracking}", quote(str(tracking_number), safe=""))

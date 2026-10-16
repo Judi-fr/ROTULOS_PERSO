@@ -8,11 +8,18 @@ vistas. La autenticación, en cambio, corre siempre (ninguna vista de este
 proyecto pisa ``authentication_classes``), así que verificar el flag acá
 garantiza que no se pueda "saltear" pegándole directo a un endpoint
 cualquiera con un access token válido.
+
+El access token se lee del header ``Authorization: Bearer`` (clientes de la
+API) o, si no vino, de la cookie HttpOnly del frontend web (ver
+``auth_cookies.py``).
 """
 
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.permissions import SAFE_METHODS
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
+from .auth_cookies import access_cookie_name, wants_cookies
 from .models import PasswordChangeRequirement
 
 # Endpoints alcanzables aunque el usuario tenga must_change_password=True:
@@ -38,6 +45,8 @@ class JWTAuthenticationWithPasswordPolicy(JWTAuthentication):
     def authenticate(self, request):
         result = super().authenticate(request)
         if result is None:
+            result = self._authenticate_cookie(request)
+        if result is None:
             return None
 
         user, validated_token = result
@@ -50,3 +59,20 @@ class JWTAuthenticationWithPasswordPolicy(JWTAuthentication):
                     }
                 )
         return result
+
+    def _authenticate_cookie(self, request):
+        raw = request.COOKIES.get(access_cookie_name())
+        if not raw:
+            return None
+        try:
+            validated_token = self.get_validated_token(raw.encode())
+        except (InvalidToken, TokenError):
+            # Una cookie vencida no debe trabar el login ni el refresh (que
+            # son públicos y la reciben igual, por el path /api/): se la
+            # ignora, y un endpoint protegido contesta 401 como sin sesión.
+            return None
+        # Defensa contra requests falsificados desde otro sitio (ver
+        # auth_cookies.py): lo que modifica exige el header propio.
+        if request.method not in SAFE_METHODS and not wants_cookies(request):
+            raise PermissionDenied("Falta el header X-Auth-Mode: cookie.")
+        return self.get_user(validated_token), validated_token

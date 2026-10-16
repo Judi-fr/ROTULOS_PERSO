@@ -29,6 +29,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.models import account_settings_for
 from apps.accounts.permissions_map import user_has_permission
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
@@ -38,6 +39,7 @@ from apps.documents.serializers import DocumentSerializer
 from apps.orders.models import Order
 
 from .models import Label, LabelTemplate
+from .batch_jobs import queue_batch, should_run_async
 from .zpl import DEFAULT_DPMM, SUPPORTED_DPMM, render_label_zpl
 from .label_rendering import (
     CM_TO_POINTS,
@@ -46,6 +48,7 @@ from .label_rendering import (
     compute_a4_grid,
     draw_label_page,
     render_label_pdf,
+    sender_logo,
 )
 
 VALID_OUTPUTS = {"pdf", "zip", "zpl"}
@@ -73,12 +76,11 @@ def _render_params_for_item(item, template):
         return item.design, item.width_cm, item.height_cm, context, (item.logo or None), name_hint
 
     # Order: el diseño sale de la plantilla del lote. El logo, de la tienda
-    # del pedido si la cargó (cada tienda imprime el suyo); un pedido sin
-    # tienda, o una tienda sin logo, sale sin logo como antes.
+    # del pedido si la cargó (cada tienda imprime el suyo), si no el de la
+    # cuenta; sin ninguno de los dos sale sin logo.
     context = build_label_context(order=item)
     name_hint = context.get("tracking") or f"pedido-{item.pk}"
-    store = getattr(item, "store_connection", None)
-    logo_file = getattr(store, "logo", None) or None
+    logo_file = sender_logo(item.user, getattr(item, "store_connection", None))
     return template.design, template.width_cm, template.height_cm, context, logo_file, name_hint
 
 
@@ -355,6 +357,11 @@ class LabelBatchView(APIView):
     térmica Zebra). Con ``zpl``, ``dpmm`` es la densidad de la impresora
     (8 = 203 dpi por defecto, 12 = 300) y ``page_layout`` se ignora: no hay
     hoja que aprovechar, el rollo ya viene troquelado.
+
+    ``printer_id`` (opcional, ``apps.printing``): en vez de solo dejarlo para
+    descargar, lo manda a esa impresora. El formato y la densidad salen de la
+    impresora (lo que dijeran ``output``/``dpmm`` no aplica) y la respuesta
+    trae ``print_job`` — o ``print_error`` si el lote no salió.
     """
 
     def get_permissions(self):
@@ -362,13 +369,18 @@ class LabelBatchView(APIView):
 
     def post(self, request):
         data = request.data
+        printer = self._resolve_printer(request.user, data.get("printer_id"))
         output = str(data.get("output") or "pdf").strip().lower()
+        if printer is not None:
+            output = printer.format
         if output not in VALID_OUTPUTS:
             raise ValidationError({"output": "Debe ser 'pdf', 'zip' o 'zpl'."})
         # Solo se usa con output="zpl"; se valida igual si vino, para no
         # aceptar en silencio un valor que el usuario creía que aplicaba.
         # None = no lo pidió: más abajo puede salir de la tienda.
         requested_dpmm = _parse_dpmm(data.get("dpmm"), default=None)
+        if printer is not None and printer.dpmm:
+            requested_dpmm = printer.dpmm
 
         page_layout = str(data.get("page_layout") or "label").strip().lower()
         if page_layout not in VALID_PAGE_LAYOUTS:
@@ -458,14 +470,47 @@ class LabelBatchView(APIView):
             },
         )
 
+        # Un lote grande lo genera el worker (batch_jobs.py): la respuesta
+        # sale enseguida con el documento "processing" y queued=true.
+        if should_run_async(len(items)):
+            queue_batch(document, items, template, output, page_layout, skipped_existing_count, dpmm, printer)
+            payload = DocumentSerializer(document, context={"request": request}).data
+            payload["queued"] = True
+            if printer is not None:
+                payload.update({"print_job": None, "print_error": None})
+            return Response(payload, status=status.HTTP_202_ACCEPTED)
+
         self._run_batch(
             document, items, template, output, page_layout, skipped_existing_count, dpmm
         )
 
-        return Response(
-            DocumentSerializer(document, context={"request": request}).data,
-            status=status.HTTP_202_ACCEPTED,
-        )
+        payload = DocumentSerializer(document, context={"request": request}).data
+        payload["queued"] = False
+        if printer is not None:
+            payload.update(self._queue_for_printer(request.user, printer, document))
+        return Response(payload, status=status.HTTP_202_ACCEPTED)
+
+    def _resolve_printer(self, user, printer_id):
+        if printer_id in (None, ""):
+            return None
+        from apps.printing.models import Printer
+
+        printer = Printer.objects.filter(pk=printer_id, owner=user, is_active=True).first()
+        if printer is None:
+            raise ValidationError({"printer_id": "Esa impresora no existe."})
+        return printer
+
+    def _queue_for_printer(self, user, printer, document):
+        from apps.printing.serializers import PrintJobSerializer
+        from apps.printing.services import PrintingError, create_job
+
+        if document.status != Document.Status.READY:
+            return {"print_job": None, "print_error": "El lote no se generó, así que no se mandó a la impresora."}
+        try:
+            job = create_job(user, printer, document)
+        except PrintingError as error:
+            return {"print_job": None, "print_error": str(error)}
+        return {"print_job": PrintJobSerializer(job).data, "print_error": None}
 
     # --- Resolución de la selección ------------------------------------
 
@@ -510,6 +555,13 @@ class LabelBatchView(APIView):
                 preferred = store_templates.pop()
                 if preferred.is_active and (preferred.is_public or preferred.owner_id == user.pk):
                     return preferred
+            # Después, la plantilla preferida de la cuenta (organizacion.html).
+            account = account_settings_for(user)
+            preferred = getattr(account, "default_template", None)
+            if preferred is not None and preferred.is_active and (
+                preferred.is_public or preferred.owner_id == user.pk
+            ):
+                return preferred
             # Sin template_id: cae a la plantilla pública "por defecto"
             # (la más antigua activa — normalmente la sembrada por
             # apps.labels.migrations.0003_seed_default_label_template) en

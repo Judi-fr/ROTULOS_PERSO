@@ -16,7 +16,7 @@ Backend: Django REST API (`backend/`), all routes under `/api/v1/` (`backend/con
 creation, CSV/Excel import, store sync, dispatch), `audit` (read-only trail), `labels` (two independent
 label-rendering systems, see below), `integrations` (store connections, webhooks, event queue),
 `documents` (generated batch output + uploaded source files), `processing` (Claude vision agent that
-reads a photographed label) and `carriers` (shipping companies the clients dispatch with: Andreani, Correo Argentino, OCA). Frontend: static multi-page app (`frontend/`), plain HTML/CSS/JS, no build
+reads a photographed label), `printing` (printers, print agent and job queue) and `carriers` (shipping companies the clients dispatch with: Andreani, Correo Argentino, OCA). Frontend: static multi-page app (`frontend/`), plain HTML/CSS/JS, no build
 step.
 
 Don't assume: there is no point-of-sale/destination catalog (`Address` stores city/state as free text),
@@ -25,7 +25,8 @@ the carrier APIs are Andreani's, Correo Argentino's and OCA's (`apps/carriers`, 
 
 ## Commands
 
-All backend commands run from `backend/` with the venv active:
+All backend commands run from `backend/` with the venv active (`pip install -r requirements-dev.txt` for
+development: it adds `zxing-cpp`, used only by the scanning tests, which skip without it):
 
 ```bash
 cd backend
@@ -45,6 +46,11 @@ source venv/bin/activate
   (`demo@rotulos.local`, password in the command, `--email`/`--password`), an Empretienda store (the only platform
   that calls no API) with sender and rates, its orders in every status through `upsert_store_order`, two manual
   orders and an own address. Idempotent; refuses with `DEBUG` off unless `--force`.
+- ERD: `python manage.py erd_mermaid --output ../docs/erd.md` (`apps/accounts/management/commands/`) — the
+  Mermaid `erDiagram` of every `apps.*` model, generated from the loaded models so it can't drift; the Django
+  models they point to (`User`, `Group`) appear with only their PK. Regenerate it when models change.
+- Template thumbnails: `python manage.py generate_template_thumbnails [--all]` — fills `LabelTemplate.preview`
+  for active templates that lack one (see "Template thumbnails" under Labels).
 
 `DJANGO_SETTINGS_MODULE` selects `config.settings.dev` or `config.settings.prod`; both import from
 `config/settings/base.py`. `manage.py` defaults to `dev`.
@@ -87,7 +93,8 @@ database down.
 
 Brought up **by hand** — there is no pipeline and none is needed yet; deploying and automating the deploy
 are different things, and the second only earns its keep after doing the first a few times. Five
-services: Postgres, the API (migrations + `collectstatic` then gunicorn), the integrations worker, the
+services: Postgres, the API (migrations + `collectstatic` + `generate_template_thumbnails` then gunicorn;
+API and worker log in JSON, `LOG_FORMAT=text` in `.env` to read them by eye), the integrations worker, the
 frontend, and Caddy, which terminates TLS with an automatic Let's Encrypt certificate — Tiendanube
 refuses HTTP callbacks, so the certificate is not optional. Only Caddy publishes ports; the database is
 not exposed at all, unlike the dev compose.
@@ -120,9 +127,13 @@ is the live one; don't delete the others or treat them as fixtures.
 
 ### Frontend
 
-No build step. Open the HTML files directly or serve `frontend/` with any static server. The API base URL
+No build step. Serve `frontend/` with any static server (launch config `frontend`, port 8001): opened as
+`file://` the pages render but **login doesn't work**, because the session lives in cookies (see "Session in
+HttpOnly cookies") and a `file://` page has no site to send them to. The API base URL
 lives only in `assets/js/config.js` (`window.APP_CONFIG.API_BASE`), loaded first on every page; every other
-script builds URLs on it. Opened from `localhost`/`127.0.0.1`/`file://` it is `http://127.0.0.1:8000/api/v1`;
+script builds URLs on it. Opened from `localhost`/`127.0.0.1` it is port 8000 of **that same host name**
+(`localhost:8001` → `localhost:8000`): the browser treats `localhost` and `127.0.0.1` as different sites
+and would not send the cookies across;
 from any other host it is that same origin's `/api/v1` — the dev tunnel publishes `/api`, `/media`, `/admin`
 and `/static` → 8000 and `/` → 8001 under one domain, so someone else's browser can use the app (a hardcoded
 127.0.0.1 would make it call *their* machine). The Docker image still overwrites the file from `API_BASE`.
@@ -146,6 +157,8 @@ and `/static` → 8000 and `/` → 8001 under one domain, so someone else's brow
   `admin/`, `render/`, `preview/`, `barcode/`, `batch/`, `fonts/`, `sequence/`)
 - `api/v1/integrations/` → `apps.integrations.urls` (admin ABM + store connections, plus
   `<platform>/install-url|callback|webhooks/` per provider and `shopify/launch/`)
+- `api/v1/printing/` → `apps.printing.urls` (`agents/`, `printers/`, `jobs/`, `agent/download/`, and the agent's own
+  `agent/jobs/next|<id>/file|<id>/result/`, see "Direct printing")
 - `api/v1/carriers/` → `apps.carriers.urls` (common: ``, `accounts/<carrier>/`, `branches/<carrier>/`, `shipments/...`,
   `push/<carrier>/<key>/`; plus Andreani's original `andreani/...`)
 - `api/v1/ingest/` → `apps.integrations.ingest_urls` (API-key/webhook order ingest, separate auth; its OpenAPI 3
@@ -157,7 +170,26 @@ and `/static` → 8000 and `/` → 8001 under one domain, so someone else's brow
 
 REST Framework is closed by default (`DEFAULT_PERMISSION_CLASSES = [IsAuthenticated]`); a public endpoint
 needs `permission_classes = [AllowAny]` explicitly. JWT only (`djangorestframework-simplejwt`), access
-token in `Authorization: Bearer <token>`.
+token in `Authorization: Bearer <token>` **or** in the `rotulos_access` cookie (the web frontend, below).
+
+### Session in HttpOnly cookies (`apps/accounts/auth_cookies.py`, T#364/T#366)
+
+The web frontend no longer keeps tokens in `localStorage` (readable by any script on the page). It sends
+`X-Auth-Mode: cookie` on every request (`Auth.withSession`, with `credentials: "include"`); with that header
+login/register/Google/refresh put the tokens in cookies and **remove them from the JSON body** (else a script
+could call refresh and read them anyway). Without the header everything answers as before — API clients and
+the whole test suite use Bearer + body tokens. Decisions, as asked in T#366: names `rotulos_access` (path
+`/api/`) and `rotulos_refresh` (path `/api/v1/auth/`, the only place it's used: refresh and logout); no
+domain (host-only; `AUTH_COOKIE_DOMAIN` if ever needed); HttpOnly; SameSite=Lax; Secure =
+`AUTH_COOKIE_SECURE`, default on unless `DEBUG`; max-age = the token's lifetime (15 min / 7 days).
+`JWTAuthenticationWithPasswordPolicy` reads the header first, then the cookie; an invalid cookie is ignored
+(a stale one must not break login/refresh, which receive it too), and **an unsafe method authenticated by
+cookie requires `X-Auth-Mode`** (403 otherwise) — a custom header forces a CORS preflight, so another site
+can't forge a write. `CookieTokenRefreshView` takes the refresh from the body or the cookie (rotation +
+blacklist unchanged) and, in cookie mode, a dead one answers 401 and clears the cookies; logout revokes the
+cookie's refresh and clears both. CORS: `CORS_ALLOW_CREDENTIALS` and `x-auth-mode` allowed. A browser
+holding an old `localStorage` refresh trades it once for cookies on load (`auth.js`), so nobody is logged
+out by the change. Tests: `apps/accounts/tests/test_auth_cookies.py`.
 
 ### Shared across apps (`apps/common`)
 
@@ -212,6 +244,41 @@ There is **no `role` field on `User`** — it's derived, never stored directly:
 - Admin-only permissions (assigned only to the `admin` group): `audit.view`, `orders.view_all`,
   `support.view_all`, `support.manage`, `labels.view_all`, `labels.manage_templates`,
   `documents.view_all` — each seeded by its own `apps/accounts/migrations/00NN_seed_*.py`.
+
+### Account data and global catalogs (T#351-356)
+
+**Account data (`AccountSettings`, `apps/accounts/models.py`).** Decided 2026-10-16: the "organization" is the
+account of ONE user — there are no teams (a merchant with employees sharing stores/orders is a later, larger
+change; this table is what would move to hang from an organization). One optional row per user, created on the
+first save: `legal_name`, `tax_id` (CUIT, validated with AFIP's check digit — `cuit_is_valid` — and stored as
+`XX-XXXXXXXX-X`), `sender_name`/`sender_address`/`sender_phone`, `logo`, and preferences `default_template`,
+`default_carrier` (an API carrier code or a `ManualCarrier` name) and `default_print_format` (label|a4|zpl).
+`GET/PATCH /api/v1/auth/me/account/` (`users.me.view`/`users.me.edit`, audited `account.update`), screen
+`organizacion.html` (menu `account_settings`). Where it's used:
+- **Sender**: `label_rendering.sender_fields(owner, store)` — the store's sender, else the account's, else the
+  store's name, else the legal name; address/phone the store's else the account's. Used by
+  `build_label_context`, `build_shipment_context` (Tiendanube Labels API) and the pickup manifest
+  (`manifest_sender`). `sender_logo(owner, store)`: the store's logo else the account's (batch, store print,
+  Tiendanube labels). A store's own data always wins.
+- **Manifest** shows "Razón social: X · CUIT Y" when loaded.
+- **Default template**: after the store's (batch `_resolve_template`, `store_print.resolve_template`), before
+  the oldest public one.
+- **Front-end defaults** (`loadAccountSettings()` in `utils.js`, one request per page): the dispatch dialog
+  starts on `default_carrier` if that carrier is ready (else the last used, else the first);
+  `imprimir_rotulos.html` starts on `default_print_format` unless there is a default printer.
+
+**Global catalogs, admin-managed (`catalogs.manage`, admin-only, migration `accounts/0024`).** Shared base
+`apps/common/catalogs.py` (`CatalogViewSet`): any authenticated user READS active entries, writing needs the
+permission, `?include_inactive=1` only for managers, delete = deactivate, audited `catalog.update` (category
+`catalogs`). Screen `catalogos.html` + `assets/js/catalogos.js` (admin sidebar "Catálogos").
+- `ManualCarrier` (`apps/carriers`, `/api/v1/carriers/manual-carriers/`): carriers WITHOUT API, with an
+  optional `tracking_url_template` containing `{tracking}`. A name equal to an API carrier is refused. Every
+  free-text carrier field (despachar, estado_pedidos, planilla, seguimientos, both dialogs in Mis pedidos) gets
+  them as suggestions (`attachCarrierSuggestions` in `utils.js`, a shared `<datalist>`), and
+  `orders.shipping.apply_shipping` stores the catalog's spelling and builds the tracking URL when none came.
+- `LabelSize` (`apps/labels`, `/api/v1/labels/sizes/`, seeded with 10×15, 10×10, 10×5 and A6 in
+  `labels/0012`; same 5-30 × 5-40 cm limits as a template): the editor's "Medida" select
+  (`assets/js/label_editor_sizes.js`) fills width/height; typing numbers that match none shows "Otra medida".
 
 ### Audit trail (`apps/audit`)
 
@@ -360,6 +427,51 @@ needed to deliver the package. `LabelTemplate` (`owner=None` = system template, 
 both served under `/api/v1/labels/` (`labels/`, `templates/`, `admin/` for `labels.view_all`, `render/` for
 a one-off PDF, `batch/` for many labels → one `apps.documents.Document`).
 
+**Template versions (`template_versions.py`, `LabelTemplateVersion`, T#254-256).** A version is what a template
+draws — `name`, `width_cm`, `height_cm`, `design` — plus an optional `note`, `created_by` and `restored_from`. v1
+on create (migration `labels/0011` gave every existing template its v1), a new one on any update that changes
+those four (`record_version` compares with the last one: making it public or editing the description leaves no
+empty version), and the copy of a duplicate starts its own history ("Copia de «X» (versión N)"). The number is
+taken with the template row locked. **Restoring never rewrites history**: `POST templates/<id>/versions/<n>/restore/`
+copies v n onto the template and records it as a NEW version with `restored_from` (same permission as editing,
+`_check_can_edit`; audited `template.update`). Also `GET .../versions/` (full history with designs, for the
+comparison) and `GET .../versions/<n>/preview/` (that version's sample PDF). The template serializer exposes
+`current_version` (annotated in `get_queryset`) and `can_edit` — the frontend reads that instead of copying the
+rule — and takes a write-only `version_note`. Frontend: the editor opened with `?template=<id>` on an editable
+template shows "Guardar cambios en «X»" (asks for the note, `updateTemplate`); before this a template's design
+could never be changed after creating it. `mis_plantillas.html` cards link "Versiones (N)" to
+`versiones_plantilla.html` + `assets/js/versiones_plantilla.js`: history, "Ver cómo sale", "Restaurar", and an
+A/B comparison computed client-side (`diffVersions`: name, size, each design key added/removed/changed and
+which properties).
+
+**Template thumbnails (`thumbnails.py`).** `LabelTemplate.preview` is the PNG each card of
+`mis_plantillas.html` shows. It existed but nothing filled it, so every card read "Ver vista previa". Now
+`LabelTemplateViewSet` regenerates it on create, on an update that touches `design`/`width_cm`/`height_cm` (or
+when there is none) and on duplicate, unless the request sends its own `preview`. It is the SAME PDF as
+`templates/<id>/preview/` (`SAMPLE_LABEL_CONTEXT`, `is_preview=True` so `{{secuencia}}` isn't consumed)
+rasterized with **pypdfium2** (ships its own binary, no system packages) at `THUMBNAIL_WIDTH_PX` (480), so it
+can't disagree with what prints. A design that can't be drawn is logged and the template saves anyway, with no
+thumbnail; `generate_template_thumbnails` backfills.
+
+**Scanning tests (`tests/test_scanning.py`, T#241/T#296).** A simulated reader: the real label is rasterized
+with pypdfium2 at 203 dpi in pure black and white (what a Zebra prints) and decoded with zxing-cpp, for both
+systems (template PDF and element-layout PNG): QR, Code128, EAN-13, a long carrier URL, codes shrunk by
+`_fit_size_cm`, the seeded standard template with a real order. **Measured limit**: a 19-digit Code128 needs
+~5 cm of width to read at 203 dpi (narrower, each bar is ~2 printer dots and rounding deforms it; at 300 dpi
+it reads) — and `_fit_size_cm` can silently shrink a barcode below that. Pinned by
+`test_minimum_readable_barcode_width_at_203_dpi`.
+
+**Large batches in the background (`batch_jobs.py`, T#298).** Up to `LABELS_BATCH_SYNC_MAX_ITEMS` (25) a batch is
+drawn inside the request as before; above it `LabelBatchView` stores what it needs in `Document.job` (ids in
+order, template, output, layout, dpmm, printer) and answers 202 with the document "processing" and
+`queued: true`. The integrations worker calls `run_pending_batches()` every loop and draws it with the SAME
+`_run_batch`; the table of documents is the queue (no Celery/Redis). Claimed with a conditional UPDATE on
+`updated_at`; a claim older than `LABELS_BATCH_JOB_TIMEOUT_SECONDS` is retried up to
+`LABELS_BATCH_JOB_MAX_ATTEMPTS`, then "failed" with the reason; an order deleted meanwhile is skipped and
+noted. With a printer, the print job is created when the document is ready. `LABELS_BATCH_MAX_ITEMS` is now
+1000. Front: `documentos.html` already polls "processing"; `?generating=1` explains it, and to a printer the
+merchant lands on the queue.
+
 **ZPL for thermal Zebra printers (`zpl.py`).** The same `design`, emitted as the printer's native
 language instead of a rasterized page — a second drawing path, not just another export, which is why it
 is its own module. Text and codes become firmware commands (`^A0`/`^FB`, `^BQ`, `^BC`/`^BE`), so output
@@ -400,6 +512,46 @@ non-overlapping concept (same file, `models.py`, clearly banner-separated): posi
 (`element_layout_render/pdf.py`, `png.py`, `fonts.py`, ...) and its own full CRUD+render API
 (`/api/v1/labels/element-layouts/`, `/layout-variables/`) — but **no frontend screen yet**. It exists to
 receive the output of the photo-import pipeline below.
+
+### Direct printing (`apps/printing`, T#322-T#328)
+
+Printing straight to the merchant's printers instead of downloading the file. Our server can't reach a
+printer in the merchant's network, so a small **agent** runs on one of their PCs
+(`apps/printing/agent/rotulos_print_agent.py`: one file, Python 3.8+, stdlib only, downloaded from
+`impresoras.html`), polls the API with its token, sends each job to the printer and reports back.
+- Models: `PrintAgent` (token `rpa_<prefix>_<secret>` shown ONCE, stored as SHA-256 — random and long, so no
+  slow hash; revoking = `is_active=False` and its printers lose their agent), `Printer` (`format` pdf|zpl,
+  `dpmm` for zpl, `location`, `connection` network → `host`/`port` 9100 | system → `queue`, its `agent`, one
+  `is_default` per owner, soft-deleted) and `PrintJob` (pending → printing → printed|error, or cancelled;
+  `attempts`, `error_message`).
+- **A job is an already generated `Document`** sent to a printer, so template, store rules, density and the
+  `label.batch` audit are the batch's own: `POST /labels/batch/` with `printer_id` takes `output`/`dpmm` from
+  the printer and answers `print_job` (or `print_error`). `POST /printing/jobs/ {document_id, printer_id}`
+  queues an existing document; the format must match the printer's.
+- Merchant API under `/api/v1/printing/` (`labels.batch`, own rows only): `agents/` (create returns
+  `token`), `printers/`, `jobs/` (`?status=pending,error`, `?printer=`) + `retry/` (error|cancelled →
+  pending) and `cancel/` (pending|error), `agent/download/`. Agent/printer changes audited as
+  `printer.update`.
+- Agent API (`agent_views.py`, `Authorization: Agent <token>`, no session, throttle scope `print_agent`):
+  `GET agent/jobs/next/` (claims the oldest pending job of ITS printers with a conditional UPDATE, so two
+  agents can't take the same one; 204 when none; every call marks the agent online and stores
+  `X-Agent-Version`), `GET agent/jobs/<id>/file/`, `POST agent/jobs/<id>/result/ {ok, error}`.
+- **A claimed job the agent never confirms is NOT reprinted**: after `PRINT_JOB_CONFIRM_TIMEOUT_SECONDS`
+  (300) it becomes `error` with a "check the printer before retrying" message — the agent may have died
+  after printing, and duplicated labels are worse than a notice. "Online" = polled within
+  `PRINT_AGENT_ONLINE_SECONDS` (60).
+- The agent prints "network" printers by opening a socket to host:port (works the same on any OS) and
+  "system" ones with `lp` (`-o raw` for ZPL) on Linux/Mac, `copy /b` to the share for ZPL on Windows and
+  SumatraPDF for PDF on Windows; `ROTULOS_PRINT_COMMAND` (`{file}`, `{printer}`) overrides all of it.
+  **Windows is A CONFIRMAR** (written, not tried on a real Windows PC), and there is no installer yet (a
+  merchant needs Python; packaging it as an .exe is the next step).
+- Frontend: `impresoras.html` + `assets/js/impresoras.js` (agents with the one-time token and the command to
+  run, printers CRUD), `cola_impresion.html` + `assets/js/cola_impresion.js` (menu `print_queue`; refreshes
+  every 5 s while something is pending/printing, 20 s otherwise; warns when no agent is online), and in
+  `imprimir_rotulos.html` the printers are one more group of the same "Formato" select (default printer
+  preselected); sending lands on the queue. Shared CSS `assets/css/impresion.css`.
+- Tests: `apps/printing/tests/` — `test_agent_program.py` runs the real agent against a live server and a
+  socket standing in for a Zebra on port 9100.
 
 ### Photo import → label layout (`apps/documents` + `apps/processing`)
 
@@ -1109,9 +1261,12 @@ permission (UI-only gating; the backend re-checks every permission server-side).
 - `assets/js/admin_common.js` — permission/formatting helpers for admin pages: `isAdminMode()`,
   `canUseUserPermission()`, `canViewUsers()`, `translateRole()`, `actionLabel()`, `formatDateTime()`,
   `renderSimplePager()`, `loadAuditActionsCatalog()`.
-- `assets/js/auth.js` — `window.Auth` (`apiFetch`, `getAccessToken`, `getCurrentUser`, `logout`).
-  `apiFetch` attaches the Bearer token, retries once through a single shared refresh on 401, and on
+- `assets/js/auth.js` — `window.Auth` (`apiFetch`, `hasSession`, `saveSession`, `withSession`,
+  `getCurrentUser`, `logout`). The session is cookies the code never sees; `localStorage` keeps only `user`
+  (not secret), which is also what `hasSession()` checks — every page's "not logged in → index.html" guard.
+  `apiFetch` sends the cookies, retries once through a single shared refresh on 401, and on
   failure clears the session and redirects to `index.html` (throwing an error with `.isSessionExpired`).
+  `index.html`/`register.html`/`cambiar-password.html`/`logoutpage.html` load it too.
 - **"Olvidé mi contraseña" (two pages, both public).** `recuperar-password.html` +
   `assets/js/recuperar_password.js` asks for the email (`POST /auth/password-reset/`);
   `reset-password.html` + `assets/js/reset_password.js` takes `uid`/`token` off the query string — the

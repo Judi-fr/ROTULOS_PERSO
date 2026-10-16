@@ -13,7 +13,7 @@ const OUTGOING_URL = `${API_BASE}/integrations/webhook-endpoints/`;
 const DELIVERIES_URL = `${API_BASE}/integrations/webhook-deliveries/`;
 
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
-const getAccessToken = () => window.Auth.getAccessToken();
+const hasSession = () => window.Auth.hasSession();
 const getCurrentUser = () => window.Auth.getCurrentUser();
 
 
@@ -580,7 +580,7 @@ async function init() {
   await loadOutgoing();
 }
 
-if (!getAccessToken()) {
+if (!hasSession()) {
   window.location.replace("index.html");
 } else {
   init();

@@ -30,6 +30,8 @@ class AuditLog(models.Model):
         INTEGRATIONS = "integrations", "Integraciones"
         # apps.processing: lectura de rótulos desde una foto/PDF (Claude).
         PROCESSING = "processing", "Procesamiento"
+        # Catálogos globales del admin (transportistas manuales, tamaños).
+        CATALOGS = "catalogs", "Catálogos"
 
     class Action(models.TextChoices):
         # auth
@@ -71,6 +73,9 @@ class AuditLog(models.Model):
         TEMPLATE_CREATE = "template.create", "Plantilla de rótulo creada"
         TEMPLATE_UPDATE = "template.update", "Plantilla de rótulo actualizada"
         TEMPLATE_DELETE = "template.delete", "Plantilla de rótulo eliminada"
+        PRINTER_UPDATE = "printer.update", "Impresora o agente de impresión editado"
+        CATALOG_UPDATE = "catalog.update", "Catálogo editado"
+        ACCOUNT_SETTINGS_UPDATE = "account.update", "Datos de la cuenta editados"
         # labels: ElementLayout/LayoutElement/LayoutVariable, plantillas por
         # elementos + catálogo de variables (distintas de LabelTemplate/
         # TEMPLATE_* de arriba: no son el mismo concepto, ver
@@ -141,6 +146,9 @@ class AuditLog(models.Model):
         Action.TEMPLATE_CREATE: Category.LABELS,
         Action.TEMPLATE_UPDATE: Category.LABELS,
         Action.TEMPLATE_DELETE: Category.LABELS,
+        Action.PRINTER_UPDATE: Category.LABELS,
+        Action.CATALOG_UPDATE: Category.CATALOGS,
+        Action.ACCOUNT_SETTINGS_UPDATE: Category.USERS,
         Action.ELEMENT_LAYOUT_CREATE: Category.LABELS,
         Action.ELEMENT_LAYOUT_UPDATE: Category.LABELS,
         Action.ELEMENT_LAYOUT_DELETE: Category.LABELS,

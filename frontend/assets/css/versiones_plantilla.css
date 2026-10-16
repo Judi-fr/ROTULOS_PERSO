@@ -1,0 +1,114 @@
+/* versiones_plantilla.html: la tabla del historial y la comparación. El
+   resto (topbar, cards, modal de vista previa) viene de labels_shared.css y
+   templates.css. */
+
+.profile-card + .profile-card {
+  margin-top: 20px;
+}
+
+.versions-table-wrap {
+  overflow-x: auto;
+}
+
+.versions-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.versions-table th,
+.versions-table td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.versions-table th {
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.version-number {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.version-current {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--green-light);
+  color: var(--green);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.version-compare {
+  white-space: nowrap;
+}
+
+.version-compare label {
+  margin-right: 10px;
+  cursor: pointer;
+}
+
+.version-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.version-actions .btn {
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+
+.diff-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.diff-list li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.diff-list li:last-child {
+  border-bottom: none;
+}
+
+.diff-kind {
+  display: inline-block;
+  min-width: 78px;
+  margin-right: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.diff-added {
+  background: var(--green-light);
+  color: var(--green);
+}
+
+.diff-removed {
+  background: var(--red-light);
+  color: var(--red);
+}
+
+.diff-changed {
+  background: var(--amber-light);
+  color: var(--amber);
+}
+
+.diff-detail {
+  color: var(--text-muted);
+}

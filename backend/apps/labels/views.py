@@ -10,7 +10,7 @@ from __future__ import annotations
 
 
 from django.core.files.base import ContentFile
-from django.db.models import Prefetch, ProtectedError, Q
+from django.db.models import Max, Prefetch, ProtectedError, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
@@ -45,6 +45,8 @@ from .label_rendering import (
     render_code_svg,
     render_label_pdf,
 )
+from .template_versions import record_version, restore_version
+from .thumbnails import refresh_template_thumbnail
 from .zpl import DEFAULT_DPMM, SUPPORTED_DPMM, render_label_zpl
 from .element_layout_render import render_element_layout_pdf, render_element_layout_png
 from .element_layout_render.fonts import FontNotAvailable, available_font_families
@@ -53,6 +55,7 @@ from .serializers import (
     ElementLayoutSerializer,
     LabelSerializer,
     LabelTemplateSerializer,
+    LabelTemplateVersionSerializer,
     LayoutVariableSerializer,
     RenderElementLayoutSerializer,
 )
@@ -217,7 +220,7 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
     serializer_class = LabelTemplateSerializer
 
     def get_permissions(self):
-        if self.action in ("list", "retrieve", "preview"):
+        if self.action in ("list", "retrieve", "preview", "versions", "version_preview"):
             return [IsAuthenticated()]
         return [IsAuthenticated(), HasRolePermission("labels.template_create")]
 
@@ -225,7 +228,7 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
         user = self.request.user
         queryset = LabelTemplate.objects.filter(
             Q(is_public=True) | Q(owner=user), is_active=True
-        )
+        ).annotate(current_version=Max("versions__number"))
         search = self.request.query_params.get("search", "").strip()
         if search:
             queryset = queryset.filter(name__icontains=search)
@@ -239,6 +242,11 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
         if is_public and not self._can_manage_templates():
             raise PermissionDenied("Solo un administrador puede crear una plantilla pública.")
         template = serializer.save(owner=self.request.user)
+        record_version(
+            template, user=self.request.user, note=serializer.validated_data.get("version_note", "")
+        )
+        if "preview" not in serializer.validated_data:
+            refresh_template_thumbnail(template)
         record(
             self.request,
             category="labels",
@@ -248,19 +256,36 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
             target_repr=str(template),
         )
 
-    def perform_update(self, serializer):
-        instance = serializer.instance
+    def _check_can_edit(self, instance, requested_is_public=None):
         user = self.request.user
         is_own_private = instance.owner_id == user.id and not instance.is_public
         if not self._can_manage_templates():
             if not is_own_private:
                 raise PermissionDenied("Solo podés editar tus propias plantillas privadas.")
-            requested_is_public = serializer.validated_data.get("is_public", instance.is_public)
             if requested_is_public:
                 raise PermissionDenied(
                     "Solo un administrador puede marcar una plantilla como pública."
                 )
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        self._check_can_edit(
+            instance, serializer.validated_data.get("is_public", instance.is_public)
+        )
         template = serializer.save()
+        # Una versión nueva solo si cambió lo que se dibuja (record_version
+        # compara con la última): marcarla pública no llena el historial.
+        record_version(
+            template, user=self.request.user, note=serializer.validated_data.get("version_note", "")
+        )
+        # La anotación de get_queryset quedó vieja: que el serializer la relea.
+        template.current_version = None
+        # La miniatura se rehace cuando cambia lo que se dibuja (o si no hay),
+        # salvo que el pedido mande su propia imagen.
+        data = serializer.validated_data
+        drawing_changed = any(key in data for key in ("design", "width_cm", "height_cm"))
+        if "preview" not in data and (drawing_changed or not template.preview):
+            refresh_template_thumbnail(template)
         record(
             self.request,
             category="labels",
@@ -308,12 +333,20 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
             height_cm=original.height_cm,
             design=original.design,
         )
+        current = original.versions.order_by("-number").values_list("number", flat=True).first()
+        record_version(
+            copy,
+            user=request.user,
+            note=f"Copia de «{original.name}»" + (f" (versión {current})" if current else ""),
+        )
         if original.preview:
             copy.preview.save(
                 original.preview.name.rsplit("/", 1)[-1],
                 ContentFile(original.preview.read()),
                 save=True,
             )
+        else:
+            refresh_template_thumbnail(copy)
         record(
             request,
             category="labels",
@@ -349,6 +382,64 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'inline; filename="plantilla-{template.pk}-preview.pdf"'
         return response
+
+    @action(detail=True, methods=["get"])
+    def versions(self, request, pk=None):
+        """GET /api/v1/labels/templates/<id>/versions/
+
+        El historial completo, de la más nueva a la más vieja, con el diseño
+        de cada una (lo necesita la comparación de versiones_plantilla.html).
+        Lo ve quien ve la plantilla."""
+        template = self.get_object()
+        versions = template.versions.select_related("created_by").order_by("-number")
+        return Response(LabelTemplateVersionSerializer(versions, many=True).data)
+
+    def _get_version(self, template, number):
+        return get_object_or_404(template.versions, number=number)
+
+    @action(detail=True, methods=["get"], url_path=r"versions/(?P<number>\d+)/preview")
+    def version_preview(self, request, pk=None, number=None):
+        """GET /api/v1/labels/templates/<id>/versions/<n>/preview/ — el PDF de
+        ejemplo de esa versión, igual que ``preview`` con la actual."""
+        template = self.get_object()
+        version = self._get_version(template, number)
+        pdf_bytes = render_label_pdf(
+            design=version.design,
+            width_cm=version.width_cm,
+            height_cm=version.height_cm,
+            context=SAMPLE_LABEL_CONTEXT,
+            computed=build_computed_context(owner=request.user, is_preview=True),
+        )
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = (
+            f'inline; filename="plantilla-{template.pk}-v{version.number}.pdf"'
+        )
+        return response
+
+    @action(detail=True, methods=["post"], url_path=r"versions/(?P<number>\d+)/restore")
+    def restore_version(self, request, pk=None, number=None):
+        """POST /api/v1/labels/templates/<id>/versions/<n>/restore/
+
+        Deja la plantilla como estaba en la versión ``n``, registrado como
+        una versión NUEVA (el historial no se reescribe). Mismos permisos que
+        editarla. Audita ``template.update``."""
+        template = self.get_object()
+        self._check_can_edit(template)
+        version = self._get_version(template, number)
+        previous = template.versions.order_by("-number").values_list("number", flat=True).first()
+        restore_version(template, version, user=request.user)
+        refresh_template_thumbnail(template)
+        record(
+            request,
+            category="labels",
+            action="template.update",
+            target=template,
+            target_type="labeltemplate",
+            target_repr=str(template),
+            changes={"version": {"from": previous, "to": f"restaurada la {version.number}"}},
+        )
+        template = self.get_queryset().get(pk=template.pk)
+        return Response(self.get_serializer(template).data)
 
 
 class AdminLabelPagination(UserAdminPagination):

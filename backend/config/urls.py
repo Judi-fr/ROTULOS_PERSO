@@ -25,6 +25,7 @@ urlpatterns = [
     path("api/v1/integrations/", include("apps.integrations.providers.tiendanube.label_urls")),  # rótulos pedidos por la tienda
     path("api/v1/integrations/", include("apps.integrations.providers.tiendanube.rate_urls")),  # cotización de envíos en el checkout
     path("api/v1/carriers/", include("apps.carriers.urls")),  # transportistas (Andreani)
+    path("api/v1/printing/", include("apps.printing.urls")),  # impresoras, agente y cola de impresión
     path("api/v1/ingest/", include("apps.integrations.ingest_urls")),  # entradas automáticas (API key / webhook)
 ]
 

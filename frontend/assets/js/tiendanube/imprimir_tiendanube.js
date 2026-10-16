@@ -87,7 +87,7 @@ async function printSelection() {
   const query = window.location.search.slice(1) || readPendingQuery();
   if (window.location.search) window.history.replaceState(null, "", window.location.pathname);
 
-  if (!window.Auth.getAccessToken()) {
+  if (!window.Auth.hasSession()) {
     try {
       localStorage.setItem(PENDING_PRINT_KEY, query);
       localStorage.setItem(PENDING_PAGE_KEY, window.location.pathname.split("/").pop());

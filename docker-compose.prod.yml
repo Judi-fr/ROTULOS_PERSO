@@ -48,13 +48,18 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
       DATABASE_URL: postgres://${POSTGRES_USER:-rotulos}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rotulos}
-    # Migraciones y estáticos antes de atender: si la imagen es nueva pero la
+      # Un objeto JSON por línea (config/log_format.py), para un recolector de
+      # logs. `LOG_FORMAT=text` en el .env vuelve al formato legible a ojo.
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+    # Migraciones, estáticos y las miniaturas que falten (idempotente: si ya
+    # están todas no hace nada) antes de atender: si la imagen es nueva pero la
     # base quedó en la versión anterior, la app arranca rota. Esto vale con UN
     # solo contenedor de API; con varias réplicas, las migraciones pasan a ser
     # un paso aparte para que no corran en paralelo.
     command: >
       sh -c "python manage.py migrate --noinput &&
              python manage.py collectstatic --noinput &&
+             python manage.py generate_template_thumbnails &&
              gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --access-logfile -"
     volumes:
       - media:/app/media
@@ -85,6 +90,9 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
       DATABASE_URL: postgres://${POSTGRES_USER:-rotulos}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rotulos}
+      # Un objeto JSON por línea (config/log_format.py), para un recolector de
+      # logs. `LOG_FORMAT=text` en el .env vuelve al formato legible a ojo.
+      LOG_FORMAT: ${LOG_FORMAT:-json}
     command: python manage.py run_integrations_worker
     volumes:
       - media:/app/media
