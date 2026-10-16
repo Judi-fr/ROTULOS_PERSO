@@ -213,6 +213,16 @@ class CodigosTests(SimpleTestCase):
         self.assertTrue(any(linea.startswith("^BCN,") for linea in salida))
         self.assertTrue(any(linea.startswith("^BY") for linea in salida))
 
+    def test_un_codigo_que_no_entra_no_baja_de_2_dots_por_modulo(self):
+        # 19 dígitos en 3 cm: con 1 dot por módulo no se lee (medido en
+        # test_scanning), así que el código sale más ancho y no más angosto.
+        salida = comandos(
+            render_label_zpl(
+                {"barcode": {"left": 0, "top": 50, "width": 3, "data": "3600001016516001234"}}, 10, 15
+            )
+        )
+        self.assertIn("^BY2,3,", " ".join(l for l in salida if l.startswith("^BY")))
+
     def test_ean13(self):
         salida = comandos(
             render_label_zpl(

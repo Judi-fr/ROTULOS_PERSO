@@ -83,9 +83,11 @@ DASH_MM = 2.0
 QR_ERROR_CORRECTION = "M"
 
 # Rango que acepta ZPL para la magnificación del QR y para el ancho de
-# módulo del código de barras (^BY).
+# módulo del código de barras (^BY). El módulo arranca en 2 y no en 1 (que
+# ZPL acepta): con 1 punto las barras no se leen (medido para el PDF en
+# tests/test_scanning.py; mismo mínimo que label_rendering).
 QR_MAGNIFICATION_RANGE = (1, 10)
-BARCODE_MODULE_RANGE = (1, 10)
+BARCODE_MODULE_RANGE = (2, 10)
 
 ALIGN_TO_ZPL = {"left": "L", "center": "C", "right": "R"}
 
@@ -346,7 +348,7 @@ def _barcode_module_width(data, symbology, width_dots):
 
     La cuenta de módulos es la del formato: Code128 gasta 11 por carácter
     más el arranque, el dígito de control y el cierre; EAN-13 son siempre
-    95. Si no llega ni con 1 dot por módulo, queda en 1 y el código sale más
+    95. Si no llega ni con 2 dots por módulo, queda en 2 y el código sale más
     ancho de lo pedido — preferible a uno tan angosto que no se lea.
     """
     if symbology == "ean13":

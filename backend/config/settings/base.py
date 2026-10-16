@@ -210,6 +210,9 @@ CORS_EXPOSE_HEADERS = [
     "X-Layout-Missing",
     "X-Layout-Truncated",
     "X-Layout-Warnings",
+    # Vista previa del editor de rótulos (PreviewLabelView): código de
+    # barras que no entra legible.
+    "X-Label-Warnings",
     # Exportación de pedidos y planilla de retiro (apps.orders.bulk_views):
     # el nombre del archivo y cuántos pedidos salieron.
     "Content-Disposition",

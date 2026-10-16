@@ -372,6 +372,12 @@ change in `label_rendering.py`, change them in the editor too.** `renderDecorati
   design that has **not been saved** — `{design, width_cm, height_cm, template_id?}` — with
   `build_preview_context()`'s deliberately long sample values, and returns the PDF. The editor's "Ver cómo
   sale impreso" shows it in a modal. When the canvas and the PDF disagree, the PDF is right.
+- **Layout** (2026-10-16): canvas on the left, a sticky inspector on the right (`.workspace` grid, one column
+  under 1000px) with panels "Elemento seleccionado" (the code/field/decoration/lock groups — only the chosen
+  element's panel shows; `selectField` hides the others), "Rótulo", "Decoraciones" and "Guardar y exportar";
+  "Guardar rótulo" and "Ver cómo sale impreso" at the top. Same palette and font as the rest of the app (orange
+  accent, Karla); the label itself uses Helvetica/Arial, the renderer's font. `topbar.js` loads right after
+  the `<header>` — in the `<head>` it found no `#appTopbar` and the bar stayed empty.
 - The **field properties panel** (`fieldPropsGroup`) edits those per-field styles: click a text field on
   the canvas and set `font_size`, `bold`, `align`, `width`, `hide_if_empty`, `shrink_to_fit`. It follows
   the same select-then-configure pattern as the QR/barcode panel beside it. An empty or unchecked control
@@ -456,10 +462,24 @@ thumbnail; `generate_template_thumbnails` backfills.
 **Scanning tests (`tests/test_scanning.py`, T#241/T#296).** A simulated reader: the real label is rasterized
 with pypdfium2 at 203 dpi in pure black and white (what a Zebra prints) and decoded with zxing-cpp, for both
 systems (template PDF and element-layout PNG): QR, Code128, EAN-13, a long carrier URL, codes shrunk by
-`_fit_size_cm`, the seeded standard template with a real order. **Measured limit**: a 19-digit Code128 needs
-~5 cm of width to read at 203 dpi (narrower, each bar is ~2 printer dots and rounding deforms it; at 300 dpi
-it reads) — and `_fit_size_cm` can silently shrink a barcode below that. Pinned by
-`test_minimum_readable_barcode_width_at_203_dpi`.
+`_fit_size_cm`, the seeded standard template with a real order.
+
+**Barcodes are drawn in whole 203-dpi dots (`build_barcode_drawing`, `_barcode_module_cm`).** Stretched to an
+arbitrary width, a module fell on 1.4-1.8 printer dots and the printer rounded some bars one way and some the
+other: a 19-digit Code128 (OCA) didn't read below ~5 cm. Now the module is the largest WHOLE number of
+`THERMAL_DOT_CM` (2.54/203) that fits the box, minimum `MIN_BARCODE_MODULE_DOTS` (2 = 0.25 mm; 1 doesn't read
+even at 300 dpi), with Code128's quiet zone at 10 modules instead of ReportLab's fixed 0.25" per side. Every
+bar then rounds the same way wherever the code starts; it also reads at 300 dpi. The bars are **centred in
+their box** (the box the editor draws — its `<img>` is `object-fit: contain`, so the editor mirrors this with
+no change). `barcode_min_width_cm(data)` is the readable minimum (~4.4 cm for 19 digits). A box narrower than
+that draws the code at the minimum anyway, wider than its box up to the label's edge (warning
+`barcode_widened`, same rule as ZPL); with no room even to the edge it is squeezed and logged
+(`barcode_unreadable`). `render_label_pdf`/`draw_label_page` take an optional `warnings` list;
+`PreviewLabelView` returns them as `X-Label-Warnings: code:min_cm,...` (CORS-exposed) and the editor shows
+them in the "Así sale impreso" dialog. The preview sample tracking is 19 digits so it hits the worst case.
+ZPL's `^BY` module also starts at 2 dots now (`BARCODE_MODULE_RANGE`). Pinned by
+`test_minimum_readable_barcode_width_at_203_dpi` (a 4 cm box now reads, widened) and
+`test_a_barcode_box_narrower_than_the_old_limit_reads_inside_its_box`.
 
 **Large batches in the background (`batch_jobs.py`, T#298).** Up to `LABELS_BATCH_SYNC_MAX_ITEMS` (25) a batch is
 drawn inside the request as before; above it `LabelBatchView` stores what it needs in `Document.job` (ids in

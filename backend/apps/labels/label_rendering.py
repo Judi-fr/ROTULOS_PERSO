@@ -27,6 +27,8 @@ ReportLab por sobre WeasyPrint para el PDF.
 
 from __future__ import annotations
 
+import logging
+import math
 import re
 from io import BytesIO
 
@@ -39,6 +41,8 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas as pdf_canvas
 
 from .models import LabelSequence
+
+logger = logging.getLogger(__name__)
 
 # 1 cm = 72/2.54 puntos (unidad nativa de ReportLab).
 CM_TO_POINTS = 72 / 2.54
@@ -101,6 +105,21 @@ BARCODE_SYMBOLOGY_CODES = {"code128": "Code128", "ean13": "EAN13"}
 # segunda capa de seguridad para cuando el rótulo tenga otro fondo cerca.
 QUIET_ZONE_CM = 0.2  # ~2 mm
 
+# Las barras se dibujan con un ancho de módulo (la barra más angosta) que es
+# un número ENTERO de puntos de una térmica de 203 dpi, la mayoría del
+# parque. Estirado a un ancho cualquiera, cada módulo caía en 1,4 o 1,8
+# puntos y la impresora redondeaba unas barras para un lado y otras para el
+# otro: un número de 19 dígitos (OCA) no se leía por debajo de unos 5 cm.
+# Con módulos de puntos enteros todas las barras redondean igual, sea donde
+# sea que empiece el código (medido en tests/test_scanning.py). 2 puntos
+# (0,25 mm) es el mínimo que se lee; con 1 no se lee ni a 300 dpi.
+THERMAL_DOT_CM = 2.54 / 203
+MIN_BARCODE_MODULE_DOTS = 2
+# Zona de silencio de Code128 en módulos (el mínimo del estándar). ReportLab
+# reserva por default 0,25" fijas a cada lado, que en un código angosto se
+# comían un tercio del ancho; EAN-13 ya trae la suya en módulos (11 y 7).
+CODE128_QUIET_MODULES = 10
+
 
 def build_qr_drawing(data, size_cm):
     """``Drawing`` de ReportLab con un QR cuadrado de ``data``, de
@@ -114,9 +133,12 @@ def build_qr_drawing(data, size_cm):
     return createBarcodeDrawing("QR", value=data, width=size_pt, height=size_pt, isoScale=1)
 
 
-def build_barcode_drawing(data, symbology, width_cm, height_cm, show_text=True):
-    """``Drawing`` de ReportLab con un código de barras 1D de ``width_cm``
-    x ``height_cm``.
+def build_barcode_drawing(data, symbology, width_cm, height_cm, show_text=True, max_width_cm=None):
+    """``Drawing`` de ReportLab con un código de barras 1D de ``height_cm``
+    de alto y, como mucho, ``width_cm`` de ancho: el ancho real es el que da
+    un módulo de puntos enteros (ver ``_barcode_module_cm``), así que puede
+    quedar algo más angosto, o más ancho (hasta ``max_width_cm``) si en
+    ``width_cm`` no entra legible.
 
     Lanza ``ValueError`` (con un mensaje claro, para que la vista lo
     traduzca a un 400) si:
@@ -144,11 +166,57 @@ def build_barcode_drawing(data, symbology, width_cm, height_cm, show_text=True):
             "%r, %d caracter%s)." % (data, len(data), "es" if len(data) != 1 else "")
         )
 
-    width_pt = float(width_cm) * CM_TO_POINTS
+    module_cm = _barcode_module_cm(code_name, data, float(width_cm), max_width_cm)
     height_pt = float(height_cm) * CM_TO_POINTS
+    # Sin ``width``: el ancho sale del módulo (no se estira en x, que es lo
+    # que deformaba las barras); el alto sí se ajusta al pedido.
     return createBarcodeDrawing(
-        code_name, value=data, width=width_pt, height=height_pt, humanReadable=bool(show_text)
+        code_name,
+        value=data,
+        height=height_pt,
+        humanReadable=bool(show_text),
+        **_barcode_module_options(code_name, module_cm * CM_TO_POINTS),
     )
+
+
+def _barcode_module_options(code_name, module_pt):
+    options = {"barWidth": module_pt}
+    if code_name == "Code128":
+        quiet_pt = CODE128_QUIET_MODULES * module_pt
+        options.update(quiet=1, lquiet=quiet_pt, rquiet=quiet_pt)
+    return options
+
+
+def _barcode_module_count(code_name, data):
+    """Ancho del código, zonas de silencio incluidas, medido en módulos."""
+    drawing = createBarcodeDrawing(code_name, value=data, **_barcode_module_options(code_name, 1.0))
+    return drawing.width
+
+
+def _barcode_module_cm(code_name, data, width_cm, max_width_cm=None):
+    """Ancho de módulo para que el código entre en ``width_cm``: la mayor
+    cantidad ENTERA de puntos de 203 dpi que entra. Si ni el mínimo legible
+    entra, se usa el mínimo igual mientras no pase ``max_width_cm`` (el
+    código queda más ancho que su recuadro: mejor que uno que no se lee, el
+    mismo criterio que ``zpl.py``); y si tampoco, se achica a
+    ``max_width_cm`` como último recurso (ver ``barcode_min_width_cm``)."""
+    modules = _barcode_module_count(code_name, data)
+    dots = math.floor(width_cm / (modules * THERMAL_DOT_CM) + 1e-9)
+    if dots >= MIN_BARCODE_MODULE_DOTS:
+        return dots * THERMAL_DOT_CM
+    max_width_cm = max(width_cm, max_width_cm or 0)
+    minimum_cm = MIN_BARCODE_MODULE_DOTS * THERMAL_DOT_CM
+    if modules * minimum_cm <= max_width_cm + 1e-9:
+        return minimum_cm
+    return max_width_cm / modules
+
+
+def barcode_min_width_cm(data, symbology=DEFAULT_BARCODE_SYMBOLOGY):
+    """Ancho (cm, zonas de silencio incluidas) por debajo del cual ``data``
+    no se lee impreso a 203 dpi. Depende del dato: un tracking de 19
+    dígitos en Code128 necesita ~4,4 cm."""
+    code_name = BARCODE_SYMBOLOGY_CODES[(symbology or DEFAULT_BARCODE_SYMBOLOGY).lower()]
+    return _barcode_module_count(code_name, data) * MIN_BARCODE_MODULE_DOTS * THERMAL_DOT_CM
 
 
 def render_code_svg(drawing):
@@ -277,8 +345,10 @@ def build_preview_context():
         "pedido": "Pedido #10452",
         "fecha_pedido": "22/09/2026",
         "envio": "Envío estándar a domicilio",
-        "tracking": "010452",
-        "tracking_url": "https://example.com/seguimiento.html?codigo=010452",
+        # 19 dígitos, como un número de envío de OCA (el más largo de los
+        # transportistas): el código de barras más ancho que va a tocar.
+        "tracking": "3600001016516001234",
+        "tracking_url": "https://example.com/seguimiento.html?codigo=3600001016516001234",
     }
 
 
@@ -684,12 +754,18 @@ def _draw_qr_field(pdf, entry, context, width_cm, height_cm, computed=None):
     drawing.drawOn(pdf, x_pt, y_top_pt - size_pt)
 
 
-def _draw_barcode_field(pdf, entry, context, width_cm, height_cm, computed=None):
+def _draw_barcode_field(pdf, entry, context, width_cm, height_cm, computed=None, warnings=None):
     """Dibuja el código de barras 1D real en la posición del campo
     ``barcode`` del diseño (ver ``build_barcode_drawing``). Formato:
     ``{"left", "top", "width" (cm, default 8), "height" (cm, default 1.5),
     "symbology" (default "code128"), "data" (marcadores, default
-    {{tracking}}), "show_text" (default True)}``."""
+    {{tracking}}), "show_text" (default True)}``.
+
+    Las barras quedan centradas en su recuadro (el que muestra el editor).
+    Si el dato no entra legible en ese ancho, se dibujan con el mínimo
+    legible aunque se pasen del recuadro, hasta el borde del rótulo; cada
+    caso deja un aviso en ``warnings`` (``barcode_widened`` /
+    ``barcode_unreadable``), que la vista previa del editor muestra."""
     left_pct, top_pct = entry.get("left", 0), entry.get("top", 0)
     data = _replace_placeholders(entry.get("data", DEFAULT_BARCODE_DATA_MARKER), context, computed)
     symbology = entry.get("symbology", DEFAULT_BARCODE_SYMBOLOGY)
@@ -705,18 +781,40 @@ def _draw_barcode_field(pdf, entry, context, width_cm, height_cm, computed=None)
 
     # Puede lanzar ValueError (simbología desconocida / EAN-13 inválido):
     # se deja propagar, la vista lo traduce a un 400 con el mensaje tal cual.
-    drawing = build_barcode_drawing(data, symbology, bwidth_cm, bheight_cm, show_text=show_text)
+    drawing = build_barcode_drawing(
+        data, symbology, bwidth_cm, bheight_cm, show_text=show_text,
+        max_width_cm=avail_w_cm - QUIET_ZONE_CM,
+    )
     if drawing is None:
         return
 
+    box_w_pt = bwidth_cm * CM_TO_POINTS
+    w_pt, h_pt = drawing.width, bheight_cm * CM_TO_POINTS
+    min_width_cm = barcode_min_width_cm(data, symbology)
+    if w_pt < min_width_cm * CM_TO_POINTS - 0.01:
+        logger.warning(
+            "Código de barras ilegible a 203 dpi: %r necesita %.1f cm y hay %.1f cm.",
+            data, min_width_cm, avail_w_cm,
+        )
+        _add_warning(warnings, "barcode_unreadable", min_width_cm)
+    elif w_pt > box_w_pt + 0.01:
+        _add_warning(warnings, "barcode_widened", min_width_cm)
+
     x_pt, y_top_pt = percent_to_canvas_xy(left_pct, top_pct, width_cm, height_cm)
-    w_pt, h_pt = bwidth_cm * CM_TO_POINTS, bheight_cm * CM_TO_POINTS
+    x_pt += max(0.0, (box_w_pt - w_pt) / 2)
     margin_pt = QUIET_ZONE_CM * CM_TO_POINTS
     _draw_white_box(pdf, x_pt - margin_pt, y_top_pt - h_pt - margin_pt, w_pt + 2 * margin_pt, h_pt + 2 * margin_pt)
     drawing.drawOn(pdf, x_pt, y_top_pt - h_pt)
 
 
-def draw_label_page(pdf, design, width_cm, height_cm, context=None, logo_file=None, computed=None):
+def _add_warning(warnings, code, min_width_cm):
+    if warnings is not None:
+        warnings.append({"code": code, "field": "barcode", "min_width_cm": round(min_width_cm, 1)})
+
+
+def draw_label_page(
+    pdf, design, width_cm, height_cm, context=None, logo_file=None, computed=None, warnings=None
+):
     """Dibuja ``design`` sobre la página ACTUAL de ``pdf`` (un
     ``reportlab.pdfgen.canvas.Canvas`` ya creado, con su tamaño de página
     ya seteado a ``width_cm``/``height_cm``). No crea el canvas ni llama
@@ -740,6 +838,9 @@ def draw_label_page(pdf, design, width_cm, height_cm, context=None, logo_file=No
       marcadores, se deja el espacio en blanco. Puede lanzar ``ValueError``
       (simbología desconocida / EAN-13 inválido) — el llamador decide qué
       hacer con eso (ver el lote, que salta el ítem y sigue con el resto).
+    - ``warnings``: lista opcional donde se anotan los avisos del dibujo
+      (hoy, un código de barras que no entra legible); ver
+      ``_draw_barcode_field``.
     """
     context = context or {}
     design = design or {}
@@ -765,7 +866,9 @@ def draw_label_page(pdf, design, width_cm, height_cm, context=None, logo_file=No
 
     barcode_entry = effective_design.get("barcode")
     if barcode_entry:
-        _draw_barcode_field(pdf, barcode_entry, context, width_cm, height_cm, computed=computed)
+        _draw_barcode_field(
+            pdf, barcode_entry, context, width_cm, height_cm, computed=computed, warnings=warnings
+        )
 
     text_entries = [
         entry
@@ -952,7 +1055,7 @@ def compute_a4_grid(
     return landscape if landscape["per_page"] > portrait["per_page"] else portrait
 
 
-def render_label_pdf(design, width_cm, height_cm, context=None, logo_file=None, computed=None):
+def render_label_pdf(design, width_cm, height_cm, context=None, logo_file=None, computed=None, warnings=None):
     """PDF de UN solo rótulo (una página, sin márgenes), en bytes. Wrapper
     de ``draw_label_page`` para el caso de un solo rótulo (endpoint
     individual: ``views.LabelViewSet.pdf`` / ``RenderLabelView``, y cada
@@ -963,7 +1066,8 @@ def render_label_pdf(design, width_cm, height_cm, context=None, logo_file=None, 
     buffer = BytesIO()
     pdf = pdf_canvas.Canvas(buffer, pagesize=(width_pt, height_pt))
     draw_label_page(
-        pdf, design, width_cm, height_cm, context=context, logo_file=logo_file, computed=computed
+        pdf, design, width_cm, height_cm, context=context, logo_file=logo_file, computed=computed,
+        warnings=warnings,
     )
     pdf.showPage()
     pdf.save()

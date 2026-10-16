@@ -20,7 +20,7 @@ from django.test import TestCase
 from PIL import Image
 
 from ..element_layout_render import render_element_layout_png
-from ..label_rendering import build_label_context, render_label_pdf
+from ..label_rendering import barcode_min_width_cm, build_label_context, render_label_pdf
 from ..models import ElementLayout, LabelTemplate, LayoutElement, LayoutVariable
 
 try:
@@ -119,15 +119,45 @@ class LabelScanTests(TestCase):
         self.assertIn(("QRCode", self.context()["tracking_url"]), found)
 
     def test_minimum_readable_barcode_width_at_203_dpi(self):
-        """El límite conocido: un número de 19 dígitos en Code128 necesita
-        unos 5 cm de ancho para leerse impreso a 203 dpi (más angosto, cada
-        barra queda en ~2 puntos de la impresora y el redondeo la deforma;
-        a 300 dpi sí se lee). Si el renderer mejora y lo angosto empieza a
-        leerse, este test avisa para actualizar el límite."""
+        """El límite medido: un número de 19 dígitos en Code128 necesita
+        ~4,4 cm (módulos de 2 puntos, zonas de silencio incluidas) para
+        leerse impreso a 203 dpi. Antes, estirado a cualquier ancho, hacían
+        falta 5 cm y a 4 cm no se leía; ahora un recuadro más angosto que el
+        mínimo dibuja el código con el mínimo legible, más ancho que el
+        recuadro, y deja un aviso."""
+        self.assertAlmostEqual(barcode_min_width_cm(TRACKING), 4.4, places=1)
         design = lambda width: {"barcode": {"left": 3, "top": 40, "width": width, "height": 1.5, "data": "{{tracking}}"}}  # noqa: E731
         self.assertIn(("Code128", TRACKING), self.scan(design(5)))
-        self.assertNotIn(("Code128", TRACKING), self.scan(design(4)))
-        self.assertIn(("Code128", TRACKING), self.scan(design(4), dpi=300))
+        for dpi in (THERMAL_DPI, 300):
+            self.assertIn(("Code128", TRACKING), self.scan(design(4), dpi=dpi))
+
+        warnings = []
+        render_label_pdf(design(4), 10, 15, context=self.context(), warnings=warnings)
+        self.assertEqual(warnings, [{"code": "barcode_widened", "field": "barcode", "min_width_cm": 4.4}])
+        warnings = []
+        render_label_pdf(design(5), 10, 15, context=self.context(), warnings=warnings)
+        self.assertEqual(warnings, [])
+
+    def test_a_barcode_box_narrower_than_the_old_limit_reads_inside_its_box(self):
+        # 4,5 cm: antes no se leía (las barras caían en ~1,9 puntos). Ahora
+        # el módulo es de 2 puntos enteros, entra en el recuadro y se lee,
+        # empiece donde empiece (el redondeo es el mismo para todas).
+        for left in (3, 7.3, 11.1):
+            design = {"barcode": {"left": left, "top": 40, "width": 4.5, "height": 1.5, "data": "{{tracking}}"}}
+            warnings = []
+            pdf = render_label_pdf(design, 10, 15, context=self.context(), warnings=warnings)
+            self.assertEqual(warnings, [])
+            for dpi in (THERMAL_DPI, 300):
+                self.assertIn(("Code128", TRACKING), decode(rasterize(pdf, dpi=dpi)), (left, dpi))
+
+    def test_a_barcode_that_cannot_fit_readable_is_reported(self):
+        # Empieza al 70 % de un rótulo de 10 cm: quedan 3 cm, y los 19
+        # dígitos necesitan 4,4. No hay forma de dibujarlo legible: se avisa.
+        design = {"barcode": {"left": 70, "top": 40, "width": 8, "height": 1.5, "data": "{{tracking}}"}}
+        warnings = []
+        with self.assertLogs("apps.labels.label_rendering", level="WARNING"):
+            render_label_pdf(design, 10, 15, context=self.context(), warnings=warnings)
+        self.assertEqual(warnings, [{"code": "barcode_unreadable", "field": "barcode", "min_width_cm": 4.4}])
 
     def test_also_at_300_dpi(self):
         found = self.scan(self.design(), dpi=300)

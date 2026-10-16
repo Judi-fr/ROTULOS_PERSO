@@ -15,7 +15,6 @@
     <script src="assets/js/config.js"></script>
     <script src="assets/js/auth.js"></script>
     <script src="assets/js/utils.js"></script>
-    <script src="assets/js/topbar.js"></script>
     <script src="assets/js/print.js"></script>
     <!-- Partes del editor que viven en su propio archivo: datos insertables y
          numeración, reglas condicionales, imán al arrastrar y medidas. -->
@@ -28,17 +27,34 @@
          ANTES del <style> propio del editor para que este último (más
          específico en orden de aparición) siga ganando en cualquier
          selector compartido y el canvas no cambie ni un píxel. -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css?family=Karla:400,500,600,700&display=swap"
+    />
     <link rel="stylesheet" href="assets/css/base.css" />
     <link rel="stylesheet" href="assets/css/labels_shared.css" />
 
     <style>
+      /* Misma paleta y tipografía que el resto de la app (labels_shared.css,
+         base.css): grises pizarra y un solo acento, el naranja. */
       :root {
-        --accent: #7c5cff;
-        --dark: #1e1b2e;
-        --bg: #f4f3f9;
-        --border: #ddd8ee;
-        --text: #2c2840;
-        --muted: #8f89a8;
+        --accent: #ea580c;
+        --accent-strong: #c2410c;
+        --accent-soft: #fff1e6;
+        --accent-ring: rgba(234, 88, 12, 0.28);
+        --bg: #f5f7fb;
+        --surface: #ffffff;
+        --surface-sunken: #eef1f6;
+        --border: #e3e7ef;
+        --border-strong: #cfd6e2;
+        --text: #0f172a;
+        --muted: #64748b;
+        --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+        --shadow-md: 0 1px 2px rgba(15, 23, 42, 0.05),
+          0 8px 24px -12px rgba(15, 23, 42, 0.18);
+        --radius-lg: 14px;
+        --radius-md: 10px;
+        --radius-sm: 7px;
       }
       * {
         box-sizing: border-box;
@@ -47,136 +63,290 @@
         margin: 0;
         display: flex;
         flex-direction: column;
-        min-height: 100vh;
-        font-family:
-          system-ui,
-          -apple-system,
-          "Segoe UI",
-          sans-serif;
+        min-height: 100dvh;
+        font-family: "Karla", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Roboto, sans-serif;
         background: var(--bg);
         color: var(--text);
       }
 
-      main {
+      .editor-main {
         flex: 1;
-        padding: 32px 40px;
-        max-width: 1100px;
+        padding: 28px 32px 56px;
+        max-width: 1400px;
         margin: 0 auto;
         width: 100%;
       }
 
       /* Título de la página (no confundir con el header.topbar común, que
-         viene de labels_shared.css: acá era ".topbar" en la versión vieja con
-         sidebar, renombrado para no chocar con esa clase). */
+         viene de labels_shared.css). */
+      .editor-heading {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 20px;
+        flex-wrap: wrap;
+        margin-bottom: 22px;
+      }
       .editor-heading h1 {
-        margin: 0 0 4px;
-        font-size: 24px;
+        margin: 0 0 6px;
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
       }
       .editor-heading .subtitle {
-        margin: 0 0 24px;
+        margin: 0;
+        max-width: 62ch;
         color: var(--muted);
-        font-size: 14px;
+        font-size: 14.5px;
+        line-height: 1.5;
+        text-wrap: pretty;
       }
-
-      /* Enlace "Volver a mis rótulos" dentro de la barra de herramientas
-         del editor: mismo look que los <button> de acá al lado. */
-      .toolbar-link {
-        border: 1px solid var(--border);
-        background: #fff;
-        color: var(--text);
-        padding: 8px 14px;
-        border-radius: 7px;
-        font-size: 13px;
-        text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        transition:
-          background 0.15s,
-          border-color 0.15s;
-      }
-      .toolbar-link:hover {
-        border-color: var(--accent);
-      }
-
-      .toolbar {
+      .heading-actions {
         display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        background: #fff;
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 14px 18px;
-        margin-bottom: 28px;
-      }
-      .tool-group {
-        display: flex;
-        align-items: center;
         gap: 10px;
         flex-wrap: wrap;
       }
-      .tool-group label {
-        font-size: 12px;
-        color: var(--muted);
-        display: flex;
-        align-items: center;
-        gap: 6px;
+      .heading-actions button {
+        padding: 10px 18px;
+        font-size: 14px;
       }
-      /* El display:flex de arriba le gana al atributo hidden: los paneles
-         que aparecen al elegir algo (QR, campo, decoración, bloqueo) y sus
+      .save-status {
+        margin: 0 0 16px;
+        padding: 10px 14px;
+        border-radius: var(--radius-md);
+        background: var(--accent-soft);
+        color: var(--accent-strong);
+        text-align: left;
+        font-size: 13.5px;
+      }
+
+      /* Lienzo a la izquierda, propiedades a la derecha: lo que se elige en
+         el rótulo se configura al lado, sin que la barra empuje el rótulo
+         hacia abajo. */
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        gap: 24px;
+        align-items: start;
+      }
+      .canvas-column {
+        min-width: 0;
+      }
+      .inspector {
+        position: sticky;
+        top: 16px;
+        max-height: calc(100dvh - 32px);
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        padding-bottom: 4px;
+      }
+      @media (max-width: 1000px) {
+        .workspace {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .inspector {
+          position: static;
+          max-height: none;
+        }
+      }
+      @media (max-width: 640px) {
+        .editor-main {
+          padding: 20px 16px 40px;
+        }
+        .canvas-wrap {
+          padding: 20px 12px;
+        }
+      }
+
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
+        padding: 16px 18px 18px;
+      }
+      .panel-title {
+        margin: 0 0 12px;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        color: var(--text);
+      }
+      .selection-empty {
+        margin: 0;
+        padding: 14px;
+        border: 1px dashed var(--border-strong);
+        border-radius: var(--radius-md);
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--muted);
+      }
+      /* Con algún panel de selección visible, el texto de ayuda sobra. */
+      .panel-selection:has(> .tool-group:not([hidden])) .selection-empty {
+        display: none;
+      }
+      .panel-selection > .tool-group + .tool-group {
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px solid var(--border);
+      }
+
+      /* Controles del panel: etiqueta arriba, campo abajo, en dos columnas;
+         las casillas y los botones ocupan la fila entera. */
+      .tool-group {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px 12px;
+        align-items: end;
+      }
+      .tool-group label {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        min-width: 0;
+      }
+      .tool-group label:has(input[type="checkbox"]) {
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        font-weight: 500;
+        font-size: 13px;
+        color: var(--text);
+        cursor: pointer;
+      }
+      .tool-group label:has(input[type="text"]),
+      .tool-group label:has(select#codeMarkerSelect),
+      .tool-group label:has(select#propMarkerSelect),
+      .tool-group label:has(select#decoMarkerSelect),
+      .tool-group label:has(select#sizePreset),
+      .tool-group > .code-config-label {
+        grid-column: 1 / -1;
+      }
+      /* El display de arriba le gana al atributo hidden: los paneles que
+         aparecen al elegir algo (QR, campo, decoración, bloqueo) y sus
          controles por tipo se veían siempre. */
       .tool-group[hidden],
       .tool-group label[hidden] {
         display: none;
       }
-      .tool-group input[type="number"] {
-        width: 60px;
-        padding: 6px 8px;
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        font-size: 13px;
+      .tool-group input[type="number"],
+      .tool-group input[type="text"],
+      .tool-group select {
+        width: 100%;
+        min-width: 0;
+        padding: 8px 10px;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-sm);
+        font: inherit;
+        font-size: 13.5px;
+        font-variant-numeric: tabular-nums;
+        color: var(--text);
+        background: var(--surface);
+        transition:
+          border-color 0.2s,
+          box-shadow 0.2s;
       }
+      .tool-group input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        margin: 0;
+        accent-color: var(--accent);
+      }
+      input:focus-visible,
+      select:focus-visible {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-ring);
+      }
+      .tool-group > button {
+        width: 100%;
+      }
+      .button-stack {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+
       button {
-        border: 1px solid var(--border);
-        background: #fff;
+        border: 1px solid var(--border-strong);
+        background: var(--surface);
         color: var(--text);
         padding: 8px 14px;
-        border-radius: 7px;
-        font-size: 13px;
+        border-radius: var(--radius-sm);
+        font: inherit;
+        font-size: 13.5px;
+        font-weight: 600;
         cursor: pointer;
         transition:
-          background 0.15s,
-          border-color 0.15s;
+          background 0.2s,
+          border-color 0.2s,
+          color 0.2s,
+          transform 0.1s;
       }
       button:hover {
         border-color: var(--accent);
+        color: var(--accent-strong);
+      }
+      button:active {
+        transform: translateY(1px);
+      }
+      button:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 3px var(--accent-ring);
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+        transform: none;
       }
       button.primary {
         background: var(--accent);
         border-color: var(--accent);
         color: #fff;
-        font-weight: 600;
       }
       button.primary:hover {
-        background: #6a4de8;
+        background: var(--accent-strong);
+        border-color: var(--accent-strong);
+        color: #fff;
       }
 
+      /* "justify-content: safe center": un rótulo más ancho que la columna
+         queda alineado a la izquierda con scroll, en vez de cortarse. */
       .canvas-wrap {
         display: flex;
-        justify-content: center;
-        padding: 30px;
-        background: repeating-conic-gradient(#eceafb 0% 25%, #f4f3f9 0% 50%) 0
-          0 / 20px 20px;
-        border-radius: 12px;
+        justify-content: safe center;
+        overflow: auto;
+        padding: 40px 32px;
+        background-color: var(--surface-sunken);
+        background-image: radial-gradient(
+          circle,
+          rgba(100, 116, 139, 0.22) 1px,
+          transparent 1px
+        );
+        background-size: 16px 16px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
       }
 
+      /* Helvetica (o Arial, con las mismas medidas) es la letra con la que
+         dibuja el render: así el ancho de cada texto en el lienzo se parece
+         al del papel. */
       .label {
         position: relative;
+        flex: none;
         background: #fff;
-        box-shadow: 0 4px 20px rgba(30, 27, 46, 0.15);
+        box-shadow:
+          0 1px 2px rgba(15, 23, 42, 0.08),
+          0 18px 40px -16px rgba(15, 23, 42, 0.35);
         overflow: hidden;
+        font-family: Helvetica, Arial, sans-serif;
+        color: #111;
         /* width/height set dynamically in cm via JS */
       }
 
@@ -194,8 +364,8 @@
       .field {
         position: absolute;
         padding: 0;
-        outline: 1px dashed rgba(124, 92, 255, 0.5);
-        background: rgba(124, 92, 255, 0.06);
+        outline: 1px dashed rgba(234, 88, 12, 0.45);
+        background: rgba(234, 88, 12, 0.05);
         line-height: 1;
         white-space: nowrap;
         overflow: hidden;
@@ -244,6 +414,17 @@
       }
       .preview-dialog-head button {
         margin-left: auto;
+      }
+      .preview-warning {
+        margin: 0;
+        padding: 10px 18px;
+        background: #fff4e5;
+        color: #8a4b00;
+        border-bottom: 1px solid #f5d5a8;
+        font-size: 14px;
+      }
+      .preview-warning[hidden] {
+        display: none;
       }
       #serverPreviewFrame {
         flex: 1;
@@ -300,7 +481,7 @@
 
       .field:focus {
         outline-color: var(--accent);
-        background: rgba(124, 92, 255, 0.1);
+        background: rgba(234, 88, 12, 0.1);
       }
       .field.dragging {
         cursor: grabbing;
@@ -351,11 +532,25 @@
         object-fit: contain;
       }
 
-      /* Barra de configuración del código seleccionado (QR/código de
-         barras): mismo look que el resto de la toolbar. */
+      /* Encabezado de cada panel de selección ("Código: QR", "Campo: cp"):
+         el primero de cada grupo; el resto de estos spans son ayudas. */
       .code-config-label {
         font-size: 12px;
         color: var(--muted);
+        line-height: 1.45;
+      }
+      .tool-group > .code-config-label:first-child {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .tool-group > .code-config-label:first-child strong {
+        display: inline-block;
+        margin-left: 2px;
+        padding: 1px 8px;
+        border-radius: 5px;
+        background: var(--accent-soft);
+        color: var(--accent-strong);
+        font-weight: 700;
       }
 
       /* Estado limpio para exportar: sin bordes punteados ni fondos guía */
@@ -365,7 +560,7 @@
       }
 
       .hint {
-        margin-top: 14px;
+        margin-top: 12px;
         font-size: 12px;
         color: var(--muted);
         text-align: center;
@@ -376,7 +571,7 @@
       .field.locked {
         cursor: default;
         outline-style: solid;
-        outline-color: rgba(143, 137, 168, 0.7);
+        outline-color: rgba(100, 116, 139, 0.7);
       }
       .deco-line.locked,
       .deco-text.locked {
@@ -415,15 +610,20 @@
         gap: 14px;
       }
       .editor-extra details {
-        background: #fff;
+        background: var(--surface);
         border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 14px 18px;
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
+        padding: 16px 20px;
       }
       .editor-extra summary {
         cursor: pointer;
-        font-weight: 600;
-        font-size: 14px;
+        font-weight: 700;
+        font-size: 14.5px;
+        transition: color 0.2s;
+      }
+      .editor-extra summary:hover {
+        color: var(--accent-strong);
       }
       .editor-extra .section-help {
         font-size: 12.5px;
@@ -436,7 +636,7 @@
         align-items: center;
         gap: 6px;
         padding: 8px 0;
-        border-top: 1px solid #efedf7;
+        border-top: 1px solid var(--border);
       }
       .rule-row select,
       .rule-row input,
@@ -490,7 +690,7 @@
         font-family: ui-monospace, monospace;
         font-size: 15px;
         padding: 6px 10px;
-        background: #f4f3f9;
+        background: var(--surface-sunken);
         border-radius: 6px;
       }
       .rules-message {
@@ -508,6 +708,10 @@
   <body>
     <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
     <header class="topbar" id="appTopbar" data-links='[{"href": "mis_rotulos.html", "label": "Volver a mis rótulos"}]'></header>
+    <!-- Después del <header>: topbar.js lo dibuja apenas carga, y en el
+         <head> todavía no existía (la barra quedaba vacía, sin "Cerrar
+         sesión"). -->
+    <script src="assets/js/topbar.js"></script>
 
     <script>
       // Header común (avatar/nombre/email desde localStorage.user + logout),
@@ -538,391 +742,408 @@
       })();
     </script>
 
-    <main>
+    <main class="editor-main">
       <div class="editor-heading">
-        <h1>Diseño de Rótulos</h1>
-        <p class="subtitle">
-          Arrastrá cada dato a donde lo necesites en el rótulo. Hacé clic sobre
-          un texto para editarlo, o sobre el QR/código de barras para
-          configurarlos.
-        </p>
-      </div>
-
-      <div class="toolbar">
-        <div class="tool-group">
-          <a class="toolbar-link" href="mis_rotulos.html">← Mis rótulos</a>
+        <div>
+          <h1>Diseño de rótulos</h1>
+          <p class="subtitle">
+            Arrastrá cada dato a donde lo necesites en el rótulo. Hacé clic sobre
+            un texto para editarlo, o sobre el QR/código de barras para
+            configurarlos.
+          </p>
         </div>
-        <div class="tool-group" id="codeConfigGroup" hidden>
-          <span class="code-config-label"
-            >Código: <strong id="codeConfigTitle">QR</strong></span
-          >
-          <label id="codeSizeLabel">
-            Tamaño (cm)
-            <input
-              type="number"
-              id="codeSizeInput"
-              min="1"
-              max="10"
-              step="0.5"
-              style="width: 60px"
-            />
-          </label>
-          <label id="codeWidthLabel" hidden>
-            Ancho (cm)
-            <input
-              type="number"
-              id="codeWidthInput"
-              min="2"
-              max="20"
-              step="0.5"
-              style="width: 60px"
-            />
-          </label>
-          <label id="codeHeightLabel" hidden>
-            Alto (cm)
-            <input
-              type="number"
-              id="codeHeightInput"
-              min="0.5"
-              max="5"
-              step="0.1"
-              style="width: 60px"
-            />
-          </label>
-          <label id="codeSymbologyLabel" hidden>
-            Simbología
-            <select id="codeSymbologySelect">
-              <option value="code128">Code128</option>
-              <option value="ean13">EAN-13</option>
-            </select>
-          </label>
-          <label id="codeShowTextLabel" hidden>
-            <input type="checkbox" id="codeShowTextInput" />
-            Mostrar texto
-          </label>
-          <label
-            >Contenido
-            <input type="text" id="codeDataInput" style="width: 190px" />
-          </label>
-          <label
-            >Insertar marcador
-            <!-- Las opciones las pone label_editor_markers.js: los mismos
-                 datos (y calculados) que entiende el render. -->
-            <select id="codeMarkerSelect"></select>
-          </label>
-        </div>
-
-        <!-- Propiedades del campo de texto seleccionado. Mismo patrón que el
-             panel del QR/código de barras de acá arriba: se elige el elemento
-             en el lienzo y su configuración aparece acá. Estos estilos ya los
-             dibujaba el lienzo y los aplicaba el render; lo que faltaba era
-             poder editarlos sin tocar la base. -->
-        <div class="tool-group" id="fieldPropsGroup" hidden>
-          <span class="code-config-label"
-            >Campo: <strong id="fieldPropsTitle"></strong></span
-          >
-          <label>
-            Tamaño (pt)
-            <input
-              type="number"
-              id="propFontSize"
-              min="6"
-              max="72"
-              step="0.5"
-              placeholder="auto"
-              style="width: 70px"
-            />
-          </label>
-          <label>
-            <input type="checkbox" id="propBold" />
-            Negrita
-          </label>
-          <label>
-            Alineación
-            <select id="propAlign">
-              <option value="left">Izquierda</option>
-              <option value="center">Centro</option>
-              <option value="right">Derecha</option>
-            </select>
-          </label>
-          <label>
-            Ancho (%)
-            <input
-              type="number"
-              id="propWidth"
-              min="5"
-              max="100"
-              step="1"
-              placeholder="hasta el borde"
-              style="width: 80px"
-            />
-          </label>
-          <label title="Si todos sus datos vienen vacíos, no se imprime nada (ni la etiqueta)">
-            <input type="checkbox" id="propHideIfEmpty" />
-            Ocultar si queda vacío
-          </label>
-          <label title="Antes de recortar con puntos suspensivos, achica la letra hasta 6 pt">
-            <input type="checkbox" id="propShrink" />
-            Achicar para que entre
-          </label>
-          <label title="Se inserta donde estaba el cursor en el texto del campo">
-            Insertar dato
-            <select id="propMarkerSelect"></select>
-          </label>
-        </div>
-
-        <!-- Bloqueo del elemento elegido en el lienzo (cualquiera: texto,
-             logo, QR o código). Bloqueado no se arrastra ni se mueve con las
-             flechas; el texto se sigue pudiendo editar. -->
-        <div class="tool-group" id="lockGroup" hidden>
-          <span class="code-config-label"
-            >Elemento: <strong id="lockGroupTitle"></strong></span
-          >
-          <label>
-            <input type="checkbox" id="lockFieldInput" />
-            Bloquear posición
-          </label>
-          <span class="code-config-label" title="Con Alt: sin imán al arrastrar. Flechas: mover 0,5 % (con Mayúscula, 5 %).">
-            Flechas para mover · Alt para soltar el imán
-          </span>
-        </div>
-        <!-- Decoraciones: recuadro de corte, líneas separadoras y textos
-             fijos. El render las dibujaba desde siempre y el editor pasó a
-             mostrarlas; esto es lo que faltaba para poder crearlas. -->
-        <div class="tool-group" id="decoGroup">
-          <span class="code-config-label">Decoraciones</span>
-          <label title="Marco de corte a 0,2 cm del borde, como lo dibuja el render">
-            <input type="checkbox" id="decoBorder" />
-            Recuadro
-          </label>
-          <label>
-            <input type="checkbox" id="decoBorderDashed" />
-            Punteado
-          </label>
-          <button type="button" class="btn btn-outline" id="addLineBtn">
-            + Línea
+        <div class="heading-actions">
+          <button id="previewServerBtn" title="Muestra el PDF que genera el servidor, que es lo que sale impreso">
+            Ver cómo sale impreso
           </button>
-          <button type="button" class="btn btn-outline" id="addDecoTextBtn">
-            + Texto fijo
-          </button>
-        </div>
-
-        <!-- Propiedades de la línea o el texto fijo seleccionado. Mismo patrón
-             que los dos paneles de arriba: se elige en el lienzo y aparece. -->
-        <div class="tool-group" id="decoPropsGroup" hidden>
-          <span class="code-config-label"
-            >Seleccionado: <strong id="decoPropsTitle"></strong></span
-          >
-          <label id="decoTextLabel" hidden>
-            Contenido
-            <input type="text" id="decoText" style="width: 190px" />
-          </label>
-          <label id="decoMarkerLabel" hidden>
-            Insertar dato
-            <select id="decoMarkerSelect"></select>
-          </label>
-          <label id="decoFontSizeLabel" hidden>
-            Tamaño (pt)
-            <input
-              type="number"
-              id="decoFontSize"
-              min="6"
-              max="72"
-              step="0.5"
-              placeholder="auto"
-              style="width: 70px"
-            />
-          </label>
-          <label id="decoBoldLabel" hidden>
-            <input type="checkbox" id="decoBold" />
-            Negrita
-          </label>
-          <label id="decoAlignLabel" hidden>
-            Alineación
-            <select id="decoAlign">
-              <option value="left">Izquierda</option>
-              <option value="center">Centro</option>
-              <option value="right">Derecha</option>
-            </select>
-          </label>
-          <label id="decoLeftLabel" hidden>
-            Desde (%)
-            <input type="number" id="decoLeft" min="0" max="100" step="1" style="width: 70px" />
-          </label>
-          <label id="decoRightLabel" hidden>
-            Hasta (%)
-            <input type="number" id="decoRight" min="0" max="100" step="1" style="width: 70px" />
-          </label>
-          <label id="decoDashedLabel" hidden>
-            <input type="checkbox" id="decoDashed" />
-            Punteada
-          </label>
-          <label id="decoLockedLabel" hidden>
-            <input type="checkbox" id="decoLocked" />
-            Bloquear posición
-          </label>
-          <button type="button" class="btn btn-outline" id="decoDeleteBtn">
-            Eliminar
-          </button>
-        </div>
-
-        <div class="tool-group">
-          <label
-            >Nombre
-            <input
-              type="text"
-              id="nombreInput"
-              placeholder="Rótulo sin nombre"
-              style="width: 160px"
-          /></label>
-        </div>
-        <div class="tool-group">
-          <!-- Medidas del catálogo (catalogos.html): elegir una completa
-               ancho y alto; tocar los números a mano la deja en "Otra". -->
-          <label
-            >Medida
-            <select id="sizePreset">
-              <option value="">Otra medida</option>
-            </select></label
-          >
-          <label
-            >Ancho
-            <input
-              type="number"
-              id="widthCm"
-              value="10"
-              min="5"
-              max="30"
-              step="0.5"
-            />
-            cm</label
-          >
-          <label
-            >Alto
-            <input
-              type="number"
-              id="heightCm"
-              value="15"
-              min="5"
-              max="40"
-              step="0.5"
-            />
-            cm</label
-          >
-        </div>
-        <div class="tool-group">
-          <button id="uploadLogoBtn">Subir logo</button>
-          <input type="file" id="logoInput" accept="image/*" hidden />
-          <button id="resetBtn">Restablecer posiciones</button>
-        </div>
-        <div class="tool-group">
-          <button id="saveBtn" class="primary">Guardar rótulo</button>
-          <button id="saveAsTemplateBtn">Guardar como plantilla</button>
           <!-- Solo al abrir una plantilla propia (o cualquiera, siendo admin)
                con ?template=<id>: guarda el diseño en ESA plantilla como una
                versión nueva de su historial (versiones_plantilla.html). -->
           <button id="saveTemplateVersionBtn" style="display: none">Guardar cambios en la plantilla</button>
-          <button id="previewServerBtn" title="Muestra el PDF que genera el servidor, que es lo que sale impreso">
-            Ver cómo sale impreso
-          </button>
-          <button id="exportPngBtn">Exportar PNG</button>
-          <button id="exportPdfBtn">Exportar PDF</button>
-          <!-- Vista previa rápida (arriba) vs. rótulo definitivo (acá): el
-               PNG/PDF de arriba los arma html2canvas sobre lo que se ve en
-               pantalla; este lo arma el backend con ReportLab a partir de
-               los datos guardados, es el que va a imprenta. Por eso exige
-               que el rótulo ya esté guardado (necesita un id). -->
-          <button id="exportServerPdfBtn" title="Guardá el rótulo primero para poder descargar el PDF del servidor">
-            Descargar PDF (servidor)
-          </button>
-          <button id="printBtn" title="Guardá el rótulo primero para poder imprimirlo">
-            Imprimir
-          </button>
+          <button id="saveBtn" class="primary">Guardar rótulo</button>
         </div>
       </div>
-      <p id="saveStatus" class="hint" style="display: none"></p>
+      <p id="saveStatus" class="hint save-status" style="display: none"></p>
 
-      <div class="canvas-wrap">
-        <div id="label" class="label">
-          <div class="field" data-field="logo" id="logoField">
-            <div class="logo-placeholder" id="logoPlaceholder">+ Logo</div>
-            <img id="logoImg" style="display: none" alt="Logo" />
+      <div class="workspace">
+        <section class="canvas-column" aria-label="Rótulo">
+          <div class="canvas-wrap">
+            <div id="label" class="label">
+              <div class="field" data-field="logo" id="logoField">
+                <div class="logo-placeholder" id="logoPlaceholder">+ Logo</div>
+                <img id="logoImg" style="display: none" alt="Logo" />
+              </div>
+
+              <div class="field" data-field="qr" id="qrField">
+                <img id="qrImg" alt="QR" />
+              </div>
+
+              <div class="field" data-field="barcode" id="barcodeField">
+                <img id="barcodeImg" alt="Código de barras" />
+              </div>
+
+              <div class="field" data-field="remitente" contenteditable="true">
+                Remitente: Juan Pérez
+              </div>
+              <div class="field" data-field="destinatario" contenteditable="true">
+                Destinatario: María Gómez
+              </div>
+              <div class="field" data-field="domicilio" contenteditable="true">
+                Domicilio: Av. Siempre Viva 742
+              </div>
+              <div class="field" data-field="cp" contenteditable="true">
+                CP: 1000
+              </div>
+              <div class="field" data-field="localidad" contenteditable="true">
+                Localidad/Provincia: CABA, Bs. As.
+              </div>
+              <div
+                class="field"
+                data-field="pedido"
+                id="pedidoField"
+                contenteditable="true"
+              >
+                N° de Pedido: 000123
+              </div>
+            </div>
           </div>
 
-          <div class="field" data-field="qr" id="qrField">
-            <img id="qrImg" alt="QR" />
-          </div>
-
-          <div class="field" data-field="barcode" id="barcodeField">
-            <img id="barcodeImg" alt="Código de barras" />
-          </div>
-
-          <div class="field" data-field="remitente" contenteditable="true">
-            Remitente: Juan Pérez
-          </div>
-          <div class="field" data-field="destinatario" contenteditable="true">
-            Destinatario: María Gómez
-          </div>
-          <div class="field" data-field="domicilio" contenteditable="true">
-            Domicilio: Av. Siempre Viva 742
-          </div>
-          <div class="field" data-field="cp" contenteditable="true">
-            CP: 1000
-          </div>
-          <div class="field" data-field="localidad" contenteditable="true">
-            Localidad/Provincia: CABA, Bs. As.
-          </div>
-          <div
-            class="field"
-            data-field="pedido"
-            id="pedidoField"
-            contenteditable="true"
-          >
-            N° de Pedido: 000123
-          </div>
-        </div>
-      </div>
-
-      <p class="hint">
-        Los campos se guardan en % del rótulo, así que si cambiás el tamaño, la
-        posición relativa se mantiene.
-      </p>
-
-      <div class="editor-extra">
-        <!-- Reglas condicionales (design.rules): las arma
-             label_editor_rules.js; el backend las aplica al imprimir. -->
-        <details id="rulesPanel">
-          <summary>Reglas según los datos del envío <span id="rulesCount"></span></summary>
-          <p class="section-help">
-            Cambian el rótulo según cada pedido: por ejemplo, ocultar el QR si
-            no hay código de seguimiento, o cambiar un texto según la localidad.
-            Se aplican al imprimir, en orden; si dos tocan el mismo elemento,
-            gana la de más abajo. Para verlas con datos de muestra usá
-            "Ver cómo sale impreso".
+          <p class="hint">
+            Los campos se guardan en % del rótulo, así que si cambiás el tamaño, la
+            posición relativa se mantiene.
           </p>
-          <div id="rulesList"></div>
-          <button type="button" id="addRuleBtn">+ Agregar regla</button>
-        </details>
 
-        <!-- Numeración de {{secuencia}}: es una sola por cuenta, la comparten
-             todas las plantillas (label_editor_markers.js). -->
-        <details id="sequencePanel">
-          <summary>Número correlativo ({{secuencia}})</summary>
-          <p class="section-help">
-            Cada rótulo impreso que tenga el dato "Número correlativo" lleva el
-            número siguiente. Es uno solo para toda tu cuenta: lo comparten
-            todas tus plantillas. La vista previa muestra un número de muestra
-            y no gasta ninguno.
-          </p>
-          <div class="seq-form">
-            <label>Prefijo <input type="text" id="seqPrefix" maxlength="20" placeholder="ENV-" style="width: 110px" /></label>
-            <label>Cifras <input type="number" id="seqPadding" min="0" max="12" step="1" style="width: 70px" /></label>
-            <label>Próximo número <input type="number" id="seqNext" min="1" step="1" style="width: 110px" /></label>
-            <label>Así se va a ver <span class="seq-example" id="seqExample">000001</span></label>
-            <button type="button" id="seqSaveBtn">Guardar numeración</button>
+          <div class="editor-extra">
+            <!-- Reglas condicionales (design.rules): las arma
+                 label_editor_rules.js; el backend las aplica al imprimir. -->
+            <details id="rulesPanel">
+              <summary>Reglas según los datos del envío <span id="rulesCount"></span></summary>
+              <p class="section-help">
+                Cambian el rótulo según cada pedido: por ejemplo, ocultar el QR si
+                no hay código de seguimiento, o cambiar un texto según la localidad.
+                Se aplican al imprimir, en orden; si dos tocan el mismo elemento,
+                gana la de más abajo. Para verlas con datos de muestra usá
+                "Ver cómo sale impreso".
+              </p>
+              <div id="rulesList"></div>
+              <button type="button" id="addRuleBtn">+ Agregar regla</button>
+            </details>
+
+            <!-- Numeración de {{secuencia}}: es una sola por cuenta, la comparten
+                 todas las plantillas (label_editor_markers.js). -->
+            <details id="sequencePanel">
+              <summary>Número correlativo ({{secuencia}})</summary>
+              <p class="section-help">
+                Cada rótulo impreso que tenga el dato "Número correlativo" lleva el
+                número siguiente. Es uno solo para toda tu cuenta: lo comparten
+                todas tus plantillas. La vista previa muestra un número de muestra
+                y no gasta ninguno.
+              </p>
+              <div class="seq-form">
+                <label>Prefijo <input type="text" id="seqPrefix" maxlength="20" placeholder="ENV-" style="width: 110px" /></label>
+                <label>Cifras <input type="number" id="seqPadding" min="0" max="12" step="1" style="width: 70px" /></label>
+                <label>Próximo número <input type="number" id="seqNext" min="1" step="1" style="width: 110px" /></label>
+                <label>Así se va a ver <span class="seq-example" id="seqExample">000001</span></label>
+                <button type="button" id="seqSaveBtn">Guardar numeración</button>
+              </div>
+              <p id="seqMessage" class="rules-message" hidden></p>
+            </details>
           </div>
-          <p id="seqMessage" class="rules-message" hidden></p>
-        </details>
+        </section>
+
+        <aside class="inspector" aria-label="Propiedades">
+          <section class="panel panel-selection">
+            <h2 class="panel-title">Elemento seleccionado</h2>
+            <p class="selection-empty">
+              Hacé clic en un texto, el logo, el QR o el código de barras del
+              rótulo para editarlo acá.
+            </p>
+            <div class="tool-group" id="codeConfigGroup" hidden>
+              <span class="code-config-label"
+                >Código: <strong id="codeConfigTitle">QR</strong></span
+              >
+              <label id="codeSizeLabel">
+                Tamaño (cm)
+                <input
+                  type="number"
+                  id="codeSizeInput"
+                  min="1"
+                  max="10"
+                  step="0.5"
+             
+                />
+              </label>
+              <label id="codeWidthLabel" hidden>
+                Ancho (cm)
+                <input
+                  type="number"
+                  id="codeWidthInput"
+                  min="2"
+                  max="20"
+                  step="0.5"
+             
+                />
+              </label>
+              <label id="codeHeightLabel" hidden>
+                Alto (cm)
+                <input
+                  type="number"
+                  id="codeHeightInput"
+                  min="0.5"
+                  max="5"
+                  step="0.1"
+             
+                />
+              </label>
+              <label id="codeSymbologyLabel" hidden>
+                Simbología
+                <select id="codeSymbologySelect">
+                  <option value="code128">Code128</option>
+                  <option value="ean13">EAN-13</option>
+                </select>
+              </label>
+              <label id="codeShowTextLabel" hidden>
+                <input type="checkbox" id="codeShowTextInput" />
+                Mostrar texto
+              </label>
+              <label
+                >Contenido
+                <input type="text" id="codeDataInput" />
+              </label>
+              <label
+                >Insertar marcador
+                <!-- Las opciones las pone label_editor_markers.js: los mismos
+                     datos (y calculados) que entiende el render. -->
+                <select id="codeMarkerSelect"></select>
+              </label>
+            </div>
+            <!-- Propiedades del campo de texto seleccionado. Mismo patrón que el
+                 panel del QR/código de barras de acá arriba: se elige el elemento
+                 en el lienzo y su configuración aparece acá. Estos estilos ya los
+                 dibujaba el lienzo y los aplicaba el render; lo que faltaba era
+                 poder editarlos sin tocar la base. -->
+            <div class="tool-group" id="fieldPropsGroup" hidden>
+              <span class="code-config-label"
+                >Campo: <strong id="fieldPropsTitle"></strong></span
+              >
+              <label>
+                Tamaño (pt)
+                <input
+                  type="number"
+                  id="propFontSize"
+                  min="6"
+                  max="72"
+                  step="0.5"
+                  placeholder="auto"
+             
+                />
+              </label>
+              <label>
+                <input type="checkbox" id="propBold" />
+                Negrita
+              </label>
+              <label>
+                Alineación
+                <select id="propAlign">
+                  <option value="left">Izquierda</option>
+                  <option value="center">Centro</option>
+                  <option value="right">Derecha</option>
+                </select>
+              </label>
+              <label>
+                Ancho (%)
+                <input
+                  type="number"
+                  id="propWidth"
+                  min="5"
+                  max="100"
+                  step="1"
+                  placeholder="hasta el borde"
+             
+                />
+              </label>
+              <label title="Si todos sus datos vienen vacíos, no se imprime nada (ni la etiqueta)">
+                <input type="checkbox" id="propHideIfEmpty" />
+                Ocultar si queda vacío
+              </label>
+              <label title="Antes de recortar con puntos suspensivos, achica la letra hasta 6 pt">
+                <input type="checkbox" id="propShrink" />
+                Achicar para que entre
+              </label>
+              <label title="Se inserta donde estaba el cursor en el texto del campo">
+                Insertar dato
+                <select id="propMarkerSelect"></select>
+              </label>
+            </div>
+            <!-- Propiedades de la línea o el texto fijo seleccionado. Mismo patrón
+                 que los dos paneles de arriba: se elige en el lienzo y aparece. -->
+            <div class="tool-group" id="decoPropsGroup" hidden>
+              <span class="code-config-label"
+                >Seleccionado: <strong id="decoPropsTitle"></strong></span
+              >
+              <label id="decoTextLabel" hidden>
+                Contenido
+                <input type="text" id="decoText" />
+              </label>
+              <label id="decoMarkerLabel" hidden>
+                Insertar dato
+                <select id="decoMarkerSelect"></select>
+              </label>
+              <label id="decoFontSizeLabel" hidden>
+                Tamaño (pt)
+                <input
+                  type="number"
+                  id="decoFontSize"
+                  min="6"
+                  max="72"
+                  step="0.5"
+                  placeholder="auto"
+             
+                />
+              </label>
+              <label id="decoBoldLabel" hidden>
+                <input type="checkbox" id="decoBold" />
+                Negrita
+              </label>
+              <label id="decoAlignLabel" hidden>
+                Alineación
+                <select id="decoAlign">
+                  <option value="left">Izquierda</option>
+                  <option value="center">Centro</option>
+                  <option value="right">Derecha</option>
+                </select>
+              </label>
+              <label id="decoLeftLabel" hidden>
+                Desde (%)
+                <input type="number" id="decoLeft" min="0" max="100" step="1" />
+              </label>
+              <label id="decoRightLabel" hidden>
+                Hasta (%)
+                <input type="number" id="decoRight" min="0" max="100" step="1" />
+              </label>
+              <label id="decoDashedLabel" hidden>
+                <input type="checkbox" id="decoDashed" />
+                Punteada
+              </label>
+              <label id="decoLockedLabel" hidden>
+                <input type="checkbox" id="decoLocked" />
+                Bloquear posición
+              </label>
+              <button type="button" class="btn btn-outline" id="decoDeleteBtn">
+                Eliminar
+              </button>
+            </div>
+            <!-- Bloqueo del elemento elegido en el lienzo (cualquiera: texto,
+                 logo, QR o código). Bloqueado no se arrastra ni se mueve con las
+                 flechas; el texto se sigue pudiendo editar. -->
+            <div class="tool-group" id="lockGroup" hidden>
+              <span class="code-config-label"
+                >Elemento: <strong id="lockGroupTitle"></strong></span
+              >
+              <label>
+                <input type="checkbox" id="lockFieldInput" />
+                Bloquear posición
+              </label>
+              <span class="code-config-label" title="Con Alt: sin imán al arrastrar. Flechas: mover 0,5 % (con Mayúscula, 5 %).">
+                Flechas para mover · Alt para soltar el imán
+              </span>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2 class="panel-title">Rótulo</h2>
+            <div class="tool-group">
+              <label
+                >Nombre
+                <input
+                  type="text"
+                  id="nombreInput"
+                  placeholder="Rótulo sin nombre"
+             
+              /></label>
+            </div>
+            <div class="tool-group">
+              <!-- Medidas del catálogo (catalogos.html): elegir una completa
+                   ancho y alto; tocar los números a mano la deja en "Otra". -->
+              <label
+                >Medida
+                <select id="sizePreset">
+                  <option value="">Otra medida</option>
+                </select></label
+              >
+              <label
+                >Ancho (cm)
+                <input
+                  type="number"
+                  id="widthCm"
+                  value="10"
+                  min="5"
+                  max="30"
+                  step="0.5"
+                /></label
+              >
+              <label
+                >Alto (cm)
+                <input
+                  type="number"
+                  id="heightCm"
+                  value="15"
+                  min="5"
+                  max="40"
+                  step="0.5"
+                /></label
+              >
+            </div>
+            <div class="tool-group">
+              <button id="uploadLogoBtn">Subir logo</button>
+              <input type="file" id="logoInput" accept="image/*" hidden />
+              <button id="resetBtn">Restablecer posiciones</button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2 class="panel-title">Decoraciones</h2>
+            <!-- Decoraciones: recuadro de corte, líneas separadoras y textos
+                 fijos. El render las dibujaba desde siempre y el editor pasó a
+                 mostrarlas; esto es lo que faltaba para poder crearlas. -->
+            <div class="tool-group" id="decoGroup">
+              <label title="Marco de corte a 0,2 cm del borde, como lo dibuja el render">
+                <input type="checkbox" id="decoBorder" />
+                Recuadro
+              </label>
+              <label>
+                <input type="checkbox" id="decoBorderDashed" />
+                Punteado
+              </label>
+              <button type="button" class="btn btn-outline" id="addLineBtn">
+                + Línea
+              </button>
+              <button type="button" class="btn btn-outline" id="addDecoTextBtn">
+                + Texto fijo
+              </button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2 class="panel-title">Guardar y exportar</h2>
+            <div class="tool-group button-stack">
+            <button id="saveAsTemplateBtn">Guardar como plantilla</button>
+            <button id="exportPngBtn">Exportar PNG</button>
+            <button id="exportPdfBtn">Exportar PDF</button>
+            <!-- Vista previa rápida (arriba) vs. rótulo definitivo (acá): el
+                 PNG/PDF de arriba los arma html2canvas sobre lo que se ve en
+                 pantalla; este lo arma el backend con ReportLab a partir de
+                 los datos guardados, es el que va a imprenta. Por eso exige
+                 que el rótulo ya esté guardado (necesita un id). -->
+            <button id="exportServerPdfBtn" title="Guardá el rótulo primero para poder descargar el PDF del servidor">
+              Descargar PDF (servidor)
+            </button>
+            <button id="printBtn" title="Guardá el rótulo primero para poder imprimirlo">
+              Imprimir
+            </button>
+            </div>
+          </section>
+        </aside>
       </div>
     </main>
 
@@ -933,6 +1154,7 @@
           <span class="hint">Generado por el servidor, con datos de muestra</span>
           <button id="closeServerPreviewBtn">Cerrar</button>
         </div>
+        <p class="preview-warning" id="serverPreviewWarning" hidden></p>
         <iframe id="serverPreviewFrame" title="Vista previa del rótulo"></iframe>
       </div>
     </div>
@@ -1318,6 +1540,12 @@
           el.classList.toggle("selected-el", el.dataset.field === key);
         });
         lockGroup.hidden = !key;
+        // En "Elemento seleccionado" queda solo el panel de lo elegido: el
+        // del QR/código o el del texto (los muestran selectCodeField y
+        // selectTextField con el click que sigue a este pointerdown).
+        const isCode = key === "qr" || key === "barcode";
+        if (!isCode) document.getElementById("codeConfigGroup").hidden = true;
+        if (!key || isCode || key === "logo") document.getElementById("fieldPropsGroup").hidden = true;
         if (!key) return;
         document.getElementById("lockGroupTitle").textContent = ELEMENT_LABELS[key] || key;
         lockFieldInput.checked = lockedFields.has(key);
@@ -2196,7 +2424,30 @@
       const PREVIEW_URL = `${window.APP_CONFIG.API_BASE}/labels/preview/`;
       const serverPreviewOverlay = document.getElementById("serverPreviewOverlay");
       const serverPreviewFrame = document.getElementById("serverPreviewFrame");
+      const serverPreviewWarning = document.getElementById("serverPreviewWarning");
       let serverPreviewUrl = null;
+
+      // X-Label-Warnings (PreviewLabelView): "código:ancho mínimo en cm",
+      // separados por coma. La vista previa usa un tracking de 19 dígitos,
+      // el más largo de los transportistas.
+      function previewWarningText(header) {
+        if (!header) return "";
+        return header
+          .split(",")
+          .map((item) => {
+            const [code, minWidth] = item.split(":");
+            const cm = String(minWidth || "").replace(".", ",");
+            if (code === "barcode_widened") {
+              return `El código de barras no entra legible en su recuadro: necesita ${cm} cm de ancho para leerse impreso en una térmica, así que se dibuja más ancho y puede tapar lo que tenga al lado. Agrandá el recuadro o hacé lugar.`;
+            }
+            if (code === "barcode_unreadable") {
+              return `El código de barras no va a poder leerse: necesita ${cm} cm de ancho y en el rótulo no hay tanto lugar desde donde empieza. Movelo más a la izquierda o usá un rótulo más ancho.`;
+            }
+            return "";
+          })
+          .filter(Boolean)
+          .join(" ");
+      }
 
       function closeServerPreview() {
         serverPreviewOverlay.hidden = true;
@@ -2240,6 +2491,11 @@
             if (serverPreviewUrl) URL.revokeObjectURL(serverPreviewUrl);
             serverPreviewUrl = URL.createObjectURL(await response.blob());
             serverPreviewFrame.src = serverPreviewUrl;
+            const warningText = previewWarningText(
+              response.headers.get("X-Label-Warnings"),
+            );
+            serverPreviewWarning.textContent = warningText;
+            serverPreviewWarning.hidden = !warningText;
             serverPreviewOverlay.hidden = false;
           } catch (err) {
             if (err && err.isSessionExpired) return;

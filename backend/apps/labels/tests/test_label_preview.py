@@ -108,3 +108,15 @@ class PreviewLabelTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.content.startswith(b"%PDF"))
+
+    def test_avisa_si_el_codigo_de_barras_no_entra_legible(self):
+        # La muestra usa un tracking de 19 dígitos (OCA), que necesita
+        # ~4,4 cm para leerse a 203 dpi; en un recuadro de 3 cm se avisa.
+        angosto = {"barcode": {"left": 5, "top": 70, "width": 3, "height": 1.5, "data": "{{tracking}}"}}
+        response = self.client.post(URL, {"design": angosto}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["X-Label-Warnings"], "barcode_widened:4.4")
+
+        ancho = {"barcode": {"left": 5, "top": 70, "width": 8, "height": 1.5, "data": "{{tracking}}"}}
+        response = self.client.post(URL, {"design": ancho}, format="json")
+        self.assertNotIn("X-Label-Warnings", response)

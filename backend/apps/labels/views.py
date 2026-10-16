@@ -621,15 +621,24 @@ class PreviewLabelView(APIView):
             ).first()
             logo_file = getattr(template, "logo", None) or None
 
+        warnings = []
         pdf_bytes = render_label_pdf(
             design,
             dimensions["width_cm"],
             dimensions["height_cm"],
             context=build_preview_context(),
             logo_file=logo_file,
+            warnings=warnings,
         )
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = 'inline; filename="vista-previa.pdf"'
+        # Avisos del dibujo como "código:ancho mínimo en cm" (hoy, un código
+        # de barras que con el tracking de muestra, de 19 dígitos, no entra
+        # legible en su recuadro). El editor los traduce a un mensaje.
+        if warnings:
+            response["X-Label-Warnings"] = ",".join(
+                "%s:%s" % (warning["code"], warning["min_width_cm"]) for warning in warnings
+            )
         return response
 
 
