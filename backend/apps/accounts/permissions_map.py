@@ -128,6 +128,8 @@ PERMISSIONS = frozenset(
         "labels.manage_templates",
         # Catálogos globales (transportistas manuales, tamaños de rótulo).
         "catalogs.manage",
+        # Estado del sistema y alertas de disponibilidad (apps.monitoring).
+        "monitoring.view",
         "variables.manage",
         "documents.view_all",
         # Dar de alta un pedido a nombre de OTRO usuario (0020): exclusivo
@@ -136,6 +138,16 @@ PERMISSIONS = frozenset(
         # ABM de credenciales/webhooks de integraciones (0021): exclusivo
         # admin, ver apps.integrations.
         "integrations.manage",
+        # Comercios con equipo (apps/accounts/teams.py): "crear pedidos"
+        # habilitaba a la vez tiendas, transportistas, tarifas y despacho, y
+        # el dueño necesita poder darlos por separado (migración 0028).
+        "orders.dispatch",
+        "orders.export",
+        "stores.manage",
+        "carriers.manage",
+        "printers.manage",
+        "account.manage",
+        "team.manage",
     }
 )
 
@@ -166,6 +178,18 @@ _SELF_SERVICE_PERMISSIONS = {
     "documents.delete",
 }
 
+# Lo que se partió de "orders.create" / "labels.batch" / "users.me.edit"
+# (migración 0028): quien tenía aquello tiene esto.
+_SELF_SERVICE_PERMISSIONS |= {
+    "orders.dispatch",
+    "orders.export",
+    "stores.manage",
+    "carriers.manage",
+    "printers.manage",
+    "account.manage",
+    "team.manage",
+}
+
 # operator hace, además del self-service de designer/subscriber, la carga
 # OPERATIVA de pedidos (alta manual, importación CSV/Excel, plantillas de
 # mapeo) — ver 0020_seed_order_ingestion_permissions. "orders.create_for_others"
@@ -186,7 +210,43 @@ ROLE_PERMISSIONS = {
     "admin": set(PERMISSIONS),
     "designer": set(_SELF_SERVICE_PERMISSIONS),
     "operator": set(_OPERATOR_PERMISSIONS),
-    "subscriber": set(_SELF_SERVICE_PERMISSIONS),
+    # El dueño de un comercio tiene todo lo del comercio (diseño de equipos),
+    # incluido cargar a mano e importar pedidos.
+    "subscriber": set(_OPERATOR_PERMISSIONS),
+}
+
+# Permisos del TRABAJO DEL COMERCIO → el acceso del equipo que además exige
+# (apps/accounts/teams.py). Los que no están acá (perfil propio, soporte, todo
+# lo de admin) dependen solo del rol.
+TEAM_SCOPED_PERMISSIONS = {
+    "orders.view": "orders.view",
+    "addresses.manage": "orders.view",
+    "documents.view": "orders.view",
+    "labels.batch": "labels.print",
+    "labels.render": "labels.print",
+    "documents.delete": "labels.print",
+    "orders.dispatch": "orders.dispatch",
+    "orders.cancel": "orders.cancel",
+    "orders.create": "orders.import",
+    "orders.create_manual": "orders.import",
+    "orders.import": "orders.import",
+    "orders.import_mappings": "orders.import",
+    "labels.view": "templates",
+    "labels.create": "templates",
+    "labels.edit": "templates",
+    "labels.delete": "templates",
+    "labels.template_create": "templates",
+    "plantillas.view": "templates",
+    "plantillas.edit": "templates",
+    "variables.view": "templates",
+    "documents.upload": "templates",
+    "processing.import": "templates",
+    "stores.manage": "stores",
+    "carriers.manage": "carriers",
+    "printers.manage": "printers",
+    "account.manage": "account",
+    "team.manage": "team",
+    "orders.export": "orders.export",
 }
 
 
@@ -250,7 +310,19 @@ def user_has_permission(user, permission):
         return False
     if not getattr(user, "is_authenticated", False):
         return False
+    # El rol es el techo; dentro del comercio, además, decide el equipo.
+    if not _role_has_permission(user, permission):
+        return False
+    access = TEAM_SCOPED_PERMISSIONS.get(permission)
+    if access is None:
+        return True
+    from .teams import can_access
 
+    return can_access(user, access)
+
+
+def _role_has_permission(user, permission):
+    """Lo que el rol global permite (el techo que fija el admin en roles.html)."""
     # Fuente de verdad: base de datos (si el modelo ya existe).
     if GroupRolePermission is not None:
         # Consultar el Group del rol efectivo mantiene a GroupRolePermission

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Invitaciones</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/pedidos.css" />
+    <link rel="stylesheet" href="assets/css/equipo.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar" id="appTopbar" data-links='[{"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Invitaciones</h1>
+          <p>
+            Los comercios que te invitaron a trabajar con ellos. Al aceptar,
+            pasás a trabajar sobre las tiendas y pedidos de ese comercio.
+          </p>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <section class="profile-card">
+          <div class="profile-card-title">Pendientes</div>
+          <div class="profile-card-body">
+            <ul id="invitationList" class="team-list"><li class="access-muted">Cargando...</li></ul>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/invitaciones.js"></script>
+  </body>
+</html>

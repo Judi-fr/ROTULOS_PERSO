@@ -5,6 +5,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.labels.zpl import DEFAULT_DPMM, SUPPORTED_DPMM
+from apps.accounts.teams import data_owner
 
 from .models import PrintAgent, Printer, PrintJob
 
@@ -57,7 +58,7 @@ class PrinterSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "agent_name", "created_at", "updated_at"]
 
     def validate_agent(self, agent):
-        user = self.context["request"].user
+        user = data_owner(self.context["request"].user)
         if agent is not None and (agent.owner_id != user.id or not agent.is_active):
             raise serializers.ValidationError("Ese agente no existe.")
         return agent

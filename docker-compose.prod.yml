@@ -21,6 +21,8 @@
 #   PASSWORD_RESET_URL=https://rotulos.tudominio.com/reset-password.html
 #   EMAIL_VERIFICATION_URL=https://rotulos.tudominio.com/verify-email.html
 #   TIENDANUBE_APP_ID=...  TIENDANUBE_CLIENT_SECRET=...  FERNET_KEY=...
+#   EMAIL_HOST=...  EMAIL_HOST_USER=...  EMAIL_HOST_PASSWORD=...  (sin esto no
+#   salen ni los mails de reset de contraseña ni las alertas de monitoreo)
 
 name: rotulos-perso-prod
 
@@ -96,6 +98,28 @@ services:
     command: python manage.py run_integrations_worker
     volumes:
       - media:/app/media
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Las alertas de disponibilidad por mail (apps.monitoring): chequea cada
+  # minuto y avisa a los admins cuando algo pasa a "falla". Va aparte del
+  # worker porque lo primero que tiene que poder avisar es que el worker se
+  # cayó; si el que se cae es este, el worker toma su lugar.
+  # Para que los mails salgan hace falta EMAIL_HOST (y usuario/clave) en el
+  # .env; MONITORING_ALERT_EMAILS para avisar a otras direcciones.
+  monitor:
+    build: ./backend
+    env_file: .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+      DATABASE_URL: postgres://${POSTGRES_USER:-rotulos}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rotulos}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+    command: python manage.py run_monitor
+    volumes:
+      # Solo para medir el espacio libre del disco de los PDF generados.
+      - media:/app/media:ro
     restart: unless-stopped
     depends_on:
       db:

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Mi equipo</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/pedidos.css" />
+    <link rel="stylesheet" href="assets/css/equipo.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar" id="appTopbar" data-links='[{"href": "perfiles_equipo.html", "label": "Perfiles"}, {"href": "actividad_equipo.html", "label": "Actividad"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Mi equipo</h1>
+          <p>
+            Quiénes trabajan en tu comercio y qué puede hacer cada uno. Todos
+            entran con su propio usuario y trabajan sobre las mismas tiendas,
+            pedidos y plantillas.
+          </p>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <section class="profile-card">
+          <div class="profile-card-title">Comercio</div>
+          <form class="profile-card-body team-name-row" id="teamNameForm">
+            <div class="field">
+              <label for="teamName">Nombre del comercio</label>
+              <input id="teamName" type="text" maxlength="150" placeholder="Como lo ven tus empleados y las invitaciones" />
+            </div>
+            <button type="submit" class="btn btn-outline">Guardar nombre</button>
+          </form>
+        </section>
+
+        <section class="profile-card">
+          <div class="profile-card-title">Miembros</div>
+          <div class="profile-card-body">
+            <ul id="memberList" class="team-list"><li class="access-muted">Cargando...</li></ul>
+          </div>
+        </section>
+
+        <section class="profile-card">
+          <div class="profile-card-title">Invitar a alguien</div>
+          <form class="profile-card-body" id="inviteForm">
+            <p class="access-muted">
+              Le llega un mail y tiene que aceptar la invitación con su cuenta
+              (o crearla con ese mail). Hasta que acepta no ve nada del comercio.
+            </p>
+            <div class="field">
+              <label for="inviteEmail">Mail</label>
+              <input id="inviteEmail" type="email" required placeholder="empleado@ejemplo.com" />
+            </div>
+            <fieldset class="team-fieldset">
+              <legend>Qué puede hacer</legend>
+              <div id="inviteAccess"></div>
+            </fieldset>
+            <fieldset class="team-fieldset">
+              <legend>Qué tiendas ve</legend>
+              <div id="inviteStores"></div>
+            </fieldset>
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary" id="inviteBtn">Mandar invitación</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="profile-card">
+          <div class="profile-card-title">Invitaciones pendientes</div>
+          <div class="profile-card-body">
+            <ul id="invitationList" class="team-list"></ul>
+          </div>
+        </section>
+
+        <!-- Editar a un miembro: accesos y tiendas. -->
+        <dialog id="memberDialog" class="team-dialog">
+          <form method="dialog" id="memberForm">
+            <h2 id="memberDialogTitle">Accesos</h2>
+            <fieldset class="team-fieldset">
+              <legend>Qué puede hacer</legend>
+              <div id="memberAccess"></div>
+            </fieldset>
+            <fieldset class="team-fieldset">
+              <legend>Qué tiendas ve</legend>
+              <div id="memberStores"></div>
+            </fieldset>
+            <div class="form-actions">
+              <button type="button" class="btn btn-outline" id="memberCancel">Cancelar</button>
+              <button type="submit" class="btn btn-primary" id="memberSave">Guardar</button>
+            </div>
+          </form>
+        </dialog>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/equipo.js"></script>
+  </body>
+</html>

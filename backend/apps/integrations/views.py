@@ -37,6 +37,7 @@ from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
 from apps.orders.ingestion import TARGET_FIELDS, apply_mapping, create_order_from_data, validate_mapped_row
 from apps.orders.models import Order
+from apps.accounts.teams import data_owner, store_scope_q
 
 from .authentication import ApiKeyAuthentication
 from .models import (
@@ -80,9 +81,15 @@ from . import shipping_rates, store_print
 
 logger = logging.getLogger(__name__)
 
-# Conectar una tienda es lo que hace entrar sus pedidos: se exige el mismo
-# permiso que crear un pedido propio (lo tienen los cuatro roles canónicos).
-STORE_CONNECT_PERMISSION = "orders.create"
+# Conectar y configurar tiendas. Con los comercios con equipo es un acceso
+# propio ("Tiendas"): antes era "orders.create", que habilitaba a la vez
+# tiendas, transportistas, tarifas y despacho (ver apps/accounts/teams.py).
+STORE_CONNECT_PERMISSION = "stores.manage"
+# Las tarifas del checkout van con los transportistas ("Transportistas y
+# tarifas"); ver las tiendas alcanza con ver pedidos (Mis pedidos arma su
+# filtro por tienda con esta lista).
+RATES_PERMISSION = "carriers.manage"
+STORE_READ_PERMISSION = "orders.view"
 
 
 class IntegrationKeyViewSet(viewsets.ModelViewSet):
@@ -360,11 +367,11 @@ class ShippingRateViewSet(viewsets.ModelViewSet):
     serializer_class = ShippingRateSerializer
 
     def get_permissions(self):
-        return [IsAuthenticated(), HasRolePermission(STORE_CONNECT_PERMISSION)]
+        return [IsAuthenticated(), HasRolePermission(RATES_PERMISSION)]
 
     def get_queryset(self):
         queryset = ShippingRate.objects.filter(
-            connection__owner=self.request.user
+            store_scope_q(self.request.user, "connection_id"), connection__owner=data_owner(self.request.user)
         ).select_related("connection")
         store = str(self.request.query_params.get("store") or "").strip()
         if store.isdigit():
@@ -422,13 +429,13 @@ class StoreLabelRequestViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
     serializer_class = StoreLabelRequestSerializer
 
     def get_permissions(self):
-        return [IsAuthenticated(), HasRolePermission(STORE_CONNECT_PERMISSION)]
+        return [IsAuthenticated(), HasRolePermission(STORE_READ_PERMISSION)]
 
     def get_queryset(self):
         # La identidad sale del token, nunca de un id que manda el cliente:
         # solo los rótulos de tiendas cuyo dueño es quien consulta.
         queryset = StoreLabelRequest.objects.filter(
-            connection__owner=self.request.user
+            store_scope_q(self.request.user, "connection_id"), connection__owner=data_owner(self.request.user)
         ).select_related("connection")
 
         store = str(self.request.query_params.get("store") or "").strip()
@@ -460,17 +467,24 @@ class StoreConnectionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, v
     serializer_class = StoreConnectionSerializer
 
     def get_permissions(self):
-        return [IsAuthenticated(), HasRolePermission(STORE_CONNECT_PERMISSION)]
+        if self.action in ("list", "retrieve"):
+            permission = STORE_READ_PERMISSION
+        elif self.action == "publish_rates":
+            permission = RATES_PERMISSION
+        else:
+            permission = STORE_CONNECT_PERMISSION
+        return [IsAuthenticated(), HasRolePermission(permission)]
 
     def get_queryset(self):
-        return StoreConnection.objects.filter(owner=self.request.user)
+        # Un empleado limitado a algunas tiendas no ve ni configura las otras.
+        return StoreConnection.objects.filter(store_scope_q(self.request.user), owner=data_owner(self.request.user))
 
     @action(detail=False, methods=["post"])
     def claim(self, request):
         serializer = StoreClaimSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            connection, claimed = claim_store(serializer.validated_data["token"], request.user)
+            connection, claimed = claim_store(serializer.validated_data["token"], data_owner(request.user))
         except StoreClaimError as exc:
             code = status.HTTP_409_CONFLICT if exc.conflict else status.HTTP_400_BAD_REQUEST
             return Response({"detail": str(exc)}, status=code)
@@ -653,7 +667,7 @@ class StoreInstallUrlView(APIView):
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         try:
             url = provider.build_authorize_url(
-                make_oauth_state(request.user, provider.platform, shop_domain), shop_domain=shop_domain
+                make_oauth_state(data_owner(request.user), provider.platform, shop_domain), shop_domain=shop_domain
             )
         except ProviderError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
@@ -681,7 +695,7 @@ class StoreInstallShareLinkView(APIView):
                 {"detail": "El servidor no tiene una dirección pública configurada para armar el link."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        token = make_share_token(request.user, platform)
+        token = make_share_token(data_owner(request.user), platform)
         path = reverse(f"{platform}-install-share", kwargs={"token": token})
         max_age = getattr(settings, "INTEGRATIONS_INSTALL_SHARE_MAX_AGE_SECONDS", 259200)
         return Response({"share_url": f"{base}{path}", "expires_in_hours": max_age // 3600})

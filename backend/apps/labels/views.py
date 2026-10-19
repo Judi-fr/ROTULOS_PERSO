@@ -27,6 +27,7 @@ from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
 from apps.common.date_filters import date_range_q
 from apps.orders.models import Order
+from apps.accounts.teams import data_owner, order_scope_q
 
 from .models import ElementLayout, Label, LabelSequence, LabelTemplate, LayoutElement, LayoutVariable
 from .label_rendering import (
@@ -85,7 +86,14 @@ class LabelViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated(), HasRolePermission(permission)]
 
     def get_queryset(self):
-        queryset = Label.objects.filter(user=self.request.user, is_active=True).select_related(
+        queryset = Label.objects.filter(user=data_owner(self.request.user), is_active=True)
+        # Un empleado limitado a algunas tiendas: los rótulos sueltos y los de
+        # pedidos de sus tiendas. Ojo: ``Q(...) | Q()`` da el primer filtro
+        # solo, así que sin límite (scope vacío) no se filtra nada.
+        scope = order_scope_q(self.request.user, "order__")
+        if scope:
+            queryset = queryset.filter(Q(order__isnull=True) | scope)
+        queryset = queryset.select_related(
             "template", "order"
         )
         # ?search= filtra por nombre o destinatario (frontend/mis_rotulos.html).
@@ -95,7 +103,7 @@ class LabelViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        label = serializer.save(user=self.request.user)
+        label = serializer.save(user=data_owner(self.request.user))
         record(
             self.request,
             category="labels",
@@ -225,7 +233,7 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated(), HasRolePermission("labels.template_create")]
 
     def get_queryset(self):
-        user = self.request.user
+        user = data_owner(self.request.user)
         queryset = LabelTemplate.objects.filter(
             Q(is_public=True) | Q(owner=user), is_active=True
         ).annotate(current_version=Max("versions__number"))
@@ -241,7 +249,7 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
         is_public = bool(serializer.validated_data.get("is_public", False))
         if is_public and not self._can_manage_templates():
             raise PermissionDenied("Solo un administrador puede crear una plantilla pública.")
-        template = serializer.save(owner=self.request.user)
+        template = serializer.save(owner=data_owner(self.request.user))
         record_version(
             template, user=self.request.user, note=serializer.validated_data.get("version_note", "")
         )
@@ -257,7 +265,7 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
         )
 
     def _check_can_edit(self, instance, requested_is_public=None):
-        user = self.request.user
+        user = data_owner(self.request.user)
         is_own_private = instance.owner_id == user.id and not instance.is_public
         if not self._can_manage_templates():
             if not is_own_private:
@@ -300,7 +308,7 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
         ``Label``/``Document`` — los rótulos ya generados con esta
         plantilla siguen apuntándola (``Label.template``)."""
         instance = self.get_object()
-        is_own_private = instance.owner_id == request.user.id and not instance.is_public
+        is_own_private = instance.owner_id == data_owner(request.user).id and not instance.is_public
         if not self._can_manage_templates() and not is_own_private:
             raise PermissionDenied("Solo podés archivar tus propias plantillas privadas.")
         instance.is_active = False
@@ -327,7 +335,7 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
         copy = LabelTemplate.objects.create(
             name=f"{original.name} (copia)",
             description=original.description,
-            owner=request.user,
+            owner=data_owner(request.user),
             is_public=False,
             width_cm=original.width_cm,
             height_cm=original.height_cm,
@@ -371,7 +379,7 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
         resultado real sin necesitar un pedido.
         """
         template = self.get_object()
-        computed = build_computed_context(owner=request.user, is_preview=True)
+        computed = build_computed_context(owner=data_owner(request.user), is_preview=True)
         pdf_bytes = render_label_pdf(
             design=template.design,
             width_cm=template.width_cm,
@@ -408,7 +416,7 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
             width_cm=version.width_cm,
             height_cm=version.height_cm,
             context=SAMPLE_LABEL_CONTEXT,
-            computed=build_computed_context(owner=request.user, is_preview=True),
+            computed=build_computed_context(owner=data_owner(request.user), is_preview=True),
         )
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = (
@@ -523,9 +531,9 @@ class LabelSequenceView(APIView):
         }
 
     def get(self, request):
-        seq = LabelSequence.objects.filter(owner=request.user, key="default").first()
+        seq = LabelSequence.objects.filter(owner=data_owner(request.user), key="default").first()
         if seq is None:
-            seq = LabelSequence(owner=request.user, key="default")
+            seq = LabelSequence(owner=data_owner(request.user), key="default")
         return Response(self._payload(seq))
 
     def put(self, request):
@@ -542,7 +550,7 @@ class LabelSequenceView(APIView):
         if errors:
             raise ValidationError(errors)
 
-        seq, _ = LabelSequence.objects.get_or_create(owner=request.user, key="default")
+        seq, _ = LabelSequence.objects.get_or_create(owner=data_owner(request.user), key="default")
         before = self._payload(seq)
         seq.prefix = prefix.strip()
         seq.padding = padding
@@ -617,7 +625,7 @@ class PreviewLabelView(APIView):
             # el editor está trabajando sobre una plantilla guardada, se usa
             # el de esa plantilla para que la vista previa lo incluya.
             template = LabelTemplate.objects.filter(
-                Q(is_public=True) | Q(owner=request.user), pk=template_id
+                Q(is_public=True) | Q(owner=data_owner(request.user)), pk=template_id
             ).first()
             logo_file = getattr(template, "logo", None) or None
 
@@ -678,7 +686,7 @@ class RenderLabelView(APIView):
             )
 
         template = get_object_or_404(
-            LabelTemplate.objects.filter(Q(is_public=True) | Q(owner=request.user)),
+            LabelTemplate.objects.filter(Q(is_public=True) | Q(owner=data_owner(request.user))),
             pk=template_id,
         )
 
@@ -688,7 +696,7 @@ class RenderLabelView(APIView):
         if user_has_permission(request.user, "labels.view_all"):
             order_qs = Order.objects.all()
         else:
-            order_qs = Order.objects.filter(user=request.user)
+            order_qs = Order.objects.filter(order_scope_q(request.user), user=data_owner(request.user))
         order = get_object_or_404(
             order_qs.select_related("address", "user"), pk=order_id
         )
@@ -701,7 +709,7 @@ class RenderLabelView(APIView):
         # /labels/render/ es una vista previa sin persistir (ver el
         # docstring de la clase): no consume la numeración secuencial real,
         # el flag es explícito acá, no se adivina del request.
-        computed = build_computed_context(owner=request.user, is_preview=True)
+        computed = build_computed_context(owner=data_owner(request.user), is_preview=True)
 
         if output_format == "zpl":
             content = render_label_zpl(

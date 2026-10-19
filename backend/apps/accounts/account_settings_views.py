@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.audit.services import record
+from apps.accounts.teams import data_owner
 
 from .models import AccountSettings, cuit_is_valid
 from .role_permissions import HasRolePermission
@@ -71,7 +72,7 @@ class AccountSettingsSerializer(serializers.ModelSerializer):
         return f"{digits[:2]}-{digits[2:10]}-{digits[10]}"
 
     def validate_default_template(self, template):
-        user = self.context["request"].user
+        user = data_owner(self.context["request"].user)
         if template is not None and not (template.is_active and (template.is_public or template.owner_id == user.id)):
             raise serializers.ValidationError("Esa plantilla no existe o no es tuya.")
         return template
@@ -96,24 +97,26 @@ class AccountSettingsSerializer(serializers.ModelSerializer):
 
 class AccountSettingsView(APIView):
     def get_permissions(self):
-        permission = "users.me.view" if self.request.method == "GET" else "users.me.edit"
+        # Leerlos, cualquiera del comercio (los usan los valores por defecto
+        # de varias pantallas); cambiarlos, el acceso "Datos del comercio".
+        permission = "users.me.view" if self.request.method == "GET" else "account.manage"
         return [IsAuthenticated(), HasRolePermission(permission)]
 
     def _instance(self):
-        return AccountSettings.objects.filter(user=self.request.user).first()
+        return AccountSettings.objects.filter(user=data_owner(self.request.user)).first()
 
     def get(self, request):
-        instance = self._instance() or AccountSettings(user=request.user)
+        instance = self._instance() or AccountSettings(user=data_owner(request.user))
         return Response(AccountSettingsSerializer(instance, context={"request": request}).data)
 
     def patch(self, request):
         instance = self._instance()
         previous = _snapshot(instance)
         serializer = AccountSettingsSerializer(
-            instance or AccountSettings(user=request.user), data=request.data, partial=True, context={"request": request}
+            instance or AccountSettings(user=data_owner(request.user)), data=request.data, partial=True, context={"request": request}
         )
         serializer.is_valid(raise_exception=True)
-        saved = serializer.save(user=request.user)
+        saved = serializer.save(user=data_owner(request.user))
         current = _snapshot(saved)
         changes = {
             field: {"from": previous.get(field, ""), "to": value}
@@ -127,9 +130,9 @@ class AccountSettingsView(APIView):
                 request,
                 category="users",
                 action="account.update",
-                target=request.user,
+                target=data_owner(request.user),
                 target_type="user",
-                target_repr=request.user.email,
+                target_repr=data_owner(request.user).email,
                 changes=changes,
             )
         return Response(AccountSettingsSerializer(saved, context={"request": request}).data)

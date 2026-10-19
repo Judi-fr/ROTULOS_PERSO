@@ -411,3 +411,75 @@ async function attachCarrierSuggestions(input) {
   input.setAttribute("list", list.id);
   input.setAttribute("autocomplete", "off");
 }
+
+// --- Comercios con equipo (equipo.html, perfiles_equipo.html) ---------------
+// Los accesos que el dueño reparte vienen del backend (GET /team/ → accesses,
+// {clave: etiqueta}); acá solo se dibujan como tildes y se leen.
+
+// Dibuja una tilde por acceso dentro de ``container``. ``selected``: claves
+// tildadas. ``options.allowed``: si viene, las que no están ahí salen
+// deshabilitadas (no se puede dar lo que uno no tiene; el backend lo vuelve
+// a chequear).
+function renderAccessCheckboxes(container, accesses, selected, options = {}) {
+  const chosen = new Set(selected || []);
+  const allowed = options.allowed ? new Set(options.allowed) : null;
+  container.innerHTML = "";
+  container.classList.add("access-grid");
+  Object.entries(accesses || {}).forEach(([key, label]) => {
+    const row = document.createElement("label");
+    row.className = "access-option";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.value = key;
+    box.checked = chosen.has(key);
+    box.disabled = Boolean(options.disabled) || (allowed !== null && !allowed.has(key));
+    const text = document.createElement("span");
+    text.textContent = label;
+    row.append(box, text);
+    container.appendChild(row);
+  });
+}
+
+function readAccessCheckboxes(container) {
+  return [...container.querySelectorAll("input[type=checkbox]:checked")].map((box) => box.value);
+}
+
+// "Todas las tiendas" o algunas. ``stores``: [{id, name, platform}].
+function renderStoreChoice(container, stores, choice = {}) {
+  const allStores = choice.allStores !== false;
+  const ids = new Set(choice.storeIds || []);
+  const name = `stores-${Math.random().toString(36).slice(2)}`;
+  container.innerHTML = `
+    <label class="access-option"><input type="radio" name="${name}" value="all" ${allStores ? "checked" : ""} /> <span>Todas las tiendas (también las que se conecten después)</span></label>
+    <label class="access-option"><input type="radio" name="${name}" value="some" ${allStores ? "" : "checked"} /> <span>Solo algunas</span></label>
+    <div class="store-pick" ${allStores ? "hidden" : ""}></div>`;
+  const pick = container.querySelector(".store-pick");
+  if (!stores || !stores.length) {
+    pick.innerHTML = '<p class="access-muted">El comercio todavía no tiene tiendas conectadas.</p>';
+  }
+  (stores || []).forEach((store) => {
+    const row = document.createElement("label");
+    row.className = "access-option";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.value = store.id;
+    box.checked = ids.has(store.id);
+    const text = document.createElement("span");
+    text.textContent = store.name || `Tienda ${store.id}`;
+    row.append(box, text);
+    pick.appendChild(row);
+  });
+  container.querySelectorAll(`input[name=${name}]`).forEach((radio) =>
+    radio.addEventListener("change", () => {
+      pick.hidden = container.querySelector(`input[name=${name}]:checked`).value === "all";
+    })
+  );
+}
+
+function readStoreChoice(container) {
+  const all = container.querySelector("input[type=radio]:checked")?.value !== "some";
+  const storeIds = all
+    ? []
+    : [...container.querySelectorAll(".store-pick input:checked")].map((box) => Number(box.value));
+  return { all_stores: all, store_ids: storeIds };
+}

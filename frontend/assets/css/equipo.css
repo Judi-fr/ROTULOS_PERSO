@@ -1,0 +1,164 @@
+/* Comercios con equipo: equipo.html, perfiles_equipo.html,
+   invitaciones.html y actividad_equipo.html. Tarjetas, campos y botones
+   vienen de base.css + pedidos.css. */
+
+.main .profile-card + .profile-card {
+  margin-top: 20px;
+}
+
+.team-name-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.team-name-row .field {
+  flex: 1 1 260px;
+  margin: 0;
+}
+
+.team-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.team-item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.team-item:last-child {
+  border-bottom: 0;
+}
+
+.team-item > div:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.team-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.team-role {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.team-role-owner {
+  background: #fff1e6;
+  color: #9a3412;
+}
+
+.access-muted {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 2px 0;
+}
+
+.team-fieldset {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px 12px;
+  margin: 14px 0 0;
+}
+
+.team-fieldset legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.access-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px 14px;
+}
+
+.access-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  margin: 4px 0;
+}
+
+.access-option input:disabled + span {
+  color: var(--text-muted);
+}
+
+.store-pick {
+  margin: 6px 0 0 24px;
+}
+
+.team-dialog {
+  width: min(640px, calc(100vw - 32px));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.team-dialog h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.team-dialog .form-actions,
+#inviteForm .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.invitation-card {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.activity-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.activity-filters .field {
+  margin: 0;
+}
+
+.activity-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.activity-table th,
+.activity-table td {
+  text-align: left;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}

@@ -19,6 +19,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
+from apps.accounts.teams import data_owner
 
 from ... import store_print
 from ...models import StoreConnection
@@ -127,7 +128,7 @@ class ShopifyManualConnectView(APIView):
             )
 
         try:
-            result = connect_with_own_app(provider, request.user, shop, client_id, client_secret)
+            result = connect_with_own_app(provider, data_owner(request.user), shop, client_id, client_secret)
         except ProviderAuthError as exc:
             return Response({"detail": _own_app_error_message(str(exc))}, status=status.HTTP_400_BAD_REQUEST)
         except ProviderError as exc:

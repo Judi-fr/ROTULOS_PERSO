@@ -28,6 +28,7 @@ from apps.accounts.pagination import UserAdminPagination
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
 from apps.common.date_filters import date_range_q
+from apps.accounts.teams import data_owner, visible_document_ids
 
 from .models import Document, UploadedLabelFile
 from .serializers import AdminDocumentSerializer, DocumentSerializer, UploadedLabelFileSerializer
@@ -52,7 +53,11 @@ class DocumentViewSet(
         return [IsAuthenticated(), HasRolePermission(permission)]
 
     def get_queryset(self):
-        queryset = Document.objects.filter(user=self.request.user, is_active=True)
+        queryset = Document.objects.filter(user=data_owner(self.request.user), is_active=True)
+        # Un lote con pedidos de tiendas que la persona no tiene no se le muestra.
+        visible = visible_document_ids(self.request.user, queryset)
+        if visible is not None:
+            queryset = queryset.filter(id__in=visible)
         params = self.request.query_params
 
         search = params.get("search", "").strip()

@@ -32,13 +32,14 @@ from decimal import Decimal, InvalidOperation
 
 from django.http import HttpResponse
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
 from apps.orders.models import Order
+from apps.accounts.teams import data_owner, order_scope_q
 
 from ..models import CarrierAccount, CarrierShipment
 
@@ -49,7 +50,6 @@ from . import shipments as service
 from .client import AndreaniClient, AndreaniError
 from .provider import AndreaniProvider
 
-PERMISSION = "orders.create"
 MAX_ORDERS = 100
 ANDREANI = CarrierAccount.Carrier.ANDREANI
 ACCOUNT_TEXT_FIELDS = (
@@ -60,11 +60,18 @@ CONTRACT_KINDS = {"home", "branch"}
 
 
 class _AndreaniView(APIView):
+    # Qué exige cada vista (comercios con equipo, apps/accounts/teams.py):
+    # despachar es una cosa y administrar las cuentas y el checkout otra, y
+    # leer (el estado de los envíos en Mis pedidos) alcanza con ver pedidos.
+    read_permission = "orders.dispatch"
+    write_permission = "orders.dispatch"
+
     def get_permissions(self):
-        return [IsAuthenticated(), HasRolePermission(PERMISSION)]
+        permission = self.read_permission if self.request.method in SAFE_METHODS else self.write_permission
+        return [IsAuthenticated(), HasRolePermission(permission)]
 
     def account(self, request):
-        return CarrierAccount.objects.filter(owner=request.user, carrier=ANDREANI).first()
+        return CarrierAccount.objects.filter(owner=data_owner(request.user), carrier=ANDREANI).first()
 
 
 def account_data(account):
@@ -122,13 +129,16 @@ def shipment_data(shipment, *, events=False):
 
 
 class AccountView(_AndreaniView):
+    read_permission = "orders.dispatch"
+    write_permission = "carriers.manage"
+
     def get(self, request):
-        account = self.account(request) or CarrierAccount(owner=request.user, carrier=ANDREANI)
+        account = self.account(request) or CarrierAccount(owner=data_owner(request.user), carrier=ANDREANI)
         return Response(dict(account_data(account), exists=bool(account.pk)))
 
     def put(self, request):
         data = request.data if isinstance(request.data, dict) else {}
-        account = self.account(request) or CarrierAccount(owner=request.user, carrier=ANDREANI)
+        account = self.account(request) or CarrierAccount(owner=data_owner(request.user), carrier=ANDREANI)
         errors = {}
 
         for field in ACCOUNT_TEXT_FIELDS:
@@ -195,6 +205,9 @@ class AccountView(_AndreaniView):
 
 
 class AccountTestView(_AndreaniView):
+    read_permission = "carriers.manage"
+    write_permission = "carriers.manage"
+
     def post(self, request):
         account = self.account(request)
         if account is None:
@@ -211,7 +224,7 @@ class BranchesView(_AndreaniView):
         postal_code = service.postal_code_digits(request.query_params.get("cp"))
         if not postal_code:
             return Response({"cp": ["Indicá un código postal."]}, status=status.HTTP_400_BAD_REQUEST)
-        account = self.account(request) or CarrierAccount(owner=request.user, carrier=ANDREANI)
+        account = self.account(request) or CarrierAccount(owner=data_owner(request.user), carrier=ANDREANI)
         try:
             branches = AndreaniProvider().branches(account, postal_code)
         except AndreaniError as exc:
@@ -232,7 +245,7 @@ def _requested_orders(request, data):
         package_count = 1
     orders = {
         order.pk: order
-        for order in Order.objects.filter(pk__in=[i for i in ids if str(i).isdigit()], user=request.user).select_related("address")
+        for order in Order.objects.filter(order_scope_q(request.user), pk__in=[i for i in ids if str(i).isdigit()], user=data_owner(request.user)).select_related("address")
     }
     return ids, orders, package_count
 
@@ -284,8 +297,11 @@ class ShipmentQuoteView(_AndreaniView):
 
 
 class ShipmentCollectionView(_AndreaniView):
+    read_permission = "orders.view"
+    write_permission = "orders.dispatch"
+
     def get(self, request):
-        queryset = CarrierShipment.objects.filter(account__owner=request.user, carrier=ANDREANI).select_related(
+        queryset = CarrierShipment.objects.filter(order_scope_q(request.user, "order__"), account__owner=data_owner(request.user), carrier=ANDREANI).select_related(
             "order", "order__address"
         )
         order = str(request.query_params.get("order") or "")
@@ -336,13 +352,16 @@ class ShipmentCollectionView(_AndreaniView):
 class _OwnShipmentView(_AndreaniView):
     def shipment(self, request, pk):
         return (
-            CarrierShipment.objects.filter(pk=pk, account__owner=request.user, carrier=ANDREANI)
+            CarrierShipment.objects.filter(order_scope_q(request.user, "order__"), pk=pk, account__owner=data_owner(request.user), carrier=ANDREANI)
             .select_related("account", "order", "order__address")
             .first()
         )
 
 
 class ShipmentDetailView(_OwnShipmentView):
+    read_permission = "orders.view"
+    write_permission = "orders.dispatch"
+
     def get(self, request, pk):
         shipment = self.shipment(request, pk)
         if shipment is None:
@@ -377,7 +396,7 @@ class ShipmentLabelsView(_AndreaniView):
         ids = [i for i in data.get("shipment_ids") or [] if str(i).isdigit()][:MAX_ORDERS]
         fmt = "zpl" if data.get("file_type") == "zpl" else "pdf"
         shipments = list(
-            CarrierShipment.objects.filter(pk__in=ids, account__owner=request.user, carrier=ANDREANI)
+            CarrierShipment.objects.filter(order_scope_q(request.user, "order__"), pk__in=ids, account__owner=data_owner(request.user), carrier=ANDREANI)
             .exclude(status=CarrierShipment.Status.CANCELLED)
             .select_related("account")
         )
@@ -413,7 +432,7 @@ class ShipmentPrintView(_AndreaniView):
         ids = [int(i) for i in data.get("shipment_ids") or [] if str(i).isdigit()][:MAX_ORDERS]
         found = {
             shipment.pk: shipment
-            for shipment in CarrierShipment.objects.filter(pk__in=ids, account__owner=request.user, carrier=ANDREANI)
+            for shipment in CarrierShipment.objects.filter(order_scope_q(request.user, "order__"), pk__in=ids, account__owner=data_owner(request.user), carrier=ANDREANI)
             .exclude(status=CarrierShipment.Status.CANCELLED)
             .select_related("account", "order", "order__address", "order__store_connection", "order__user")
         }
@@ -480,6 +499,9 @@ def _checkout_data(store, account):
 
 
 class CheckoutView(_AndreaniView):
+    read_permission = "carriers.manage"
+    write_permission = "carriers.manage"
+
     def get(self, request):
         account = self.account(request)
         return Response({"results": [_checkout_data(store, account) for store in _checkout_stores(request.user)]})
@@ -502,6 +524,9 @@ class CheckoutView(_AndreaniView):
 
 
 class CheckoutTestView(_AndreaniView):
+    read_permission = "carriers.manage"
+    write_permission = "carriers.manage"
+
     def post(self, request):
         data = request.data if isinstance(request.data, dict) else {}
         store = next((item for item in _checkout_stores(request.user) if str(item.pk) == str(data.get("store"))), None)

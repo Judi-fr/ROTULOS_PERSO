@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from apps.labels.serializers import ImageOrDataUrlField
+from apps.accounts.teams import allowed_store_ids, data_owner
 
 from . import shipping_rates
 from .providers.tiendanube import labels as store_labels
@@ -123,7 +124,7 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
         # dueño sale de request.user, nunca de un id que manda el cliente.
         if template is None:
             return template
-        user = self.context["request"].user
+        user = data_owner(self.context["request"].user)
         if not template.is_public and template.owner_id != user.pk:
             raise serializers.ValidationError("Esa plantilla no es tuya ni es pública.")
         return template
@@ -188,8 +189,12 @@ class ShippingRateSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "store_name", "created_at", "updated_at"]
 
     def validate_connection(self, connection):
-        if connection.owner_id != self.context["request"].user.pk:
+        person = self.context["request"].user
+        if connection.owner_id != data_owner(person).pk:
             raise serializers.ValidationError("Esa tienda no es tuya.")
+        allowed = allowed_store_ids(person)
+        if allowed is not None and connection.pk not in allowed:
+            raise serializers.ValidationError("No tenés habilitada esa tienda.")
         return connection
 
     def validate(self, attrs):

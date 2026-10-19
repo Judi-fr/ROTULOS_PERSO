@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.role_permissions import HasRolePermission
+from apps.accounts.teams import data_owner
 
 from ...models import StoreConnection
 from ...serializers import StoreConnectionSerializer
@@ -59,7 +60,7 @@ class VtexManualConnectView(APIView):
 
         result = connect_with_api_credentials(
             provider,
-            request.user,
+            data_owner(request.user),
             external_store_id=account,
             store_url=store_url_for(account),
             token=credentials_token(app_key, app_token),

@@ -4,6 +4,7 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import UNUSABLE_PASSWORD_PREFIX
 from django.contrib.auth.models import Group
+from django.db import transaction
 from django.db.models import Count, Max, Q
 from django.db.models.functions import TruncMonth
 from django.http import HttpResponse
@@ -16,7 +17,7 @@ from rest_framework.response import Response
 from apps.audit.services import record
 from apps.common.date_filters import date_range_q
 
-from .models import LoginLockout
+from .models import LoginLockout, Team
 from .pagination import UserAdminPagination
 from .permissions_map import get_effective_role, user_has_permission
 from .serializers import ROLE_CHOICES, UserAdminSerializer, ensure_role_groups
@@ -388,8 +389,25 @@ class UserAdminViewSet(viewsets.ModelViewSet):
             )
 
         if request.query_params.get("permanent", "").lower() == "true":
+            # Comercios con equipo (teams.py): los datos de un comercio con
+            # empleados son del comercio; primero hay que pasar la titularidad
+            # o quitar a los empleados. Si no, su comercio se borra con él.
+            owned_team = Team.objects.filter(owner=instance).first()
+            if owned_team is not None and owned_team.members.exclude(user=instance).exists():
+                return Response(
+                    {
+                        "detail": (
+                            "Es dueño de un comercio con empleados: pasale la titularidad a otro "
+                            "o quitá a los empleados antes de eliminarlo."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             email, pk = instance.email, instance.pk
-            instance.delete()
+            with transaction.atomic():
+                if owned_team is not None:
+                    owned_team.delete()
+                instance.delete()
             record(
                 request,
                 category="users",

@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.role_permissions import HasRolePermission
+from apps.accounts.teams import data_owner
 
 from ...models import StoreConnection
 from ...serializers import StoreConnectionSerializer
@@ -60,7 +61,7 @@ class MagentoManualConnectView(APIView):
 
         result = connect_with_api_credentials(
             provider,
-            request.user,
+            data_owner(request.user),
             external_store_id=external_store_id_for(site),
             store_url=site,
             token=credentials_token(*(creds[field] for field in self.CREDENTIAL_FIELDS)),

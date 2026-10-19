@@ -1,0 +1,11 @@
+# Cobertura de los tests (pipeline: `coverage run manage.py test`).
+[run]
+source = apps,config
+omit =
+    */migrations/*
+    */tests/*
+    */management/commands/fake_*.py
+    config/settings/prod.py
+
+[report]
+skip_empty = true

@@ -27,6 +27,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.permissions_map import user_has_permission
 from apps.accounts.role_permissions import HasRolePermission
+from apps.accounts.teams import data_owner, order_scope_q
 
 from .bulk import (
     MAX_BULK_ORDERS,
@@ -96,9 +97,10 @@ class TrackingConfirmSerializer(serializers.Serializer):
     )
 
 
-def _own_orders(user, ids):
-    """``{id: pedido}`` de los pedidos propios entre ``ids``."""
-    queryset = Order.objects.filter(user=user, pk__in=ids).select_related(
+def _own_orders(person, ids):
+    """``{id: pedido}`` de los pedidos del comercio de ``person`` entre ``ids``
+    que esa persona puede ver (sus tiendas, ver apps/accounts/teams.py)."""
+    queryset = Order.objects.filter(order_scope_q(person), user=data_owner(person), pk__in=ids).select_related(
         "address", "store_connection", "user"
     )
     return {order.pk: order for order in queryset}
@@ -152,7 +154,7 @@ class BulkStatusView(APIView):
         data = serializer.validated_data
         target = data["status"]
 
-        permission = "orders.cancel" if target == Order.Status.CANCELLED else "orders.create"
+        permission = "orders.cancel" if target == Order.Status.CANCELLED else "orders.dispatch"
         if not user_has_permission(request.user, permission):
             raise PermissionDenied("No tenés permiso para hacer esta acción.")
 
@@ -196,7 +198,7 @@ class OrderExportView(APIView):
     elegir el renderer y respondería 404 a "csv"."""
 
     def get_permissions(self):
-        return [IsAuthenticated(), HasRolePermission("orders.view")]
+        return [IsAuthenticated(), HasRolePermission("orders.export")]
 
     def get(self, request):
         params = request.query_params
@@ -205,7 +207,9 @@ class OrderExportView(APIView):
             raise ValidationError({"file_type": "Debe ser 'csv' o 'xlsx'."})
 
         queryset = filter_orders(
-            Order.objects.filter(user=request.user).select_related("address", "store_connection", "user"),
+            Order.objects.filter(order_scope_q(request.user), user=data_owner(request.user)).select_related(
+                "address", "store_connection", "user"
+            ),
             params,
         )
         raw_ids = (params.get("ids") or "").strip()
@@ -238,7 +242,7 @@ class DispatchManifestView(APIView):
     No cambia el estado de nada: despachar es otra acción."""
 
     def get_permissions(self):
-        return [IsAuthenticated(), HasRolePermission("orders.view")]
+        return [IsAuthenticated(), HasRolePermission("orders.dispatch")]
 
     def post(self, request):
         serializer = ManifestSerializer(data=request.data)
@@ -251,7 +255,7 @@ class DispatchManifestView(APIView):
         if not orders:
             raise ValidationError({"order_ids": "No se encontró ninguno de los pedidos elegidos."})
 
-        pdf = render_manifest_pdf(orders, request.user, carrier=(data.get("carrier") or "").strip())
+        pdf = render_manifest_pdf(orders, data_owner(request.user), carrier=(data.get("carrier") or "").strip())
         today = timezone.localdate().strftime("%Y-%m-%d")
         response = HttpResponse(pdf, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="planilla-retiro-{today}.pdf"'
@@ -274,7 +278,7 @@ class TrackingImportPreviewView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def get_permissions(self):
-        return [IsAuthenticated(), HasRolePermission("orders.create")]
+        return [IsAuthenticated(), HasRolePermission("orders.dispatch")]
 
     def post(self, request):
         upload = request.FILES.get("file")
@@ -325,10 +329,11 @@ class TrackingImportPreviewView(APIView):
             rows_result = []
         else:
             rows_result = match_tracking_rows(
-                request.user,
+                data_owner(request.user),
                 rows,
                 mapping,
                 default_carrier=(request.data.get("carrier") or "").strip()[:100],
+                scope=order_scope_q(request.user),
                 store=int(store) if store and store.isdigit() else store,
             )
 
@@ -359,7 +364,7 @@ class TrackingImportConfirmView(APIView):
     (``Order.save``)."""
 
     def get_permissions(self):
-        return [IsAuthenticated(), HasRolePermission("orders.create")]
+        return [IsAuthenticated(), HasRolePermission("orders.dispatch")]
 
     def post(self, request):
         serializer = TrackingConfirmSerializer(data=request.data)

@@ -30,20 +30,20 @@ from decimal import Decimal, InvalidOperation
 
 from django.http import HttpResponse
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
 from apps.orders.models import Order
+from apps.accounts.teams import data_owner, order_scope_q
 
 from . import common, printing
 from .base import CarrierError, ShipmentError
 from .models import CarrierAccount, CarrierShipment
 from .providers import all_providers, get_provider
 
-PERMISSION = "orders.create"
 MAX_ORDERS = 100
 SENDER_FIELDS = (
     "sender_name", "sender_email", "sender_phone", "sender_document",
@@ -58,14 +58,21 @@ POSITIVE_INT_FIELDS = {
 
 
 class _CarrierView(APIView):
+    # Qué exige cada vista (comercios con equipo, apps/accounts/teams.py):
+    # despachar es una cosa y administrar las cuentas y el checkout otra, y
+    # leer (el estado de los envíos en Mis pedidos) alcanza con ver pedidos.
+    read_permission = "orders.dispatch"
+    write_permission = "orders.dispatch"
+
     def get_permissions(self):
-        return [IsAuthenticated(), HasRolePermission(PERMISSION)]
+        permission = self.read_permission if self.request.method in SAFE_METHODS else self.write_permission
+        return [IsAuthenticated(), HasRolePermission(permission)]
 
     def provider_or_404(self, code):
         return get_provider(code)
 
     def account(self, request, provider):
-        return CarrierAccount.objects.filter(owner=request.user, carrier=provider.code).first()
+        return CarrierAccount.objects.filter(owner=data_owner(request.user), carrier=provider.code).first()
 
 
 def account_data(provider, account):
@@ -141,22 +148,28 @@ def shipment_data(shipment, *, events=False):
 
 
 class CarrierListView(_CarrierView):
+    read_permission = "orders.view"
+    write_permission = "orders.view"
+
     def get(self, request):
-        accounts = {account.carrier: account for account in CarrierAccount.objects.filter(owner=request.user)}
+        accounts = {account.carrier: account for account in CarrierAccount.objects.filter(owner=data_owner(request.user))}
         results = []
         for provider in all_providers():
-            account = accounts.get(provider.code) or CarrierAccount(owner=request.user, carrier=provider.code)
+            account = accounts.get(provider.code) or CarrierAccount(owner=data_owner(request.user), carrier=provider.code)
             results.append(dict(provider.describe(), account=account_data(provider, account)))
         return Response({"results": results})
 
 
 class AccountView(_CarrierView):
+    read_permission = "orders.dispatch"
+    write_permission = "carriers.manage"
+
     def get(self, request, carrier):
         provider = self.provider_or_404(carrier)
         if provider is None:
             return Response(status=status.HTTP_404_NOT_FOUND)
         account = self.account(request, provider) or CarrierAccount(
-            owner=request.user, carrier=provider.code, contracts=[dict(item) for item in provider.normalize_contracts(provider.default_contracts)]
+            owner=data_owner(request.user), carrier=provider.code, contracts=[dict(item) for item in provider.normalize_contracts(provider.default_contracts)]
         )
         return Response(dict(account_data(provider, account), carrier_info=provider.describe()))
 
@@ -165,7 +178,7 @@ class AccountView(_CarrierView):
         if provider is None:
             return Response(status=status.HTTP_404_NOT_FOUND)
         data = request.data if isinstance(request.data, dict) else {}
-        account = self.account(request, provider) or CarrierAccount(owner=request.user, carrier=provider.code)
+        account = self.account(request, provider) or CarrierAccount(owner=data_owner(request.user), carrier=provider.code)
         errors = {}
         credentials_changed = False
 
@@ -253,6 +266,9 @@ class AccountView(_CarrierView):
 
 
 class AccountTestView(_CarrierView):
+    read_permission = "carriers.manage"
+    write_permission = "carriers.manage"
+
     def post(self, request, carrier):
         provider = self.provider_or_404(carrier)
         if provider is None:
@@ -275,7 +291,7 @@ class BranchesView(_CarrierView):
         raw_postal_code = str(request.query_params.get("cp") or "")
         if not common.postal_code_digits(raw_postal_code):
             return Response({"cp": ["Indicá un código postal."]}, status=status.HTTP_400_BAD_REQUEST)
-        account = self.account(request, provider) or CarrierAccount(owner=request.user, carrier=provider.code)
+        account = self.account(request, provider) or CarrierAccount(owner=data_owner(request.user), carrier=provider.code)
         try:
             # El CP va como vino: un CPA (``C1602ABC``) trae la provincia.
             branches = provider.branches(account, raw_postal_code, state=str(request.query_params.get("state") or ""))
@@ -292,7 +308,7 @@ def _requested_orders(request, data):
     provider = get_provider(data.get("carrier"))
     if provider is None:
         return Response({"carrier": ["Elegí el transportista."]}, status=status.HTTP_400_BAD_REQUEST)
-    account = CarrierAccount.objects.filter(owner=request.user, carrier=provider.code).first()
+    account = CarrierAccount.objects.filter(owner=data_owner(request.user), carrier=provider.code).first()
     if account is None:
         return Response({"detail": f"Primero cargá tu cuenta de {provider.name}."}, status=status.HTTP_400_BAD_REQUEST)
     ids = data.get("order_ids")
@@ -306,7 +322,7 @@ def _requested_orders(request, data):
         package_count = 1
     orders = {
         order.pk: order
-        for order in Order.objects.filter(pk__in=[i for i in ids if str(i).isdigit()], user=request.user).select_related("address")
+        for order in Order.objects.filter(order_scope_q(request.user), pk__in=[i for i in ids if str(i).isdigit()], user=data_owner(request.user)).select_related("address")
     }
     return provider, account, ids, orders, package_count
 
@@ -353,8 +369,11 @@ class ShipmentQuoteView(_CarrierView):
 
 
 class ShipmentCollectionView(_CarrierView):
+    read_permission = "orders.view"
+    write_permission = "orders.dispatch"
+
     def get(self, request):
-        queryset = CarrierShipment.objects.filter(account__owner=request.user).select_related("order", "order__address")
+        queryset = CarrierShipment.objects.filter(order_scope_q(request.user, "order__"), account__owner=data_owner(request.user)).select_related("order", "order__address")
         carrier = str(request.query_params.get("carrier") or "")
         if carrier:
             queryset = queryset.filter(carrier=carrier)
@@ -404,13 +423,16 @@ class ShipmentCollectionView(_CarrierView):
 class _OwnShipmentView(_CarrierView):
     def shipment(self, request, pk):
         return (
-            CarrierShipment.objects.filter(pk=pk, account__owner=request.user)
+            CarrierShipment.objects.filter(order_scope_q(request.user, "order__"), pk=pk, account__owner=data_owner(request.user))
             .select_related("account", "order", "order__address")
             .first()
         )
 
 
 class ShipmentDetailView(_OwnShipmentView):
+    read_permission = "orders.view"
+    write_permission = "orders.dispatch"
+
     def get(self, request, pk):
         shipment = self.shipment(request, pk)
         if shipment is None:
@@ -451,7 +473,7 @@ class ShipmentPrintView(_CarrierView):
         ids = [int(i) for i in data.get("shipment_ids") or [] if str(i).isdigit()][:MAX_ORDERS]
         found = {
             shipment.pk: shipment
-            for shipment in CarrierShipment.objects.filter(pk__in=ids, account__owner=request.user)
+            for shipment in CarrierShipment.objects.filter(order_scope_q(request.user, "order__"), pk__in=ids, account__owner=data_owner(request.user))
             .exclude(status=CarrierShipment.Status.CANCELLED)
             .select_related("account", "order", "order__address", "order__store_connection", "order__user")
         }

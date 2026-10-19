@@ -66,6 +66,9 @@ def token_data(request, provider, token, password=None):
 
 
 class PushTokenView(_CarrierView):
+    read_permission = "carriers.manage"
+    write_permission = "carriers.manage"
+
     def _context(self, request, carrier):
         provider = self.provider_or_404(carrier)
         if provider is None or not provider.supports_push:

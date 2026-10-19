@@ -24,6 +24,7 @@ from rest_framework.response import Response
 from apps.audit.services import record
 from apps.integrations.models import StoreConnection
 from apps.integrations.providers import get_provider as get_store_provider
+from apps.accounts.teams import data_owner, store_scope_q
 
 from .base import ShipmentError
 from .checkout import CARRIERS, checkout_for
@@ -32,9 +33,12 @@ from .providers import get_provider
 from .views import _CarrierView
 
 
-def checkout_stores(user):
-    """Las tiendas activas del usuario cuyo checkout nos pregunta el precio."""
-    stores = StoreConnection.objects.filter(owner=user, status=StoreConnection.Status.ACTIVE).order_by("pk")
+def checkout_stores(person):
+    """Las tiendas activas del comercio de ``person`` (las que ve, ver
+    apps/accounts/teams.py) cuyo checkout nos pregunta el precio."""
+    stores = StoreConnection.objects.filter(
+        store_scope_q(person), owner=data_owner(person), status=StoreConnection.Status.ACTIVE
+    ).order_by("pk")
     return [store for store in stores if getattr(get_store_provider(store.platform), "quotes_at_checkout", False)]
 
 
@@ -130,8 +134,11 @@ def save_checkout(request, store, carrier, values):
 
 
 class CheckoutView(_CarrierView):
+    read_permission = "carriers.manage"
+    write_permission = "carriers.manage"
+
     def get(self, request):
-        accounts = {account.carrier: account for account in CarrierAccount.objects.filter(owner=request.user, is_active=True)}
+        accounts = {account.carrier: account for account in CarrierAccount.objects.filter(owner=data_owner(request.user), is_active=True)}
         carriers = []
         for carrier in CARRIERS:
             provider = get_provider(carrier.OPTION_CODE)
@@ -187,6 +194,9 @@ class CheckoutView(_CarrierView):
 
 
 class CheckoutTestView(_CarrierView):
+    read_permission = "carriers.manage"
+    write_permission = "carriers.manage"
+
     def post(self, request):
         data = request.data if isinstance(request.data, dict) else {}
         carrier = checkout_for(data.get("carrier"))

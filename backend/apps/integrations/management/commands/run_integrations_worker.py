@@ -8,6 +8,7 @@ el mismo código). ``--once`` procesa un solo lote y termina (útil para cron
 o para probar a mano).
 """
 
+import logging
 import time
 
 from django.core.management.base import BaseCommand
@@ -18,6 +19,9 @@ from apps.integrations.events import process_due_events
 from apps.integrations.providers.tiendanube.labels import expire_stale_requests
 from apps.integrations.stores import enqueue_due_reconciliations
 from apps.labels.batch_jobs import run_pending_batches
+from apps.monitoring.heartbeats import worker_tick
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -39,6 +43,12 @@ class Command(BaseCommand):
                 # Un worker de larga duración no puede quedarse con una
                 # conexión a la base que el servidor ya cerró.
                 close_old_connections()
+                # El latido que mira el monitoreo (apps.monitoring); si el
+                # proceso de alertas está caído, el worker las hace él.
+                try:
+                    worker_tick()
+                except Exception:  # noqa: BLE001 - el monitoreo no frena la cola
+                    logger.exception("Falló el latido/monitoreo del worker.")
                 # Antes del lote: los rótulos que la tienda pidió y quedaron
                 # pendientes demasiado tiempo se dan por fallidos con motivo,
                 # en vez de dejar que la plataforma los venza en silencio.

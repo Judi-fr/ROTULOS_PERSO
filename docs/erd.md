@@ -64,6 +64,42 @@ erDiagram
         datetime created_at
         datetime updated_at
     }
+    Team {
+        bigauto id PK
+        auto owner_id FK
+        char name
+        datetime created_at
+    }
+    TeamInvitation {
+        bigauto id PK
+        bigauto team_id FK
+        char email
+        bigauto profile_id FK
+        json accesses
+        boolean all_stores
+        auto invited_by_id FK
+        char token UK
+        char status
+        datetime expires_at
+        datetime created_at
+    }
+    TeamMember {
+        bigauto id PK
+        bigauto team_id FK
+        auto user_id FK
+        char role
+        bigauto profile_id FK
+        json accesses
+        boolean all_stores
+        datetime joined_at
+    }
+    TeamProfile {
+        bigauto id PK
+        bigauto team_id FK
+        char name
+        json accesses
+        datetime created_at
+    }
     AuditLog {
         bigauto id PK
         auto actor_id FK
@@ -174,6 +210,8 @@ erDiagram
         positiveinteger item_count
         positiveinteger size_bytes
         text error_message
+        json job
+        json store_ids
         boolean is_active
         datetime created_at
         datetime updated_at
@@ -404,6 +442,20 @@ erDiagram
         auto created_by_id FK
         datetime created_at
     }
+    AlertState {
+        bigauto id PK
+        char key UK
+        datetime failing_since
+        datetime notified_at
+        text detail
+        datetime updated_at
+    }
+    Heartbeat {
+        bigauto id PK
+        char name UK
+        datetime last_seen
+        json info
+    }
     Address {
         bigauto id PK
         auto user_id FK
@@ -561,6 +613,13 @@ erDiagram
     StoreConnection |o--o{ Order : "store_connection"
     StoreConnection ||--o{ ShippingRate : "connection"
     StoreConnection ||--o{ StoreLabelRequest : "connection"
+    Team ||--o{ TeamInvitation : "team"
+    Team ||--o{ TeamMember : "team"
+    Team ||--o{ TeamProfile : "team"
+    TeamInvitation }o--o{ StoreConnection : "stores"
+    TeamMember }o--o{ StoreConnection : "stores"
+    TeamProfile |o--o{ TeamInvitation : "profile"
+    TeamProfile |o--o{ TeamMember : "profile"
     UploadedLabelFile ||--o{ LabelImport : "uploaded_file"
     User |o--o{ AuditLog : "actor"
     User |o--o{ ElementLayout : "created_by"
@@ -570,6 +629,7 @@ erDiagram
     User |o--o{ LayoutVariable : "created_by"
     User |o--o{ StoreConnection : "owner"
     User |o--o{ SupportMessage : "handled_by"
+    User |o--o{ TeamInvitation : "invited_by"
     User ||--o{ Address : "user"
     User ||--o{ CarrierAccount : "owner"
     User ||--o{ Document : "user"
@@ -590,5 +650,7 @@ erDiagram
     User ||--o| EmailVerification : "user"
     User ||--o| LoginLockout : "user"
     User ||--o| PasswordChangeRequirement : "user"
+    User ||--o| Team : "owner"
+    User ||--o| TeamMember : "user"
     WebhookEndpoint ||--o{ WebhookDelivery : "endpoint"
 ```

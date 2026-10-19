@@ -5,3 +5,7 @@
 # Lector de QR y códigos de barras para las pruebas de escaneo
 # (apps/labels/tests/test_scanning.py): sin él, esos tests se saltean.
 zxing-cpp==2.3.0
+
+# Lint y cobertura del pipeline (azure-pipelines.yml).
+flake8==7.1.1
+coverage==7.6.10

@@ -1,8 +1,12 @@
 # No copiar al contexto de build
 .venv/
+# El entorno virtual de desarrollo se llama así (antes solo se excluía .venv/
+# y la imagen copiaba ~280 MB que no usa).
+venv/
 __pycache__/
 *.py[cod]
-db.sqlite3
+# La base local y sus copias de recuperación (ver CLAUDE.md).
+db.sqlite3*
 .env
 .env.example
 media/
@@ -13,3 +17,9 @@ staticfiles/
 .idea/
 Dockerfile
 docker-compose.yml
+# Configuración de lint/tests, que la imagen no usa.
+.flake8
+.coveragerc
+requirements-dev.txt
+# El pipeline de CI no es parte de la imagen.
+azure-pipelines.yml

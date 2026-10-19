@@ -1,0 +1,79 @@
+# Pipeline del frontend (T#178-180). No hay build ni framework (HTML, CSS y
+# JS planos), así que "build" es: chequear que todo compile y que no haya
+# enlaces rotos (tools/check_frontend.mjs), armar la imagen de nginx y
+# publicar los archivos estáticos.
+#
+# Es solo CI: NO despliega (ver docs/despliegue.md).
+#
+# Para usarlo: Azure DevOps → Pipelines → New pipeline → GitHub → el repo →
+# "Existing Azure Pipelines YAML file" → /frontend/azure-pipelines.yml.
+
+trigger:
+  branches:
+    include: [master, marco]
+  paths:
+    include: [frontend/*]
+
+pr:
+  branches:
+    include: [master, marco]
+  paths:
+    include: [frontend/*]
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  - stage: Check
+    displayName: Chequeo
+    jobs:
+      - job: frontend
+        displayName: Frontend
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: "22.x"
+            displayName: Node 22
+
+          - script: node frontend/tools/check_frontend.mjs
+            displayName: JS que compila y enlaces que existen
+
+  - stage: Build
+    displayName: Artefactos
+    dependsOn: Check
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - job: artifacts
+        displayName: Estáticos e imagen
+        steps:
+          # Lo mismo que entra a la imagen (ver frontend/.dockerignore): sin el
+          # prototipo PHP (assets/apis, ~500 MB) ni las herramientas de chequeo.
+          - script: |
+              set -euo pipefail
+              mkdir -p $(Build.ArtifactStagingDirectory)/web
+              tar -C frontend \
+                  --exclude=assets/apis --exclude=tools \
+                  --exclude=Dockerfile --exclude=nginx.conf --exclude=docker-entrypoint.sh \
+                  --exclude=.dockerignore --exclude=azure-pipelines.yml --exclude='*.md' \
+                  -cf - . | tar -C $(Build.ArtifactStagingDirectory)/web -xf -
+              du -sh $(Build.ArtifactStagingDirectory)/web
+            displayName: Juntar los estáticos
+
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: $(Build.ArtifactStagingDirectory)/web
+              artifact: rotulos-web
+            displayName: Publicar los estáticos
+
+          - script: |
+              set -euo pipefail
+              docker build -t rotulos-web:$(Build.SourceVersion) -t rotulos-web:latest frontend
+              docker save rotulos-web:$(Build.SourceVersion) rotulos-web:latest \
+                | gzip > $(Build.ArtifactStagingDirectory)/rotulos-web.tar.gz
+            displayName: Construir la imagen
+
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: $(Build.ArtifactStagingDirectory)/rotulos-web.tar.gz
+              artifact: rotulos-web-image
+            displayName: Publicar la imagen como artefacto

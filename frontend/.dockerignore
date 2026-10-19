@@ -9,3 +9,8 @@ assets/apis/
 Dockerfile
 .dockerignore
 *.md
+
+# Herramientas de chequeo del pipeline (tools/check_frontend.mjs).
+tools/
+# El pipeline de CI no se sirve.
+azure-pipelines.yml

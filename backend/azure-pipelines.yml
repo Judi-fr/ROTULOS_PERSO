@@ -1,0 +1,111 @@
+# Pipeline del backend (T#174-177): lint, migraciones, tests con cobertura y
+# la imagen de Docker de la API.
+#
+# Es solo CI: NO despliega (decidido 2026-10-19, todavía no hay servidor ni
+# registro de imágenes; el plan está en docs/despliegue.md). La imagen se
+# publica como artefacto del pipeline (un .tar.gz de `docker save`), que se
+# carga en cualquier máquina con `docker load`.
+#
+# Para usarlo: Azure DevOps → Pipelines → New pipeline → GitHub → el repo →
+# "Existing Azure Pipelines YAML file" → /backend/azure-pipelines.yml.
+
+trigger:
+  branches:
+    include: [master, marco]
+  paths:
+    include: [backend/*]
+
+pr:
+  branches:
+    include: [master, marco]
+  paths:
+    include: [backend/*]
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  PYTHON_VERSION: "3.13"
+  PIP_CACHE_DIR: $(Pipeline.Workspace)/.pip
+  # Lo único obligatorio de los settings sin .env (config/settings/base.py).
+  # Es solo para correr los tests: nada de esto llega a un servidor.
+  SECRET_KEY: ci-solo-para-tests-no-es-un-secreto
+  DJANGO_SETTINGS_MODULE: config.settings.dev
+  LOG_LEVEL: WARNING
+
+stages:
+  - stage: Test
+    displayName: Lint y tests
+    jobs:
+      - job: backend
+        displayName: Backend
+        # La suite son ~1300 tests y en una notebook tarda ~14 minutos.
+        timeoutInMinutes: 60
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(PYTHON_VERSION)
+            displayName: Python $(PYTHON_VERSION)
+
+          - task: Cache@2
+            inputs:
+              key: 'pip | "$(Agent.OS)" | "$(PYTHON_VERSION)" | backend/requirements.txt | backend/requirements-dev.txt'
+              path: $(PIP_CACHE_DIR)
+            displayName: Caché de pip
+
+          - script: |
+              set -euo pipefail
+              python -m pip install --upgrade pip
+              pip install -r requirements-dev.txt
+            workingDirectory: backend
+            displayName: Instalar dependencias
+
+          # Solo errores reales, no estilo (ver backend/.flake8).
+          - script: flake8
+            workingDirectory: backend
+            displayName: Lint (flake8)
+
+          # Un modelo cambiado sin su migración rompe el deploy, no los tests.
+          - script: python manage.py makemigrations --check --dry-run
+            workingDirectory: backend
+            displayName: Migraciones al día
+
+          # set -e: un paso de script termina con el código del ÚLTIMO
+          # comando, y sin esto un test fallido quedaba tapado por el echo.
+          - script: |
+              set -euo pipefail
+              coverage run manage.py test --noinput
+              coverage xml -o coverage.xml
+              echo "Cobertura total: $(coverage report --format=total)%"
+            workingDirectory: backend
+            displayName: Tests con cobertura
+
+          - task: PublishCodeCoverageResults@2
+            condition: succeededOrFailed()
+            inputs:
+              summaryFileLocation: backend/coverage.xml
+            displayName: Publicar cobertura
+
+  - stage: Image
+    displayName: Imagen de la API
+    dependsOn: Test
+    # En un PR alcanza con que pasen los tests; la imagen se arma para lo
+    # que ya entró a una rama.
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - job: image
+        displayName: Docker
+        steps:
+          - script: |
+              set -euo pipefail
+              docker build -t rotulos-api:$(Build.SourceVersion) -t rotulos-api:latest backend
+              docker image ls rotulos-api
+              docker save rotulos-api:$(Build.SourceVersion) rotulos-api:latest \
+                | gzip > $(Build.ArtifactStagingDirectory)/rotulos-api.tar.gz
+            displayName: Construir la imagen
+
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: $(Build.ArtifactStagingDirectory)/rotulos-api.tar.gz
+              artifact: rotulos-api-image
+            displayName: Publicar la imagen como artefacto

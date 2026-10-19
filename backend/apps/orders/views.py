@@ -26,6 +26,7 @@ from apps.accounts.permissions_map import user_has_permission
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
 from apps.common.date_filters import date_range_q
+from apps.accounts.teams import data_owner, order_scope_q
 
 from .ingestion import TARGET_FIELDS, create_order_from_data, validate_mapped_row
 from .models import Address, Order
@@ -82,11 +83,11 @@ class AddressViewSet(viewsets.ModelViewSet):
         # Solo la agenda propia: las direcciones creadas por un pedido de
         # tienda/importación son de terceros (ver Address.Origin).
         return Address.objects.filter(
-            user=self.request.user, origin=Address.Origin.OWN
+            user=data_owner(self.request.user), origin=Address.Origin.OWN
         )
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        serializer.save(user=data_owner(self.request.user))
 
     def destroy(self, request, *args, **kwargs):
         try:
@@ -119,17 +120,15 @@ class OrderViewSet(
         elif self.action == "cancel":
             permission = "orders.cancel"
         elif self.action == "ship":
-            # Despachar un pedido propio: mismo permiso que crearlo o conectar
-            # la tienda de la que viene (no hay uno propio: los tests de
-            # accounts fijan el conjunto exacto de permisos por rol).
-            permission = "orders.create"
+            # Despachar: acceso propio desde los comercios con equipo.
+            permission = "orders.dispatch"
         else:
             permission = "orders.view"
         return [IsAuthenticated(), HasRolePermission(permission)]
 
     def get_queryset(self):
         queryset = (
-            Order.objects.filter(user=self.request.user)
+            Order.objects.filter(order_scope_q(self.request.user), user=data_owner(self.request.user))
             .select_related("address", "store_connection")
             .prefetch_related("status_events")
         )
@@ -138,7 +137,7 @@ class OrderViewSet(
         return queryset
 
     def perform_create(self, serializer):
-        order = serializer.save(user=self.request.user)
+        order = serializer.save(user=data_owner(self.request.user))
         record(
             self.request,
             category="orders",
@@ -200,7 +199,7 @@ class ManualOrderCreateView(APIView):
 
     def post(self, request):
         data = request.data
-        target_user = request.user
+        target_user = data_owner(request.user)
 
         user_id = data.get("user_id")
         if user_id:

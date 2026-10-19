@@ -36,6 +36,7 @@ const CATEGORY_LABELS = {
   support: "SOPORTE",
   integrations: "INTEGRACIONES",
   catalogs: "CATÁLOGOS",
+  monitoring: "MONITOREO",
   audit: "AUDITORÍA",
 };
 
@@ -52,6 +53,7 @@ const CATEGORY_ORDER = [
   "users",
   "integrations",
   "catalogs",
+  "monitoring",
   "audit",
 ];
 

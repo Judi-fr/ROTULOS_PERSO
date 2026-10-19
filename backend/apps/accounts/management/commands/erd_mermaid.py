@@ -16,7 +16,6 @@ from pathlib import Path
 
 from django.apps import apps
 from django.core.management.base import BaseCommand
-from django.db import models
 
 APP_PREFIX = "apps."
 

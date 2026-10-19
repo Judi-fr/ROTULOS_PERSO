@@ -37,6 +37,7 @@ from apps.common.date_filters import date_range_q
 from apps.documents.models import Document
 from apps.documents.serializers import DocumentSerializer
 from apps.orders.models import Order
+from apps.accounts.teams import OUTSIDE_SCOPE_MESSAGE, data_owner, order_scope_q, orders_outside_scope
 
 from .models import Label, LabelTemplate
 from .batch_jobs import queue_batch, should_run_async
@@ -369,7 +370,7 @@ class LabelBatchView(APIView):
 
     def post(self, request):
         data = request.data
-        printer = self._resolve_printer(request.user, data.get("printer_id"))
+        printer = self._resolve_printer(data_owner(request.user), data.get("printer_id"))
         output = str(data.get("output") or "pdf").strip().lower()
         if printer is not None:
             output = printer.format
@@ -409,19 +410,26 @@ class LabelBatchView(APIView):
         template = None
         skipped_existing_count = 0
         if selector == "label_ids":
-            items = self._resolve_labels(request.user, data["label_ids"], can_view_all)
+            items = self._resolve_labels(data_owner(request.user), data["label_ids"], can_view_all)
         else:
             if selector == "order_ids":
                 items, skipped_existing_count = self._resolve_orders(
-                    request.user, data["order_ids"], can_view_all, skip_existing
+                    data_owner(request.user), data["order_ids"], can_view_all, skip_existing
                 )
             else:
                 items, skipped_existing_count = self._resolve_orders_by_filters(
-                    request.user, data["filters"], can_view_all, skip_existing
+                    data_owner(request.user), data["filters"], can_view_all, skip_existing
                 )
             # Después de los pedidos: sin template_id, la plantilla puede
             # salir de la tienda de esos pedidos (ver _resolve_template).
-            template = self._resolve_template(request.user, data.get("template_id"), items)
+            template = self._resolve_template(data_owner(request.user), data.get("template_id"), items)
+
+        # Un empleado limitado a algunas tiendas no imprime pedidos de otra,
+        # ni pidiéndolos por id (apps/accounts/teams.py).
+        batch_orders = [item if isinstance(item, Order) else item.order for item in items]
+        batch_orders = [order for order in batch_orders if order is not None]
+        if not can_view_all and orders_outside_scope(request.user, batch_orders):
+            raise ValidationError({"detail": OUTSIDE_SCOPE_MESSAGE})
 
         if not items:
             if skipped_existing_count:
@@ -451,10 +459,11 @@ class LabelBatchView(APIView):
             )
 
         document = Document.objects.create(
-            user=request.user,
+            user=data_owner(request.user),
             name=f"Rótulos {timezone.localdate().strftime('%d/%m')} ({len(items)} envíos)",
             kind=Document.Kind.LABELS_BATCH,
             status=Document.Status.PROCESSING,
+            store_ids=sorted({order.store_connection_id for order in batch_orders if order.store_connection_id}),
         )
         record(
             request,
@@ -487,7 +496,7 @@ class LabelBatchView(APIView):
         payload = DocumentSerializer(document, context={"request": request}).data
         payload["queued"] = False
         if printer is not None:
-            payload.update(self._queue_for_printer(request.user, printer, document))
+            payload.update(self._queue_for_printer(data_owner(request.user), printer, document))
         return Response(payload, status=status.HTTP_202_ACCEPTED)
 
     def _resolve_printer(self, user, printer_id):
@@ -652,7 +661,8 @@ class LabelBatchView(APIView):
 
         queryset = Order.objects.select_related("address", "user").all()
         if not can_view_all:
-            queryset = queryset.filter(user=user)
+            # Por filtros, "todos" son los pedidos que la persona ve.
+            queryset = queryset.filter(order_scope_q(self.request.user), user=user)
 
         status_param = str(filters.get("status") or "").strip()
         if status_param:

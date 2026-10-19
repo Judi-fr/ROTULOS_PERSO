@@ -570,6 +570,14 @@ class RolePermissionSystemTests(AuthTestCase):
         "labels.view_all",
         "labels.manage_templates",
         "catalogs.manage",
+        "monitoring.view",
+        "orders.dispatch",
+        "orders.export",
+        "stores.manage",
+        "carriers.manage",
+        "printers.manage",
+        "account.manage",
+        "team.manage",
         "variables.manage",
         "documents.view_all",
         "orders.create_for_others",
@@ -604,6 +612,15 @@ class RolePermissionSystemTests(AuthTestCase):
         "processing.import",
         "documents.view",
         "documents.delete",
+        # Lo que se partió de orders.create / labels.batch / users.me.edit
+        # con los comercios con equipo (0028_seed_team_permissions).
+        "orders.dispatch",
+        "orders.export",
+        "stores.manage",
+        "carriers.manage",
+        "printers.manage",
+        "account.manage",
+        "team.manage",
     }
 
     # operator: ME_VIEW_PERMISSIONS + carga operativa de pedidos (alta
@@ -613,6 +630,10 @@ class RolePermissionSystemTests(AuthTestCase):
         "orders.import",
         "orders.import_mappings",
     }
+
+    # subscriber (el comerciante, dueño de su comercio): desde 0028 tiene
+    # también la carga operativa, o sea lo mismo que operator.
+    SUBSCRIBER_PERMISSIONS = OPERATOR_PERMISSIONS
 
     def setUp(self):
         super().setUp()
@@ -695,7 +716,7 @@ class RolePermissionSystemTests(AuthTestCase):
         self.assertEqual(admin_perm, self.ALL_PERMISSIONS)
         self.assertEqual(designer_perm, self.ME_VIEW_PERMISSIONS)
         self.assertEqual(operator_perm, self.OPERATOR_PERMISSIONS)
-        self.assertEqual(subscriber_perm, self.ME_VIEW_PERMISSIONS)
+        self.assertEqual(subscriber_perm, self.SUBSCRIBER_PERMISSIONS)
 
     def test_re_ejecutar_migracion_no_duplica(self):
         # Simula re-ejecutar la data migration: llamar get_or_create de nuevo
@@ -716,12 +737,14 @@ class RolePermissionSystemTests(AuthTestCase):
         self.assertEqual(self.RolePermission.objects.count(), len(self.ALL_PERMISSIONS))
         self.assertEqual(
             self.GroupRolePermission.objects.count(),
-            # admin tiene el catálogo completo (ALL_PERMISSIONS); designer y
-            # subscriber tienen ME_VIEW_PERMISSIONS cada uno; operator tiene
-            # OPERATOR_PERMISSIONS (ME_VIEW_PERMISSIONS + carga operativa).
+            # admin tiene el catálogo completo (ALL_PERMISSIONS); designer
+            # tiene ME_VIEW_PERMISSIONS; operator OPERATOR_PERMISSIONS
+            # (ME_VIEW_PERMISSIONS + carga operativa) y subscriber, desde
+            # 0028, lo mismo que operator.
             len(self.ALL_PERMISSIONS)
-            + 2 * len(self.ME_VIEW_PERMISSIONS)
-            + len(self.OPERATOR_PERMISSIONS),
+            + len(self.ME_VIEW_PERMISSIONS)
+            + len(self.OPERATOR_PERMISSIONS)
+            + len(self.SUBSCRIBER_PERMISSIONS),
         )
 
     # --- Endpoints autenticados (admin) --------------------------------------

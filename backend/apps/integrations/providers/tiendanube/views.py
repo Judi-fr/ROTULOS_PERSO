@@ -18,6 +18,7 @@ from rest_framework.views import APIView
 from apps.accounts.permissions_map import user_has_permission
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
+from apps.accounts.teams import data_owner, store_scope_q
 
 from ... import store_print
 from ...models import StoreConnection
@@ -48,7 +49,10 @@ class TiendanubePrintLinkView(APIView):
 
     def post(self, request):
         stores = StoreConnection.objects.filter(
-            platform=StoreConnection.Platform.TIENDANUBE, owner=request.user, status=StoreConnection.Status.ACTIVE
+            store_scope_q(request.user),
+            platform=StoreConnection.Platform.TIENDANUBE,
+            owner=data_owner(request.user),
+            status=StoreConnection.Status.ACTIVE,
         )
         store_id = str(request.data.get("store") or "").strip()
         if store_id:
@@ -62,7 +66,7 @@ class TiendanubePrintLinkView(APIView):
             )
         try:
             action = store_print.parse_action(request.data.get("action"))
-            if action == store_print.DISPATCH and not user_has_permission(request.user, "orders.create"):
+            if action == store_print.DISPATCH and not user_has_permission(request.user, "orders.dispatch"):
                 return Response({"detail": "Tu usuario no puede despachar pedidos."}, status=status.HTTP_403_FORBIDDEN)
             orders, missing = store_print.resolve_orders(connection, store_print.order_ids(request.data.get("ids")))
             if not orders:

@@ -82,3 +82,35 @@ class ReadinessView(APIView):
         except Exception as exc:  # noqa: BLE001 - la sonda informa, no revienta
             logger.exception("La sonda de readiness no pudo consultar la base.")
             return f"error: {exc}"
+
+
+class SystemStatusView(APIView):
+    """GET /api/v1/health/system/ — ¿anda TODO, no solo la API?
+
+    La que va a consultar un monitor externo (UptimeRobot o similar) el día
+    que se configure: además de la base mira el worker, la cola de
+    integraciones, los lotes de rótulos y el disco (``apps.monitoring.checks``).
+    ``503`` si algún chequeo está en ``error``; los ``warning`` siguen en 200
+    porque no son una caída.
+
+    Es pública, así que dice QUÉ falla pero no el detalle (cantidades,
+    mensajes de error): eso está en el panel de admin. NO reemplaza a
+    readiness: un worker caído no es motivo para sacarle tráfico a la API.
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        from apps.monitoring.checks import ERROR, run_checks, worst
+
+        results = run_checks()
+        overall = worst(result.status for result in results)
+        return Response(
+            {
+                "status": overall,
+                "service": SERVICE_NAME,
+                "checks": {result.key: result.status for result in results},
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE if overall == ERROR else status.HTTP_200_OK,
+        )

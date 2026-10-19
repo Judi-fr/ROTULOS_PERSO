@@ -29,6 +29,7 @@ from apps.audit.services import record
 from apps.orders.import_parsing import ImportFileError, parse_tabular_file
 from apps.orders.ingestion import upsert_store_order
 from apps.orders.models import Order
+from apps.accounts.teams import data_owner, store_scope_q
 
 from ...models import StoreConnection
 from ...serializers import StoreConnectionSerializer
@@ -39,10 +40,11 @@ from .. import get_provider
 from . import spreadsheet
 from .provider import external_store_id_for
 
-# La planilla es cómo entran los pedidos de SU tienda (en las demás
-# plataformas eso pasa solo): el mismo permiso que conectar una tienda, no el
-# ``orders.import`` de la importación genérica, que los comerciantes no tienen.
-IMPORT_PERMISSION = STORE_CONNECT_PERMISSION
+# La planilla es cómo entran los pedidos de SU tienda: "orders.create", que
+# tienen los cuatro roles canónicos (el genérico "orders.import" no lo tienen
+# designer ni los roles personalizados). Dentro del comercio, ese permiso
+# exige el acceso "Cargar e importar pedidos" (TEAM_SCOPED_PERMISSIONS).
+IMPORT_PERMISSION = "orders.create"
 MAX_FILE_BYTES = 5 * 1024 * 1024
 MAX_ROWS = 5000
 
@@ -63,7 +65,7 @@ class EmpretiendaConnectView(APIView):
         name = str(data.get("name") or "").strip()[:150]
 
         result = connect_with_api_credentials(
-            provider, request.user, external_store_id=external_store_id_for(store_url), store_url=store_url, token=""
+            provider, data_owner(request.user), external_store_id=external_store_id_for(store_url), store_url=store_url, token=""
         )
         if result.owner_conflict:
             return Response(
@@ -92,8 +94,9 @@ class _SpreadsheetView(APIView):
         """``(connection, headers, rows, mapping)`` o una ``Response`` de error."""
         store = str(request.data.get("store") or "").strip()
         connection = StoreConnection.objects.filter(
+            store_scope_q(request.user),
             pk=int(store) if store.isdigit() else None,
-            owner=request.user,
+            owner=data_owner(request.user),
             platform=StoreConnection.Platform.EMPRETIENDA,
             status=StoreConnection.Status.ACTIVE,
         ).first()
@@ -204,7 +207,7 @@ class EmpretiendaImportConfirmView(_SpreadsheetView):
         StoreConnection.objects.filter(pk=connection.pk).update(preferences=preferences)
         if created_ids:
             dispatch_event(
-                request.user,
+                data_owner(request.user),
                 "orders.imported",
                 {"count": len(created_ids), "source": Order.Source.STORE, "order_ids": created_ids},
             )

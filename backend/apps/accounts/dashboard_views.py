@@ -63,6 +63,14 @@ class DashboardView(APIView):
                     "enabled": True,
                 }
             )
+            menu.append(
+                {
+                    "key": "system_status",
+                    "label": "Estado del sistema",
+                    "url": "estado_sistema.html",
+                    "enabled": True,
+                }
+            )
             # Integraciones (claves de API y webhooks) no va en el menú: se
             # entra desde tiendas.html, botón "Conexión mediante API".
 
@@ -87,8 +95,10 @@ class DashboardView(APIView):
         # tiene su propia sección de direcciones): no hace falta una página
         # nueva para lo que ya es un CRUD completo ahí.
         # Tiendas online conectadas (apps.integrations): mismo permiso que
-        # exige la API para conectarlas.
-        if user_has_permission(user, "orders.create"):
+        # exige la API para conectarlas. Desde los comercios con equipo, cada
+        # entrada depende del acceso que el dueño le dio a la persona (los
+        # permisos ya cruzan rol y equipo, ver permissions_map).
+        if user_has_permission(user, "stores.manage"):
             menu.append(
                 {"key": "stores", "label": "Tiendas conectadas", "url": "tiendas.html", "enabled": True}
             )
@@ -102,8 +112,9 @@ class DashboardView(APIView):
                     "enabled": True,
                 }
             )
-            # La tabla CP -> precio con la que cotizamos el envío en el
-            # checkout de esa tienda (ver apps.integrations.shipping_rates).
+        # La tabla CP -> precio con la que cotizamos el envío en el
+        # checkout de esa tienda (ver apps.integrations.shipping_rates).
+        if user_has_permission(user, "carriers.manage"):
             menu.append(
                 {
                     "key": "shipping_rates",
@@ -112,9 +123,10 @@ class DashboardView(APIView):
                     "enabled": True,
                 }
             )
-        menu.append(
-            {"key": "orders", "label": "Mis pedidos", "url": "pedidos.html", "enabled": True}
-        )
+        if user_has_permission(user, "orders.view"):
+            menu.append(
+                {"key": "orders", "label": "Mis pedidos", "url": "pedidos.html", "enabled": True}
+            )
         # Andreani (apps.carriers) no tiene botones propios: se despacha desde
         # Mis pedidos, y su cuenta y su precio en el checkout se abren desde ahí.
         # Imprimir los rótulos de varios pedidos de una (apps.labels batch):
@@ -144,7 +156,7 @@ class DashboardView(APIView):
         # despachan, como POST /orders/<id>/ship/.
         # La planilla de retiro no tiene botón propio: se arma en Mis pedidos
         # con los pedidos elegidos (assets/js/pedidos/planilla.js).
-        if user_has_permission(user, "orders.create"):
+        if user_has_permission(user, "orders.dispatch"):
             # Cargar seguimientos tampoco: es un botón de Mis pedidos
             # (assets/js/pedidos/seguimientos.js).
             menu.append(
@@ -155,7 +167,7 @@ class DashboardView(APIView):
                     "enabled": True,
                 }
             )
-        if user_has_permission(user, "orders.view"):
+        if user_has_permission(user, "orders.export"):
             menu.append(
                 {
                     "key": "orders_export",
@@ -167,23 +179,27 @@ class DashboardView(APIView):
         # Las direcciones NO son una entrada aparte: pedidos.html ya tiene
         # su propia sección con el CRUD completo, y listarlas también acá
         # era ofrecer dos puertas al mismo lugar.
-        menu.extend(
-            [
-                {"key": "labels", "label": "Mis rótulos", "url": "mis_rotulos.html", "enabled": True},
-                {
-                    "key": "templates",
-                    "label": "Plantillas",
-                    "url": "mis_plantillas.html",
-                    "enabled": True,
-                },
+        if user_has_permission(user, "labels.view"):
+            menu.extend(
+                [
+                    {"key": "labels", "label": "Mis rótulos", "url": "mis_rotulos.html", "enabled": True},
+                    {
+                        "key": "templates",
+                        "label": "Plantillas",
+                        "url": "mis_plantillas.html",
+                        "enabled": True,
+                    },
+                ]
+            )
+        if user_has_permission(user, "documents.view"):
+            menu.append(
                 {
                     "key": "documents",
                     "label": "Mis documentos",
                     "url": "documentos.html",
                     "enabled": True,
-                },
-            ]
-        )
+                }
+            )
         # Leer un rótulo de papel con el modelo y proponer la plantilla
         # (apps.processing). Se llamaba "Generar rótulo", que describía otra
         # cosa —generar rótulos ya se hace en mis_rotulos.html— y encima
@@ -205,6 +221,17 @@ class DashboardView(APIView):
                     "key": "element_layouts",
                     "label": "Editor de diseños",
                     "url": "editor_layout.html",
+                    "enabled": True,
+                }
+            )
+        # El equipo del comercio y lo que hizo cada uno (apps/accounts/teams.py).
+        if user_has_permission(user, "team.manage"):
+            menu.append({"key": "team", "label": "Mi equipo", "url": "equipo.html", "enabled": True})
+            menu.append(
+                {
+                    "key": "team_activity",
+                    "label": "Actividad del equipo",
+                    "url": "actividad_equipo.html",
                     "enabled": True,
                 }
             )

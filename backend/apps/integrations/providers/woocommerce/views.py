@@ -18,6 +18,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
+from apps.accounts.teams import data_owner
 
 from ... import store_print
 from ...models import StoreConnection
@@ -149,7 +150,7 @@ class WooCommerceManualConnectView(APIView):
         except ProviderError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        result = connect_with_credentials(provider, request.user, site, key, secret, auth_mode=auth_mode)
+        result = connect_with_credentials(provider, data_owner(request.user), site, key, secret, auth_mode=auth_mode)
         if result.owner_conflict:
             return Response(
                 {"detail": "Esa tienda ya está vinculada a otra cuenta. Si es tuya, escribinos desde Ayuda / Soporte."},

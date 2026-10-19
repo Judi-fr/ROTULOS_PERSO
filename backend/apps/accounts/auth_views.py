@@ -94,6 +94,24 @@ def user_payload(user, picture=""):
         # loguea, sin esperar al primer 403 (ver authentication.py, que es
         # quien realmente lo hace cumplir del lado del servidor).
         "must_change_password": user_must_change_password(user),
+        # El comercio y lo que el usuario puede hacer en él (teams.py): el
+        # frontend lo usa para el menú y para no mostrar lo que no puede.
+        "team": team_payload(user),
+    }
+
+
+def team_payload(user):
+    from .teams import member_accesses, membership
+
+    member = membership(user)
+    return {
+        "id": member.team_id,
+        "name": member.team.name,
+        "display_name": member.team.name or f"Comercio de {member.team.owner.email}",
+        "role": member.role,
+        "accesses": sorted(member_accesses(user)),
+        "all_stores": member.role == member.Role.OWNER or member.all_stores,
+        "store_ids": sorted(member.stores.values_list("id", flat=True)),
     }
 
 

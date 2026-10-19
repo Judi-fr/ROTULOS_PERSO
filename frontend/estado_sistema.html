@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>Estado del sistema</title>
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
+    />
+    <link rel="stylesheet" href="assets/css/gestionuser.css" />
+    <link rel="stylesheet" href="assets/css/estado_sistema.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- SIDEBAR: renderizado por assets/js/admin_sidebar.js -->
+      <div id="adminSidebar" data-active="monitoring"></div>
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1>Estado del sistema</h1>
+            <p>Si algo de esto deja de funcionar, los administradores reciben un mail.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn btn-outline" id="refreshBtn" type="button">Actualizar</button>
+            <button class="btn btn-outline" id="logoutAdminBtn" type="button">Cerrar sesión</button>
+          </div>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <section id="overall" class="status-overall" aria-live="polite">
+          <span class="status-dot"></span>
+          <div>
+            <strong id="overallText">Consultando...</strong>
+            <span id="checkedAt" class="status-muted"></span>
+          </div>
+        </section>
+
+        <section class="roles-card" aria-labelledby="checksTitle">
+          <div class="roles-card-title" id="checksTitle">Chequeos</div>
+          <ul id="checksList" class="status-list"></ul>
+        </section>
+
+        <section class="roles-card" aria-labelledby="alertsTitle">
+          <div class="roles-card-title" id="alertsTitle">Alertas por mail</div>
+          <div class="status-alerts">
+            <p id="alertsRule" class="status-muted"></p>
+            <p><strong>Se avisa a:</strong> <span id="alertsRecipients">-</span></p>
+            <p><strong>Último mail:</strong> <span id="alertsLastMail">-</span></p>
+            <button class="btn btn-primary" id="testMailBtn" type="button">Mandar un mail de prueba</button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/admin_common.js"></script>
+    <script src="assets/js/admin_sidebar.js"></script>
+    <script src="assets/js/estado_sistema.js"></script>
+  </body>
+</html>

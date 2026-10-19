@@ -5,7 +5,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
-from .health import LivenessView, ReadinessView
+from .health import LivenessView, ReadinessView, SystemStatusView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -13,6 +13,10 @@ urlpatterns = [
     # consulta la base (ver config/health.py).
     path("api/v1/health/", LivenessView.as_view(), name="health"),
     path("api/v1/health/ready/", ReadinessView.as_view(), name="health-ready"),
+    # Estado de todo el sistema (worker, cola, disco...) para un monitor externo.
+    path("api/v1/health/system/", SystemStatusView.as_view(), name="health-system"),
+    path("api/v1/monitoring/", include("apps.monitoring.urls")),
+    path("api/v1/team/", include("apps.accounts.team_urls")),  # equipo del comercio (dueño y empleados)  # panel "Estado del sistema" (admin)
     path("api/v1/auth/", include("apps.accounts.urls")),
     path("api/v1/", include("apps.accounts.user_admin_urls")),  # CRUD de usuarios (admin)
     path("api/v1/", include("apps.accounts.support_admin_urls")),  # bandeja de soporte (admin)

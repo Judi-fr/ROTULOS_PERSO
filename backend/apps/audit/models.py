@@ -32,6 +32,8 @@ class AuditLog(models.Model):
         PROCESSING = "processing", "Procesamiento"
         # Catálogos globales del admin (transportistas manuales, tamaños).
         CATALOGS = "catalogs", "Catálogos"
+        # Comercios con equipo (apps/accounts/teams.py).
+        TEAM = "team", "Equipo"
 
     class Action(models.TextChoices):
         # auth
@@ -75,6 +77,17 @@ class AuditLog(models.Model):
         TEMPLATE_DELETE = "template.delete", "Plantilla de rótulo eliminada"
         PRINTER_UPDATE = "printer.update", "Impresora o agente de impresión editado"
         CATALOG_UPDATE = "catalog.update", "Catálogo editado"
+        # team
+        TEAM_INVITE = "team.invite", "Invitación al comercio enviada"
+        TEAM_INVITE_CANCEL = "team.invite_cancel", "Invitación al comercio cancelada"
+        TEAM_JOIN = "team.join", "Se sumó al comercio"
+        TEAM_DECLINE = "team.decline", "Invitación al comercio rechazada"
+        TEAM_MEMBER_UPDATE = "team.member_update", "Accesos de un miembro cambiados"
+        TEAM_MEMBER_REMOVE = "team.member_remove", "Miembro quitado del comercio"
+        TEAM_PROFILE_UPDATE = "team.profile_update", "Perfil del comercio editado"
+        TEAM_UPDATE = "team.update", "Datos del equipo editados"
+        TEAM_TRANSFER = "team.transfer", "Titularidad del comercio transferida"
+        TEAM_ADMIN_ASSIGN = "team.admin_assign", "Comercio asignado por el administrador"
         ACCOUNT_SETTINGS_UPDATE = "account.update", "Datos de la cuenta editados"
         # labels: ElementLayout/LayoutElement/LayoutVariable, plantillas por
         # elementos + catálogo de variables (distintas de LabelTemplate/
@@ -148,6 +161,16 @@ class AuditLog(models.Model):
         Action.TEMPLATE_DELETE: Category.LABELS,
         Action.PRINTER_UPDATE: Category.LABELS,
         Action.CATALOG_UPDATE: Category.CATALOGS,
+        Action.TEAM_INVITE: Category.TEAM,
+        Action.TEAM_INVITE_CANCEL: Category.TEAM,
+        Action.TEAM_JOIN: Category.TEAM,
+        Action.TEAM_DECLINE: Category.TEAM,
+        Action.TEAM_MEMBER_UPDATE: Category.TEAM,
+        Action.TEAM_MEMBER_REMOVE: Category.TEAM,
+        Action.TEAM_PROFILE_UPDATE: Category.TEAM,
+        Action.TEAM_UPDATE: Category.TEAM,
+        Action.TEAM_TRANSFER: Category.TEAM,
+        Action.TEAM_ADMIN_ASSIGN: Category.TEAM,
         Action.ACCOUNT_SETTINGS_UPDATE: Category.USERS,
         Action.ELEMENT_LAYOUT_CREATE: Category.LABELS,
         Action.ELEMENT_LAYOUT_UPDATE: Category.LABELS,

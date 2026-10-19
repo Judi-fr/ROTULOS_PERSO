@@ -47,6 +47,11 @@ class Document(models.Model):
     # armarlo (ids, plantilla, formato...) y lo hace el worker
     # (apps.labels.batch_jobs). Vacío cuando no hay nada pendiente.
     job = models.JSONField(default=dict, blank=True)
+    # Ids de las tiendas de los pedidos del lote (vacío = solo pedidos
+    # cargados a mano; null = no se sabe: los lotes anteriores a esto). Un
+    # empleado limitado a algunas tiendas no ve un lote que incluya pedidos
+    # de otra, ni uno que no se sabe (apps/accounts/teams.py).
+    store_ids = models.JSONField(null=True, blank=True, default=None)
     # Soft-delete, igual criterio que Label/User: un documento nunca se
     # destruye de verdad.
     is_active = models.BooleanField(default=True)

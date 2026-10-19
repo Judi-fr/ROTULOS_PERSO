@@ -14,6 +14,12 @@
       "port": 8000
     },
     {
+      "name": "backend-sin-mail",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd backend && EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend exec venv/bin/python manage.py runserver 127.0.0.1:8000"],
+      "port": 8000
+    },
+    {
       "name": "worker",
       "runtimeExecutable": "bash",
       "runtimeArgs": ["-c", "cd backend && exec venv/bin/python manage.py run_integrations_worker"]

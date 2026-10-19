@@ -60,6 +60,11 @@
     emailEl.className = "topbar-user-email";
     emailEl.id = "userEmail";
     emailEl.textContent = email;
+    // Un empleado ve en qué comercio está trabajando (apps/accounts/teams.py).
+    const team = user && user.team;
+    if (team && team.role === "employee") {
+      emailEl.textContent = `${email} · ${team.display_name || team.name || "Comercio"}`;
+    }
     info.appendChild(nameEl);
     info.appendChild(emailEl);
     userBox.appendChild(info);

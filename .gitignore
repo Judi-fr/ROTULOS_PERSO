@@ -22,3 +22,9 @@ Thumbs.db
 # Se regeneran con `composer install` desde composer.json/composer.lock: son
 # ~500 MB que no tienen por qué vivir en el repositorio.
 frontend/assets/apis/vendor/
+
+# Cobertura de los tests (backend/.coveragerc).
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/

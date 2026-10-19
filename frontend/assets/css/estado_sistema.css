@@ -1,0 +1,90 @@
+/* estado_sistema.html (admin). Sidebar, topbar y roles-card vienen de
+   gestionuser.css. */
+
+.status-overall {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  border-radius: 12px;
+  border: 1px solid #e7eaf1;
+  background: #f8fafc;
+  font-size: 1.05rem;
+}
+
+.status-overall div {
+  display: flex;
+  flex-direction: column;
+}
+
+.status-muted {
+  color: #64748b;
+  font-size: 12.5px;
+}
+
+.status-dot {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.status-ok .status-dot { background: #16a34a; }
+.status-warning .status-dot { background: #d97706; }
+.status-error .status-dot { background: #dc2626; }
+.status-overall.status-ok { background: #f0fdf4; border-color: #bbf7d0; }
+.status-overall.status-warning { background: #fffbeb; border-color: #fde68a; }
+.status-overall.status-error { background: #fef2f2; border-color: #fecaca; }
+
+.status-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 20px;
+  border-bottom: 1px solid #e7eaf1;
+}
+
+.status-item:last-child {
+  border-bottom: 0;
+}
+
+.status-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+
+.status-tag {
+  flex: 0 0 auto;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.status-ok .status-tag { background: #dcfce7; color: #166534; }
+.status-warning .status-tag { background: #fef3c7; color: #92400e; }
+.status-error .status-tag { background: #fee2e2; color: #991b1b; }
+
+.status-alerts {
+  padding: 16px 20px;
+  font-size: 13.5px;
+}
+
+.status-alerts p {
+  margin: 0 0 8px;
+}

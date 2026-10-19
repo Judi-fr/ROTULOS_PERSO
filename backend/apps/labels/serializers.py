@@ -25,6 +25,7 @@ from rest_framework import serializers
 
 from apps.accounts.permissions_map import get_effective_role, user_has_permission
 from apps.orders.models import Order
+from apps.accounts.teams import data_owner, order_scope_q
 
 from .styles import validate_style
 from .models import ElementLayout, Label, LabelTemplate, LabelTemplateVersion, LayoutElement, LayoutVariable
@@ -455,7 +456,7 @@ class LabelTemplateSerializer(serializers.ModelSerializer):
             return False
         if user_has_permission(user, "labels.manage_templates"):
             return True
-        return obj.owner_id == user.id and not obj.is_public
+        return obj.owner_id == data_owner(user).id and not obj.is_public
 
     def create(self, validated_data):
         validated_data.pop("version_note", None)
@@ -532,14 +533,14 @@ class LabelSerializer(serializers.ModelSerializer):
             # usar en un rótulo nuevo, aunque los ya creados con ella la
             # sigan referenciando).
             self.fields["template"].queryset = LabelTemplate.objects.filter(
-                Q(is_public=True) | Q(owner=user), is_active=True
+                Q(is_public=True) | Q(owner=data_owner(user)), is_active=True
             )
             # Un usuario solo puede colgar el rótulo de un pedido PROPIO; el
             # admin puede saltarse esa restricción.
             if get_effective_role(user) == "admin":
                 self.fields["order"].queryset = Order.objects.all()
             else:
-                self.fields["order"].queryset = Order.objects.filter(user=user)
+                self.fields["order"].queryset = Order.objects.filter(order_scope_q(user), user=data_owner(user))
 
     def validate_design(self, value):
         return validate_design(value)

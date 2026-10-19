@@ -16,7 +16,8 @@ Backend: Django REST API (`backend/`), all routes under `/api/v1/` (`backend/con
 creation, CSV/Excel import, store sync, dispatch), `audit` (read-only trail), `labels` (two independent
 label-rendering systems, see below), `integrations` (store connections, webhooks, event queue),
 `documents` (generated batch output + uploaded source files), `processing` (Claude vision agent that
-reads a photographed label), `printing` (printers, print agent and job queue) and `carriers` (shipping companies the clients dispatch with: Andreani, Correo Argentino, OCA). Frontend: static multi-page app (`frontend/`), plain HTML/CSS/JS, no build
+reads a photographed label), `printing` (printers, print agent and job queue), `monitoring` (system status
+and availability alerts by email) and `carriers` (shipping companies the clients dispatch with: Andreani, Correo Argentino, OCA). Frontend: static multi-page app (`frontend/`), plain HTML/CSS/JS, no build
 step.
 
 Don't assume: there is no point-of-sale/destination catalog (`Address` stores city/state as free text),
@@ -51,6 +52,8 @@ source venv/bin/activate
   models they point to (`User`, `Group`) appear with only their PK. Regenerate it when models change.
 - Template thumbnails: `python manage.py generate_template_thumbnails [--all]` — fills `LabelTemplate.preview`
   for active templates that lack one (see "Template thumbnails" under Labels).
+- Lint: `flake8` (config in `backend/.flake8`). Frontend check: `node frontend/tools/check_frontend.mjs`.
+  Both run in CI (see "CI (Azure Pipelines)").
 
 `DJANGO_SETTINGS_MODULE` selects `config.settings.dev` or `config.settings.prod`; both import from
 `config/settings/base.py`. `manage.py` defaults to `dev`.
@@ -81,7 +84,8 @@ developing).
 
 ### Health probes (`config/health.py`)
 
-Two, not one, and the split is the point. `GET /api/v1/health/` is **liveness**: it touches nothing and
+Two, not one, and the split is the point (a third, `health/system/`, covers the whole system — see
+"Monitoring and alerts"). `GET /api/v1/health/` is **liveness**: it touches nothing and
 answers "the process is up" — that is what an orchestrator polls to decide whether to restart the
 container, so putting a DB query in it would restart the API on every Postgres hiccup, exactly when the
 API is not the problem. `GET /api/v1/health/ready/` is **readiness**: it runs a real `SELECT 1` and
@@ -89,13 +93,56 @@ returns **503** when the database is unreachable, which is the one worth monitor
 probe returned `{"status": "ok"}` without touching anything, so it kept reporting healthy with the
 database down.
 
+### Monitoring and alerts (`apps/monitoring`, T#193)
+
+Availability alerts **by email, from the app itself, with no external account** (decided 2026-10-19; an
+external uptime monitor comes later, see the plan below). `checks.py` runs nine cheap checks, each `ok`,
+`warning` or `error`: database, worker heartbeat (`MONITORING_WORKER_STALE_SECONDS`, 900 — generous because
+the worker only beats between loops and a big label batch can take minutes), integration queue (a pending
+event past its time by `MONITORING_QUEUE_DELAY_SECONDS` = the queue doesn't move; failed ones in 24 h are a
+warning), abandoned background label batches, free disk on `MEDIA_ROOT`, whether alert mail can go out,
+the alert process itself, stores in `error` and carrier accounts deactivated by an error. A crashing check
+is reported as `error` and never stops the others. **Only `error` mails**; warnings show on the panel (a mail
+for every small thing ends up ignored), and the mail check never mails (it would reach no one).
+- **Alert on change, not on every pass** (`alerts.py`, state in `AlertState`): first mail after
+  `MONITORING_ALERT_AFTER_SECONDS` (180) of grace — a restart wakes nobody, a failure fixed inside it is
+  never mailed —, a reminder every `MONITORING_REMINDER_HOURS` (6), and a "Resuelto" mail. Everything from
+  one pass goes in ONE mail. A failed send is not marked notified and is retried, but not before
+  `MONITORING_MAIL_RETRY_SECONDS` (600). Recipients: `MONITORING_ALERT_EMAILS` if set, else active admins
+  with email. With the database down there is no state nor admin list: only `MONITORING_ALERT_EMAILS` is
+  mailed, once per reminder period per process.
+- **Who runs it**: `python manage.py run_monitor` (every `MONITORING_INTERVAL_SECONDS`, 60; `--once`
+  prints every check), the `monitor` service in `docker-compose.prod.yml`. It is separate from the worker
+  on purpose — the first thing it must report is that the worker died. Both leave a `Heartbeat` row; the
+  worker beats at most every `MONITORING_HEARTBEAT_EVERY_SECONDS` (`heartbeats.worker_tick`, called at the
+  top of each loop and wrapped so monitoring can never stop the queue) and, **when the monitor hasn't beaten
+  for `MONITORING_MONITOR_STALE_SECONDS`, runs the alert pass itself**. So one dead process never leaves the
+  system silent; the whole server down does — that's the external monitor's job.
+- **In local development** `.env` uses real SMTP: a local worker with the monitor stopped WILL mail every
+  admin of the local DB after the grace period. Set `MONITORING_ALERT_EMAILS` to your own address there.
+- API: `GET /api/v1/monitoring/status/` (`monitoring.view`, admin-only, migration `accounts/0025`): each
+  check with detail, `failing_since`/`notified_at`, process heartbeats, recipients and the last mail's
+  result; `POST /api/v1/monitoring/test-mail/` sends a test to the recipients (502 with the SMTP reason).
+  Public `GET /api/v1/health/system/` (`config/health.py`): overall status + each check's status, **no
+  details**, 503 only on `error`. It doesn't replace readiness: a dead worker is no reason to pull traffic
+  from the API.
+- Screen `estado_sistema.html` + `assets/js/estado_sistema.js` (admin sidebar "Estado del sistema", dashboard
+  menu `system_status`), refreshed every 30 s while visible.
+- **Planned, not done — external monitor** (when the user creates the account): point a free uptime
+  service (UptimeRobot / Better Stack) at `https://<domain>/api/v1/health/system/` every 5 min, alerting on
+  non-200 and on timeout, with the same admin email (and optionally Telegram/WhatsApp, which those services
+  offer). It covers what nothing inside can: server, Docker or network down, and certificate expiry. Its
+  public status page can be shown to merchants. Nothing to change in the code: the endpoint is already
+  there and is throttled as anonymous (60/min).
+
 ### Deploying (`docker-compose.prod.yml` + `Caddyfile`, repo root)
 
-Brought up **by hand** — there is no pipeline and none is needed yet; deploying and automating the deploy
-are different things, and the second only earns its keep after doing the first a few times. Five
+Brought up **by hand** — there is CI but no deploy pipeline (decided again 2026-10-19: no server yet; the
+plan for T#181-185 is in `docs/despliegue.md`); deploying and automating the deploy are different things,
+and the second only earns its keep after doing the first a few times. Six
 services: Postgres, the API (migrations + `collectstatic` + `generate_template_thumbnails` then gunicorn;
-API and worker log in JSON, `LOG_FORMAT=text` in `.env` to read them by eye), the integrations worker, the
-frontend, and Caddy, which terminates TLS with an automatic Let's Encrypt certificate — Tiendanube
+API and worker log in JSON, `LOG_FORMAT=text` in `.env` to read them by eye), the integrations worker, the alert
+monitor (`run_monitor`), the frontend, and Caddy, which terminates TLS with an automatic Let's Encrypt certificate — Tiendanube
 refuses HTTP callbacks, so the certificate is not optional. Only Caddy publishes ports; the database is
 not exposed at all, unlike the dev compose.
 - Because Caddy serves the frontend and the API under **one domain**, nothing is cross-origin and CORS
@@ -113,6 +160,27 @@ not exposed at all, unlike the dev compose.
 - The images use fully-qualified names (`docker.io/library/...`) so Podman resolves them too. Note the
   laptop has `docker-compose` 1.29.2, which is too old for these files (and for `backend/docker-compose.yml`
   as well) — Compose v2 (`docker compose`, no hyphen) is required.
+
+### CI (Azure Pipelines, T#174-180)
+
+Two pipelines, each triggered only by changes under its folder (branches `master`/`marco` and PRs to them);
+the repo is on GitHub, so each is created in Azure DevOps as "Existing Azure Pipelines YAML file". **CI only:
+nothing is deployed** and there is no image registry, so images are published as pipeline artifacts
+(`docker save | gzip`, tagged with the commit and `latest`; `docker load` on any machine). In a PR only the
+checks run.
+- `backend/azure-pipelines.yml`: Python 3.13, `pip install -r requirements-dev.txt`, `flake8`,
+  `makemigrations --check`, `coverage run manage.py test` → `coverage.xml` published, then the API image.
+  The agent has no `.env`: only `SECRET_KEY`, `DJANGO_SETTINGS_MODULE=config.settings.dev` and `LOG_LEVEL`
+  come from the pipeline, and the whole suite was run that way (a copy without `.env`). SQLite, like local.
+- **Lint = real errors only** (`.flake8`: `E9` + pyflakes `F`, tests may keep unused imports/locals). Not
+  black/pycodestyle: the code never followed a formatter and enforcing one would rewrite ~300 files at once.
+- `frontend/azure-pipelines.yml`: `tools/check_frontend.mjs` (no dependencies: every `assets/**/*.js` and
+  every inline `<script>` must pass `node --check`, and every relative `src`/`href` in a page must exist;
+  skips `assets/apis/` and `index_test.html`), then the static files (what goes in the image, ~1.6 MB) and
+  the nginx image as artifacts.
+- The backend `.dockerignore` excluded `.venv/` but the virtualenv is `venv/`: the API image was carrying
+  ~280 MB of it plus the `db.sqlite3*` recovery copies. Fixed with the CI; pipelines and lint configs are
+  excluded from both images too.
 
 ### Docker (Postgres + API + worker)
 
@@ -157,6 +225,9 @@ and `/static` → 8000 and `/` → 8001 under one domain, so someone else's brow
   `admin/`, `render/`, `preview/`, `barcode/`, `batch/`, `fonts/`, `sequence/`)
 - `api/v1/integrations/` → `apps.integrations.urls` (admin ABM + store connections, plus
   `<platform>/install-url|callback|webhooks/` per provider and `shopify/launch/`)
+- `api/v1/monitoring/` → `apps.monitoring.urls` (`status/`, `test-mail/`, admin; see "Monitoring and alerts")
+- `api/v1/team/` → `apps.accounts.team_urls` (the merchant's team; see "Teams"); the admin's
+  `users/<id>/team/` and `teams/` live in `user_admin_urls`
 - `api/v1/printing/` → `apps.printing.urls` (`agents/`, `printers/`, `jobs/`, `agent/download/`, and the agent's own
   `agent/jobs/next|<id>/file|<id>/result/`, see "Direct printing")
 - `api/v1/carriers/` → `apps.carriers.urls` (common: ``, `accounts/<carrier>/`, `branches/<carrier>/`, `shipments/...`,
@@ -244,12 +315,20 @@ There is **no `role` field on `User`** — it's derived, never stored directly:
 - Admin-only permissions (assigned only to the `admin` group): `audit.view`, `orders.view_all`,
   `support.view_all`, `support.manage`, `labels.view_all`, `labels.manage_templates`,
   `documents.view_all` — each seeded by its own `apps/accounts/migrations/00NN_seed_*.py`.
+- **Since teams, `user_has_permission` = role ∩ team** (see "Teams"): the role is the ceiling the admin sets in
+  `roles.html`; for the keys in `permissions_map.TEAM_SCOPED_PERMISSIONS` (the merchant's work) it ALSO needs
+  the matching team access. Keys not in that map (own profile, support, everything admin) are role only.
+  `orders.create` used to gate stores, carriers, rates and dispatch at once; it was split (migration
+  `accounts/0028`) into `orders.dispatch`, `orders.export`, `stores.manage`, `carriers.manage`,
+  `printers.manage`, `account.manage`, `team.manage` — every group that had `orders.create`/`labels.batch`/
+  `users.me.edit` got the matching new ones, and `subscriber` also got `orders.create_manual`/`orders.import`/
+  `orders.import_mappings` (a team owner has everything of their business).
 
 ### Account data and global catalogs (T#351-356)
 
-**Account data (`AccountSettings`, `apps/accounts/models.py`).** Decided 2026-10-16: the "organization" is the
-account of ONE user — there are no teams (a merchant with employees sharing stores/orders is a later, larger
-change; this table is what would move to hang from an organization). One optional row per user, created on the
+**Account data (`AccountSettings`, `apps/accounts/models.py`).** Decided 2026-10-16 as the account of one user;
+since 2026-10-19 it is **the business's** data: the row hangs from the team OWNER (like every business row,
+see "Teams") — read by anyone in the team, edited with `account.manage`. One optional row, created on the
 first save: `legal_name`, `tax_id` (CUIT, validated with AFIP's check digit — `cuit_is_valid` — and stored as
 `XX-XXXXXXXX-X`), `sender_name`/`sender_address`/`sender_phone`, `logo`, and preferences `default_template`,
 `default_carrier` (an API carrier code or a `ManualCarrier` name) and `default_print_format` (label|a4|zpl).
@@ -279,6 +358,67 @@ permission, `?include_inactive=1` only for managers, delete = deactivate, audite
 - `LabelSize` (`apps/labels`, `/api/v1/labels/sizes/`, seeded with 10×15, 10×10, 10×5 and A6 in
   `labels/0012`; same 5-30 × 5-40 cm limits as a template): the editor's "Medida" select
   (`assets/js/label_editor_sizes.js`) fills width/height; typing numbers that match none shows "Otra medida".
+
+### Teams — a business with an owner and employees (`apps/accounts/teams.py`, 2026-10-19)
+
+Decided with the user (spec `docs/superpowers/specs/2026-10-19-equipos-design.md`, plan
+`docs/superpowers/plans/2026-10-19-equipos.md`): a business ("comercio") is a team — one **owner** and zero or
+more **employees**, each with their own login, all working on the same stores, orders, templates, carrier
+accounts, printers, rates and business data. **A user belongs to exactly one business** (`TeamMember.user` is
+unique); two businesses never merge.
+- **Data still hangs from the OWNER user** — none of the 24 `owner`/`user` FKs changed. Every view that reads or
+  creates business data uses **`teams.data_owner(request.user)`** instead of `request.user`; for a merchant on
+  their own it IS `request.user`, so nothing changed for them. What stays `request.user`: permission checks,
+  the audit actor, authorship fields (`created_by`, `uploaded_by`, template versions), support messages,
+  profile and session. Models keyed only by authorship stay personal (photo imports `LabelImport`/
+  `UploadedLabelFile`, System 2 `ElementLayout`/`LayoutVariable`). The OAuth `state` and the Tiendanube share
+  link carry the owner, so a store connected by an employee belongs to the business. Admin-only things (API
+  keys, outgoing webhooks, ingest) were not touched.
+- Models (`team_models.py`, imported from `models.py`): `Team` (owner, name), `TeamMember` (role owner|employee,
+  `profile` or custom `accesses`, `all_stores` + `stores`), `TeamProfile` (named access set per business;
+  every business starts with "Todo", "Depósito", "Atención"), `TeamInvitation`. **`teams.membership(user)`
+  creates a solo business on first use** (the project uses no signals); migration `accounts/0027` created one
+  for every existing user, admins included.
+- **The 12 accesses** (`teams.ACCESSES`, the merchant's words): ver pedidos, imprimir rótulos, despachar,
+  cancelar, cargar e importar, plantillas, tiendas, transportistas y tarifas, impresoras, datos del comercio,
+  equipo, exportar. Owner = all; employee = their profile's (a profile change applies to everyone on it) or
+  their custom ones. `permissions_map.TEAM_SCOPED_PERMISSIONS` maps each permission key to its access.
+  Reading lists that other screens need only requires seeing orders (stores list, `/carriers/`, shipments
+  GET); the carrier account GET needs dispatch; printers GET needs printing.
+- **Stores per employee**: "all stores" (default, also future ones) or a list. A limited employee sees only
+  orders of their stores **plus manual orders**, and only those stores (settings, rates, checkout, Empretienda
+  import, Tiendanube print link). Helpers: `allowed_store_ids`, `order_scope_q(user, prefix)`,
+  `store_scope_q(user, field)`, `orders_outside_scope`, `visible_document_ids`. A batch by ids with an order of
+  another store → 400 (`OUTSIDE_SCOPE_MESSAGE`); by filters it is silently narrowed. `Document.store_ids`
+  (filled by the batch; `null` for batches made before teams = unknown) hides a document — and its print jobs —
+  containing orders of other stores, or of unknown stores. The tracking-import preview, `/labels/render/`,
+  the label↔order link and rates writes are scoped too. **Careful:
+  `Q(...) | Q()` returns the first Q alone** — an empty scope must not be OR-ed (see the `Label` list).
+- **Joining** (`team_services.py`): the owner (or anyone with the "Equipo" access) invites by email
+  (`POST /team/invitations/`, mail with a link to `invitaciones.html`, `TEAM_INVITATION_DAYS` = 7); the person
+  must **accept** with a verified email equal to the invitation's (`/team/my-invitations/<id>/accept|decline/`;
+  the accept answers the refreshed `user` payload). Only if their own business is empty (`owned_data_count`
+  over `OWNED_DATA`, the registry of business models) and has no other members; the empty one is discarded.
+  The platform admin assigns directly, no acceptance (`POST /users/<id>/team/ {team_id, role}`, same rule).
+  **No escalation**: whoever hands out accesses can only give accesses/stores they have, never touch
+  themself or the owner, and (if not the owner) never touch a member with accesses or stores they lack. Removing an employee leaves their data in the business and gives them a new empty one.
+  **Transfer** (`POST /team/transfer/`, owner only) moves every `OWNED_DATA` row to the new owner in one
+  transaction; the old owner stays as employee with "Todo". "Deleting the business" does not exist (yet). The admin's permanent user delete
+  refuses an owner with employees (transfer first) and otherwise deletes their team with them (`Team.owner` is
+  PROTECT).
+- API `/api/v1/team/` (`team.manage`): `GET` (members, pending invitations, profiles, catalog, stores, `me`),
+  `PATCH {name}`, `members/<id>/` PATCH/DELETE, `invitations/` + `<id>/` DELETE + `<id>/resend/`, `profiles/`
+  CRUD (in use → 400), `transfer/`, `activity/` (the audit of CURRENT members, only since each one joined — someone coming from
+  another business doesn't bring that history —, limited to business categories, without IP/user agent). `user_payload` carries `team` {id, name, display_name, role, accesses, all_stores,
+  store_ids}. All changes audited in category `team`.
+- Frontend: `equipo.html` (members, invite, edit accesses/stores, transfer), `perfiles_equipo.html`,
+  `invitaciones.html` (the invited person; the dashboard shows a notice when there is one),
+  `actividad_equipo.html`, admin `comercio_usuario.html` (linked from each row of `gestionuser.html`). Shared
+  `renderAccessCheckboxes`/`readAccessCheckboxes`/`renderStoreChoice`/`readStoreChoice` in `utils.js`, styles in
+  `equipo.css`. The topbar shows the business to an employee. An invitation starts on the profile with FEWEST
+  accesses. Menu entries follow the accesses (`DashboardView`).
+- Local testing: `.claude/launch.json` → `backend-sin-mail` runs the API with mails to the console (the local
+  `.env` uses real SMTP and an invitation sends a real mail).
 
 ### Audit trail (`apps/audit`)
 
@@ -313,7 +453,7 @@ permission, `?include_inactive=1` only for managers, delete = deactivate, audite
 - `Order.save()` creates an `OrderStatusEvent`, logs `order.status_change` via `apps.audit.services.record`
   (skippable with `_skip_status_audit`, used when a view already logs its own action), dispatches an
   outbound webhook, and calls `integrations.fulfillment.notify_store_shipping_change` for store orders.
-- `GET/POST /orders/`, `GET/PATCH /orders/<id>/`, `POST /orders/<id>/ship/` (`orders.create`, forward-only
+- `GET/POST /orders/`, `GET/PATCH /orders/<id>/`, `POST /orders/<id>/ship/` (`orders.dispatch`, forward-only
   status, optional `carrier`/`tracking_number`/`tracking_url`, audited as `order.ship`), `POST
   /orders/<id>/cancel/`. `GET /admin/orders/` (`orders.view_all`) and `GET /orders/metrics/`
   (`orders.view_all`: by month/status, cancellation rate, avg time between statuses, top users, orders by
@@ -330,7 +470,7 @@ permission, `?include_inactive=1` only for managers, delete = deactivate, audite
   `order.cancel` audit with actor), and the permissions of the one-by-one action — no new permission keys.
   Max 500 orders per call.
   - `POST /orders/bulk-status/` `{order_ids, status, carrier?}`: `cancelled` needs `orders.cancel`, the
-    shipping statuses `orders.create`.
+    shipping statuses `orders.dispatch`.
   - `GET /orders/export/?file_type=csv|xlsx` + the list's own filters (`views.filter_orders`, shared with
     `GET /orders/`) or `ids=`. **`file_type`, not `format`**: DRF reserves `?format=` for the renderer and
     404s on "csv". CSV is `;` + BOM (what Spanish Excel opens on double click); third-party text starting
@@ -928,7 +1068,7 @@ Empretienda (no API: its exported sales spreadsheet is imported).
   stores/claim/`;
   **Install link to share (Tiendanube only — platforms with `uses_authorization_code` and no
   `requires_shop_domain`)**: the merchant often isn't who administers the store. `POST
-  tiendanube/install-share-link/` (`orders.create`) returns a public URL `.../tiendanube/install/<token>/`
+  tiendanube/install-share-link/` (`stores.manage`) returns a public URL `.../tiendanube/install/<token>/`
   signed with the user (`make_share_token`, `INTEGRATIONS_INSTALL_SHARE_MAX_AGE_SECONDS`, 72 h); whoever
   opens it, with no account of ours, gets a FRESH short-lived `state` for that user marked `x=1`
   (`make_oauth_state(..., shared=True)`), and the callback (`oauth_state_is_shared`) sends them to the
@@ -946,7 +1086,7 @@ Empretienda (no API: its exported sales spreadsheet is imported).
   `template_id` the batch falls back to the store's `default_template` when every order shares it, else
   to the oldest public template. The system template "Etiqueta de envío estándar" prints
   `remitente_domicilio`/`remitente_telefono` with `hide_if_empty`, so a store without them looks exactly
-  as before (migration `labels/0010`). All gated by `orders.create`.
+  as before (migration `labels/0010`). All gated by `stores.manage` (reading the store list: `orders.view`).
 - `IntegrationEvent` + `events.py` is a persistent DB queue (no Celery/Redis): webhook receivers only
   verify, `enqueue_event(...)`, and return; `run_integrations_worker` runs handlers registered with
   `@register_handler(platform, event_type)` (`handlers.py`). Exponential backoff up to
@@ -1010,7 +1150,7 @@ is why the view **never returns 5xx**: an unreadable cart or an unexpected excep
   that fits the cart wins, and if none fits that option isn't offered. **A postal code outside the table is
   not quoted** — an empty list, never an invented price. Per store and not global: each client ships from
   their own origin with their own negotiated rates.
-- **The merchant's table.** `/api/v1/integrations/shipping-rates/` (`orders.create`, full CRUD, `?store=`)
+- **The merchant's table.** `/api/v1/integrations/shipping-rates/` (`carriers.manage`, full CRUD, `?store=`)
   with `tarifas_envio.html` + `assets/js/tarifas_envio.js`, linked from `tiendas.html` and the
   `shipping_rates` menu item. Audited as `store.update`.
 - **Carrier registration is manual, on purpose.** `python manage.py register_store_carrier [<store id>]`
@@ -1043,7 +1183,7 @@ is why the view **never returns 5xx**: an unreadable cart or an unexpected excep
 - **Plan gating.** `connect_store` saves the store's `features` into `StoreConnection.preferences`, and
   `tiendanube.labels.supports_label_api()` reads `fulfillment_order_label_api` off it (`None` = unknown, for
   stores connected before this existed). Surfaced as `label_api_enabled` on the store serializer.
-- **The merchant's view.** `GET /api/v1/integrations/store-labels/` (`orders.create`, read-only, filters
+- **The merchant's view.** `GET /api/v1/integrations/store-labels/` (`orders.view`, read-only, filters
   `?store=` and `?status=`) lists the caller's own store label requests with the failure reason — never
   the stored `payload` (buyer data) nor the download token. `rotulos_tienda.html` +
   `assets/js/rotulos_tienda.js` render it, linked from `tiendas.html` and the `store_labels` menu item.
@@ -1068,7 +1208,7 @@ implements the remote calls (`quote`, `submit` → `CreatedShipment`, `label`, `
 best-effort, then `apply_shipping` → order PREPARING with `carrier`/tracking/URL), `apply_events`
 (forward-only, returns/cancellation override), `cancel_shipment`, `due_shipments`. Andreani predates it:
 `andreani/provider.py` wraps its existing `shipments.py` and keeps its own routes.
-- **Common API** (`views.py`, `orders.create`): `GET carriers/` (catalog + the user's account state per
+- **Common API** (`views.py`; `orders.dispatch`, account/checkout/push writes `carriers.manage`, reads of the list and shipments `orders.view`): `GET carriers/` (catalog + the user's account state per
   carrier: `ready`, `missing`, `quote_missing`), `GET/PUT accounts/<carrier>/` (+ `carrier_info`),
   `POST accounts/<carrier>/test/`, `GET branches/<carrier>/?cp=&state=`, `GET/POST shipments/` (POST
   takes `carrier`), `shipments/quote/`, `shipments/print/` (`printing.bundle`: our rótulo + each
@@ -1155,7 +1295,7 @@ real account. Their Warehouse service (stock, order preparation) is another API,
   (`GET /v3/envios/{n}/trazas`), branches (`GET /v2/sucursales?codigoPostal=`, no token) and cancellation
   (`POST /v2/nueva-accion`, `accion: cancelacion`).
 - **Creating a shipment** (`POST carriers/andreani/shipments/` `{order_ids, contract, branches?,
-  package_count?}`, `orders.create`, one failing order never blocks the rest) stores the shipment and,
+  package_count?}`, `orders.dispatch`, one failing order never blocks the rest) stores the shipment and,
   through `orders.shipping.apply_shipping`, sets `Order.carrier = "Andreani"`, `tracking_number` and
   `tracking_url` (`ANDREANI_TRACKING_URL_TEMPLATE`, A CONFIRMAR) and moves the order only to **preparing**:
   created is not dispatched. **The label's barcode is the Andreani number with no extra code**: the

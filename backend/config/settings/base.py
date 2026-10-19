@@ -67,6 +67,7 @@ LOCAL_APPS = [
     "apps.integrations",  # claves de API y webhooks (entrada/salida)
     "apps.carriers",    # transportistas (Andreani): envíos, etiquetas y seguimiento
     "apps.printing",    # impresión directa: impresoras, agente y cola de trabajos
+    "apps.monitoring",  # estado del sistema y alertas de disponibilidad por mail
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -650,3 +651,38 @@ LOGGING = {
 PRINT_JOB_CONFIRM_TIMEOUT_SECONDS = env.int("PRINT_JOB_CONFIRM_TIMEOUT_SECONDS", default=300)
 # Un agente cuenta como "en línea" si consultó en este lapso.
 PRINT_AGENT_ONLINE_SECONDS = env.int("PRINT_AGENT_ONLINE_SECONDS", default=60)
+
+# ---------------------------------------------------------------------------
+# Monitoreo y alertas (apps.monitoring)
+# ---------------------------------------------------------------------------
+# Cada cuánto `run_monitor` corre los chequeos (y el worker, si el monitor no late).
+MONITORING_INTERVAL_SECONDS = env.int("MONITORING_INTERVAL_SECONDS", default=60)
+# Cada cuánto escribe su latido el worker (da una vuelta cada pocos segundos).
+MONITORING_HEARTBEAT_EVERY_SECONDS = env.int("MONITORING_HEARTBEAT_EVERY_SECONDS", default=30)
+# Sin latido del worker en este lapso = detenido. Generoso porque entre dos
+# latidos puede estar dibujando un lote grande de rótulos.
+MONITORING_WORKER_STALE_SECONDS = env.int("MONITORING_WORKER_STALE_SECONDS", default=900)
+# Sin latido del monitor en este lapso, el worker hace las alertas.
+MONITORING_MONITOR_STALE_SECONDS = env.int("MONITORING_MONITOR_STALE_SECONDS", default=300)
+# Un evento pendiente que pasó su hora por más que esto = la cola no avanza.
+MONITORING_QUEUE_DELAY_SECONDS = env.int("MONITORING_QUEUE_DELAY_SECONDS", default=900)
+# Espacio libre en disco (porcentaje) para aviso y para error.
+MONITORING_DISK_WARNING_PERCENT = env.int("MONITORING_DISK_WARNING_PERCENT", default=10)
+MONITORING_DISK_ERROR_PERCENT = env.int("MONITORING_DISK_ERROR_PERCENT", default=5)
+# Gracia antes del primer mail: un reinicio no despierta a nadie.
+MONITORING_ALERT_AFTER_SECONDS = env.int("MONITORING_ALERT_AFTER_SECONDS", default=180)
+# Recordatorio mientras siga fallando.
+MONITORING_REMINDER_HOURS = env.int("MONITORING_REMINDER_HOURS", default=6)
+# Tras un envío fallido, no reintentar antes de esto.
+MONITORING_MAIL_RETRY_SECONDS = env.int("MONITORING_MAIL_RETRY_SECONDS", default=600)
+# A quién avisar. Vacío = a los admins activos con email. Con la base caída
+# solo se puede avisar a estas direcciones (la lista de admins está en la base).
+MONITORING_ALERT_EMAILS = env.list("MONITORING_ALERT_EMAILS", default=[])
+MONITORING_SUBJECT_PREFIX = env("MONITORING_SUBJECT_PREFIX", default="[Rótulos]")
+
+# ---------------------------------------------------------------------------
+# Comercios con equipo (apps/accounts/teams.py)
+# ---------------------------------------------------------------------------
+# Días que vale una invitación al comercio, y la página donde se acepta.
+TEAM_INVITATION_DAYS = env.int("TEAM_INVITATION_DAYS", default=7)
+TEAM_INVITATION_URL = env("TEAM_INVITATION_URL", default=f"{FRONTEND_URL}/invitaciones.html")

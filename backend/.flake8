@@ -1,0 +1,13 @@
+# Lint del pipeline (azure-pipelines.yml) y de uso local: `flake8`.
+#
+# Solo errores reales (pyflakes "F": nombres sin definir, imports sin usar,
+# variables que nunca se leen; "E9": errores de sintaxis), no estilo. El
+# código nunca siguió un formateador: exigir black/pycodestyle hoy
+# reformatearía ~300 archivos de una vez, y ese cambio, si se hace, va solo.
+[flake8]
+select = E9,F
+exclude = venv,.venv,migrations,__pycache__,media,staticfiles
+# En los tests se crean objetos solo por su efecto (``lockout = ...``) y se
+# importan modelos para dejar claro de qué depende el caso.
+per-file-ignores =
+    */tests/*:F401,F841

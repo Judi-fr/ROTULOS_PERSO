@@ -221,12 +221,15 @@ def _order_summary(order):
     }
 
 
-def _find_orders(user, keys, store=None):
+def _find_orders(user, keys, store=None, scope=None):
     """``{clave: [pedidos]}`` buscando por número de la tienda, después por
     id externo y por último por nuestro id (el número que muestra la app
     para un pedido cargado a mano). Cada nivel solo se usa si el anterior no
     encontró nada para esa clave."""
     queryset = Order.objects.filter(user=user).select_related("address", "store_connection")
+    if scope is not None:
+        # Las tiendas que ve quien importa (comercios con equipo).
+        queryset = queryset.filter(scope)
     if store == "manual":
         queryset = queryset.filter(store_connection__isnull=True)
     elif store:
@@ -253,7 +256,7 @@ def _find_orders(user, keys, store=None):
 _url_validator = URLValidator(schemes=["http", "https"])
 
 
-def match_tracking_rows(user, rows, mapping, default_carrier="", store=None):
+def match_tracking_rows(user, rows, mapping, default_carrier="", store=None, scope=None):
     """Cruza cada fila de la planilla con un pedido propio.
 
     Devuelve una lista con, por fila, el resultado (``state``): ``ok``,
@@ -283,7 +286,7 @@ def match_tracking_rows(user, rows, mapping, default_carrier="", store=None):
         )
 
     keys = sorted({item["order_key"] for item in parsed if item["order_key"]})
-    found = _find_orders(user, keys, store=store)
+    found = _find_orders(user, keys, store=store, scope=scope)
 
     seen_orders = set()
     results = []

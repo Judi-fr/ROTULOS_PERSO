@@ -7,6 +7,7 @@
 const API_BASE = `${window.APP_CONFIG.API_BASE}/auth`;
 const DASHBOARD_URL = `${API_BASE}/users/me/dashboard/`;
 const ORDERS_URL = `${window.APP_CONFIG.API_BASE}/orders/`;
+const MY_INVITATIONS_URL = `${window.APP_CONFIG.API_BASE}/team/my-invitations/`;
 
 // Íconos MDI por key de menú. Un key sin ícono cae en el genérico.
 const MENU_ICONS = {
@@ -21,6 +22,9 @@ const MENU_ICONS = {
   support: "mdi mdi-lifebuoy",
   audit: "mdi mdi-shield-search-outline",
   support_inbox: "mdi mdi-email-alert-outline",
+  system_status: "mdi mdi-heart-pulse",
+  team: "mdi mdi-account-group-outline",
+  team_activity: "mdi mdi-history",
   integrations: "mdi mdi-key-outline",
   orders_ingestion: "mdi mdi-file-upload-outline",
 };
@@ -38,9 +42,12 @@ const MENU_GROUPS = {
   processing: "Mis cosas",
   users: "Cuenta",
   profile: "Cuenta",
+  team: "Cuenta",
+  team_activity: "Cuenta",
   support: "Ayuda",
   audit: "Administración",
   support_inbox: "Administración",
+  system_status: "Administración",
   integrations: "Administración",
   orders_ingestion: "Administración",
 };
@@ -231,6 +238,27 @@ async function loadOrderSummary() {
   }
 }
 
+// Si alguien invitó a este usuario a su comercio, se lo dice acá: es lo
+// primero que ve al entrar (ver invitaciones.html).
+async function loadInvitationNotice() {
+  try {
+    const response = await apiFetch(MY_INVITATIONS_URL);
+    if (!response.ok) return;
+    const invitations = await response.json();
+    if (!Array.isArray(invitations) || !invitations.length) return;
+    const notice = document.getElementById("invitationNotice");
+    const names = invitations.map((item) => `«${item.team_name}»`).join(", ");
+    notice.textContent = `Te invitaron a trabajar en ${names}. `;
+    const link = document.createElement("a");
+    link.href = "invitaciones.html";
+    link.textContent = invitations.length === 1 ? "Ver la invitación" : "Ver las invitaciones";
+    notice.appendChild(link);
+    notice.hidden = false;
+  } catch (err) {
+    if (!err || !err.isSessionExpired) console.error("Error al leer las invitaciones:", err);
+  }
+}
+
 async function loadDashboard() {
   try {
     const response = await apiFetch(DASHBOARD_URL);
@@ -243,6 +271,7 @@ async function loadDashboard() {
     renderBackToAdminLink(data.user || {});
     renderMenu(data.menu || []);
     loadOrderSummary();
+    loadInvitationNotice();
   } catch (err) {
     if (!err || !err.isSessionExpired) {
       console.error("Error al cargar el dashboard:", err);

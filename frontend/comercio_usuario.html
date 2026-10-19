@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>Comercio del usuario</title>
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
+    />
+    <link rel="stylesheet" href="assets/css/gestionuser.css" />
+    <link rel="stylesheet" href="assets/css/catalogos.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- SIDEBAR: renderizado por assets/js/admin_sidebar.js -->
+      <div id="adminSidebar" data-active="users"></div>
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1>Comercio del usuario</h1>
+            <p>Mové a un usuario a otro comercio, como dueño o como empleado, sin que tenga que aceptar una invitación.</p>
+          </div>
+          <div class="topbar-actions">
+            <a class="btn btn-outline" href="gestionuser.html">Volver a usuarios</a>
+            <button class="btn btn-outline" id="logoutAdminBtn" type="button">Cerrar sesión</button>
+          </div>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <section class="roles-card catalog-card">
+          <div class="roles-card-title">Ahora</div>
+          <p class="catalog-help" id="currentTeam">Cargando...</p>
+        </section>
+
+        <section class="roles-card catalog-card">
+          <div class="roles-card-title">Moverlo a otro comercio</div>
+          <p class="catalog-help">
+            Solo se puede si su comercio actual está vacío (sin tiendas, pedidos ni
+            otros datos) y sin otros miembros: nunca se juntan dos comercios con datos.
+          </p>
+          <form id="searchForm" class="catalog-form">
+            <label class="catalog-wide">Buscar comercio (nombre o mail del dueño)
+              <input id="teamSearch" type="search" />
+            </label>
+            <div class="catalog-actions">
+              <button type="submit" class="btn btn-outline">Buscar</button>
+            </div>
+          </form>
+          <form id="assignForm" class="catalog-form">
+            <label class="catalog-wide">Comercio
+              <select id="teamSelect" required><option value="">Buscá un comercio</option></select>
+            </label>
+            <label>Como
+              <select id="roleSelect">
+                <option value="employee">Empleado (perfil «Todo»)</option>
+                <option value="owner">Dueño</option>
+              </select>
+            </label>
+            <div class="catalog-actions">
+              <button type="submit" class="btn btn-primary">Mover</button>
+            </div>
+          </form>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/admin_common.js"></script>
+    <script src="assets/js/admin_sidebar.js"></script>
+    <script src="assets/js/comercio_usuario.js"></script>
+  </body>
+</html>

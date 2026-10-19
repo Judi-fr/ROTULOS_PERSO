@@ -2,6 +2,8 @@
 
 from rest_framework import serializers
 
+from apps.accounts.teams import data_owner
+
 from .models import Address, ImportMapping, Order, OrderImport, OrderStatusEvent
 
 
@@ -110,7 +112,7 @@ class OrderSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if request is not None and request.user and request.user.is_authenticated:
             # Un usuario solo puede asignar a un pedido una dirección PROPIA.
-            self.fields["address_id"].queryset = Address.objects.filter(user=request.user)
+            self.fields["address_id"].queryset = Address.objects.filter(user=data_owner(request.user))
 
 
 class OrderShipSerializer(serializers.Serializer):
