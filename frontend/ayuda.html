@@ -6,6 +6,8 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge" />
 
     <title>Ayuda / Soporte</title>
+    <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
+    <link rel="stylesheet" href="assets/css/ui.css" />
 
     <link
       href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
@@ -15,19 +17,97 @@
     <!-- Reusa el mismo estilo de tarjeta que perfil.html (.profile-card). -->
     <link rel="stylesheet" href="assets/css/base.css" />
     <link rel="stylesheet" href="assets/css/perfil.css" />
+    <link rel="stylesheet" href="assets/css/ayuda.css" />
   </head>
   <body>
     <div class="layout">
       <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
-      <header class="topbar" id="appTopbar" data-links='[{"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+      <header class="topbar" id="appTopbar" data-links='[{"href": "notificaciones.html", "label": "Avisos"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
 
       <main class="main">
         <div class="main-heading">
           <h1>Ayuda / Soporte</h1>
-          <p>¿Tenés un problema o una consulta? Escribinos y te respondemos a la brevedad.</p>
+          <p>Mirá si tu duda está en las preguntas frecuentes; si no, escribinos y te respondemos a la brevedad.</p>
         </div>
 
-        <section class="profile-card">
+        <!-- Preguntas frecuentes: <details> nativo, sin JS. Los nombres de
+             botones y secciones son los que se ven en la app; si cambian,
+             cambiarlos acá también. -->
+        <section class="profile-card faq" id="preguntas" aria-labelledby="faqTitle">
+          <div class="profile-card-title" id="faqTitle">Preguntas frecuentes</div>
+          <div class="faq-list">
+            <details>
+              <summary>¿Cómo conecto mi tienda?</summary>
+              <p>
+                En el panel, <strong>Tiendas y envíos → Abrir → Conectar una tienda</strong>. Tiendanube y
+                Shopify se conectan con un clic; WooCommerce, con un clic o pegando sus claves; VTEX y Magento,
+                con las claves que generás en su administrador. Desde ahí los pedidos entran solos.
+                Empretienda no tiene conexión automática: sus ventas se cargan con la planilla que exporta.
+              </p>
+            </details>
+            <details>
+              <summary>No me aparece un pedido, ¿qué hago?</summary>
+              <p>
+                Si la tienda está conectada, el pedido entra solo en unos minutos. Si no aparece, fijate si hay
+                un aviso de la tienda arriba del panel (por ejemplo, la conexión venció). También podés cargarlo
+                a mano en <strong>Pedidos → Nuevo pedido</strong> o subir una planilla con
+                <strong>Importar planilla</strong>.
+              </p>
+            </details>
+            <details>
+              <summary>¿Cómo imprimo los rótulos de varios pedidos?</summary>
+              <p>
+                En <strong>Imprimir</strong> elegís los pedidos, la plantilla y el formato: PDF para una
+                impresora común (uno por hoja o varios en una A4) o térmica Zebra. El archivo queda en
+                <strong>Documentos</strong>. Si conectaste una impresora en <strong>Impresoras</strong>, sale
+                directo, sin descargar nada.
+              </p>
+            </details>
+            <details>
+              <summary>¿Cómo despacho con Andreani, Correo Argentino u OCA?</summary>
+              <p>
+                Cargá tu cuenta del transportista desde la franja de transportistas de <strong>Mis
+                pedidos</strong>. Después elegís los pedidos, tocás <strong>Despachar</strong>, ves el precio y
+                se crean los envíos. El número de seguimiento sale en el rótulo y se le informa solo a tu
+                tienda. Con otro transportista, cargás el seguimiento a mano.
+              </p>
+            </details>
+            <details>
+              <summary>¿Puedo cambiar cómo sale el rótulo?</summary>
+              <p>
+                Sí, en <strong>Diseño de rótulos</strong>: elegís una plantilla o creás la tuya, movés los
+                datos, agregás el logo y con <strong>Ver cómo sale impreso</strong> ves el PDF real antes de
+                guardar. Cada tienda puede tener su propia plantilla, remitente y logo.
+              </p>
+            </details>
+            <details>
+              <summary>¿Cómo sumo a alguien de mi equipo?</summary>
+              <p>
+                En <strong>Mi cuenta → Equipo</strong> lo invitás con su mail y elegís qué puede hacer y qué
+                tiendas ve. Le llega un mail y tiene que aceptar con su propia cuenta; hasta entonces no ve nada
+                de tu comercio.
+              </p>
+            </details>
+            <details>
+              <summary>¿Qué son los avisos de arriba del panel?</summary>
+              <p>
+                Cosas de tu comercio que se rompieron y no se arreglan solas: una tienda desconectada, una
+                cuenta de transportista rechazada, un lote o una impresión que fallaron. Al dueño también le
+                llega un mail. Cuando se resuelve el problema, el aviso desaparece solo.
+              </p>
+            </details>
+            <details>
+              <summary>Me olvidé la contraseña</summary>
+              <p>
+                En la pantalla de ingreso tocá <strong>Olvidaste tu clave?</strong> y te mandamos un mail para
+                elegir una nueva. Si ya estás adentro, la cambiás en <strong>Mi cuenta → Cambiar
+                contraseña</strong>.
+              </p>
+            </details>
+          </div>
+        </section>
+
+        <section class="profile-card" id="nuevo-mensaje">
           <div class="profile-card-title">Nuevo mensaje</div>
           <div class="profile-card-body">
             <div class="field">
@@ -47,11 +127,11 @@
           </div>
         </section>
 
-        <section class="profile-card">
+        <section class="profile-card" id="mis-mensajes">
           <div class="profile-card-title">Mis mensajes</div>
           <div class="profile-card-body">
             <div id="myMessagesList">
-              <p class="loading-text">Cargando...</p>
+              <p class="loading-text"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
             </div>
           </div>
         </section>

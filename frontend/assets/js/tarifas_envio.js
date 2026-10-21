@@ -133,8 +133,11 @@ async function loadRates() {
     if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
     const rates = extractResults(await response.json());
     if (!rates.length) {
-      listEl.innerHTML =
-        '<p class="empty-state">Esta tienda todavía no tiene tarifas. Mientras no cargues ninguna, no vamos a cotizar envíos en su checkout.</p>';
+      listEl.innerHTML = appEmptyState({
+        icon: "list",
+        title: "Esta tienda todavía no tiene tarifas",
+        text: "Mientras no cargues ninguna, no vamos a cotizar envíos en su checkout.",
+      });
       return;
     }
     listEl.innerHTML = "";
@@ -229,7 +232,7 @@ form.addEventListener("submit", async (event) => {
 cancelBtn.addEventListener("click", resetForm);
 
 async function removeRate(rate) {
-  const confirmed = window.confirm(
+  const confirmed = await appConfirm(
     `¿Eliminar la tarifa "${rate.option_name}" de ${zoneLabel(rate)}?\n\n` +
       "Si es la única que cubre esa zona, dejamos de cotizar envíos ahí."
   );

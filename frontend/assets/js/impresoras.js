@@ -29,7 +29,7 @@ async function readJson(response, fallback) {
 function renderAgents() {
   const body = document.getElementById("agentsBody");
   if (!agents.length) {
-    body.innerHTML = '<tr><td colspan="4" class="empty-state">Todavía no creaste ningún agente.</td></tr>';
+    body.innerHTML = `<tr><td colspan="4">${appEmptyState({ icon: "printer", title: "Todavía no creaste ningún agente", text: "El agente es un programa chico que corre en una PC de tu local y le manda los rótulos a la impresora." })}</td></tr>`;
   } else {
     body.innerHTML = "";
     agents.forEach((agent) => {
@@ -106,7 +106,7 @@ async function createAgent(event) {
 }
 
 async function revokeAgent(agent) {
-  const ok = window.confirm(
+  const ok = await appConfirm(
     `¿Revocar «${agent.name}»? Ese agente deja de poder imprimir y sus impresoras quedan sin agente hasta que elijas otro.`
   );
   if (!ok) return;
@@ -151,7 +151,7 @@ function describeFormat(printer) {
 function renderPrinters() {
   const body = document.getElementById("printersBody");
   if (!printers.length) {
-    body.innerHTML = '<tr><td colspan="5" class="empty-state">Todavía no agregaste impresoras.</td></tr>';
+    body.innerHTML = `<tr><td colspan="5">${appEmptyState({ icon: "printer", title: "Todavía no agregaste impresoras" })}</td></tr>`;
     return;
   }
   body.innerHTML = "";
@@ -256,7 +256,7 @@ async function savePrinter(event) {
 }
 
 async function removePrinter(printer) {
-  const ok = window.confirm(`¿Quitar «${printer.name}»? Lo que tenga en cola se cancela.`);
+  const ok = await appConfirm(`¿Quitar «${printer.name}»? Lo que tenga en cola se cancela.`);
   if (!ok) return;
   try {
     const response = await apiFetch(`${PRINTERS_URL}${printer.id}/`, { method: "DELETE" });

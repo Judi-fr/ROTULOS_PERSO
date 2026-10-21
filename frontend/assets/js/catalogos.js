@@ -137,7 +137,7 @@ async function save(catalog, event) {
 }
 
 async function deactivate(catalog, item) {
-  if (!window.confirm(`¿Desactivar «${item.name}»? Deja de ofrecerse; lo que ya lo usa no cambia.`)) return;
+  if (!await appConfirm(`¿Desactivar «${item.name}»? Deja de ofrecerse; lo que ya lo usa no cambia.`)) return;
   try {
     await send(`${catalog.url}${item.id}/`, "DELETE", null, "No se pudo desactivar.");
     await load(catalog);

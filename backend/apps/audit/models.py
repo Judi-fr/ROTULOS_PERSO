@@ -81,6 +81,7 @@ class AuditLog(models.Model):
         TEAM_INVITE = "team.invite", "Invitación al comercio enviada"
         TEAM_INVITE_CANCEL = "team.invite_cancel", "Invitación al comercio cancelada"
         TEAM_JOIN = "team.join", "Se sumó al comercio"
+        TEAM_LEAVE = "team.leave", "Dejó el comercio (se pasó a otro)"
         TEAM_DECLINE = "team.decline", "Invitación al comercio rechazada"
         TEAM_MEMBER_UPDATE = "team.member_update", "Accesos de un miembro cambiados"
         TEAM_MEMBER_REMOVE = "team.member_remove", "Miembro quitado del comercio"
@@ -164,6 +165,7 @@ class AuditLog(models.Model):
         Action.TEAM_INVITE: Category.TEAM,
         Action.TEAM_INVITE_CANCEL: Category.TEAM,
         Action.TEAM_JOIN: Category.TEAM,
+        Action.TEAM_LEAVE: Category.TEAM,
         Action.TEAM_DECLINE: Category.TEAM,
         Action.TEAM_MEMBER_UPDATE: Category.TEAM,
         Action.TEAM_MEMBER_REMOVE: Category.TEAM,

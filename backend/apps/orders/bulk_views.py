@@ -27,7 +27,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.permissions_map import user_has_permission
 from apps.accounts.role_permissions import HasRolePermission
-from apps.accounts.teams import data_owner, order_scope_q
+from apps.accounts.teams import OUTSIDE_SCOPE_MESSAGE, data_owner, order_scope_q, orders_outside_scope
 
 from .bulk import (
     MAX_BULK_ORDERS,
@@ -239,6 +239,7 @@ class DispatchManifestView(APIView):
 
     Devuelve el PDF de la planilla de retiro. Un id ajeno o inexistente se
     ignora (no se puede listar un pedido de otro); si no queda ninguno, 400.
+    Un pedido del comercio de una tienda que la persona no tiene: 400.
     No cambia el estado de nada: despachar es otra acción."""
 
     def get_permissions(self):
@@ -248,6 +249,12 @@ class DispatchManifestView(APIView):
         serializer = ManifestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        # Un empleado limitado a algunas tiendas: un pedido de otra tienda del
+        # comercio no se omite en silencio (la planilla saldría incompleta y
+        # el transportista firmaría de menos): se avisa.
+        business_orders = Order.objects.filter(user=data_owner(request.user), pk__in=data["order_ids"])
+        if orders_outside_scope(request.user, business_orders):
+            raise ValidationError({"order_ids": OUTSIDE_SCOPE_MESSAGE})
         orders = sorted(
             _own_orders(request.user, data["order_ids"]).values(),
             key=lambda order: (order.created_at, order.pk),

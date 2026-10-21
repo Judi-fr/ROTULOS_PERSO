@@ -389,7 +389,7 @@ async function deleteRole(roleId) {
     return;
   }
 
-  const confirmed = window.confirm(
+  const confirmed = await appConfirm(
     `¿Eliminar el rol "${role.label}"?\n\nLos usuarios que pertenecían a este rol pasarán a "Suscriptor". Esta acción no se puede deshacer.`
   );
   if (!confirmed) return;

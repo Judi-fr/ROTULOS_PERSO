@@ -9,7 +9,10 @@ Diseño: ``docs/superpowers/specs/2026-10-19-equipos-design.md``.
 
 from __future__ import annotations
 
-from django.db import transaction
+import contextvars
+from contextlib import contextmanager
+
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 
 from .team_models import Team, TeamMember, TeamProfile
@@ -50,6 +53,40 @@ def create_team(owner) -> Team:
     return team
 
 
+# Una request pregunta muchas veces por la membresía (cada permiso, cada
+# data_owner): dentro de una request se lee una sola vez por usuario.
+# ``TeamCacheMiddleware`` abre la caché; fuera de una request (worker,
+# shell, tests que llaman directo) no hay caché y cada llamada lee la base.
+_request_members = contextvars.ContextVar("team_request_members", default=None)
+
+
+@contextmanager
+def request_cache():
+    token = _request_members.set({})
+    try:
+        yield
+    finally:
+        _request_members.reset(token)
+
+
+def forget(user):
+    """Olvida la membresía cacheada de ``user`` (después de cambiarla)."""
+    cache = _request_members.get()
+    if cache is not None:
+        cache.pop(user.pk, None)
+
+
+class TeamCacheMiddleware:
+    """Una caché de membresías por request (ver ``request_cache``)."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        with request_cache():
+            return self.get_response(request)
+
+
 def membership(user) -> TeamMember:
     """La membresía del usuario; si no tiene, le crea su comercio propio.
 
@@ -57,11 +94,27 @@ def membership(user) -> TeamMember:
     el proyecto no usa señales, así que el comercio se crea la primera vez
     que se pregunta por él.
     """
+    cache = _request_members.get()
+    if cache is not None and user.pk in cache:
+        return cache[user.pk]
+    member = _load_membership(user)
+    if cache is not None:
+        cache[user.pk] = member
+    return member
+
+
+def _load_membership(user) -> TeamMember:
+    members = TeamMember.objects.select_related("team__owner", "profile")
     try:
-        return TeamMember.objects.select_related("team__owner", "profile").get(user=user)
+        return members.get(user=user)
     except TeamMember.DoesNotExist:
-        create_team(user)
-        return TeamMember.objects.select_related("team__owner", "profile").get(user=user)
+        try:
+            create_team(user)
+        except IntegrityError:
+            # Dos primeras requests a la vez: la otra lo creó entre el "no
+            # existe" y el "crear". Su comercio es el que vale.
+            pass
+        return members.get(user=user)
 
 
 def team_for(user) -> Team:

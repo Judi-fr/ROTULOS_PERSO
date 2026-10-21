@@ -6,6 +6,8 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge" />
 
     <title>Roles y permisos</title>
+    <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
+    <link rel="stylesheet" href="assets/css/ui.css" />
 
     <link
       href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
@@ -13,7 +15,7 @@
     />
     <link
       rel="stylesheet"
-      href="https://cdn.materialdesignicons.com/4.8.95/css/materialdesignicons.min.css"
+      href="https://cdn.jsdelivr.net/npm/@mdi/font@4.9.95/css/materialdesignicons.min.css"
     />
     <link
       rel="stylesheet"
@@ -57,14 +59,14 @@
           <div class="roles-card">
             <div class="roles-card-title">Roles del sistema</div>
             <div id="rolesList" class="roles-list" aria-label="Seleccionar rol">
-              <p class="roles-loading">Cargando roles...</p>
+              <p class="roles-loading"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
             </div>
           </div>
 
           <div class="roles-card roles-permissions-card">
             <div class="roles-card-title">Permisos asignados</div>
             <div id="rolePermissionsContent" class="roles-card-body">
-              <p class="roles-loading">Cargando permisos...</p>
+              <p class="roles-loading"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
             </div>
             <div class="roles-card-actions">
               <button type="button" class="btn btn-primary" id="saveRolePermissions" disabled>

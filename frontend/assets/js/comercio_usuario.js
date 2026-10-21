@@ -51,7 +51,7 @@ async function assign(event) {
     return;
   }
   const label = document.getElementById("teamSelect").selectedOptions[0].textContent;
-  if (!window.confirm(`¿Mover al usuario a ${label} como ${role === "owner" ? "dueño" : "empleado"}?`)) return;
+  if (!await appConfirm(`¿Mover al usuario a ${label} como ${role === "owner" ? "dueño" : "empleado"}?`)) return;
   try {
     const response = await apiFetch(`${API_BASE}/users/${userId}/team/`, {
       method: "POST",

@@ -6,6 +6,8 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge" />
 
     <title>Tiendas conectadas</title>
+    <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
+    <link rel="stylesheet" href="assets/css/ui.css" />
 
     <link
       href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
@@ -17,7 +19,7 @@
   <body>
     <div class="layout">
       <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
-      <header class="topbar" id="appTopbar" data-links='[{"href": "rotulos_tienda.html", "label": "Rótulos de la tienda"}, {"href": "tarifas_envio.html", "label": "Tarifas de envío"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+      <header class="topbar" id="appTopbar" data-links='[{"href": "tarifas_envio.html", "label": "Tarifas", "perm": "carriers.manage"}, {"href": "checkout_transportistas.html", "label": "Checkout", "perm": "carriers.manage"}, {"href": "rotulos_tienda.html", "label": "Rótulos de la tienda", "perm": "orders.view"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
 
       <main class="main">
         <div class="main-heading main-heading-row">
@@ -286,7 +288,7 @@
             </button>
           </div>
           <div class="card-body" id="storesList">
-            <p class="muted-text">Cargando tiendas…</p>
+            <p class="muted-text"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
           </div>
         </section>
       </main>

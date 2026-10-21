@@ -9,6 +9,7 @@ tocarse a sí mismo ni al dueño; y nunca se borran datos de nadie.
 
 from __future__ import annotations
 
+import logging
 import secrets
 from datetime import timedelta
 
@@ -20,7 +21,9 @@ from django.utils import timezone
 
 from .models import user_email_verified
 from .team_models import TeamInvitation, TeamMember, TeamProfile
-from .teams import ACCESSES, allowed_store_ids, create_team, member_accesses, membership
+from .teams import ACCESSES, allowed_store_ids, create_team, forget, member_accesses, membership
+
+logger = logging.getLogger(__name__)
 
 # Los datos del comercio: (modelo, campo que apunta al dueño, cómo se
 # nombran en un mensaje). Lo usan "comercio vacío" y pasar la titularidad.
@@ -51,6 +54,10 @@ class TeamError(Exception):
 
 class TeamForbidden(TeamError):
     """No tiene permiso para hacerlo (403)."""
+
+
+class TeamMailError(TeamError):
+    """El mail de la invitación no salió (502): no queda nada a medias."""
 
 
 def owned_data_count(user) -> dict[str, int]:
@@ -98,6 +105,7 @@ def _join(user, team, *, role, profile=None, accesses=(), all_stores=True, store
         )
         if not all_stores:
             member.stores.set(store_ids)
+    forget(user)
     return member
 
 
@@ -133,6 +141,15 @@ def _check_grant(by_user, team, *, profile, accesses, all_stores, store_ids):
 
 
 def _send_invitation(invitation):
+    """Manda el mail; si falla, ``TeamMailError`` (el llamador deshace)."""
+    try:
+        _mail_invitation(invitation)
+    except Exception as exc:  # noqa: BLE001 - cualquier error del SMTP
+        logger.exception("No se pudo mandar la invitación a %s", invitation.email)
+        raise TeamMailError(f"No se pudo mandar el mail de la invitación: {exc}") from exc
+
+
+def _mail_invitation(invitation):
     team_name = str(invitation.team)
     who = invitation.invited_by.email if invitation.invited_by else "El dueño"
     send_mail(
@@ -160,6 +177,9 @@ def invite(team, by_user, email, *, profile=None, accesses=(), all_stores=True, 
         raise TeamError("Esa persona ya es parte del comercio.")
     if team.invitations.filter(email__iexact=email, status=TeamInvitation.Status.PENDING, expires_at__gt=timezone.now()).exists():
         raise TeamError("Ya hay una invitación pendiente para ese mail: podés reenviarla.")
+    # El mail va DENTRO de la transacción: si no sale, la invitación no
+    # queda creada (si quedara, el siguiente intento diría "ya hay una
+    # invitación pendiente" para una que nunca llegó).
     with transaction.atomic():
         invitation = TeamInvitation.objects.create(
             team=team,
@@ -173,7 +193,7 @@ def invite(team, by_user, email, *, profile=None, accesses=(), all_stores=True, 
         )
         if not all_stores:
             invitation.stores.set(store_ids)
-    _send_invitation(invitation)
+        _send_invitation(invitation)
     return invitation
 
 
@@ -212,9 +232,10 @@ def cancel(invitation):
 
 
 def resend(invitation):
-    invitation.expires_at = timezone.now() + timedelta(days=settings.TEAM_INVITATION_DAYS)
-    invitation.save(update_fields=["expires_at"])
-    _send_invitation(invitation)
+    with transaction.atomic():
+        invitation.expires_at = timezone.now() + timedelta(days=settings.TEAM_INVITATION_DAYS)
+        invitation.save(update_fields=["expires_at"])
+        _send_invitation(invitation)
 
 
 # --- Miembros -----------------------------------------------------------------
@@ -247,6 +268,7 @@ def update_member(member, by_user, *, profile, accesses, all_stores, store_ids):
         member.all_stores = all_stores
         member.save(update_fields=["profile", "accesses", "all_stores"])
         member.stores.set([] if all_stores else store_ids)
+    forget(member.user)
     return member
 
 
@@ -258,6 +280,7 @@ def remove_member(member, by_user):
     with transaction.atomic():
         member.delete()
         create_team(user)
+    forget(user)
 
 
 def transfer_ownership(team, by_user, new_owner_member):
@@ -283,6 +306,8 @@ def transfer_ownership(team, by_user, new_owner_member):
         new_owner_member.all_stores = True
         new_owner_member.save(update_fields=["role", "profile", "accesses", "all_stores"])
         new_owner_member.stores.clear()
+    forget(old_owner)
+    forget(new_owner)
     return team
 
 

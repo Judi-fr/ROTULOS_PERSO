@@ -325,3 +325,14 @@ table.data-table tbody tr:last-child td {
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 640px) {
+  .tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .tab-btn {
+    flex: 0 0 auto;
+  }
+}

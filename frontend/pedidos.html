@@ -6,6 +6,8 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge" />
 
     <title>Mis Pedidos</title>
+    <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
+    <link rel="stylesheet" href="assets/css/ui.css" />
 
     <link
       href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
@@ -20,7 +22,7 @@
   <body>
     <div class="layout">
       <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
-      <header class="topbar" id="appTopbar" data-links='[{"href": "imprimir_rotulos.html", "label": "Imprimir rótulos"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+      <header class="topbar" id="appTopbar" data-links='[{"href": "importar.html", "label": "Importar planilla", "perm": "orders.import"}, {"href": "exportar_pedidos.html", "label": "Exportar", "perm": "orders.export"}, {"href": "estado_pedidos.html", "label": "Cambiar estado", "perm": "orders.dispatch"}, {"href": "imprimir_rotulos.html", "label": "Imprimir rótulos", "perm": "labels.batch"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
 
       <main class="main">
         <div class="main-heading">
@@ -59,7 +61,7 @@
               </div>
             </div>
             <div id="orderList" class="order-list">
-              <p class="empty-state">Cargando pedidos...</p>
+              <p class="empty-state"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
             </div>
             <div class="orders-pager" id="ordersPager" style="display:none;">
               <button type="button" class="btn btn-outline btn-small" id="ordersPrevBtn">Anterior</button>
@@ -78,7 +80,7 @@
           </div>
           <div class="profile-card-body">
             <div id="addressList" class="address-list">
-              <p class="empty-state">Cargando direcciones...</p>
+              <p class="empty-state"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
             </div>
 
             <form id="addressForm" style="display:none;">

@@ -13,6 +13,7 @@ from __future__ import annotations
 import csv
 import io
 
+from django.conf import settings
 from openpyxl import load_workbook
 
 
@@ -45,11 +46,28 @@ def _sniff_delimiter(sample):
         return ";" if sample.count(";") >= sample.count(",") else ","
 
 
+def _max_rows():
+    """Tope duro del lector, por encima del máximo de cada pantalla (1000 en
+    la importación, 5000 en Empretienda): un .xlsx comprime muchísimo y 5 MB
+    pueden ser millones de filas. Se corta mientras se lee, antes de tener
+    todo en memoria."""
+    return getattr(settings, "IMPORT_PARSE_MAX_ROWS", 20000)
+
+
+def _too_many_rows():
+    return ImportFileError(f"La planilla tiene más de {_max_rows()} filas: dividila en partes más chicas.")
+
+
 def parse_csv(raw_bytes):
     text = _decode_csv_bytes(raw_bytes)
     delimiter = _sniff_delimiter(text[:4096])
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
-    rows = [row for row in reader if any((cell or "").strip() for cell in row)]
+    rows = []
+    for row in reader:
+        if any((cell or "").strip() for cell in row):
+            rows.append(row)
+            if len(rows) > _max_rows() + 1:  # + el encabezado
+                raise _too_many_rows()
     if not rows:
         raise ImportFileError("El archivo está vacío.")
 
@@ -81,6 +99,8 @@ def parse_xlsx(file_obj):
         for raw_row in rows_iter:
             if raw_row is None or all(cell is None for cell in raw_row):
                 continue
+            if len(data_rows) >= _max_rows():
+                raise _too_many_rows()
             data_rows.append(
                 {
                     headers[i]: (

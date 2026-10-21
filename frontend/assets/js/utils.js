@@ -171,7 +171,7 @@ function createOrderPicker(root, options = {}) {
           <label for="pickerSelectAll">Seleccionar todos los de esta página</label>
         </div>
         <div data-role="list" class="print-order-list">
-          <p class="empty-state">Cargando pedidos...</p>
+          <p class="empty-state"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
         </div>
         <div class="pager" data-role="pager" style="display:none;">
           <button type="button" class="btn btn-outline btn-small" data-role="prev">Anterior</button>
@@ -483,3 +483,253 @@ function readStoreChoice(container) {
     : [...container.querySelectorAll(".store-pick input:checked")].map((box) => Number(box.value));
   return { all_stores: all, store_ids: storeIds };
 }
+
+// ---------------------------------------------------------------------------
+// Diálogos propios en vez de alert()/confirm()/prompt() del navegador: la
+// ventana gris del navegador no se parece a la app, en algunos navegadores
+// trae "Esta página dice…" con la dirección y se puede silenciar para
+// siempre. Devuelven promesas, así que se usan con await:
+//   if (!(await appConfirm("¿Eliminar «X»?"))) return;
+// Sin `confirmLabel`, el botón toma el verbo de la pregunta ("¿Eliminar…"
+// → "Eliminar") y es rojo si es uno de los que borran o cortan algo. El
+// botón para no hacer nada dice "Volver" y no "Cancelar": varias preguntas
+// son "¿Cancelar el pedido?" y quedarían dos botones "Cancelar".
+// Los estilos están en assets/css/ui.css, que cargan todas las páginas.
+// ---------------------------------------------------------------------------
+const APP_DIALOG_DANGER_VERBS = [
+  "eliminar", "borrar", "quitar", "cancelar", "desactivar", "archivar",
+  "revocar", "desconectar", "dejar", "mover", "transferir",
+];
+
+// Arma y abre el diálogo; resuelve con el valor del botón tocado (o con
+// `cancelValue` si se cierra con Esc).
+function openAppDialog({ title, text, tone, buttons, input, cancelValue }) {
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = `app-dialog${tone ? ` app-dialog-${tone}` : ""}`;
+    const body = document.createElement("div");
+    body.className = "app-dialog-body";
+    if (title) {
+      const h = document.createElement("h2");
+      h.className = "app-dialog-title";
+      h.textContent = title;
+      body.appendChild(h);
+    }
+    if (text) {
+      const p = document.createElement("p");
+      p.className = "app-dialog-text";
+      p.textContent = text;
+      body.appendChild(p);
+    }
+    let field = null;
+    if (input) {
+      field = document.createElement("input");
+      field.type = "text";
+      field.className = "app-dialog-input";
+      field.value = input.value || "";
+      field.setAttribute("aria-label", title || text || "Valor");
+      body.appendChild(field);
+    }
+    const actions = document.createElement("div");
+    actions.className = "app-dialog-actions";
+    let primary = null;
+    let done = false;
+    const finish = (value) => {
+      if (done) return;
+      done = true;
+      dialog.close();
+      dialog.remove();
+      resolve(value);
+    };
+    buttons.forEach((b) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `app-dialog-btn app-dialog-btn-${b.kind}`;
+      btn.textContent = b.label;
+      btn.addEventListener("click", () => finish(b.value === "input" ? field.value : b.value));
+      actions.appendChild(btn);
+      if (b.kind !== "secondary") primary = btn;
+    });
+    dialog.append(body, actions);
+    dialog.addEventListener("cancel", (e) => {
+      e.preventDefault();
+      finish(cancelValue);
+    });
+    if (field) {
+      field.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          finish(field.value);
+        }
+      });
+    }
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    if (field) {
+      field.focus();
+      field.select();
+    } else if (primary) {
+      primary.focus();
+    }
+  });
+}
+
+// Separa "¿Pregunta?\n\nDetalle" en título y texto, para que la pregunta
+// se lea como título y el detalle debajo.
+function splitDialogMessage(message) {
+  const text = String(message ?? "");
+  const cut = text.indexOf("\n\n");
+  if (cut > 0) return { title: text.slice(0, cut), text: text.slice(cut + 2) };
+  const q = text.indexOf("?");
+  if (text.startsWith("¿") && q > 0 && q < text.length - 1) {
+    return { title: text.slice(0, q + 1), text: text.slice(q + 1).trim() };
+  }
+  return { title: text, text: "" };
+}
+
+function appConfirm(message, options = {}) {
+  const { title, text } = splitDialogMessage(message);
+  const verb = (String(message).match(/^¿\s*([A-Za-zÁÉÍÓÚáéíóúñÑ]+)/) || [])[1] || "";
+  const danger = options.danger ?? APP_DIALOG_DANGER_VERBS.includes(verb.toLowerCase());
+  const label = options.confirmLabel || (verb ? verb[0].toUpperCase() + verb.slice(1).toLowerCase() : "Aceptar");
+  return openAppDialog({
+    title,
+    text,
+    cancelValue: false,
+    buttons: [
+      { label: options.cancelLabel || "Volver", kind: "secondary", value: false },
+      { label, kind: danger ? "danger" : "primary", value: true },
+    ],
+  });
+}
+
+// Aviso con un solo botón. `tone`: "error" (por defecto) | "success" | "info".
+function appAlert(message, options = {}) {
+  const tone = options.tone || "error";
+  const { title, text } = splitDialogMessage(message);
+  return openAppDialog({
+    title: options.title || title,
+    text: options.title ? String(message) : text,
+    tone,
+    cancelValue: undefined,
+    buttons: [{ label: "Entendido", kind: "primary", value: undefined }],
+  });
+}
+
+// Pide un texto; resuelve con el texto o con null si se vuelve atrás (igual
+// que window.prompt).
+function appPrompt(message, defaultValue = "", options = {}) {
+  return openAppDialog({
+    title: message,
+    text: options.text || "",
+    input: { value: defaultValue },
+    cancelValue: null,
+    buttons: [
+      { label: "Volver", kind: "secondary", value: null },
+      { label: options.confirmLabel || "Aceptar", kind: "primary", value: "input" },
+    ],
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Estados de carga y de lista vacía (estilos en assets/css/ui.css).
+// appSkeleton(): barras grises animadas mientras llega la respuesta, en vez
+// de un "Cargando..." suelto. appEmptyState(): qué significa que no haya nada
+// y, cuando corresponde, el botón para empezar.
+// ---------------------------------------------------------------------------
+function appSkeleton() {
+  return '<span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span>';
+}
+
+// Íconos de línea propios (no todas las páginas cargan la fuente de íconos).
+const APP_EMPTY_ICONS = {
+  box: '<path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/>',
+  store: '<path d="M4 9.5V20h16V9.5"/><path d="M3 9.5 5 4h14l2 5.5a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0z"/><path d="M10 20v-5h4v5"/>',
+  printer: '<path d="M7 8V3h10v5"/><rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 14h10v7H7z"/>',
+  doc: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>',
+  check: '<circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.7 2.7L16 10"/>',
+  list: '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>',
+};
+
+function appEmptyState({ icon = "list", title, text = "", actionLabel = "", actionHref = "" } = {}) {
+  const action = actionLabel && actionHref
+    ? `<a class="app-empty-action" href="${escapeHtml(actionHref)}">${escapeHtml(actionLabel)}</a>`
+    : "";
+  const svg = APP_EMPTY_ICONS[icon] || APP_EMPTY_ICONS.list;
+  return `<div class="app-empty">
+    <span class="app-empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none"
+      stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${svg}</svg></span>
+    <p class="app-empty-title">${escapeHtml(title)}</p>
+    ${text ? `<p class="app-empty-text">${escapeHtml(text)}</p>` : ""}
+    ${action}
+  </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Botón ocupado mientras se envía un formulario. Muchos formularios no
+// bloqueaban su botón: un doble clic creaba dos veces lo mismo y nada decía
+// que se estaba guardando. Esto lo hace para TODOS los formularios que no lo
+// hacen ya por su cuenta:
+// - corre en la fase de burbuja del documento, o sea DESPUÉS del manejador
+//   propio del formulario; si ese manejador ya desactivó el botón (los que
+//   ponen su propio "Conectando…"), no se toca nada;
+// - si el formulario se maneja por JS (preventDefault), el botón queda
+//   desactivado con un texto según la acción hasta que terminan los pedidos
+//   al servidor que arrancaron con él (se cuentan los fetch en curso), o
+//   enseguida si no arrancó ninguno (p. ej. falló una validación).
+// ---------------------------------------------------------------------------
+(function setupBusySubmitButtons() {
+  if (window.__busySubmitReady || typeof window.fetch !== "function") return;
+  window.__busySubmitReady = true;
+
+  let pending = 0;
+  const busyButtons = new Set();
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = (...args) => {
+    pending += 1;
+    return nativeFetch(...args).finally(() => {
+      pending -= 1;
+      setTimeout(releaseIfIdle, 0);
+    });
+  };
+
+  function busyLabel(text) {
+    const t = text.toLowerCase();
+    if (/buscar|filtrar/.test(t)) return "Buscando…";
+    if (/conectar|vincular/.test(t)) return "Conectando…";
+    if (/ingresar|iniciar|entrar/.test(t)) return "Ingresando…";
+    if (/invitar|enviar|mandar/.test(t)) return "Enviando…";
+    if (/crear|agregar|generar|registr/.test(t)) return "Creando…";
+    if (/importar|subir|cargar/.test(t)) return "Subiendo…";
+    return "Guardando…";
+  }
+
+  function releaseIfIdle() {
+    if (pending > 0) return;
+    busyButtons.forEach((button) => {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+      if (button.dataset.idleLabel !== undefined) {
+        button.textContent = button.dataset.idleLabel;
+        delete button.dataset.idleLabel;
+      }
+    });
+    busyButtons.clear();
+  }
+
+  document.addEventListener("submit", (event) => {
+    if (!event.defaultPrevented) return; // envío normal del navegador: se va de la página
+    const button = event.submitter || event.target.querySelector('[type="submit"]');
+    if (!button || button.disabled || busyButtons.has(button)) return;
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    // Solo se cambia el texto de botones de texto plano (sin ícono adentro).
+    if (button.tagName === "BUTTON" && !button.children.length && button.textContent.trim()) {
+      button.dataset.idleLabel = button.textContent;
+      button.textContent = busyLabel(button.textContent);
+    }
+    busyButtons.add(button);
+    // Si el manejador no pidió nada al servidor, se libera enseguida.
+    setTimeout(releaseIfIdle, 60);
+  });
+})();

@@ -15,6 +15,7 @@ el dibujo, solo se decide QUÉ rótulos entran y cómo se empaquetan
 
 from __future__ import annotations
 
+import secrets
 import zipfile
 from io import BytesIO
 
@@ -698,18 +699,18 @@ class LabelBatchView(APIView):
                 # página): se ignora en silencio, no es un error del
                 # usuario.
                 file_bytes, item_count, skipped = _render_zip(items, template, owner=owner)
-                filename = f"rotulos-{document.pk}.zip"
+                filename = f"rotulos-{document.pk}-{secrets.token_hex(8)}.zip"
             elif output == "zpl":
                 file_bytes, item_count, skipped = _render_combined_zpl(
                     items, template, owner=owner, dpmm=dpmm
                 )
-                filename = f"rotulos-{document.pk}.zpl"
+                filename = f"rotulos-{document.pk}-{secrets.token_hex(8)}.zpl"
             elif page_layout == "a4":
                 file_bytes, item_count, skipped = _render_combined_pdf_a4(items, template, owner=owner)
-                filename = f"rotulos-{document.pk}.pdf"
+                filename = f"rotulos-{document.pk}-{secrets.token_hex(8)}.pdf"
             else:
                 file_bytes, item_count, skipped = _render_combined_pdf(items, template, owner=owner)
-                filename = f"rotulos-{document.pk}.pdf"
+                filename = f"rotulos-{document.pk}-{secrets.token_hex(8)}.pdf"
 
             notes = []
             if skipped_existing_count:

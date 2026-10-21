@@ -222,7 +222,7 @@ async function setDefaultAddress(id) {
 }
 
 async function deleteAddress(id) {
-  const confirmed = window.confirm("¿Eliminar esta dirección?");
+  const confirmed = await appConfirm("¿Eliminar esta dirección?");
   if (!confirmed) return;
 
   try {
@@ -253,10 +253,16 @@ function renderOrderList(orders) {
   if (!container) return;
 
   if (orders.length === 0) {
-    let empty = "Todavía no hiciste ningún pedido.";
-    if (selectedStore === "manual") empty = "No hay pedidos cargados a mano.";
-    else if (selectedStore) empty = "No hay pedidos de esta tienda.";
-    container.innerHTML = `<p class="empty-state">${empty}</p>`;
+    let empty = {
+      icon: "box",
+      title: "Todavía no hay pedidos",
+      text: "Conectá tu tienda y los pedidos entran solos, o cargá uno a mano más abajo en «Nuevo pedido».",
+      actionLabel: "Conectar una tienda",
+      actionHref: "tiendas.html",
+    };
+    if (selectedStore === "manual") empty = { icon: "box", title: "No hay pedidos cargados a mano" };
+    else if (selectedStore) empty = { icon: "box", title: "No hay pedidos de esta tienda" };
+    container.innerHTML = appEmptyState(empty);
     return;
   }
 
@@ -463,7 +469,7 @@ async function createOrder() {
 }
 
 async function cancelOrder(id) {
-  const confirmed = window.confirm("¿Cancelar este pedido?");
+  const confirmed = await appConfirm("¿Cancelar este pedido?");
   if (!confirmed) return;
 
   try {

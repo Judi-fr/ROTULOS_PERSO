@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Diseño de Rótulos</title>
+    <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
+    <link rel="stylesheet" href="assets/css/ui.css" />
 
     <!-- Sin librería de QR/códigos de barras por CDN: el QR y el código de
          barras de acá abajo se piden como imagen al backend
@@ -1788,9 +1790,9 @@
 
       // --- Guardar como plantilla propia (privada) ------------------------
       saveAsTemplateBtn.addEventListener("click", async () => {
-        if (!confirmIncompleteRules()) return;
+        if (!(await confirmIncompleteRules())) return;
         const suggestedName = nombreInput.value.trim() || "Plantilla sin nombre";
-        const name = window.prompt("Nombre de la plantilla:", suggestedName);
+        const name = await appPrompt("Nombre de la plantilla:", suggestedName);
         if (!name) return;
         saveAsTemplateBtn.disabled = true;
         try {
@@ -1824,8 +1826,8 @@
       }
 
       saveTemplateVersionBtn.addEventListener("click", async () => {
-        if (!editableTemplate || !confirmIncompleteRules()) return;
-        const note = window.prompt(
+        if (!editableTemplate || !(await confirmIncompleteRules())) return;
+        const note = await appPrompt(
           `¿Qué cambiaste? (opcional, queda en el historial de «${editableTemplate.nombre}»)`,
           ""
         );
@@ -2557,17 +2559,17 @@
 
       // Una regla "mover" sin las dos coordenadas no se puede guardar
       // (collectFields la descarta): se avisa antes en vez de perderla.
-      function confirmIncompleteRules() {
+      async function confirmIncompleteRules() {
         const incomplete = window.LabelEditorRules.incompleteCount();
         if (!incomplete) return true;
-        return window.confirm(
+        return appConfirm(
           `${incomplete === 1 ? "Hay una regla" : `Hay ${incomplete} reglas`} de "mover" sin la posición completa. ` +
             "Si seguís, no se guardan. ¿Seguir?",
         );
       }
 
       document.getElementById("saveBtn").addEventListener("click", async () => {
-        if (!confirmIncompleteRules()) return;
+        if (!(await confirmIncompleteRules())) return;
         const thumbnail = await generateThumbnail();
         const payload = {
           nombre: nombreInput.value.trim() || "Rótulo sin nombre",

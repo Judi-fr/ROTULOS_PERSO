@@ -1,0 +1,70 @@
+/* ayuda.html: las preguntas frecuentes (el resto viene de perfil.css). */
+
+.faq {
+  margin-bottom: 20px;
+}
+
+.faq-list {
+  padding: 6px 20px 14px;
+}
+
+.faq details {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.faq details:last-child {
+  border-bottom: 0;
+}
+
+.faq summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.faq summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Un + que pasa a − al abrir. */
+.faq summary::after {
+  content: "+";
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #c2410c;
+  font-size: 18px;
+  line-height: 26px;
+  text-align: center;
+  transition: transform 0.2s;
+}
+
+.faq details[open] summary::after {
+  content: "−";
+}
+
+.faq summary:hover {
+  color: #c2410c;
+}
+
+.faq summary:focus-visible {
+  outline: 2px solid #f97316;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.faq details p {
+  margin: 0 0 16px;
+  color: #475569;
+  font-size: 14.5px;
+  line-height: 1.6;
+  max-width: 68ch;
+}

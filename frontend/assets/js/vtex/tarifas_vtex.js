@@ -58,7 +58,7 @@ async function togglePublish() {
   const store = storesById.get(storeId);
   if (!store) return;
   const enable = !(store.rates_push && store.rates_push.enabled);
-  if (!enable && !window.confirm("¿Dejar de publicar la tabla? Tu checkout de VTEX deja de ofrecer este envío.")) return;
+  if (!enable && !await appConfirm("¿Dejar de publicar la tabla? Tu checkout de VTEX deja de ofrecer este envío.")) return;
   publishBtn.disabled = true;
   try {
     const response = await apiFetch(`${STORES_URL}${encodeURIComponent(storeId)}/publish-rates/`, {

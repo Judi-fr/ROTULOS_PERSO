@@ -1,5 +1,5 @@
-/* organizacion.html: los datos de la cuenta. Campos y tarjetas vienen de
-   base.css + pedidos.css. */
+/* organizacion.html ("Mi cuenta"): tu perfil y los datos del comercio.
+   Campos y tarjetas vienen de base.css + pedidos.css + perfil.css. */
 
 #accountForm .profile-card + .profile-card {
   margin-top: 20px;
@@ -37,4 +37,44 @@
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+}
+
+/* Las dos partes de Mi cuenta */
+.account-section-title {
+  margin: 28px 0 10px;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  scroll-margin-top: 16px;
+}
+
+.account-section-title:first-of-type {
+  margin-top: 8px;
+}
+
+.account-section-help {
+  margin: -4px 0 14px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.main > .profile-card + .profile-card {
+  margin-top: 16px;
+}
+
+/* El perfil en dos columnas, como los datos del comercio: el mensaje y el
+   botón ocupan la fila entera. */
+.account-grid .form-message,
+.account-grid .profile-card-actions {
+  grid-column: 1 / -1;
+}
+
+.account-grid .field {
+  margin: 0;
+}
+
+/* Sin logo, la imagen queda oculta: `display: block` le ganaba a `hidden` y
+   se veía el ícono de imagen rota. */
+.account-logo img[hidden] {
+  display: none;
 }

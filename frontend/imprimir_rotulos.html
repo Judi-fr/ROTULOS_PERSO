@@ -6,6 +6,8 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge" />
 
     <title>Imprimir rótulos</title>
+    <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
+    <link rel="stylesheet" href="assets/css/ui.css" />
 
     <link
       href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
@@ -19,7 +21,7 @@
   <body>
     <div class="layout">
       <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
-      <header class="topbar" id="appTopbar" data-links='[{"href": "pedidos.html", "label": "Mis pedidos"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+      <header class="topbar" id="appTopbar" data-links='[{"href": "pedidos.html", "label": "Mis pedidos", "perm": "orders.view"}, {"href": "documentos.html", "label": "Documentos", "perm": "documents.view"}, {"href": "cola_impresion.html", "label": "Cola de impresión", "perm": "labels.batch"}, {"href": "impresoras.html", "label": "Impresoras", "perm": "printers.manage"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
 
       <main class="main">
         <div class="main-heading">
@@ -79,7 +81,7 @@
               <label for="selectAll">Seleccionar todos los de esta página</label>
             </div>
             <div id="orderList" class="print-order-list">
-              <p class="empty-state">Cargando pedidos...</p>
+              <p class="empty-state"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
             </div>
             <div class="pager" id="pager" style="display:none;">
               <button type="button" class="btn btn-outline btn-small" id="prevPageBtn">Anterior</button>

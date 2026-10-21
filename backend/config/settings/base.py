@@ -80,6 +80,9 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # Una sola lectura de la membresía del comercio por request
+    # (apps/accounts/teams.py).
+    "apps.accounts.teams.TeamCacheMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # Último: es el primero en ver la excepción de una vista. Para /api/
@@ -185,6 +188,9 @@ REST_FRAMEWORK = {
         # paga por token, así que se limita por usuario para que un bucle en el
         # frontend no gaste dinero antes de que nadie lo note.
         "importacion_rotulo": env("IMPORTACION_THROTTLE_RATE", default="20/min"),
+        # Invitar o reenviar una invitación a un comercio manda un mail a
+        # cualquier dirección (apps/accounts/team_views.py).
+        "team_invite": env("TEAM_INVITE_THROTTLE_RATE", default="30/hour"),
     },
 }
 
@@ -311,6 +317,9 @@ LABELS_BATCH_JOB_MAX_ATTEMPTS = env.int("LABELS_BATCH_JOB_MAX_ATTEMPTS", default
 
 # Igual que LABELS_BATCH_MAX_ITEMS: corre síncrono, en el mismo request.
 ORDERS_IMPORT_MAX_ROWS = env.int("ORDERS_IMPORT_MAX_ROWS", default=1000)
+# Tope duro del lector de planillas (apps/orders/import_parsing.py), por encima
+# del máximo de cada pantalla: corta un .xlsx gigante mientras lo lee.
+IMPORT_PARSE_MAX_ROWS = env.int("IMPORT_PARSE_MAX_ROWS", default=20000)
 ORDERS_IMPORT_MAX_FILE_SIZE_MB = env.int("ORDERS_IMPORT_MAX_FILE_SIZE_MB", default=10)
 
 # ---------------------------------------------------------------------------
@@ -686,3 +695,14 @@ MONITORING_SUBJECT_PREFIX = env("MONITORING_SUBJECT_PREFIX", default="[Rótulos]
 # Días que vale una invitación al comercio, y la página donde se acepta.
 TEAM_INVITATION_DAYS = env.int("TEAM_INVITATION_DAYS", default=7)
 TEAM_INVITATION_URL = env("TEAM_INVITATION_URL", default=f"{FRONTEND_URL}/invitaciones.html")
+
+# Pedidos a direcciones que escribe el comerciante (WooCommerce, Magento):
+# se rechazan las que resuelven a una red interna (apps/integrations/safe_http.py).
+# Solo en desarrollo se permiten: la tienda de prueba local resuelve a 100.x.
+INTEGRATIONS_ALLOW_PRIVATE_HOSTS = env.bool("INTEGRATIONS_ALLOW_PRIVATE_HOSTS", default=DEBUG)
+
+# Avisos al comerciante (apps/monitoring/notices.py): lotes, impresiones y
+# rótulos de la tienda fallidos en estos días; reintento del mail.
+NOTICES_RECENT_DAYS = env.int("NOTICES_RECENT_DAYS", default=3)
+NOTICES_MAIL_RETRY_SECONDS = env.int("NOTICES_MAIL_RETRY_SECONDS", default=600)
+NOTICES_MAIL_ENABLED = env.bool("NOTICES_MAIL_ENABLED", default=True)

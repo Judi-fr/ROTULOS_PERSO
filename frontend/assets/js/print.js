@@ -25,7 +25,7 @@ window.PrintHelper = (function () {
         settled = true;
         const win = window.open(url, "_blank");
         if (!win) {
-          alert(
+          (window.appAlert || window.alert)(
             "El navegador bloqueó la ventana de impresión. Habilitá las ventanas " +
               "emergentes para este sitio e intentá de nuevo."
           );
@@ -97,7 +97,7 @@ window.PrintHelper = (function () {
     } catch (err) {
       if (err && err.isSessionExpired) return;
       console.error("Error al imprimir:", err);
-      alert((err && err.message) || "No se pudo preparar la impresión.");
+      (window.appAlert || window.alert)((err && err.message) || "No se pudo preparar la impresión.");
     } finally {
       if (button) {
         button.disabled = false;

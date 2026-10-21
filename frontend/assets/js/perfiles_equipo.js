@@ -109,7 +109,7 @@ async function save(event) {
 }
 
 async function removeProfile(profile) {
-  if (!window.confirm(`¿Borrar el perfil «${profile.name}»?`)) return;
+  if (!await appConfirm(`¿Borrar el perfil «${profile.name}»?`)) return;
   try {
     await send(`${TEAM_URL}profiles/${profile.id}/`, "DELETE", null, "No se pudo borrar el perfil.");
     await load();

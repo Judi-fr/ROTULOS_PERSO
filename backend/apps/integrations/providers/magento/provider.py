@@ -44,6 +44,7 @@ import requests
 from django.conf import settings
 from django.utils.dateparse import parse_datetime
 
+from ... import safe_http
 from ..addresses import split_street
 from ..base import (
     NormalizedOrder,
@@ -205,7 +206,7 @@ class MagentoProvider(StoreProvider):
         # armara requests, un corchete codificado distinto rompe la firma.
         query = "&".join(f"{_encode(key)}={_encode(value)}" for key, value in params.items())
         try:
-            return requests.request(
+            return safe_http.request(
                 method,
                 f"{url}?{query}" if query else url,
                 json=json_body,

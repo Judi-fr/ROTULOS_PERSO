@@ -74,8 +74,12 @@
     actions.className = "topbar-actions";
     // Los links vienen del HTML de la página (data-links), no del backend:
     // igual se insertan con textContent y href directo, nunca con innerHTML.
+    // Un link con "perm" solo aparece si la sesión tiene ese permiso (el
+    // backend vuelve a chequear al entrar; esto solo evita ofrecer de más).
+    const permissions = (user && Array.isArray(user.permissions) && user.permissions) || null;
     readLinks(node).forEach((link) => {
       if (!link || !link.href) return;
+      if (link.perm && permissions && !permissions.includes(link.perm)) return;
       const anchor = document.createElement("a");
       anchor.className = "btn btn-outline";
       anchor.href = link.href;

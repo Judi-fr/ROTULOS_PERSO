@@ -96,7 +96,7 @@ async function loadJobs() {
     const jobs = extractResults(data);
     body.innerHTML = "";
     if (!jobs.length) {
-      body.innerHTML = '<tr><td colspan="5" class="empty-state">No hay trabajos para mostrar.</td></tr>';
+      body.innerHTML = `<tr><td colspan="5">${appEmptyState({ icon: "printer", title: "No hay trabajos para mostrar", actionLabel: "Imprimir rótulos", actionHref: "imprimir_rotulos.html" })}</td></tr>`;
     }
     jobs.forEach((job) => body.appendChild(jobRow(job)));
     renderPager(data);

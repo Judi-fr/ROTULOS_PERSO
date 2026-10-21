@@ -208,7 +208,7 @@ async function saveMember(event) {
 }
 
 async function removeMember(member) {
-  if (!window.confirm(`¿Quitar a ${member.email} del comercio? Lo que hizo queda en el comercio; deja de ver todo.`)) return;
+  if (!await appConfirm(`¿Quitar a ${member.email} del comercio? Lo que hizo queda en el comercio; deja de ver todo.`)) return;
   try {
     await send(`${TEAM_URL}members/${member.id}/`, "DELETE", null, "No se pudo quitar.");
     await load();
@@ -224,7 +224,7 @@ async function transfer(member) {
     `¿Pasarle la titularidad del comercio a ${member.email}?\n\n` +
     "Pasa a ser el dueño, con todos los datos del comercio. Vos quedás como empleado con el perfil «Todo». " +
     "Solo el nuevo dueño puede devolvértela.";
-  if (!window.confirm(question)) return;
+  if (!await appConfirm(question)) return;
   try {
     await send(`${TEAM_URL}transfer/`, "POST", { member_id: member.id }, "No se pudo pasar la titularidad.");
     showMessage(`${member.email} es el nuevo dueño del comercio.`, "success");
@@ -266,7 +266,7 @@ async function resend(invitation) {
 }
 
 async function cancelInvitation(invitation) {
-  if (!window.confirm(`¿Cancelar la invitación a ${invitation.email}?`)) return;
+  if (!await appConfirm(`¿Cancelar la invitación a ${invitation.email}?`)) return;
   try {
     await send(`${TEAM_URL}invitations/${invitation.id}/`, "DELETE", null, "No se pudo cancelar.");
     await load();

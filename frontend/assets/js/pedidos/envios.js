@@ -285,7 +285,7 @@ window.OrderShipping = (() => {
   }
 
   async function cancelShipment(shipment, node) {
-    if (!window.confirm(`¿Cancelar el envío ${shipment.tracking_number} en ${shipment.carrier_name}? El pedido queda sin seguimiento y se puede volver a despachar.`)) {
+    if (!await appConfirm(`¿Cancelar el envío ${shipment.tracking_number} en ${shipment.carrier_name}? El pedido queda sin seguimiento y se puede volver a despachar.`)) {
       return;
     }
     node.disabled = true;

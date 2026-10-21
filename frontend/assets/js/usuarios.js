@@ -102,7 +102,7 @@ function buildQueryString(baseUrl = API_URL, { includePage = true } = {}) {
 }
 
 async function loadUsers() {
-  tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px;">Cargando usuarios...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="9" class="table-placeholder"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></td></tr>`;
 
   try {
     const response = await apiFetch(buildQueryString());
@@ -130,7 +130,7 @@ async function loadUsers() {
     const pagination = raw.pagination || null;
 
     if (users.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px;">No hay usuarios para mostrar.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="table-placeholder">No hay usuarios para mostrar.</td></tr>`;
     } else {
       renderUsers(users);
     }
@@ -247,7 +247,7 @@ function updateBulkActionsBar() {
 
 async function runBulkAction(payload) {
   if (selectedUserIds.size === 0) {
-    alert("Seleccioná al menos un usuario (tildá su casilla).");
+    appAlert("Seleccioná al menos un usuario (tildá su casilla).", { tone: "info" });
     return;
   }
   try {
@@ -268,12 +268,12 @@ async function runBulkAction(payload) {
       const reasons = data.skipped.map((s) => `#${s.id}: ${s.reason}`).join("\n");
       message += `\n${skippedCount} se salteó(aron):\n${reasons}`;
     }
-    alert(message);
+    appAlert(message);
     loadUsers();
   } catch (err) {
     if (err.isSessionExpired) return;
     console.error("Error en la acción masiva:", err);
-    alert(err.message || "No se pudo completar la acción masiva.");
+    appAlert(err.message || "No se pudo completar la acción masiva.");
   }
 }
 
@@ -286,7 +286,7 @@ document.getElementById("bulkDeactivateBtn")?.addEventListener("click", () => {
 document.getElementById("bulkSetRoleBtn")?.addEventListener("click", () => {
   const role = document.getElementById("bulkRoleSelect")?.value;
   if (!role) {
-    alert("Elegí un rol para aplicar.");
+    appAlert("Elegí un rol para aplicar.", { tone: "info" });
     return;
   }
   runBulkAction({ action: "set_role", role });
@@ -336,12 +336,12 @@ const exportUsersBtn = document.getElementById("exportUsersBtn");
 if (exportUsersBtn) {
   exportUsersBtn.addEventListener("click", () => {
     if (selectedUserIds.size === 0) {
-      alert("Seleccioná al menos un usuario (tildá su casilla) para exportar.");
+      appAlert("Seleccioná al menos un usuario (tildá su casilla) para exportar.", { tone: "info" });
       return;
     }
 
     if (typeof XLSX === "undefined") {
-      alert("No se pudo cargar la librería de Excel. Revisá tu conexión e intentá de nuevo.");
+      appAlert("No se pudo cargar la librería de Excel. Revisá tu conexión e intentá de nuevo.");
       return;
     }
 
@@ -406,7 +406,7 @@ if (exportUsersCsvBtn) {
     } catch (err) {
       if (err.isSessionExpired) return;
       console.error("Error al exportar CSV:", err);
-      alert(err.message || "No se pudo exportar el CSV.");
+      appAlert(err.message || "No se pudo exportar el CSV.");
     }
   });
 }
@@ -528,11 +528,11 @@ document.addEventListener("click", (e) => {
   }
 });
 
-function reactivateUser(userId) {
+async function reactivateUser(userId) {
   const user = lastUsers.find((u) => Number(u.id) === userId);
   const userName = user ? user.display_name || user.email : `#${userId}`;
 
-  const confirmed = window.confirm(
+  const confirmed = await appConfirm(
     `¿Reactivar al usuario "${userName}"?\n\nEl usuario volverá a estar activo.`
   );
   if (!confirmed) return;
@@ -556,22 +556,22 @@ function reactivateUser(userId) {
       }
     })
     .then(() => {
-      alert(`El usuario "${userName}" fue reactivado correctamente.`);
+      appAlert(`El usuario "${userName}" fue reactivado correctamente.`, { tone: "success" });
       // Recargar la lista manteniendo la página actual si sigue siendo válida.
       loadUsers();
     })
     .catch((err) => {
       if (err.isSessionExpired) return;
       console.error("Error al reactivar usuario:", err);
-      alert(err.message || "No se pudo reactivar el usuario. Intentá de nuevo.");
+      appAlert(err.message || "No se pudo reactivar el usuario. Intentá de nuevo.");
     });
 }
 
-function unlockUser(userId) {
+async function unlockUser(userId) {
   const user = lastUsers.find((u) => Number(u.id) === userId);
   const userName = user ? user.display_name || user.email : `#${userId}`;
 
-  const confirmed = window.confirm(
+  const confirmed = await appConfirm(
     `¿Desbloquear al usuario "${userName}"?\n\nSe reseteará el bloqueo y el contador de intentos fallidos.`
   );
   if (!confirmed) return;
@@ -591,21 +591,21 @@ function unlockUser(userId) {
       }
     })
     .then(() => {
-      alert(`El usuario "${userName}" fue desbloqueado correctamente.`);
+      appAlert(`El usuario "${userName}" fue desbloqueado correctamente.`, { tone: "success" });
       loadUsers();
     })
     .catch((err) => {
       if (err.isSessionExpired) return;
       console.error("Error al desbloquear usuario:", err);
-      alert(err.message || "No se pudo desbloquear el usuario. Intentá de nuevo.");
+      appAlert(err.message || "No se pudo desbloquear el usuario. Intentá de nuevo.");
     });
 }
 
-function softDeleteUser(userId) {
+async function softDeleteUser(userId) {
   const user = lastUsers.find((u) => Number(u.id) === userId);
   const userName = user ? user.display_name || user.email : `#${userId}`;
 
-  const confirmed = window.confirm(
+  const confirmed = await appConfirm(
     `¿Desactivar al usuario "${userName}"?\n\nEl usuario será desactivado (soft delete), NO eliminado permanentemente.`
   );
   if (!confirmed) return;
@@ -625,7 +625,7 @@ function softDeleteUser(userId) {
       }
     })
     .then(() => {
-      alert(`El usuario "${userName}" fue desactivado correctamente.`);
+      appAlert(`El usuario "${userName}" fue desactivado correctamente.`, { tone: "success" });
       // Recargar la lista manteniendo la página actual si sigue siendo válida.
       // Si la página actual quedó fuera de rango, el backend ajusta automáticamente.
       loadUsers();
@@ -633,7 +633,7 @@ function softDeleteUser(userId) {
     .catch((err) => {
       if (err.isSessionExpired) return;
       console.error("Error al desactivar usuario:", err);
-      alert(err.message || "No se pudo desactivar el usuario. Intentá de nuevo.");
+      appAlert(err.message || "No se pudo desactivar el usuario. Intentá de nuevo.");
     });
 }
 
@@ -647,7 +647,7 @@ function openViewModal(userId) {
   const content = document.getElementById("viewUserContent");
   if (!modal || !content) return;
 
-  content.innerHTML = `<div style="text-align:center; color:#64748b; padding:20px;">Cargando usuario...</div>`;
+  content.innerHTML = `<div style="text-align:center; color:#64748b; padding:20px;"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></div>`;
   modal.style.display = "flex";
 
   apiFetch(`${API_URL}${userId}/`)
@@ -791,7 +791,7 @@ function resetCreateForm() {
 function openEditPanel(userId) {
   const user = lastUsers.find((u) => Number(u.id) === userId);
   if (!user) {
-    alert("No se pudo encontrar el usuario seleccionado.");
+    appAlert("No se pudo encontrar el usuario seleccionado.");
     return;
   }
 
@@ -1050,7 +1050,7 @@ async function handleAdminSubmit(e) {
   const status = document.getElementById("statusSelect").value.trim().toLowerCase();
 
   if (!fullName || !email || !role || !status) {
-    alert("Completá todos los campos obligatorios.");
+    appAlert("Completá todos los campos obligatorios.", { tone: "info" });
     return;
   }
 
@@ -1099,7 +1099,7 @@ async function handleAdminSubmit(e) {
   } catch (err) {
     if (err.isSessionExpired) return;
     console.error(isEditing ? "Error al editar usuario:" : "Error al crear usuario:", err);
-    alert(err.message || (isEditing ? "No se pudo editar el usuario." : "No se pudo crear el usuario."));
+    appAlert(err.message || (isEditing ? "No se pudo editar el usuario." : "No se pudo crear el usuario."));
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = originalText;

@@ -76,7 +76,7 @@ async function downloadDocument(doc) {
 }
 
 async function deleteDocument(doc) {
-  const confirmed = window.confirm(`¿Eliminar "${doc.name}"?`);
+  const confirmed = await appConfirm(`¿Eliminar "${doc.name}"?`);
   if (!confirmed) return;
   try {
     const response = await apiFetch(`${DOCUMENTS_URL}${doc.id}/`, { method: "DELETE" });
@@ -100,12 +100,16 @@ const listEl = document.getElementById("documentList");
 
 function renderEmptyState() {
   if (searchTerm || statusFilter) {
-    listEl.innerHTML =
-      '<p class="empty-state">No hay documentos que coincidan con la búsqueda/filtro.</p>';
+    listEl.innerHTML = appEmptyState({ icon: "doc", title: "No hay documentos que coincidan con la búsqueda o el filtro" });
     return;
   }
-  listEl.innerHTML =
-    '<p class="empty-state">Todavía no generaste ningún documento. Probá "Generar por lote" desde Mis rótulos.</p>';
+  listEl.innerHTML = appEmptyState({
+    icon: "doc",
+    title: "Todavía no generaste rótulos",
+    text: "Cuando imprimas los rótulos de tus pedidos, el archivo queda acá para descargarlo cuando quieras.",
+    actionLabel: "Imprimir rótulos",
+    actionHref: "imprimir_rotulos.html",
+  });
 }
 
 function statusBadge(doc) {

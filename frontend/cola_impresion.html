@@ -6,6 +6,8 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge" />
 
     <title>Cola de impresión</title>
+    <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
+    <link rel="stylesheet" href="assets/css/ui.css" />
 
     <link
       href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
@@ -51,7 +53,7 @@
                   <tr><th>Trabajo</th><th>Impresora</th><th>Estado</th><th>Cuándo</th><th></th></tr>
                 </thead>
                 <tbody id="jobsBody">
-                  <tr><td colspan="5" class="empty-state">Cargando...</td></tr>
+                  <tr><td colspan="5" class="empty-state"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></td></tr>
                 </tbody>
               </table>
             </div>

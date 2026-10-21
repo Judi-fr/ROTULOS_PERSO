@@ -292,7 +292,7 @@ async function loadPush(exists) {
 }
 
 async function generatePush() {
-  if (el("pushInfo").querySelector("dl") && !window.confirm("Las credenciales anteriores dejan de funcionar. ¿Generar nuevas?")) return;
+  if (el("pushInfo").querySelector("dl") && !await appConfirm("Las credenciales anteriores dejan de funcionar. ¿Generar nuevas?")) return;
   const button = el("pushBtn");
   button.disabled = true;
   try {

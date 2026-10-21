@@ -206,7 +206,7 @@ function renderGrid(templates) {
 }
 
 async function loadTemplates() {
-  gridEl.innerHTML = '<p class="empty-state">Cargando plantillas...</p>';
+  gridEl.innerHTML = '<p class="empty-state"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>';
   try {
     const templates = await templatesApi.listTemplates(searchTerm ? { search: searchTerm } : {});
     renderGrid(templates);
@@ -222,7 +222,7 @@ async function loadTemplates() {
 // ("Usar" ya cubre eso, y guardar de nuevo como plantilla actualiza el
 // diseño). Evita duplicar el editor completo para un caso de uso chico.
 async function openRenamePrompt(template) {
-  const name = window.prompt("Nuevo nombre de la plantilla:", template.nombre || "");
+  const name = await appPrompt("Nuevo nombre de la plantilla:", template.nombre || "");
   if (!name || name.trim() === template.nombre) return;
   try {
     await templatesApi.updateTemplate(template.id, { nombre: name.trim() });
@@ -248,7 +248,7 @@ async function handleDuplicate(template) {
 }
 
 async function handleArchive(template) {
-  const confirmed = window.confirm(`¿Archivar "${template.nombre || "esta plantilla"}"?`);
+  const confirmed = await appConfirm(`¿Archivar "${template.nombre || "esta plantilla"}"?`);
   if (!confirmed) return;
   try {
     await templatesApi.archiveTemplate(template.id);

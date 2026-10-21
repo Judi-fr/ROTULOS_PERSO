@@ -118,7 +118,7 @@ function renderKeysTable(keys) {
   const body = document.getElementById("keysTableBody");
   if (!body) return;
   if (!keys.length) {
-    body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px;">Sin claves creadas todavía.</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="table-placeholder">Sin claves creadas todavía.</td></tr>';
     return;
   }
   body.innerHTML = keys
@@ -221,7 +221,7 @@ document.getElementById("keysTableBody")?.addEventListener("click", async (event
       showMessage(err.message || "No se pudo actualizar la clave.");
     }
   } else if (button.dataset.action === "delete") {
-    if (!window.confirm(`¿Eliminar la clave "${key.name}"? Esto no se puede deshacer.`)) return;
+    if (!await appConfirm(`¿Eliminar la clave "${key.name}"? Esto no se puede deshacer.`)) return;
     try {
       const response = await apiFetch(`${KEYS_URL}${id}/`, { method: "DELETE" });
       if (!response.ok && response.status !== 204) {
@@ -259,7 +259,7 @@ function renderIncomingTable(webhooks) {
   const body = document.getElementById("incomingTableBody");
   if (!body) return;
   if (!webhooks.length) {
-    body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px;">Sin webhooks entrantes todavía.</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" class="table-placeholder">Sin webhooks entrantes todavía.</td></tr>';
     return;
   }
   body.innerHTML = webhooks
@@ -367,7 +367,7 @@ document.getElementById("incomingTableBody")?.addEventListener("click", async (e
       showMessage(err.message || "No se pudo actualizar el webhook.");
     }
   } else if (button.dataset.action === "delete") {
-    if (!window.confirm(`¿Eliminar el webhook "${webhook.name}"?`)) return;
+    if (!await appConfirm(`¿Eliminar el webhook "${webhook.name}"?`)) return;
     try {
       const response = await apiFetch(`${INCOMING_URL}${id}/`, { method: "DELETE" });
       if (!response.ok && response.status !== 204) {
@@ -389,7 +389,7 @@ function renderOutgoingTable(endpoints) {
   const body = document.getElementById("outgoingTableBody");
   if (!body) return;
   if (!endpoints.length) {
-    body.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px;">Sin webhooks salientes todavía.</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" class="table-placeholder">Sin webhooks salientes todavía.</td></tr>';
     return;
   }
   body.innerHTML = endpoints
@@ -484,7 +484,7 @@ document.getElementById("outgoingTableBody")?.addEventListener("click", async (e
       showMessage(err.message || "No se pudo actualizar el webhook.");
     }
   } else if (button.dataset.action === "delete") {
-    if (!window.confirm(`¿Eliminar el webhook "${endpoint.name || endpoint.url}"?`)) return;
+    if (!await appConfirm(`¿Eliminar el webhook "${endpoint.name || endpoint.url}"?`)) return;
     try {
       const response = await apiFetch(`${OUTGOING_URL}${id}/`, { method: "DELETE" });
       if (!response.ok && response.status !== 204) {
@@ -520,7 +520,7 @@ function renderDeliveriesTable(deliveries) {
   const body = document.getElementById("deliveriesTableBody");
   if (!body) return;
   if (!deliveries.length) {
-    body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Sin entregas registradas todavía.</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" class="table-placeholder">Sin entregas registradas todavía.</td></tr>';
     return;
   }
   body.innerHTML = deliveries

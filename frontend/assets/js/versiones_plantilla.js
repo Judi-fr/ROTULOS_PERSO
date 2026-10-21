@@ -187,7 +187,7 @@ function renderVersions() {
 }
 
 async function handleRestore(version, button) {
-  const ok = window.confirm(
+  const ok = await appConfirm(
     `¿Volver la plantilla a la versión ${version.number}? ` +
       "La actual no se pierde: queda en el historial y podés volver a ella."
   );

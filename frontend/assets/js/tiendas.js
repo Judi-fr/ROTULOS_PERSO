@@ -198,7 +198,7 @@ async function connectStore(platform, { button, shop } = {}) {
 
 async function disconnectStore(store, button) {
   const name = store.name || `la tienda ${store.external_store_id}`;
-  const confirmed = window.confirm(
+  const confirmed = await appConfirm(
     `¿Desconectar ${name}? Sus pedidos nuevos van a dejar de entrar. ` +
       `Para desinstalar la app del todo, hacelo también desde el panel de ${store.platform_label || "tu tienda"}.`
   );
@@ -586,7 +586,11 @@ function renderStores(stores) {
   const list = document.getElementById("storesList");
   list.replaceChildren();
   if (!stores.length) {
-    list.appendChild(createElement("p", "muted-text", "Todavía no conectaste ninguna tienda."));
+    list.insertAdjacentHTML("beforeend", appEmptyState({
+      icon: "store",
+      title: "Todavía no conectaste ninguna tienda",
+      text: "Elegí tu plataforma en «Conectar una tienda», acá arriba: desde ese momento tus pedidos entran solos.",
+    }));
     return;
   }
   stores.forEach((store) => list.appendChild(renderStoreCard(store)));

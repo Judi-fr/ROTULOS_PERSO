@@ -12,6 +12,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .dashboard_sections import build_sections, onboarding
 from .permissions_map import get_effective_role, user_has_permission
 
 
@@ -256,5 +257,8 @@ class DashboardView(APIView):
                     "is_admin": is_admin,
                 },
                 "menu": menu,
+                # El panel agrupado y los primeros pasos (dashboard_sections.py).
+                "sections": build_sections(user),
+                "onboarding": onboarding(user),
             }
         )

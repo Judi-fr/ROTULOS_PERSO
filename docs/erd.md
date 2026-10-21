@@ -456,6 +456,22 @@ erDiagram
         datetime last_seen
         json info
     }
+    MerchantNotice {
+        bigauto id PK
+        auto owner_id FK
+        char key
+        char kind
+        char title
+        text detail
+        char url
+        char access
+        json store_ids
+        datetime created_at
+        datetime resolved_at
+        datetime dismissed_at
+        datetime mailed_at
+        datetime mail_attempted_at
+    }
     Address {
         bigauto id PK
         auto user_id FK
@@ -638,6 +654,7 @@ erDiagram
     User ||--o{ IntegrationKey : "owner"
     User ||--o{ Label : "user"
     User ||--o{ LabelSequence : "owner"
+    User ||--o{ MerchantNotice : "owner"
     User ||--o{ Order : "user"
     User ||--o{ OrderImport : "user"
     User ||--o{ PrintAgent : "owner"

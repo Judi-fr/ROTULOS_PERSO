@@ -378,3 +378,15 @@ table.data-table tbody tr:last-child td {
     grid-template-columns: 1fr;
   }
 }
+
+.mapping-name-input {
+  flex: 1;
+  min-width: 180px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.preview-hint {
+  margin: 4px 0 10px;
+}

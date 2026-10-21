@@ -104,11 +104,15 @@ body {
   padding: 20px 22px 22px;
 }
 
-.topbar {
+/* Pantallas chicas. (Al juntar las reglas copiadas en base.css se había
+   perdido el @media que las envolvía, y se aplicaban también en escritorio.) */
+@media (max-width: 640px) {
+  .topbar {
     flex-wrap: wrap;
     padding: 14px 18px;
   }
 
-.main {
+  .main {
     padding: 24px 18px 40px;
   }
+}

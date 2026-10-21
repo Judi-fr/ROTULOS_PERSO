@@ -14,7 +14,6 @@ esta app solo lista/descarga/borra.
 from __future__ import annotations
 
 import mimetypes
-import os
 
 from django.db.models import Q
 from django.http import FileResponse, Http404
@@ -101,7 +100,7 @@ class DocumentViewSet(
         if document.status != Document.Status.READY or not document.file:
             raise Http404("Este documento todavía no tiene un archivo para descargar.")
 
-        filename = os.path.basename(document.file.name)
+        filename = document.download_name
         content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
         response = FileResponse(
             document.file.open("rb"), content_type=content_type, as_attachment=True, filename=filename

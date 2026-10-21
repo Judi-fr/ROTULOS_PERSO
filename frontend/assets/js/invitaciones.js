@@ -12,7 +12,7 @@ async function answer(invitation, decision) {
     const question =
       `¿Sumarte al comercio «${invitation.team_name}»?\n\n` +
       "Vas a trabajar sobre sus tiendas, pedidos y plantillas, con los accesos que te dieron.";
-    if (!window.confirm(question)) return;
+    if (!await appConfirm(question)) return;
   }
   try {
     const response = await apiFetch(`${MINE_URL}${invitation.id}/${decision}/`, {

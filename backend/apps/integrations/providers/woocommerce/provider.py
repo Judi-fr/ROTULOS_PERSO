@@ -50,6 +50,7 @@ from django.db import transaction
 from django.urls import reverse
 from django.utils.dateparse import parse_datetime
 
+from ... import safe_http
 from ..addresses import split_street
 from ..base import (
     NormalizedOrder,
@@ -231,7 +232,7 @@ class WooCommerceProvider(StoreProvider):
         else:
             auth = (key, secret)
         try:
-            return requests.request(
+            return safe_http.request(
                 method,
                 url,
                 params=params or None,
@@ -306,7 +307,7 @@ class WooCommerceProvider(StoreProvider):
         """Nombre del sitio desde la raíz pública de la API de WordPress
         (``/wp-json/``), que no necesita claves."""
         try:
-            response = requests.get(
+            response = safe_http.get(
                 f"{connection.store_url.rstrip('/')}/wp-json/", headers={"Accept": "application/json"}, timeout=_timeout()
             )
         except requests.RequestException as exc:

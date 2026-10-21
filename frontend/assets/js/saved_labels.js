@@ -141,7 +141,7 @@ function renderGrid(rotulos) {
 }
 
 async function loadRotulos() {
-  gridEl.innerHTML = '<p class="empty-state">Cargando rótulos...</p>';
+  gridEl.innerHTML = '<p class="empty-state"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>';
   try {
     const rotulos = await labelsApi.listRotulos(searchTerm ? { search: searchTerm } : {});
     renderGrid(rotulos);
@@ -165,7 +165,7 @@ async function handleDuplicate(rotulo) {
 }
 
 async function handleDelete(rotulo) {
-  const confirmed = window.confirm(`¿Eliminar "${rotulo.nombre || "este rótulo"}"?`);
+  const confirmed = await appConfirm(`¿Eliminar "${rotulo.nombre || "este rótulo"}"?`);
   if (!confirmed) return;
   try {
     await labelsApi.deleteRotulo(rotulo.id);

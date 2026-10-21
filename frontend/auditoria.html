@@ -6,6 +6,8 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge" />
 
     <title>Registros de auditoría</title>
+    <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
+    <link rel="stylesheet" href="assets/css/ui.css" />
 
     <link
       href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
@@ -13,7 +15,7 @@
     />
     <link
       rel="stylesheet"
-      href="https://cdn.materialdesignicons.com/4.8.95/css/materialdesignicons.min.css"
+      href="https://cdn.jsdelivr.net/npm/@mdi/font@4.9.95/css/materialdesignicons.min.css"
     />
     <link
       rel="stylesheet"
@@ -77,7 +79,7 @@
                   </tr>
                 </thead>
                 <tbody id="auditBody">
-                  <tr><td colspan="6" style="text-align:center; padding:20px;">Cargando...</td></tr>
+                  <tr><td colspan="6" class="table-placeholder"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></td></tr>
                 </tbody>
               </table>
             </div>
@@ -91,7 +93,7 @@
                ahora es su propia página (pedidos_admin.html, orders.view_all). -->
           <div class="roles-card" id="adminOrdersLinkCard" style="display:none;">
             <div class="roles-card-title">Pedidos de todos los usuarios</div>
-            <p class="roles-loading" style="margin-bottom:12px;">
+            <p class="roles-loading admin-link-text">
               La lista de pedidos de todos los usuarios se movió a su propia pantalla.
             </p>
             <a class="btn btn-outline" href="pedidos_admin.html">Ver pedidos de todos los usuarios</a>
@@ -100,14 +102,14 @@
       </main>
 
       <!-- AUDIT CHANGES MODAL (solo lectura) -->
-      <div id="auditChangesModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:100; align-items:center; justify-content:center;">
-        <div style="background:#fff; border-radius:14px; width:460px; max-width:90%; max-height:85vh; padding:24px; box-shadow:0 20px 45px rgba(15,23,42,.25); display:flex; flex-direction:column;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-shrink:0;">
-            <h3 style="margin:0; font-size:17px; font-weight:700;">Detalle del cambio</h3>
-            <button id="closeAuditChangesModal" type="button" style="border:none; background:transparent; cursor:pointer; color:#64748b; font-size:20px; line-height:1;">&times;</button>
+      <div id="auditChangesModal" class="admin-modal" style="display:none;">
+        <div class="admin-modal-box" role="dialog" aria-modal="true">
+          <div class="admin-modal-head">
+            <h3 class="admin-modal-title">Detalle del cambio</h3>
+            <button id="closeAuditChangesModal" type="button" class="admin-modal-close" aria-label="Cerrar">&times;</button>
           </div>
-          <div id="auditChangesContent" style="display:flex; flex-direction:column; gap:10px; overflow-y:auto;"></div>
-          <div style="display:flex; justify-content:flex-end; margin-top:20px; flex-shrink:0;">
+          <div id="auditChangesContent" class="admin-modal-content"></div>
+          <div class="admin-modal-foot">
             <button id="closeAuditChangesModalBtn" type="button" class="btn btn-outline">Cerrar</button>
           </div>
         </div>

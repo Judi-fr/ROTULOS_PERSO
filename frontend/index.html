@@ -5,8 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="ie=edge">
   <title>Acceso a Plugin</title>
+  <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
+  <link rel="stylesheet" href="assets/css/ui.css" />
   <link href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.materialdesignicons.com/4.8.95/css/materialdesignicons.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@4.9.95/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css">
   <link rel="stylesheet" href="assets/css/index.css">
 </head>
@@ -56,6 +58,7 @@
   <script src="assets/js/config.js"></script>
   <!-- window.Auth: la sesión viaja en cookies HttpOnly (withSession/saveSession). -->
   <script src="assets/js/auth.js"></script>
+  <script src="assets/js/utils.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     // Client ID del OAuth client "Web application" (Google Cloud Console).
@@ -103,7 +106,7 @@
 
         handleAuthSuccess(data);
       } catch (error) {
-        alert(error.message || 'No se pudo iniciar sesión con Google.');
+        appAlert(error.message || 'No se pudo iniciar sesión con Google.');
       }
     }
 
@@ -161,7 +164,7 @@
         // Tiendanube (assets/js/tiendanube/imprimir_tiendanube.js guardó los pedidos elegidos).
         window.location.replace(localStorage.getItem('pendingTiendanubePrint') ? (localStorage.getItem('pendingTiendanubePage') || 'imprimir_tiendanube.html') : localStorage.getItem('pendingStoreClaim') ? 'tiendas.html' : (isAdmin ? 'gestionuser.html' : 'dashboard.html'));
       } catch (error) {
-        alert(error.message || 'Error en usuario o clave - Reingrese');
+        appAlert(error.message || 'Error en usuario o clave - Reingrese');
       }
     });
   </script>

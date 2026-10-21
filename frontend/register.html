@@ -5,8 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="ie=edge">
   <title>Crear cuenta</title>
+  <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
+  <link rel="stylesheet" href="assets/css/ui.css" />
   <link href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.materialdesignicons.com/4.8.95/css/materialdesignicons.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@4.9.95/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css">
   <link rel="stylesheet" href="assets/css/index.css">
 </head>
@@ -59,6 +61,7 @@
   <script src="assets/js/config.js"></script>
   <!-- window.Auth: la sesión viaja en cookies HttpOnly (withSession/saveSession). -->
   <script src="assets/js/auth.js"></script>
+  <script src="assets/js/utils.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     // Formato de email: mismo criterio (básico, de UX) que usa el backend
@@ -105,7 +108,7 @@
 
         handleAuthSuccess(data);
       } catch (error) {
-        alert(error.message || 'No se pudo crear la cuenta con Google.');
+        appAlert(error.message || 'No se pudo crear la cuenta con Google.');
       }
     }
 
@@ -132,15 +135,15 @@
       // claves coincidan. Todo lo demás (fortaleza de password, email ya
       // registrado, etc.) lo valida el backend.
       if (!email || !password) {
-        alert('Completá el email y la clave.');
+        appAlert('Completá el email y la clave.');
         return;
       }
       if (!EMAIL_REGEX.test(email)) {
-        alert('El email no tiene un formato válido.');
+        appAlert('El email no tiene un formato válido.');
         return;
       }
       if (password !== confirmPassword) {
-        alert('Las claves no coinciden.');
+        appAlert('Las claves no coinciden.');
         return;
       }
 
@@ -180,7 +183,7 @@
         // en el backend): no bloquea el flujo, la redirección por rol sigue
         // pasando igual que antes.
         if (data.user && data.user.email_verified === false) {
-          alert('Te enviamos un correo para confirmar tu cuenta.');
+          await appAlert('Te enviamos un correo para confirmar tu cuenta.', { tone: 'success' });
         }
 
         if (data.user && data.user.must_change_password) {
@@ -191,7 +194,7 @@
         const isAdmin = Boolean((data.user && data.user.is_staff) || role === 'admin');
         window.location.replace(isAdmin ? 'gestionuser.html' : 'dashboard.html');
       } catch (error) {
-        alert(error.message || 'No se pudo crear la cuenta. Revisá los datos e intentá de nuevo.');
+        appAlert(error.message || 'No se pudo crear la cuenta. Revisá los datos e intentá de nuevo.');
       }
     });
   </script>

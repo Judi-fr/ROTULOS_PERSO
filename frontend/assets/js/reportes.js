@@ -55,7 +55,7 @@ function renderAuthMethodStats(authMethod) {
 function setMetricsLoading(ids) {
   ids.forEach((id) => {
     const el = document.getElementById(id);
-    if (el) el.innerHTML = `<p class="roles-loading">Cargando métricas...</p>`;
+    if (el) el.innerHTML = `<p class="roles-loading"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>`;
   });
 }
 

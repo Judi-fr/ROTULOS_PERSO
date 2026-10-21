@@ -6,6 +6,8 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge" />
 
     <title>Mi Panel</title>
+    <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
+    <link rel="stylesheet" href="assets/css/ui.css" />
 
     <link
       href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
@@ -13,10 +15,10 @@
     />
     <link
       rel="stylesheet"
-      href="https://cdn.materialdesignicons.com/4.8.95/css/materialdesignicons.min.css"
+      href="https://cdn.jsdelivr.net/npm/@mdi/font@4.9.95/css/materialdesignicons.min.css"
     />
 
-    <link rel="stylesheet" href="assets/css/dashboard.css" />
+    <link rel="stylesheet" href="assets/css/dashboard.css?v=2026-10-21b" />
   </head>
   <body>
     <div class="layout">
@@ -50,24 +52,29 @@
       <main class="main">
         <div class="main-heading">
           <h1>Mi panel</h1>
-          <p>Elegí una sección para continuar.</p>
+          <p>Elegí una sección: adentro de cada una están sus herramientas.</p>
         </div>
 
         <p id="dashboardMessage" class="dashboard-message" role="status" aria-live="polite" style="display:none;"></p>
         <!-- Invitaciones a un comercio (dashboard.js / loadInvitationNotice). -->
         <p id="invitationNotice" class="dashboard-message info" hidden></p>
 
+        <!-- Avisos del comercio (dashboard.js / loadNotices) y primeros pasos
+             de un comercio nuevo (renderOnboarding). -->
+        <section id="noticesBox" class="notices" aria-label="Avisos" hidden></section>
+        <section id="onboardingBox" class="onboarding" aria-label="Primeros pasos" hidden></section>
+
         <div class="summary-grid" id="summaryGrid" style="display:none;"></div>
 
         <div id="menuGroups">
-          <p class="menu-loading">Cargando...</p>
+          <p class="menu-loading"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
         </div>
       </main>
     </div>
 
     <script src="assets/js/config.js"></script>
     <script src="assets/js/auth.js"></script>
-    <script src="assets/js/utils.js"></script>
-    <script src="assets/js/dashboard.js"></script>
+    <script src="assets/js/utils.js?v=2026-10-21b"></script>
+    <script src="assets/js/dashboard.js?v=2026-10-21b"></script>
   </body>
 </html>

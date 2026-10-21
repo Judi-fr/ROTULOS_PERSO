@@ -7,6 +7,7 @@ proceso se cae, el worker lo nota y hace las alertas él (``heartbeats.worker_ti
 ``--once`` hace una pasada y muestra el resultado (para probar a mano o cron).
 """
 
+import logging
 import time
 
 from django.conf import settings
@@ -14,7 +15,10 @@ from django.core.management.base import BaseCommand
 from django.db import close_old_connections
 
 from apps.monitoring import heartbeats
+from apps.monitoring import notices
 from apps.monitoring.alerts import run_alerts
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -32,6 +36,11 @@ class Command(BaseCommand):
                 except Exception:  # noqa: BLE001 - con la base caída igual hay que chequear
                     pass
                 summary = run_alerts()
+                # Los avisos a cada comercio (notices.py): no frenan las alertas.
+                try:
+                    notices.sync_all()
+                except Exception:  # noqa: BLE001
+                    logger.exception("Falló la pasada de avisos a los comercios.")
                 if options["once"]:
                     for result in summary["results"]:
                         self.stdout.write(f"{result.status:8} {result.label}: {result.detail}")

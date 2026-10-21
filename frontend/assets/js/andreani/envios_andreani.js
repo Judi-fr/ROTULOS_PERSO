@@ -445,7 +445,7 @@ async function refreshShipment(shipment, button) {
 }
 
 async function cancelShipment(shipment, button) {
-  if (!window.confirm(`¿Cancelar el envío ${shipment.tracking_number} en Andreani? El pedido queda sin seguimiento y se puede volver a enviar.`)) {
+  if (!await appConfirm(`¿Cancelar el envío ${shipment.tracking_number} en Andreani? El pedido queda sin seguimiento y se puede volver a enviar.`)) {
     return;
   }
   button.disabled = true;

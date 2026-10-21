@@ -27,7 +27,7 @@ async function apply() {
   // adelante, así que no.
   if (
     status === "cancelled" &&
-    !window.confirm(`¿Cancelar ${orderIds.length} pedido(s)? No se puede deshacer.`)
+    !await appConfirm(`¿Cancelar ${orderIds.length} pedido(s)? No se puede deshacer.`)
   ) {
     return;
   }

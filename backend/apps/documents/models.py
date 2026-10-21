@@ -13,9 +13,12 @@ los dos campos lo explique.
 
 from __future__ import annotations
 
+import uuid
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 
 class Document(models.Model):
@@ -62,6 +65,16 @@ class Document(models.Model):
         verbose_name = "documento"
         verbose_name_plural = "documentos"
         ordering = ["-created_at"]
+
+    @property
+    def download_name(self):
+        """El nombre con que se baja: ``rotulos-<id>.<ext>``. El archivo en
+        disco lleva además una parte al azar (nadie lo puede adivinar en
+        /media/, ver el Caddyfile)."""
+        if not self.file:
+            return None
+        extension = self.file.name.rsplit(".", 1)[-1] if "." in self.file.name else "pdf"
+        return f"rotulos-{self.pk}.{extension}"
 
     def __str__(self):
         return f"{self.name} ({self.user.email})"
@@ -131,10 +144,18 @@ def validar_archivo(archivo):
     return tipo
 
 
+def uploaded_label_path(instance, filename):
+    """``rotulos/AAAA/MM/<al azar>.<ext>``: el nombre original (que suele
+    llevar el del comprador) queda en ``original_filename``, no en disco."""
+    extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
+    today = timezone.localdate()
+    return f"rotulos/{today:%Y}/{today:%m}/{uuid.uuid4().hex}.{extension}"
+
+
 class UploadedLabelFile(models.Model):
     """Una foto o un PDF de rótulo subido por un usuario para importar."""
 
-    file = models.FileField("archivo", upload_to="rotulos/%Y/%m/")
+    file = models.FileField("archivo", upload_to=uploaded_label_path)
     original_filename = models.CharField(
         "nombre original",
         max_length=255,

@@ -11,9 +11,11 @@ from __future__ import annotations
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.generics import ListAPIView
 from rest_framework.views import APIView
 
@@ -33,7 +35,12 @@ TEAM_PERMISSION = "team.manage"
 
 
 def _error(exc):
-    code = status.HTTP_403_FORBIDDEN if isinstance(exc, services.TeamForbidden) else status.HTTP_400_BAD_REQUEST
+    if isinstance(exc, services.TeamMailError):
+        code = status.HTTP_502_BAD_GATEWAY
+    elif isinstance(exc, services.TeamForbidden):
+        code = status.HTTP_403_FORBIDDEN
+    else:
+        code = status.HTTP_400_BAD_REQUEST
     return Response({"detail": str(exc)}, status=code)
 
 
@@ -102,6 +109,13 @@ def team_name(team):
     return team.name or f"Comercio de {team.owner.email}"
 
 
+def _record_leave(request, previous, user, actor=None):
+    """Si ``user`` era empleado de otro comercio, deja constancia en ESE
+    comercio (su actividad lo muestra aunque ya no sea miembro)."""
+    if previous.role == TeamMember.Role.EMPLOYEE and membership(user).team_id != previous.team_id:
+        _audit(request, "team.leave", previous.team, user.email, actor=actor)
+
+
 class _TeamView(APIView):
     def get_permissions(self):
         return [IsAuthenticated(), HasRolePermission(TEAM_PERMISSION)]
@@ -117,7 +131,9 @@ class TeamView(_TeamView):
         team = self.team()
         members = team.members.select_related("user", "profile")
         members = sorted(members, key=lambda m: (m.role != TeamMember.Role.OWNER, m.joined_at))
-        invitations = team.invitations.filter(status=TeamInvitation.Status.PENDING).select_related("profile", "invited_by")
+        invitations = team.invitations.filter(
+            status=TeamInvitation.Status.PENDING, expires_at__gt=timezone.now()
+        ).select_related("profile", "invited_by")
         profiles = team.profiles.annotate(member_count=Count("members"))
         stores = StoreConnection.objects.filter(store_scope_q(request.user), owner=team.owner).order_by("name", "id")
         return Response(
@@ -152,14 +168,26 @@ class MemberView(_TeamView):
 
     def patch(self, request, pk):
         member = self.get_member(pk)
+        data = request.data
+        before = member_data(member)
         try:
-            all_stores, store_ids = _store_choice(request.data)
-            before = member_data(member)
+            # Lo que no viene en el pedido queda como está (es un PATCH).
+            if "all_stores" in data or "store_ids" in data:
+                all_stores, store_ids = _store_choice(data)
+            else:
+                all_stores, store_ids = before["all_stores"], before["store_ids"]
+            if "profile" in data:
+                profile = _profile(member.team, data.get("profile"))
+                accesses = data.get("accesses") or []
+            elif "accesses" in data:
+                profile, accesses = None, data.get("accesses") or []
+            else:
+                profile, accesses = member.profile, member.accesses
             services.update_member(
                 member,
                 request.user,
-                profile=_profile(member.team, request.data.get("profile")),
-                accesses=request.data.get("accesses") or [],
+                profile=profile,
+                accesses=accesses,
                 all_stores=all_stores,
                 store_ids=store_ids,
             )
@@ -182,6 +210,11 @@ class MemberView(_TeamView):
 
 class InvitationListView(_TeamView):
     """POST invitations/ ``{email, profile|accesses, all_stores, store_ids}``"""
+
+    # Cada invitación manda un mail a cualquier dirección: con límite, para
+    # que no se pueda usar para mandar mails en cantidad.
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "team_invite"
 
     def post(self, request):
         team = self.team()
@@ -219,10 +252,15 @@ class InvitationResendView(InvitationView):
     """POST invitations/<id>/resend/ — la renueva y manda el mail de nuevo."""
 
     http_method_names = ["post", "options"]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "team_invite"
 
     def post(self, request, pk):
         invitation = self.get_invitation(pk)
-        services.resend(invitation)
+        try:
+            services.resend(invitation)
+        except services.TeamError as exc:
+            return _error(exc)
         return Response(invitation_data(invitation))
 
 
@@ -242,6 +280,8 @@ class ProfileListView(_TeamView):
             return Response({"detail": "Ya hay un perfil con ese nombre."}, status=status.HTTP_400_BAD_REQUEST)
         try:
             accesses = services.clean_accesses(request.data.get("accesses"))
+            if set(accesses) - member_accesses(request.user):
+                raise services.TeamForbidden("No podés armar un perfil con accesos que vos no tenés.")
         except services.TeamError as exc:
             return _error(exc)
         profile = TeamProfile.objects.create(team=team, name=name, accesses=accesses)
@@ -313,6 +353,9 @@ class TransferView(APIView):
 # Lo que hace la gente del comercio con los datos del comercio. Nunca lo de
 # la plataforma (logins, usuarios, roles, soporte, catálogos).
 ACTIVITY_CATEGORIES = ("orders", "labels", "documents", "integrations", "processing", "team")
+# Acciones del comercio que viven en otra categoría: los datos del comercio
+# (razón social, CUIT, remitente) se auditan en "users".
+ACTIVITY_EXTRA_ACTIONS = ("account.update",)
 
 
 class TeamActivitySerializer(AuditLogSerializer):
@@ -335,10 +378,19 @@ class TeamActivityView(_TeamView, ListAPIView):
     def get_queryset(self):
         # Solo lo que cada uno hizo DESDE que está en este comercio: quien
         # viene de otro comercio no trae su historial (sería de ese otro).
+        team = self.team()
         since = Q(pk__in=[])
-        for user_id, joined_at in self.team().members.values_list("user_id", "joined_at"):
+        for user_id, joined_at in team.members.values_list("user_id", "joined_at"):
             since |= Q(actor_id=user_id, created_at__gte=joined_at)
-        return filter_logs(self.request.query_params).filter(since, category__in=ACTIVITY_CATEGORIES)
+        business = Q(category__in=ACTIVITY_CATEGORIES) | Q(action__in=ACTIVITY_EXTRA_ACTIONS)
+        # Lo que le pasó al comercio aunque quien lo hizo ya no esté (alguien
+        # que se fue a otro comercio).
+        about_team = Q(category="team", target_type="team", target_id=str(team.pk))
+        # Un movimiento "sobre un comercio" (se sumó, lo dejó, se renombró) se
+        # muestra solo en el comercio del que habla: quien se pasó de A a B no
+        # le cuenta a B que dejó A.
+        about_any_team = Q(category="team", target_type="team")
+        return filter_logs(self.request.query_params).filter((since & business & ~about_any_team) | about_team)
 
 
 # --- Las invitaciones del propio usuario ---------------------------------------
@@ -385,10 +437,12 @@ class MyInvitationActionView(APIView):
             services.decline(invitation)
             _audit(request, "team.decline", invitation, invitation.email)
             return Response({"status": invitation.status})
+        previous = membership(request.user)
         try:
             services.accept(invitation, request.user)
         except services.TeamError as exc:
             return _error(exc)
+        _record_leave(request, previous, request.user)
         _audit(request, "team.join", invitation.team, team_name(invitation.team))
         # Los permisos cambiaron: el frontend guarda el usuario actualizado.
         return Response(
@@ -422,10 +476,12 @@ class AdminUserTeamView(APIView):
         user = get_object_or_404(User, pk=pk)
         team = get_object_or_404(Team, pk=request.data.get("team_id"))
         role = request.data.get("role") or TeamMember.Role.EMPLOYEE
+        previous = membership(user)
         try:
             member = services.admin_assign(user, team, role)
         except services.TeamError as exc:
             return _error(exc)
+        _record_leave(request, previous, user)
         _audit(request, "team.admin_assign", user, user.email, {"team": {"from": None, "to": team_name(team)}, "role": {"from": None, "to": member.role}})
         return Response({"role": member.role, "team": {"id": team.id, "name": team_name(team)}})
 

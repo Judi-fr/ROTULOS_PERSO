@@ -16,6 +16,7 @@ urlpatterns = [
     # Estado de todo el sistema (worker, cola, disco...) para un monitor externo.
     path("api/v1/health/system/", SystemStatusView.as_view(), name="health-system"),
     path("api/v1/monitoring/", include("apps.monitoring.urls")),
+    path("api/v1/notices/", include("apps.monitoring.notice_urls")),  # avisos al comerciante
     path("api/v1/team/", include("apps.accounts.team_urls")),  # equipo del comercio (dueño y empleados)  # panel "Estado del sistema" (admin)
     path("api/v1/auth/", include("apps.accounts.urls")),
     path("api/v1/", include("apps.accounts.user_admin_urls")),  # CRUD de usuarios (admin)

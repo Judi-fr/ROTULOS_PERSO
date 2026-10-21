@@ -38,7 +38,7 @@ function renderAuditRows(logs) {
   const body = document.getElementById("auditBody");
   if (!body) return;
   if (!logs.length) {
-    body.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px;">No hay registros para mostrar.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="6" class="table-placeholder">No hay registros para mostrar.</td></tr>`;
     return;
   }
   body.innerHTML = "";
@@ -59,7 +59,7 @@ function renderAuditRows(logs) {
 
 async function loadAuditLogs() {
   const body = document.getElementById("auditBody");
-  if (body) body.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px;">Cargando...</td></tr>`;
+  if (body) body.innerHTML = `<tr><td colspan="6" class="table-placeholder"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></td></tr>`;
   try {
     const response = await apiFetch(auditQueryString());
     if (response.status === 403) throw new Error("No tenés permisos para ver la auditoría.");

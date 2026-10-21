@@ -247,7 +247,7 @@ def generate(label_request):
 
         label_request.download_token = secrets.token_urlsafe(32)
         label_request.file.save(
-            f"rotulo-{label_request.external_label_id}.pdf",
+            f"rotulo-{label_request.external_label_id}-{secrets.token_hex(8)}.pdf",
             ContentFile(pdf_bytes),
             save=False,
         )

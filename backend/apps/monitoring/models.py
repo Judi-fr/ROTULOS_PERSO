@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 
@@ -41,3 +42,38 @@ class AlertState(models.Model):
 
     def __str__(self):
         return f"{self.key}: {'falla' if self.failing_since else 'ok'}"
+
+
+class MerchantNotice(models.Model):
+    """Un aviso para un comercio: algo de SU comercio que se rompió y no se
+    arregla solo (``notices.py``). Queda abierto mientras dure el problema;
+    al resolverse se cierra (``resolved_at``) y, si vuelve, es uno nuevo."""
+
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="merchant_notices")
+    key = models.CharField(max_length=80)
+    kind = models.CharField(max_length=30)
+    title = models.CharField(max_length=200)
+    detail = models.TextField(blank=True, default="")
+    url = models.CharField(max_length=200, blank=True, default="")
+    # El acceso del equipo que hace falta para verlo (teams.ACCESSES) y las
+    # tiendas a las que se refiere (null = a ninguna en particular).
+    access = models.CharField(max_length=30)
+    store_ids = models.JSONField(null=True, blank=True, default=None)
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    dismissed_at = models.DateTimeField(null=True, blank=True)
+    mailed_at = models.DateTimeField(null=True, blank=True)
+    mail_attempted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "aviso al comercio"
+        verbose_name_plural = "avisos a los comercios"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["owner", "key"], condition=models.Q(resolved_at=None), name="merchant_notice_open_unique"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.owner} · {self.title}"

@@ -106,7 +106,7 @@ class FakeWoo:
             "consumer_secret"
         ) == self.valid_keys[1]
 
-    def request(self, method, url, params=None, json=None, auth=None, headers=None, timeout=None):
+    def request(self, method, url, params=None, json=None, auth=None, headers=None, timeout=None, allow_redirects=True):
         path = urlparse(url).path.split("/wp-json/wc/v3/", 1)[-1]
         self.calls.append({"method": method, "path": path, "params": dict(params or {}), "json": json, "auth": auth})
         if not self._authorized(auth, params):
@@ -153,7 +153,7 @@ class FakeWoo:
             return fake_response(200, {"update": json["update"]})
         raise AssertionError(f"Pedido no simulado: {method} {path}")
 
-    def get(self, url, headers=None, timeout=None):
+    def get(self, url, headers=None, timeout=None, allow_redirects=True):
         return fake_response(200, {"name": self.store_name, "url": SITE})
 
     def calls_to(self, method, path):

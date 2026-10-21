@@ -135,6 +135,21 @@ for every small thing ends up ignored), and the mail check never mails (it would
   public status page can be shown to merchants. Nothing to change in the code: the endpoint is already
   there and is throttled as anonymous (60/min).
 
+### Merchant notices (`apps/monitoring/notices.py`, 2026-10-20)
+
+The monitoring above tells the PLATFORM admin; this tells each business what broke in IT and won't fix
+itself. `sync_all()` (run by `run_monitor` every pass, and by the worker when the monitor is stale) keeps one
+open `MerchantNotice` per problem: a store in `error`, a carrier account deactivated with `last_error`, and in
+the last `NOTICES_RECENT_DAYS` (3) a failed batch `Document`, a print job in `error` and a failed Tiendanube
+`StoreLabelRequest`. A problem that's gone closes its notice (`resolved_at`); if it comes back it's a new one
+(unique `(owner, key)` among open rows). New notices go in ONE mail per business and pass to the OWNER
+(`NOTICES_MAIL_ENABLED`; a failed send is retried after `NOTICES_MAIL_RETRY_SECONDS`, 600) with a link to
+`notificaciones.html`. Each notice carries the team `access` needed to see it and its `store_ids`
+(`["unknown"]` for pre-teams batches), so `visible_notices(user)` shows a member only their areas and stores.
+API `GET /api/v1/notices/`, `POST /api/v1/notices/<id>/dismiss/` (hidden for the whole business while the
+problem lasts). Shown at the top of the dashboard (three newest) and in `notificaciones.html`. **Local `.env`
+uses real SMTP**: a local `run_monitor` mails real owners of the local DB — set `NOTICES_MAIL_ENABLED=False`.
+
 ### Deploying (`docker-compose.prod.yml` + `Caddyfile`, repo root)
 
 Brought up **by hand** — there is CI but no deploy pipeline (decided again 2026-10-19: no server yet; the
@@ -147,6 +162,14 @@ refuses HTTP callbacks, so the certificate is not optional. Only Caddy publishes
 not exposed at all, unlike the dev compose.
 - Because Caddy serves the frontend and the API under **one domain**, nothing is cross-origin and CORS
   stops mattering in this layout.
+- **Caddy serves only PUBLIC media directly** (store/account logos, template previews, saved-label logos and
+  thumbnails, all with random or sample-only names). Everything else under `/media/` — batch PDFs
+  (`documents/`), Tiendanube's labels (`store_labels/`), label photos (`rotulos/`) — carries buyer data and
+  answers 404 there: it is downloaded only through the API (session or signed token). Found in the 2026-10-20
+  security review: batches were `rotulos-<id>.pdf`, sequential, so anyone could enumerate every business's
+  labels. Those files now also get a random part in their name (`rotulos-<id>-<hex>.pdf`;
+  `Document.download_name` is the clean name the API serves) and uploaded photos a random name
+  (`uploaded_label_path`). `test_private_files.py` pins the Caddyfile rule.
 - **The API healthcheck sends `X-Forwarded-Proto: https`** on purpose: `prod.py` forces
   `SECURE_SSL_REDIRECT`, and the probe goes over plain HTTP to the container itself, so without that
   header Django answers 301 and the container would be marked unhealthy while being perfectly fine.
@@ -291,7 +314,22 @@ exact midnight. It reads `.get()`, so it takes query params or a JSON body dict 
 - Password rules (`validate_password_strength`, `auth_views.py`): 6+ chars, one uppercase, one digit, plus
   Django's own validators — enforced on register, admin-create, change-password, and reset-confirm.
 - `dashboard_views.DashboardView` (`GET users/me/dashboard/`) returns the role-based menu — the frontend
-  only renders it. `profile_views.ProfileView` is the self-service `me/` GET/PATCH.
+  only renders it. **Since 2026-10-20 the dashboard draws `sections`, not `menu`** (user: "hay muchos botones
+  y se terminó creando un menú larguísimo"): `dashboard_sections.build_sections(user)` groups the 19-23 entries
+  into six areas — Pedidos, Imprimir, Diseño de rótulos, Tiendas y envíos, Mi comercio, Ayuda (+ Administración
+  for the admin) — each opening its main screen and listing its other tools as `links`, every one filtered by
+  `user_has_permission`. **Symmetric on purpose** (asked 2026-10-21): every card has the same shape — header,
+  a list of tool rows with room for three, "Abrir <sección>" full width at the bottom — so they're all the same
+  height; `dashboard.js` picks the columns from the count (4 → 2×2, otherwise up to 3) and a short last row is
+  centred; Administración is a full-width strip under the grid. Keep each section at three tools at most (Mi
+  cuenta shows Equipo/Perfiles/Actividad to whoever manages the team, else shortcuts to `#perfil`/`#comercio`;
+  Ayuda: FAQ, write to support, notices). The same tools appear in that main screen's topbar (`data-links` items may carry
+  `"perm"`, which `topbar.js` checks against the stored session). `menu` is still sent (its tests and anything
+  reading it). `onboarding(user)`: four first steps (store, business data, template, carrier) computed from
+  the data, only for a business OWNER who isn't the admin; "Ocultar" is per browser (localStorage). Icons:
+  `@mdi/font@4.9.95` from jsdelivr — `cdn.materialdesignicons.com` stopped answering and every icon was blank;
+  some 5.x names (`printer-outline`, `storefront-outline`) don't exist in 4.x. `profile_views.ProfileView` is the self-service `me/` GET/PATCH (screen: the top half of `organizacion.html`,
+  "Mi cuenta").
 
 ### Roles & permissions (`apps/accounts`)
 
@@ -332,8 +370,11 @@ see "Teams") — read by anyone in the team, edited with `account.manage`. One o
 first save: `legal_name`, `tax_id` (CUIT, validated with AFIP's check digit — `cuit_is_valid` — and stored as
 `XX-XXXXXXXX-X`), `sender_name`/`sender_address`/`sender_phone`, `logo`, and preferences `default_template`,
 `default_carrier` (an API carrier code or a `ManualCarrier` name) and `default_print_format` (label|a4|zpl).
-`GET/PATCH /api/v1/auth/me/account/` (`users.me.view`/`users.me.edit`, audited `account.update`), screen
-`organizacion.html` (menu `account_settings`). Where it's used:
+`GET/PATCH /api/v1/auth/me/account/` (`users.me.view`/`account.manage`, audited `account.update`), screen
+`organizacion.html` (menu `account_settings`). **Since 2026-10-21 that page is "Mi cuenta"**: the person's own
+profile and password (`perfil.js`, endpoint `me/`) on top and the business data (`organizacion.js`, wrapped in
+its own scope because both scripts declared `API_BASE`/`apiFetch`) below, anchors `#perfil`/`#comercio`.
+`perfil.html` only redirects there (old links; the admin sidebar's "Ajustes" now points straight to it). Where it's used:
 - **Sender**: `label_rendering.sender_fields(owner, store)` — the store's sender, else the account's, else the
   store's name, else the legal name; address/phone the store's else the account's. Used by
   `build_label_context`, `build_shipment_context` (Tiendanube Labels API) and the pickup manifest
@@ -377,8 +418,12 @@ unique); two businesses never merge.
 - Models (`team_models.py`, imported from `models.py`): `Team` (owner, name), `TeamMember` (role owner|employee,
   `profile` or custom `accesses`, `all_stores` + `stores`), `TeamProfile` (named access set per business;
   every business starts with "Todo", "Depósito", "Atención"), `TeamInvitation`. **`teams.membership(user)`
-  creates a solo business on first use** (the project uses no signals); migration `accounts/0027` created one
-  for every existing user, admins included.
+  creates a solo business on first use** (the project uses no signals; two first requests at once are
+  safe: the loser of the `IntegrityError` reads the winner's); migration `accounts/0027` created one for every
+  existing user, admins included. **One membership read per request**: `TeamCacheMiddleware` opens a
+  per-request cache (`request_cache()`, a `ContextVar`) that `membership()` uses — every permission check and
+  `data_owner` used to query again. Outside a request (worker, shell, direct test calls) nothing is cached.
+  Whatever changes a membership calls `teams.forget(user)` (the `team_services` functions do).
 - **The 12 accesses** (`teams.ACCESSES`, the merchant's words): ver pedidos, imprimir rótulos, despachar,
   cancelar, cargar e importar, plantillas, tiendas, transportistas y tarifas, impresoras, datos del comercio,
   equipo, exportar. Owner = all; employee = their profile's (a profile change applies to everyone on it) or
@@ -389,13 +434,16 @@ unique); two businesses never merge.
   orders of their stores **plus manual orders**, and only those stores (settings, rates, checkout, Empretienda
   import, Tiendanube print link). Helpers: `allowed_store_ids`, `order_scope_q(user, prefix)`,
   `store_scope_q(user, field)`, `orders_outside_scope`, `visible_document_ids`. A batch by ids with an order of
-  another store → 400 (`OUTSIDE_SCOPE_MESSAGE`); by filters it is silently narrowed. `Document.store_ids`
+  another store → 400 (`OUTSIDE_SCOPE_MESSAGE`), and so does the pickup manifest (an incomplete manifest
+  would be signed by the carrier); by filters it is silently narrowed. `Document.store_ids`
   (filled by the batch; `null` for batches made before teams = unknown) hides a document — and its print jobs —
   containing orders of other stores, or of unknown stores. The tracking-import preview, `/labels/render/`,
   the label↔order link and rates writes are scoped too. **Careful:
   `Q(...) | Q()` returns the first Q alone** — an empty scope must not be OR-ed (see the `Label` list).
 - **Joining** (`team_services.py`): the owner (or anyone with the "Equipo" access) invites by email
-  (`POST /team/invitations/`, mail with a link to `invitaciones.html`, `TEAM_INVITATION_DAYS` = 7); the person
+  (`POST /team/invitations/`, mail with a link to `invitaciones.html`, `TEAM_INVITATION_DAYS` = 7; invite and
+  resend share the `team_invite` throttle, `TEAM_INVITE_THROTTLE_RATE` 30/hour, because each one mails any
+  address; the mail goes INSIDE the transaction, so a failed send leaves no invitation and answers 502); the person
   must **accept** with a verified email equal to the invitation's (`/team/my-invitations/<id>/accept|decline/`;
   the accept answers the refreshed `user` payload). Only if their own business is empty (`owned_data_count`
   over `OWNED_DATA`, the registry of business models) and has no other members; the empty one is discarded.
@@ -407,9 +455,11 @@ unique); two businesses never merge.
   refuses an owner with employees (transfer first) and otherwise deletes their team with them (`Team.owner` is
   PROTECT).
 - API `/api/v1/team/` (`team.manage`): `GET` (members, pending invitations, profiles, catalog, stores, `me`),
-  `PATCH {name}`, `members/<id>/` PATCH/DELETE, `invitations/` + `<id>/` DELETE + `<id>/resend/`, `profiles/`
-  CRUD (in use → 400), `transfer/`, `activity/` (the audit of CURRENT members, only since each one joined — someone coming from
-  another business doesn't bring that history —, limited to business categories, without IP/user agent). `user_payload` carries `team` {id, name, display_name, role, accesses, all_stores,
+  `PATCH {name}`, `members/<id>/` PATCH/DELETE, `invitations/` (only pending AND not expired are listed) +
+  `<id>/` DELETE + `<id>/resend/`, `profiles/` (creating one also respects no-escalation)
+  CRUD (in use → 400), `transfer/`, member PATCH is a real PATCH (what isn't sent stays), `activity/` (the audit of CURRENT members, only since each one joined — someone coming from
+  another business doesn't bring that history —, limited to business categories plus `account.update`, without IP/user agent; a member who left for another
+  business leaves a `team.leave` row about the OLD business, shown only there). `user_payload` carries `team` {id, name, display_name, role, accesses, all_stores,
   store_ids}. All changes audited in category `team`.
 - Frontend: `equipo.html` (members, invite, edit accesses/stores, transfer), `perfiles_equipo.html`,
   `invitaciones.html` (the invited person; the dashboard shows a notice when there is one),
@@ -479,6 +529,9 @@ unique); two businesses never merge.
   - `POST /orders/manifest/` `{order_ids, carrier?}` → "Planilla de retiro" PDF (platypus table with
     repeated header + signature block kept together) the carrier signs on pickup. Same rule as the label:
     no products, prices or buyer contact. Changes no status.
+  - Every spreadsheet goes through `import_parsing.parse_tabular_file`, which stops at
+    `IMPORT_PARSE_MAX_ROWS` (20 000) WHILE reading — above each screen's own limit (1000 import, 5000
+    Empretienda): a 5 MB .xlsx can hold millions of rows and used to be loaded whole before any check.
   - `POST /orders/tracking-import/preview/` (multipart `file`, optional `mapping` JSON, `carrier`,
     `store`) reads the carrier's spreadsheet with `import_parsing`, guesses columns by synonym
     (`detect_columns`: tracking before order, because "número de seguimiento" contains "número") and
@@ -881,6 +934,13 @@ Empretienda (no API: its exported sales spreadsheet is imported).
   (`connect_store`) drops both. The print menu extension belongs to our app, so it does not exist on
   this path. The scopes listed in `tiendas.html` must match `SHOPIFY_SCOPES`. **Tiendanube has no
   manual path**: its API only grants access to an installed app (authorization code only).
+- **Requests to a URL the merchant typed (WooCommerce, Magento) go through `safe_http.py`** (2026-10-20
+  security review): the host is resolved and any non-public address (private, loopback, link-local, CGNAT,
+  reserved) is refused with `ProviderRejectedError`, also on every redirect, which is followed by hand (max 3;
+  credentials dropped when the host changes; 301/302/303 → GET). Without it `https://10.0.0.5` or a domain
+  resolving to 127.0.0.1 made our server call its own network (SSRF). `INTEGRATIONS_ALLOW_PRIVATE_HOSTS`
+  (default = `DEBUG`) turns it off for the local test store, which resolves to a Tailscale 100.x address.
+  VTEX/Shopify/Tiendanube hosts are ours or a fixed suffix, so they don't need it.
 - **WooCommerce (`providers/woocommerce/provider.py`)** — every store is a self-hosted WordPress, so: credentials
   are REST **API keys** (consumer key + secret, stored encrypted as JSON in `access_token`, never expire)
   that arrive by **two paths**, decided with the user: the automatic `/wc-auth/v1/authorize` (the
@@ -1407,6 +1467,25 @@ permission (UI-only gating; the backend re-checks every permission server-side).
   fills it from the stored session on load, and a page holding a fresh user calls
   `window.AppTopbar.render(user)`. Each page still wires its own `logoutBtn` listener. `dashboard.html` and
   the admin pages keep their own header (admin ones come from `admin_sidebar.js`).
+- **Shared UI pieces (2026-10-21): `assets/css/ui.css` + the end of `utils.js`.** Every page links `ui.css` right
+  after the favicon (`assets/images/favicon.svg`), before its own stylesheet. In it: the dialogs, the loading bars,
+  the empty state, `.table-placeholder`, `button/input/select/textarea { font-family: inherit }` (buttons without
+  their own rule came out in Arial), and the phone rules for the shared topbar (`header.topbar`, a bit more
+  specific than each page's own rule so it wins).
+  - **No `alert()`/`confirm()`/`prompt()`**: use `await appConfirm(msg)` / `appAlert(msg, {tone})` /
+    `await appPrompt(msg, default)`. With no `confirmLabel`, the confirm button takes the question's verb
+    ("¿Eliminar…" → "Eliminar"), red for the ones that delete or cut something. The way out says "Volver",
+    because several questions are "¿Cancelar…?". `index.html`/`register.html` load `utils.js` for this.
+  - Loading = `appSkeleton()` (grey bars) instead of a bare "Cargando...". Empty list = `appEmptyState({icon,
+    title, text, actionLabel, actionHref})`, with its own line icons (`APP_EMPTY_ICONS`): not every page loads
+    the icon font.
+  - **Busy submit buttons for free**: a document-level `submit` listener (bubble phase, so after the form's own
+    handler) disables the submitter and swaps its text ("Guardando…", "Creando…", "Enviando…"…) when the
+    handler called `preventDefault` and didn't disable the button itself. It counts in-flight `fetch` calls
+    (`window.fetch` is wrapped) and gives the button back when they end. A form that manages its own button
+    (its own "Conectando…") is left alone.
+  - `base.css` had lost the `@media (max-width: 640px)` around its last two rules when it was extracted, so
+    the phone-only topbar wrap and `.main` padding applied on desktop too. Fixed.
 - `assets/css/base.css` — reset, `body`/`.layout`/`.main`, top bar and buttons, loaded BEFORE the page's own
   stylesheet by the pages whose CSS had these rules byte-identical (`documentos`/`importar`/`integraciones`/
   `labels_shared`/`pedidos`/`perfil`). Color tokens (`:root`) stay per file — not every screen uses the same
@@ -1499,6 +1578,9 @@ permission (UI-only gating; the backend re-checks every permission server-side).
   through `renderBulkResult` and files through `downloadResponse`, also in `utils.js`. They load
   `pedidos.css` + `imprimir_rotulos.css` + `acciones_masivas.css`. `print_labels.js` keeps its own copy
   of the list (it predates the picker and wasn't reorganized).
+- `ayuda.html` opens with a short FAQ (`#preguntas`, native `<details>`, no JS, styles in `assets/css/ayuda.css`)
+  above the support form; the dashboard's Ayuda card links to it. The answers name buttons and sections as the
+  app shows them — **if one is renamed, fix the FAQ too**.
 - **Addresses are not a menu entry.** They live inside `pedidos.html` (its own section, full CRUD); a
   separate `addresses` entry pointing at `pedidos.html#addressesSection` was a second door to the same
   screen and was removed.

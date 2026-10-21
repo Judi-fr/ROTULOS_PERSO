@@ -43,7 +43,7 @@ function renderAdminOrdersRows(orders) {
   const body = document.getElementById("adminOrdersBody");
   if (!body) return;
   if (!orders.length) {
-    body.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px;">No hay pedidos para mostrar.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="5" class="table-placeholder">No hay pedidos para mostrar.</td></tr>`;
     return;
   }
   body.innerHTML = "";
@@ -65,7 +65,7 @@ function renderAdminOrdersRows(orders) {
 
 async function loadAdminOrders() {
   const body = document.getElementById("adminOrdersBody");
-  if (body) body.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px;">Cargando...</td></tr>`;
+  if (body) body.innerHTML = `<tr><td colspan="5" class="table-placeholder"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></td></tr>`;
   try {
     const response = await apiFetch(adminOrdersQueryString());
     if (response.status === 403) throw new Error("No tenés permisos para ver los pedidos.");

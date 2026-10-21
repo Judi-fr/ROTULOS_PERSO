@@ -177,79 +177,365 @@ body {
 }
 
 /* GRUPOS DE MENÚ ("Mis cosas" / "Cuenta" / "Ayuda") */
-.menu-group {
-  margin-bottom: 30px;
-}
-
-.menu-group-title {
-  font-size: 13px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-  margin: 0 0 14px;
-}
-
-/* MENU GRID */
-.menu-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 18px;
-}
-
 .menu-loading {
   color: var(--text-muted);
 }
 
-.menu-card {
+/* SECCIONES (apps/accounts/dashboard_sections.py): todas las tarjetas con la
+   misma forma y la misma altura; la cantidad de columnas la decide
+   dashboard.js (data-columns) para que no quede una tarjeta suelta, y una
+   fila incompleta va centrada. */
+.section-grid {
+  --gap: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--gap);
+}
+
+.section-grid[data-columns="1"] .section-card {
+  flex: 0 1 100%;
+}
+
+.section-grid[data-columns="2"] .section-card {
+  flex: 0 1 calc((100% - var(--gap)) / 2);
+}
+
+.section-grid[data-columns="3"] .section-card {
+  flex: 0 1 calc((100% - 2 * var(--gap)) / 3);
+}
+
+.section-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
+  min-width: 0;
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 22px;
-  text-decoration: none;
-  color: var(--text-dark);
-  transition: box-shadow 0.15s, transform 0.15s;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.menu-card:hover {
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
-  transform: translateY(-1px);
+.section-card:hover {
+  border-color: #fdba74;
+  box-shadow: 0 8px 24px rgba(154, 52, 18, 0.08);
 }
 
-.menu-card-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+.section-card-head {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  /* La descripción ocupa siempre dos líneas: las cabeceras quedan parejas. */
+  min-height: 72px;
+}
+
+.section-card-icon {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
   background: var(--blue-light);
-  color: var(--blue);
+  color: #c2410c;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: 24px;
 }
 
-.menu-card-label {
+.section-card-text {
+  min-width: 0;
+}
+
+.section-card-title {
+  margin: 2px 0 4px;
+  font-size: 18px;
   font-weight: 700;
-  font-size: 15.5px;
+  letter-spacing: -0.01em;
 }
 
-.menu-card-status {
-  font-size: 12.5px;
+.section-card-description {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+
+/* Herramientas: filas iguales, con lugar para tres aunque haya menos. */
+.section-card-tools {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: calc(3 * 40px + 2 * 6px);
+  flex: 1;
+}
+
+.section-card-tools a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text-dark);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.section-card-tools a:hover {
+  border-color: #fdba74;
+  background: #fff7ed;
+}
+
+.section-card-tools a .mdi {
+  color: #c2410c;
+  font-size: 18px;
+}
+
+.section-card-tools a:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.section-card-open {
+  justify-content: center;
+  width: 100%;
+}
+
+/* Administración: una franja a todo el ancho debajo de la grilla. */
+.section-card-wide {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr) auto;
+  align-items: center;
+  gap: 18px;
+}
+
+.section-card-wide .section-card-head {
+  min-height: 0;
+}
+
+.section-card-wide .section-card-tools {
+  flex-direction: row;
+  flex-wrap: wrap;
+  min-height: 0;
+}
+
+.section-card-wide .section-card-open {
+  width: auto;
+}
+
+/* Botón de las secciones y de los primeros pasos */
+.section-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: var(--text-dark);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background 0.2s, border-color 0.2s, transform 0.1s;
+}
+
+.section-btn:hover {
+  border-color: #fdba74;
+  background: #fff7ed;
+}
+
+.section-btn:active {
+  transform: translateY(1px);
+}
+
+.section-btn-primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+.section-btn-primary:hover {
+  background: #ea580c;
+  border-color: #ea580c;
+}
+
+.section-btn:focus-visible,
+.notice a:focus-visible,
+.notice button:focus-visible,
+.onboarding button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+/* AVISOS del comercio (apps/monitoring/notices.py) */
+.notices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  font-size: 14px;
+}
+
+.notice .mdi {
+  font-size: 18px;
+}
+
+.notice-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.notice a,
+.notice-hide {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #fcd34d;
+  background: #fff;
+  color: #92400e;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.notice a:hover,
+.notice-hide:hover {
+  background: #fef3c7;
+}
+
+.onboarding-hide {
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.notice-hide {
+  font-family: inherit;
+}
+
+.notice-more {
+  font-size: 13px;
+  color: #92400e;
+}
+
+/* PRIMEROS PASOS de un comercio nuevo */
+.onboarding {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 18px;
+}
+
+.onboarding-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.onboarding-head h2 {
+  margin: 0;
+  font-size: 15.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.onboarding-hide {
   color: var(--text-muted);
 }
 
-.menu-card.disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-  pointer-events: none;
+.onboarding-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  margin: 10px 0 12px;
+  overflow: hidden;
+}
+
+.onboarding-progress span {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+  transition: width 0.3s;
+}
+
+.onboarding-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px 16px;
+  font-size: 14px;
+}
+
+.onboarding-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.onboarding-steps li .mdi {
+  font-size: 18px;
+  color: #cbd5e1;
+}
+
+.onboarding-steps li.done {
+  color: var(--text-muted);
+}
+
+.onboarding-steps li.done .mdi {
+  color: #16a34a;
+}
+
+.onboarding-steps li.done span {
+  padding: 8px 0;
+}
+
+@media (max-width: 900px) {
+  .section-grid[data-columns="3"] .section-card {
+    flex: 0 1 calc((100% - var(--gap)) / 2);
+  }
 }
 
 @media (max-width: 640px) {
   .topbar {
     padding: 14px 18px;
+  }
+  .section-grid[data-columns] .section-card {
+    flex: 0 1 100%;
+    padding: 18px;
+  }
+  .section-card-wide {
+    grid-template-columns: 1fr;
   }
   .main {
     padding: 24px 18px 40px;

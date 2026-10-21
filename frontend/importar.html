@@ -6,6 +6,8 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge" />
 
     <title>Carga de pedidos</title>
+    <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
+    <link rel="stylesheet" href="assets/css/ui.css" />
 
     <link
       href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
@@ -18,7 +20,7 @@
   <body>
     <div class="layout">
       <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
-      <header class="topbar" id="appTopbar" data-links='[{"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+      <header class="topbar" id="appTopbar" data-links='[{"href": "pedidos.html", "label": "Mis pedidos", "perm": "orders.view"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
 
       <main class="main">
         <div class="main-heading">
@@ -148,7 +150,7 @@
                 <select id="mappingTemplateSelect">
                   <option value="">Aplicar una plantilla de mapeo guardada...</option>
                 </select>
-                <input type="text" id="mappingTemplateName" placeholder="Nombre para guardar este mapeo" style="flex:1; min-width:180px; padding:9px 12px; border:1px solid var(--border); border-radius:8px;" />
+                <input type="text" id="mappingTemplateName" placeholder="Nombre para guardar este mapeo" class="mapping-name-input" />
                 <button class="btn btn-outline btn-small" id="saveMappingTemplateBtn" type="button">
                   Guardar como plantilla
                 </button>
@@ -166,7 +168,7 @@
                 </table>
               </div>
 
-              <p class="hint" style="margin: 4px 0 10px;">Vista previa (primeras filas del archivo):</p>
+              <p class="hint preview-hint">Vista previa (primeras filas del archivo):</p>
               <div class="table-scroll">
                 <table class="data-table" id="previewTable">
                   <thead><tr id="previewTableHead"></tr></thead>

@@ -77,4 +77,8 @@ def worker_tick(now=None):
     if _last_backup_pass is not None and now - _last_backup_pass < interval:
         return None
     _last_backup_pass = now
-    return run_alerts(now)
+    summary = run_alerts(now)
+    from . import notices
+
+    notices.sync_all(now)
+    return summary

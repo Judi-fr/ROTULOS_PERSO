@@ -38,9 +38,7 @@ class DocumentSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_file_name(self, obj):
-        if not obj.file:
-            return None
-        return obj.file.name.rsplit("/", 1)[-1]
+        return obj.download_name
 
 
 class AdminDocumentSerializer(DocumentSerializer):

@@ -108,7 +108,7 @@ class FakeMagento:
         expected = base64.b64encode(hmac.new(key.encode(), base.encode(), hashlib.sha256).digest()).decode()
         return hmac.compare_digest(expected, oauth.get("oauth_signature", ""))
 
-    def request(self, method, url, json=None, headers=None, timeout=None):
+    def request(self, method, url, json=None, headers=None, timeout=None, allow_redirects=True):
         parsed = urlparse(url)
         assert f"{parsed.scheme}://{parsed.netloc}" == SITE, url
         if not parsed.path.startswith(self.rest_path):

@@ -406,6 +406,12 @@
   @media (max-width:800px){
     .sidebar{ display:none; }
     table{ display:block; overflow-x:auto; }
+    .topbar{ flex-wrap:wrap; gap:14px; }
+    .topbar-actions, .toolbar-right{ flex-wrap:wrap; }
+  }
+  @media (max-width:520px){
+    .stats{ grid-template-columns:1fr; }
+    .topbar-actions .btn, .toolbar-right .btn{ flex:1 1 auto; justify-content:center; }
   }
 
   /* ── Settings view ─────────────────────────────────────────── */
@@ -741,3 +747,19 @@
     .support-layout{ grid-template-columns:1fr; }
     .support-detail-card{ position:static; }
   }
+
+/* Ventanas de detalle (gestionuser.html y auditoria.html). Antes eran estilos
+   sueltos en el HTML, iguales en las dos páginas. El JS solo cambia display. */
+.admin-modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.5); z-index: 100;
+  align-items: center; justify-content: center; padding: 16px; }
+.admin-modal-box { background: #fff; border-radius: 14px; width: 460px; max-width: 100%; max-height: 85vh; padding: 24px;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.25); display: flex; flex-direction: column; }
+.admin-modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-shrink: 0; }
+.admin-modal-title { margin: 0; font-size: 17px; font-weight: 700; }
+.admin-modal-close { border: none; background: transparent; cursor: pointer; color: #64748b; font-size: 22px; line-height: 1;
+  width: 36px; height: 36px; border-radius: 8px; }
+.admin-modal-close:hover { background: #f1f5f9; color: #0f172a; }
+.admin-modal-content { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.admin-modal-foot { display: flex; justify-content: flex-end; margin-top: 20px; flex-shrink: 0; }
+.admin-link-text { margin-bottom: 12px; }
+.btn-center { justify-content: center; }
