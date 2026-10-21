@@ -75,7 +75,7 @@ class AuditFixtures(APITestCase):
     """Un admin con ``audit.view``, un usuario sin permiso y dos registros."""
 
     def setUp(self):
-        for name in ("admin", "designer", "operator", "subscriber"):
+        for name in ("admin", "subscriber"):
             Group.objects.get_or_create(name=name)
 
         self.admin_user = User.objects.create_user(

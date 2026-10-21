@@ -73,6 +73,10 @@ MAX_DESIGN_RULES = 50
 # Estilo opcional de un texto (ver apps.labels.label_rendering._draw_text_entry).
 FONT_SIZE_MIN, FONT_SIZE_MAX = 5, 40
 VALID_TEXT_ALIGNS = {"left", "center", "right"}
+# Opciones de 2026-10-21: texto invertido (blanco sobre negro), recuadro propio,
+# una etiqueta fija delante del dato ("CP:") y texto vertical.
+VALID_TEXT_ROTATIONS = {0, 90, 270}
+MAX_PREFIX_LENGTH = 40
 MAX_EXTRA_TEXTS = 30
 MAX_DESIGN_LINES = 20
 
@@ -94,9 +98,19 @@ def _validate_text_style(label, entry):
         _validate_number_range(entry["font_size"], f"{label}.font_size", FONT_SIZE_MIN, FONT_SIZE_MAX)
     if "width" in entry:
         _validate_number_range(entry["width"], f"{label}.width", 1, 100)
-    for flag in ("bold", "hide_if_empty", "shrink_to_fit", "locked"):
+    for flag in ("bold", "hide_if_empty", "shrink_to_fit", "locked", "invert", "frame", "prefix_bold"):
         if flag in entry and not isinstance(entry[flag], bool):
             raise serializers.ValidationError(f"'{label}.{flag}' debe ser verdadero/falso.")
+    if "prefix" in entry:
+        prefix = entry["prefix"]
+        if not isinstance(prefix, str) or len(prefix) > MAX_PREFIX_LENGTH:
+            raise serializers.ValidationError(
+                f"'{label}.prefix' debe ser un texto de hasta {MAX_PREFIX_LENGTH} caracteres."
+            )
+    if "rotate" in entry and (
+        isinstance(entry["rotate"], bool) or entry["rotate"] not in VALID_TEXT_ROTATIONS
+    ):
+        raise serializers.ValidationError(f"'{label}.rotate' debe ser 0, 90 o 270.")
     if "align" in entry and entry["align"] not in VALID_TEXT_ALIGNS:
         raise serializers.ValidationError(
             f"'{label}.align' debe ser uno de: {', '.join(sorted(VALID_TEXT_ALIGNS))}."
@@ -280,8 +294,10 @@ def validate_design(value):
       y ``"show_text"`` opcional (booleano).
 
     Estilo opcional de los textos: ``font_size`` (pt), ``bold``, ``align``
-    (left/center/right), ``width`` (% del rótulo), ``hide_if_empty`` y
-    ``shrink_to_fit``.
+    (left/center/right), ``width`` (% del rótulo), ``hide_if_empty``,
+    ``shrink_to_fit``, ``invert`` (blanco sobre negro), ``frame`` (recuadro),
+    ``prefix``/``prefix_bold`` (etiqueta fija delante del dato) y ``rotate``
+    (0, 90 = de arriba hacia abajo, 270 = de abajo hacia arriba).
     Decoración opcional: ``texts`` (textos extra con la misma forma),
     ``lines`` (separadores horizontales ``{top, left, right, dashed}``) y
     ``border`` (``{dashed}``, borde de corte). Un texto extra o una línea
@@ -409,6 +425,7 @@ class LabelTemplateSerializer(serializers.ModelSerializer):
     # Si quien pregunta puede guardar cambios en ella: la misma regla que
     # LabelTemplateViewSet.perform_update, para que el frontend no la copie.
     can_edit = serializers.SerializerMethodField()
+    can_delete = serializers.SerializerMethodField()
     # Nota de la versión que deja este guardado ("cambié el logo"). Opcional.
     version_note = serializers.CharField(
         write_only=True, required=False, allow_blank=True, max_length=200
@@ -429,6 +446,7 @@ class LabelTemplateSerializer(serializers.ModelSerializer):
             "preview",
             "current_version",
             "can_edit",
+            "can_delete",
             "version_note",
             "created_at",
             "updated_at",
@@ -449,14 +467,24 @@ class LabelTemplateSerializer(serializers.ModelSerializer):
         last = obj.versions.order_by("-number").values_list("number", flat=True).first()
         return last
 
-    def get_can_edit(self, obj):
+    def _may(self, obj, permission):
+        # Lo mismo que la vista: el permiso de la acción (migración 0029) y,
+        # sin labels.manage_templates, que sea una plantilla propia privada.
         request = self.context.get("request")
         user = getattr(request, "user", None)
         if not getattr(user, "is_authenticated", False):
             return False
         if user_has_permission(user, "labels.manage_templates"):
             return True
+        if not user_has_permission(user, permission):
+            return False
         return obj.owner_id == data_owner(user).id and not obj.is_public
+
+    def get_can_edit(self, obj):
+        return self._may(obj, "labels.template_edit")
+
+    def get_can_delete(self, obj):
+        return self._may(obj, "labels.template_delete")
 
     def create(self, validated_data):
         validated_data.pop("version_note", None)

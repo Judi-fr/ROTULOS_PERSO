@@ -131,6 +131,156 @@ function renderSections(sections) {
 }
 
 // ---------------------------------------------------------------------------
+// BUSCADOR DE FUNCIONES: todas las herramientas del usuario en un solo lugar.
+// Junta las de las tarjetas (``sections``: cada sección y sus links) con el
+// ``menu`` completo, que trae también las que no entran en una tarjeta; las
+// dos listas ya vienen filtradas por permiso desde el backend. Sin acentos ni
+// mayúsculas, por nombre de la función o de su sección. Flechas para moverse,
+// Enter abre, Esc cierra, "/" en cualquier lado lleva al buscador.
+// ---------------------------------------------------------------------------
+function normalizeSearch(text) {
+  return String(text || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+// Funciones que no son una página sino un botón dentro de otra (Mis pedidos,
+// Mi cuenta, Ayuda): sin esto, buscar "planilla" no encontraba la planilla de
+// retiro. Cada una solo aparece con su permiso; si se renombra el botón,
+// cambiar el texto acá también.
+const IN_PAGE_TOOLS = [
+  { label: "Despachar pedidos", url: "pedidos.html", section: "Pedidos", perm: "orders.dispatch" },
+  { label: "Planilla de retiro (elegí pedidos en Mis pedidos)", url: "pedidos.html", section: "Pedidos", perm: "orders.manifest" },
+  { label: "Cargar seguimientos desde planilla", url: "pedidos.html", section: "Pedidos", perm: "orders.tracking_import" },
+  { label: "Nuevo pedido a mano", url: "pedidos.html", section: "Pedidos", perm: "orders.create_manual" },
+  { label: "Mis direcciones", url: "pedidos.html#addressesSection", section: "Pedidos", perm: "addresses.manage" },
+  { label: "Cambiar mi contraseña", url: "organizacion.html#perfil", section: "Mi cuenta", perm: null },
+  { label: "Datos del comercio", url: "organizacion.html#comercio", section: "Mi cuenta", perm: null },
+  { label: "Preguntas frecuentes", url: "ayuda.html#preguntas", section: "Ayuda", perm: null },
+];
+
+function collectTools(sections, menu) {
+  const tools = [];
+  const seen = new Map();
+  const sectionOf = {};
+  // Una página aparece una sola vez: si el menú la llama distinto que la
+  // tarjeta ("Exportar" / "Exportar pedidos"), el otro nombre también sirve
+  // para encontrarla. Las funciones dentro de una página (IN_PAGE_TOOLS)
+  // comparten la URL a propósito: esas van por nombre.
+  const add = (label, url, section, { byName = false } = {}) => {
+    if (!label || !url) return;
+    const key = byName ? `${normalizeSearch(label)}|${url}` : url;
+    const existing = seen.get(key);
+    if (existing) {
+      existing.haystack += ` ${normalizeSearch(label)}`;
+      return;
+    }
+    const tool = { label, url, section: section || "", haystack: normalizeSearch(`${label} ${section || ""}`) };
+    seen.set(key, tool);
+    tools.push(tool);
+  };
+  sections.forEach((section) => {
+    sectionOf[section.url] = section.label;
+    add(section.label, section.url, "Sección");
+    (section.links || []).forEach((link) => {
+      sectionOf[link.url] = section.label;
+      add(link.label, link.url, section.label);
+    });
+  });
+  menu
+    .filter((item) => item.enabled !== false)
+    .forEach((item) => add(item.label, item.url, sectionOf[item.url] || "Otras"));
+  IN_PAGE_TOOLS.filter((tool) => !tool.perm || sessionHasPermission(tool.perm)).forEach((tool) =>
+    add(tool.label, tool.url, tool.section, { byName: true }),
+  );
+  return tools;
+}
+
+function setupToolSearch(sections, menu) {
+  const input = document.getElementById("toolSearchInput");
+  const list = document.getElementById("toolSearchResults");
+  if (!input || !list || input.dataset.ready) return;
+  input.dataset.ready = "1";
+  const tools = collectTools(sections, menu);
+  let matches = [];
+  let active = 0;
+
+  function close() {
+    list.hidden = true;
+    input.setAttribute("aria-expanded", "false");
+  }
+
+  function paint() {
+    list.innerHTML = "";
+    if (!matches.length) {
+      const empty = document.createElement("li");
+      empty.className = "tool-search-empty";
+      empty.textContent = "No encontramos esa función. Probá con otra palabra.";
+      list.appendChild(empty);
+    }
+    matches.forEach((tool, index) => {
+      const item = document.createElement("li");
+      item.role = "option";
+      item.className = index === active ? "active" : "";
+      item.setAttribute("aria-selected", index === active ? "true" : "false");
+      const link = document.createElement("a");
+      link.href = tool.url;
+      link.innerHTML = "<span></span><small></small>";
+      link.querySelector("span").textContent = tool.label;
+      link.querySelector("small").textContent = tool.section;
+      item.appendChild(link);
+      item.addEventListener("mousemove", () => {
+        if (active !== index) {
+          active = index;
+          paint();
+        }
+      });
+      list.appendChild(item);
+    });
+    list.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+  }
+
+  input.addEventListener("input", () => {
+    const words = normalizeSearch(input.value).split(/\s+/).filter(Boolean);
+    if (!words.length) {
+      close();
+      return;
+    }
+    matches = tools.filter((tool) => words.every((word) => tool.haystack.includes(word))).slice(0, 8);
+    active = 0;
+    paint();
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      input.value = "";
+      close();
+    } else if (!list.hidden && matches.length && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+      event.preventDefault();
+      active = (active + (event.key === "ArrowDown" ? 1 : matches.length - 1)) % matches.length;
+      paint();
+    } else if (event.key === "Enter" && matches[active] && !list.hidden) {
+      event.preventDefault();
+      window.location.href = matches[active].url;
+    }
+  });
+  input.addEventListener("focus", () => {
+    if (input.value.trim()) input.dispatchEvent(new Event("input"));
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("#toolSearch")) close();
+  });
+  document.addEventListener("keydown", (event) => {
+    const typing = event.target.closest("input, textarea, select, [contenteditable='true']");
+    if (event.key === "/" && !typing) {
+      event.preventDefault();
+      input.focus();
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // AVISOS: lo que se rompió en el comercio (apps/monitoring/notices.py). Los
 // tres más nuevos acá; todos en notificaciones.html.
 // ---------------------------------------------------------------------------
@@ -375,6 +525,7 @@ async function loadDashboard() {
     renderBackToAdminLink(data.user || {});
     renderOnboarding(data.onboarding);
     renderSections(data.sections || []);
+    setupToolSearch(data.sections || [], data.menu || []);
     loadOrderSummary();
     loadInvitationNotice();
     loadNotices();

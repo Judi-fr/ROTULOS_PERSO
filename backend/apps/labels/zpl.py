@@ -45,6 +45,9 @@ from .label_rendering import (
     DEFAULT_QR_DATA_MARKER,
     DEFAULT_QR_SIZE_CM,
     MIN_SHRINK_FONT_SIZE,
+    TEXT_BAND_DESCENT_RATIO,
+    TEXT_BAND_PAD_RATIO,
+    TEXT_ROTATIONS,
     _all_placeholders_empty,
     _box_size_cm,
     _fit_size_cm,
@@ -90,6 +93,12 @@ QR_MAGNIFICATION_RANGE = (1, 10)
 BARCODE_MODULE_RANGE = (2, 10)
 
 ALIGN_TO_ZPL = {"left": "L", "center": "C", "right": "R"}
+# ^A0<orientación>: N normal, R girado 90° (se lee de arriba hacia abajo),
+# B girado 270° (de abajo hacia arriba). Mismo ``rotate`` que el PDF.
+ROTATION_TO_ZPL = {0: "N", 90: "R", 270: "B"}
+# Grosor del recuadro de un texto (``frame``), en dots a 203 dpi; se escala
+# con la densidad como el resto.
+TEXT_FRAME_DOTS_AT_8 = 2
 
 
 # ---------------------------------------------------------------------------
@@ -149,7 +158,10 @@ def escape_field_data(text):
 
 def _text_commands(entry, context, computed, width_cm, height_cm, default_font_pt, dpmm):
     """Los comandos de un campo de texto, o ``[]`` si no hay nada que
-    imprimir. Mismas reglas que ``label_rendering._draw_text_entry``."""
+    imprimir. Mismas reglas que ``label_rendering._draw_text_entry``,
+    incluidas la etiqueta fija (``prefix``), el texto invertido (``invert``:
+    franja ``^GB`` llena y el texto con ``^FR``, que lo imprime en blanco donde
+    pisa negro), el recuadro (``frame``) y el texto vertical (``rotate``)."""
     raw_text = entry.get("text")
     if entry.get("hide_if_empty") and _all_placeholders_empty(raw_text, context, computed):
         return []
@@ -157,49 +169,115 @@ def _text_commands(entry, context, computed, width_cm, height_cm, default_font_p
     if not text:
         return []
 
+    prefix = (entry.get("prefix") or "").strip()
+    prefix = f"{prefix} " if prefix else ""
+    content = prefix + text
+    rotate = entry.get("rotate") if entry.get("rotate") in TEXT_ROTATIONS else 0
+
     left_pct, top_pct = entry.get("left", 0), entry.get("top", 0)
     x_dots, y_dots = percent_to_dots(left_pct, top_pct, width_cm, height_cm, dpmm)
 
-    # Ancho de la caja: hasta el borde derecho salvo que el campo diga otra
-    # cosa, igual que en el PDF.
-    total_width_dots = cm_to_dots(width_cm, dpmm)
-    box_width_dots = total_width_dots - x_dots
-    if entry.get("width") is not None:
-        box_width_dots = min(box_width_dots, cm_to_dots(float(entry["width"]) / 100 * width_cm, dpmm))
+    # Largo de la caja a lo largo del texto: horizontal, hasta el borde
+    # derecho; vertical, hasta el de abajo (``width`` es % del alto). Igual
+    # que en el PDF.
+    if rotate:
+        box_width_dots = cm_to_dots(height_cm, dpmm) - y_dots
+        if entry.get("width") is not None:
+            box_width_dots = min(box_width_dots, cm_to_dots(float(entry["width"]) / 100 * height_cm, dpmm))
+    else:
+        box_width_dots = cm_to_dots(width_cm, dpmm) - x_dots
+        if entry.get("width") is not None:
+            box_width_dots = min(box_width_dots, cm_to_dots(float(entry["width"]) / 100 * width_cm, dpmm))
     if box_width_dots <= 0:
         return []
 
     font_pt = float(entry.get("font_size") or default_font_pt)
     if entry.get("shrink_to_fit"):
-        font_pt = _shrink_to_fit_pt(text, font_pt, box_width_dots, dpmm)
+        font_pt = _shrink_to_fit_pt(content, font_pt, box_width_dots, dpmm)
     font_dots = max(1, points_to_dots(font_pt, dpmm))
 
-    align = ALIGN_TO_ZPL.get(entry.get("align", "left"), "L")
-    payload = escape_field_data(text)
+    orientation = ROTATION_TO_ZPL[rotate]
+    # Vertical no hay alineación: arranca arriba. De abajo hacia arriba eso es
+    # el FINAL de la caja, o sea justificado a la derecha.
+    if rotate == 270:
+        align = "R"
+    elif rotate == 90:
+        align = "L"
+    else:
+        align = ALIGN_TO_ZPL.get(entry.get("align", "left"), "L")
+    invert = bool(entry.get("invert"))
 
-    def campo(offset):
-        # ^A0N: fuente 0 (la escalable que traen todas), sin rotar, alto en
-        # dots y ancho 0 = proporcional al alto.
+    def campo(offset, payload, reverse=False):
+        # ^A0<o>: fuente 0 (la escalable que traen todas), alto en dots y
+        # ancho 0 = proporcional al alto.
         # ^FB: caja de <ancho>, UNA línea. El "1" es lo que hace que el
         # firmware recorte lo que no entra en vez de seguir escribiendo fuera
         # del rótulo; el PDF hace lo mismo con una elipsis
         # (_truncate_to_width).
         return [
             f"^FO{x_dots + offset},{y_dots + offset}",
-            f"^A0N,{font_dots},0",
+            f"^A0{orientation},{font_dots},0",
             f"^FB{box_width_dots},1,0,{align},0",
+            *(["^FR"] if reverse else []),
             "^FH\\",
             f"^FD{payload}^FS",
         ]
 
-    commands = campo(0)
-    if entry.get("bold"):
+    commands = _text_band_commands(
+        entry, content, font_pt, font_dots, rotate, x_dots, y_dots, box_width_dots, width_cm, height_cm, dpmm
+    )
+    commands += campo(0, escape_field_data(content), reverse=invert)
+    if entry.get("bold") and not invert:
         # ZPL no trae una variante negrita de la fuente 0, así que se
         # imprime el mismo texto corrido un dot: el solapamiento engrosa el
         # trazo. Es el recurso habitual en ZPL, y sin esto `bold` se
         # ignoraría en silencio y la etiqueta perdería la jerarquía que el
         # diseño le puso (el destinatario y el CP dejan de destacarse).
-        commands += campo(_bold_offset(font_dots))
+        # Invertido no: con ^FR la segunda pasada volvería a negro lo que la
+        # primera puso en blanco.
+        commands += campo(_bold_offset(font_dots), escape_field_data(content))
+    elif prefix and entry.get("prefix_bold") and not invert and align == "L":
+        # Solo la etiqueta en negrita: misma caja y mismo comienzo, así que
+        # la segunda pasada cae justo sobre ella. Centrado o a la derecha su
+        # lugar depende del largo total, que mide la impresora: ahí no.
+        commands += campo(_bold_offset(font_dots), escape_field_data(prefix.rstrip()))
+    return commands
+
+
+def _text_band_commands(
+    entry, content, font_pt, font_dots, rotate, x_dots, y_dots, box_width_dots, width_cm, height_cm, dpmm
+):
+    """La franja negra de ``invert`` y el recuadro de ``frame``, con la misma
+    forma que en el PDF: la caja entera horizontal; vertical, el largo del
+    texto (que acá se estima con Helvetica, como ``shrink_to_fit``: la
+    impresora mide con su fuente 0)."""
+    if not entry.get("invert") and not entry.get("frame"):
+        return []
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    pad = max(1, round(font_dots * TEXT_BAND_PAD_RATIO))
+    across = round(font_dots * (1 + TEXT_BAND_DESCENT_RATIO))
+    if rotate:
+        bold = "Helvetica-Bold" if entry.get("bold") else "Helvetica"
+        length = points_to_dots(stringWidth(content, bold, font_pt), dpmm)
+        length = min(length, box_width_dots)
+        bx = x_dots - round(font_dots * TEXT_BAND_DESCENT_RATIO) if rotate == 90 else x_dots
+        box = (bx, y_dots - pad, across, length + 2 * pad)
+    else:
+        box = (x_dots - pad, y_dots, box_width_dots + 2 * pad, across)
+    bx, by, bw, bh = (max(0, value) for value in box)
+    # Dentro del rótulo, como en el PDF: un ^GB que se pasa del ancho pierde
+    # su lado derecho.
+    bw = min(bw, cm_to_dots(width_cm, dpmm) - bx)
+    bh = min(bh, cm_to_dots(height_cm, dpmm) - by)
+    if bw <= 0 or bh <= 0:
+        return []
+    commands = []
+    if entry.get("invert"):
+        commands.append(f"^FO{bx},{by}^GB{bw},{bh},{max(1, min(bw, bh))}^FS")
+    if entry.get("frame"):
+        thickness = max(1, round(TEXT_FRAME_DOTS_AT_8 * dpmm / 8))
+        commands.append(f"^FO{bx},{by}^GB{bw},{bh},{thickness}^FS")
     return commands
 
 

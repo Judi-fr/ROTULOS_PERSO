@@ -176,14 +176,18 @@ function buildCard(template) {
   duplicateBtn.addEventListener("click", () => handleDuplicate(template));
   actions.appendChild(duplicateBtn);
 
-  if (canManageTemplate(template)) {
+  // Editar y Archivar siguen lo que dice el backend (can_edit / can_delete:
+  // plantilla propia privada + su permiso, migración 0029).
+  if (template.canEdit) {
     const editBtn = document.createElement("button");
     editBtn.type = "button";
     editBtn.className = "btn btn-outline";
     editBtn.textContent = "Editar";
     editBtn.addEventListener("click", () => openRenamePrompt(template));
     actions.appendChild(editBtn);
+  }
 
+  if (template.canDelete) {
     const archiveBtn = document.createElement("button");
     archiveBtn.type = "button";
     archiveBtn.className = "btn btn-danger";

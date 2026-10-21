@@ -143,8 +143,8 @@ class OutgoingWebhookDispatchTests(APITestCase):
     def test_importacion_no_dispara_un_webhook_por_fila(self, mock_post):
         self._ok_response(mock_post)
 
-        operator_group, _ = Group.objects.get_or_create(name="operator")
-        self.owner.groups.add(operator_group)
+        merchant_group, _ = Group.objects.get_or_create(name="subscriber")
+        self.owner.groups.add(merchant_group)
 
         headers = ["Destinatario", "Domicilio", "Ciudad", "ID Externo"]
         rows = [

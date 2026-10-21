@@ -142,3 +142,30 @@ if (!hasSession()) {
   window.AppTopbar.render();
   loadMyMessages();
 }
+
+// Preguntas frecuentes: "Abrir todas" / "Cerrar todas". El texto del botón
+// sigue lo que hay abierto, también cuando se abre o cierra una a mano.
+const faqToggleAll = document.getElementById("faqToggleAll");
+const faqItems = Array.from(document.querySelectorAll(".faq-list details"));
+
+function syncFaqToggleAll() {
+  if (!faqToggleAll) return;
+  faqToggleAll.textContent = faqItems.every((item) => item.open) ? "Cerrar todas" : "Abrir todas";
+}
+
+if (faqToggleAll) {
+  faqToggleAll.addEventListener("click", () => {
+    const open = !faqItems.every((item) => item.open);
+    faqItems.forEach((item) => (item.open = open));
+    syncFaqToggleAll();
+  });
+  faqItems.forEach((item) => item.addEventListener("toggle", syncFaqToggleAll));
+}
+
+// El link "preguntas frecuentes" de arriba abre el bloque si estaba plegado.
+document.querySelectorAll('a[href="#preguntas"]').forEach((link) => {
+  link.addEventListener("click", () => {
+    const faq = document.getElementById("preguntas");
+    if (faq) faq.open = true;
+  });
+});

@@ -25,9 +25,7 @@ function showFieldMessage(id, text, ok) {
 
 const ROLE_LABELS = {
   admin: "Administrador",
-  designer: "Diseñador",
-  operator: "Operador",
-  subscriber: "Suscriptor",
+  subscriber: "Comerciante",
 };
 
 function roleLabel(role) {

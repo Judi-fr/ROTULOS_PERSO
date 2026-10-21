@@ -289,7 +289,8 @@ class OrderMetricsView(APIView):
     """
 
     def get_permissions(self):
-        return [IsAuthenticated(), HasRolePermission("orders.view_all")]
+        # La pantalla Reportes tiene su permiso (migración 0029).
+        return [IsAuthenticated(), HasRolePermission("reports.view")]
 
     def _months(self, request):
         raw_months = request.query_params.get("months", "6").strip()

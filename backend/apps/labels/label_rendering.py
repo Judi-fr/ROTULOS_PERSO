@@ -61,6 +61,15 @@ BORDER_INSET_CM = 0.2
 # recortarlo con elipsis.
 MIN_SHRINK_FONT_SIZE = 6.0
 
+# Texto invertido / con recuadro (2026-10-21): la franja va de un poco por
+# debajo de la línea base (descendentes) hasta el borde de arriba de la línea,
+# con un margen proporcional a la letra. Si cambian, cambiarlos en el editor
+# (editor_rotulos.html, applyRenderMetrics) y en zpl.py.
+TEXT_BAND_DESCENT_RATIO = 0.3
+TEXT_BAND_PAD_RATIO = 0.15
+TEXT_FRAME_LINE_WIDTH = 0.8
+TEXT_ROTATIONS = (0, 90, 270)
+
 # Marcador {{clave}} en el texto de un campo del diseño (ver punto 3 del
 # prompt): permite que la MISMA plantilla sirva para envíos distintos.
 # No se restringe a \w+: {{fecha:%Y-%m-%d}} (Historia 29) necesita ':' y
@@ -916,7 +925,15 @@ def _draw_text_entry(pdf, entry, context, computed, width_cm, height_cm, default
     defecto hasta el borde derecho) con alineación ``align`` y recorte con
     elipsis (con ``shrink_to_fit``, antes de recortar se achica la letra hasta
     ``MIN_SHRINK_FONT_SIZE``). ``hide_if_empty`` omite el texto entero (etiqueta incluida)
-    cuando todos sus marcadores quedan vacíos."""
+    cuando todos sus marcadores quedan vacíos.
+
+    Además (2026-10-21): ``prefix`` es una etiqueta fija delante del dato
+    ("CP:"), en negrita con ``prefix_bold``; ``invert`` lo imprime en blanco
+    sobre una franja negra y ``frame`` le dibuja un recuadro; ``rotate`` lo
+    pone vertical (90 = se lee de arriba hacia abajo, 270 = de abajo hacia
+    arriba). Vertical, el largo disponible va desde ``top`` hasta el borde de
+    abajo (``width`` es entonces % del ALTO) y ``align`` no se usa; el texto
+    arranca arriba."""
     raw_text = entry.get("text")
     if entry.get("hide_if_empty") and _all_placeholders_empty(raw_text, context, computed):
         return
@@ -924,33 +941,93 @@ def _draw_text_entry(pdf, entry, context, computed, width_cm, height_cm, default
     if not text:
         return
 
-    width_pt = width_cm * CM_TO_POINTS
+    width_pt, height_pt = width_cm * CM_TO_POINTS, height_cm * CM_TO_POINTS
     font_name = BOLD_FONT_NAME if entry.get("bold") else FONT_NAME
+    prefix_font = BOLD_FONT_NAME if entry.get("prefix_bold") else font_name
+    prefix = (entry.get("prefix") or "").strip()
+    prefix = f"{prefix} " if prefix else ""
     font_size = float(entry.get("font_size") or default_font_size)
+    rotate = entry.get("rotate") if entry.get("rotate") in TEXT_ROTATIONS else 0
     x_pt, y_top_pt = percent_to_canvas_xy(entry.get("left", 0), entry.get("top", 0), width_cm, height_cm)
-    box_width_pt = width_pt - x_pt
-    if entry.get("width") is not None:
-        box_width_pt = min(box_width_pt, float(entry["width"]) / 100 * width_pt)
+
+    # Largo disponible a lo largo del texto: horizontal, hasta el borde
+    # derecho; vertical, hasta el de abajo.
+    if rotate:
+        box_pt = y_top_pt
+        if entry.get("width") is not None:
+            box_pt = min(box_pt, float(entry["width"]) / 100 * height_pt)
+    else:
+        box_pt = width_pt - x_pt
+        if entry.get("width") is not None:
+            box_pt = min(box_pt, float(entry["width"]) / 100 * width_pt)
+
+    def content_width(size):
+        return stringWidth(prefix, prefix_font, size) + stringWidth(text, font_name, size)
 
     if entry.get("shrink_to_fit"):
         # Una dirección cortada con "…" pierde el número de calle: primero se
         # achica la letra y solo si ni así entra se recorta.
-        while font_size > MIN_SHRINK_FONT_SIZE and stringWidth(text, font_name, font_size) > box_width_pt:
+        while font_size > MIN_SHRINK_FONT_SIZE and content_width(font_size) > box_pt:
             font_size = max(MIN_SHRINK_FONT_SIZE, font_size - 0.5)
-    text = _truncate_to_width(text, font_name, font_size, box_width_pt)
+    prefix_width = stringWidth(prefix, prefix_font, font_size)
+    text = _truncate_to_width(text, font_name, font_size, box_pt - prefix_width)
     if not text:
         return
-    text_width_pt = stringWidth(text, font_name, font_size)
-    align = entry.get("align", "left")
-    if align == "right":
-        x_pt += box_width_pt - text_width_pt
-    elif align == "center":
-        x_pt += (box_width_pt - text_width_pt) / 2
+    content_pt = prefix_width + stringWidth(text, font_name, font_size)
 
+    pdf.saveState()
+    # (ox, oy) = comienzo de la línea, sobre la línea base; a lo largo del
+    # texto se suma en x. Horizontal se dibuja en coordenadas de la página,
+    # como siempre; vertical se gira el lienzo y (ox, oy) queda en (0, 0).
+    if rotate == 90:
+        pdf.translate(x_pt, y_top_pt)
+        pdf.rotate(-90)
+        ox = oy = 0.0
+        start, band = 0.0, (0.0, content_pt)
+    elif rotate == 270:
+        # Sube desde abajo; se corre para que el final quede contra ``top``.
+        pdf.translate(x_pt + font_size, y_top_pt - box_pt)
+        pdf.rotate(90)
+        ox = oy = 0.0
+        start, band = box_pt - content_pt, (box_pt - content_pt, box_pt)
+    else:
+        # y_top_pt es el borde superior del campo; se baja una línea para que
+        # el texto quede DEBAJO de esa línea, como en el editor.
+        ox, oy = x_pt, y_top_pt - font_size
+        align = entry.get("align", "left")
+        start = 0.0
+        if align == "right":
+            start = box_pt - content_pt
+        elif align == "center":
+            start = (box_pt - content_pt) / 2
+        band = (0.0, box_pt)
+
+    if entry.get("invert") or entry.get("frame"):
+        pad = font_size * TEXT_BAND_PAD_RATIO
+        bottom = -font_size * TEXT_BAND_DESCENT_RATIO
+        rect = (ox + band[0] - pad, oy + bottom, band[1] - band[0] + 2 * pad, font_size - bottom)
+        if not rotate:
+            # Dentro del rótulo: si no, el lado del recuadro que cae afuera se
+            # pierde al cortar (la caja por defecto llega al borde derecho).
+            edge = TEXT_FRAME_LINE_WIDTH / 2
+            left_pt = max(edge, rect[0])
+            right_pt = min(width_pt - edge, rect[0] + rect[2])
+            rect = (left_pt, rect[1], right_pt - left_pt, rect[3])
+        if entry.get("invert"):
+            pdf.setFillColorRGB(0, 0, 0)
+            pdf.rect(*rect, stroke=0, fill=1)
+            pdf.setFillColorRGB(1, 1, 1)
+        if entry.get("frame"):
+            pdf.setLineWidth(TEXT_FRAME_LINE_WIDTH)
+            pdf.setStrokeColorRGB(0, 0, 0)
+            pdf.rect(*rect, stroke=1, fill=0)
+
+    if prefix:
+        pdf.setFont(prefix_font, font_size)
+        pdf.drawString(ox + start, oy, prefix)
     pdf.setFont(font_name, font_size)
-    # y_top_pt es el borde superior del campo; se baja una línea para que el
-    # texto quede DEBAJO de esa línea, como en el editor.
-    pdf.drawString(x_pt, y_top_pt - font_size, text)
+    pdf.drawString(ox + start + prefix_width, oy, text)
+    pdf.restoreState()
 
 
 def _all_placeholders_empty(text, context, computed):

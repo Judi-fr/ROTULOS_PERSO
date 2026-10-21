@@ -163,6 +163,11 @@ function bootstrap() {
     window.location.replace("dashboard.html");
     return;
   }
+  // Descargar tiene su permiso (migración 0029), aparte de ver.
+  ["exportAuditCsvBtn", "exportAuditXlsxBtn"].forEach((id) => {
+    const button = document.getElementById(id);
+    if (button) button.hidden = !canUseUserPermission("audit.export");
+  });
 
   // La tabla de pedidos de todos los usuarios vivía acá adentro; ahora solo
   // queda un link a su propia página (pedidos_admin.html), visible con el

@@ -116,7 +116,9 @@ class ReviewFixesTests(APITestCase):
         # Su ingreso a este comercio y lo que hizo después; nada de antes.
         self.assertEqual(rows, ["#B", "Comercio de owner@example.com"])
 
-    def test_designer_merchant_keeps_the_empretienda_import(self):
+    def test_an_old_designer_group_still_imports_as_a_merchant(self):
+        # "designer" ya no es un rol (migración 0030): un Group viejo con ese
+        # nombre cuenta como comerciante, que importa.
         designer = make_user("designer@example.com", group="designer")
         response = self.client.post("/api/v1/integrations/empretienda/import/preview/", {}, format="multipart", **bearer(designer))
         self.assertNotEqual(response.status_code, 403)

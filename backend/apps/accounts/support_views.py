@@ -136,7 +136,13 @@ class AdminSupportMessageViewSet(
     http_method_names = ["get", "patch", "head", "options"]
 
     def get_permissions(self):
-        permission = "support.manage" if self.action == "partial_update" else "support.view_all"
+        if self.action == "metrics":
+            # La pantalla Reportes tiene su permiso (migración 0029).
+            permission = "reports.view"
+        elif self.action == "partial_update":
+            permission = "support.manage"
+        else:
+            permission = "support.view_all"
         return [IsAuthenticated(), HasRolePermission(permission)]
 
     def get_queryset(self):

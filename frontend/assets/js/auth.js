@@ -24,6 +24,7 @@
   const AUTH_BASE = `${window.APP_CONFIG.API_BASE}/auth`;
   const REFRESH_URL = `${AUTH_BASE}/refresh/`;
   const LOGOUT_URL = `${AUTH_BASE}/logout/`;
+  const ME_URL = `${AUTH_BASE}/me/`;
 
   // La sesión viaja en cookies HttpOnly que pone el backend
   // (backend/apps/accounts/auth_cookies.py): este código nunca ve los tokens.
@@ -165,6 +166,38 @@
     redirectToLogin();
   }
 
+  // Los permisos se guardan al iniciar sesión: si el admin cambia un rol en
+  // roles.html (o una migración agrega un permiso), la sesión no se enteraba
+  // hasta volver a entrar y la pantalla ofrecía de más o de menos. Al abrir
+  // una página se releen de me/ en segundo plano, como mucho cada 2 minutos;
+  // si cambiaron se avisa con "auth:user-updated" (la barra del admin se
+  // redibuja). En el login y el registro no: ahí no hay sesión que refrescar.
+  const USER_REFRESH_MS = 2 * 60 * 1000;
+  const NO_REFRESH_PAGES = /\/(index|register|logoutpage)\.html$|\/$/;
+
+  function refreshStoredUser() {
+    if (!hasSession() || NO_REFRESH_PAGES.test(window.location.pathname)) return;
+    let last = 0;
+    try {
+      last = Number(sessionStorage.getItem("userCheckedAt") || 0);
+      if (Date.now() - last < USER_REFRESH_MS) return;
+      sessionStorage.setItem("userCheckedAt", String(Date.now()));
+    } catch {
+      // Sin sessionStorage se relee en cada página: sigue funcionando.
+    }
+    apiFetch(ME_URL)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((fresh) => {
+        const stored = getCurrentUser();
+        if (!fresh || String(fresh.id) !== String(stored.id)) return;
+        const merged = { ...stored, ...fresh };
+        if (JSON.stringify(merged) === JSON.stringify(stored)) return;
+        saveSession(merged);
+        window.dispatchEvent(new CustomEvent("auth:user-updated", { detail: merged }));
+      })
+      .catch(() => {});
+  }
+
   window.Auth = {
     hasSession,
     saveSession,
@@ -174,4 +207,6 @@
     logout,
     apiFetch,
   };
+
+  refreshStoredUser();
 })();

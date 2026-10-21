@@ -83,10 +83,9 @@ class UserAdminViewSet(viewsets.ModelViewSet):
         if role_param == "administrator":
             role_param = "admin"
 
-        # "user" es alias legacy: usuarios normales sin rol admin/designer/operator
+        # "user" es alias legacy: usuarios normales, sin rol admin
         if role_param == "user":
-            special_roles = ["admin", "designer", "operator"]
-            return Q(is_staff=False) & ~Q(groups__name__in=special_roles)
+            return Q(is_staff=False) & ~Q(groups__name="admin")
 
         if role_param in ROLE_CHOICES:
             ensure_role_groups()
@@ -389,6 +388,9 @@ class UserAdminViewSet(viewsets.ModelViewSet):
             )
 
         if request.query_params.get("permanent", "").lower() == "true":
+            # Borrar para siempre tiene su permiso (migración 0029); desactivar
+            # sigue siendo "users.deactivate".
+            self._require_permission("users.delete")
             # Comercios con equipo (teams.py): los datos de un comercio con
             # empleados son del comercio; primero hay que pasar la titularidad
             # o quitar a los empleados. Si no, su comercio se borra con él.
@@ -469,7 +471,7 @@ class UserAdminViewSet(viewsets.ModelViewSet):
         respuesta detalla qué se aplicó y qué se saltó (y por qué).
 
         Body: {"ids": [1,2,3], "action": "activate"|"deactivate"|"set_role",
-               "role": "designer"}  (role solo requerido para "set_role")
+               "role": "subscriber"}  (role solo requerido para "set_role")
         """
         action_name = str(request.data.get("action", "")).strip().lower()
         raw_ids = request.data.get("ids")
@@ -587,7 +589,7 @@ class UserAdminViewSet(viewsets.ModelViewSet):
         actual del panel). Genera el archivo en el backend (módulo ``csv``
         estándar), no en el navegador.
         """
-        self._require_permission("users.view")
+        self._require_permission("users.export")
 
         queryset = self.get_queryset().select_related("login_lockout")
         raw_ids = request.query_params.get("ids", "").strip()
@@ -812,7 +814,7 @@ class UserAdminViewSet(viewsets.ModelViewSet):
         (``apps.orders``), ``support-messages/metrics/`` y ``audit/metrics/``
         para pedidos/soporte/auditoría.
         """
-        self._require_permission("users.view")
+        self._require_permission("reports.view")
 
         raw_months = request.query_params.get("months", "6").strip()
         try:

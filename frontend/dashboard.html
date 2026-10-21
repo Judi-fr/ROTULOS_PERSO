@@ -18,7 +18,7 @@
       href="https://cdn.jsdelivr.net/npm/@mdi/font@4.9.95/css/materialdesignicons.min.css"
     />
 
-    <link rel="stylesheet" href="assets/css/dashboard.css?v=2026-10-21b" />
+    <link rel="stylesheet" href="assets/css/dashboard.css?v=2026-10-21c" />
   </head>
   <body>
     <div class="layout">
@@ -55,6 +55,25 @@
           <p>Elegí una sección: adentro de cada una están sus herramientas.</p>
         </div>
 
+        <!-- Buscador de funciones (dashboard.js, setupToolSearch): busca en
+             todas las herramientas a las que el usuario tiene acceso, también
+             las que no entran en las tarjetas. -->
+        <div class="tool-search" id="toolSearch" role="search">
+          <i class="mdi mdi-magnify" aria-hidden="true"></i>
+          <input
+            type="search"
+            id="toolSearchInput"
+            placeholder="Buscar una función: planilla, impresora, tarifas…"
+            autocomplete="off"
+            role="combobox"
+            aria-expanded="false"
+            aria-controls="toolSearchResults"
+            aria-label="Buscar una función"
+          />
+          <kbd class="tool-search-key" aria-hidden="true">/</kbd>
+          <ul id="toolSearchResults" class="tool-search-results" role="listbox" hidden></ul>
+        </div>
+
         <p id="dashboardMessage" class="dashboard-message" role="status" aria-live="polite" style="display:none;"></p>
         <!-- Invitaciones a un comercio (dashboard.js / loadInvitationNotice). -->
         <p id="invitationNotice" class="dashboard-message info" hidden></p>
@@ -74,7 +93,7 @@
 
     <script src="assets/js/config.js"></script>
     <script src="assets/js/auth.js"></script>
-    <script src="assets/js/utils.js?v=2026-10-21b"></script>
-    <script src="assets/js/dashboard.js?v=2026-10-21b"></script>
+    <script src="assets/js/utils.js?v=2026-10-21c"></script>
+    <script src="assets/js/dashboard.js?v=2026-10-21d"></script>
   </body>
 </html>

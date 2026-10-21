@@ -68,6 +68,8 @@ class TiendanubePrintLinkView(APIView):
             action = store_print.parse_action(request.data.get("action"))
             if action == store_print.DISPATCH and not user_has_permission(request.user, "orders.dispatch"):
                 return Response({"detail": "Tu usuario no puede despachar pedidos."}, status=status.HTTP_403_FORBIDDEN)
+            if action == store_print.MANIFEST and not user_has_permission(request.user, "orders.manifest"):
+                return Response({"detail": "Tu usuario no puede generar la planilla de retiro."}, status=status.HTTP_403_FORBIDDEN)
             orders, missing = store_print.resolve_orders(connection, store_print.order_ids(request.data.get("ids")))
             if not orders:
                 raise store_print.PrintError("Ninguno de los pedidos elegidos existe en la tienda.")

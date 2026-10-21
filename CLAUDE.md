@@ -328,15 +328,34 @@ exact midnight. It reads `.get()`, so it takes query params or a JSON body dict 
   reading it). `onboarding(user)`: four first steps (store, business data, template, carrier) computed from
   the data, only for a business OWNER who isn't the admin; "Ocultar" is per browser (localStorage). Icons:
   `@mdi/font@4.9.95` from jsdelivr — `cdn.materialdesignicons.com` stopped answering and every icon was blank;
-  some 5.x names (`printer-outline`, `storefront-outline`) don't exist in 4.x. `profile_views.ProfileView` is the self-service `me/` GET/PATCH (screen: the top half of `organizacion.html`,
+  some 5.x names (`printer-outline`, `storefront-outline`) don't exist in 4.x. **Function search** (2026-10-21, above the
+  cards; `setupToolSearch` in `dashboard.js`): searches every tool the user can reach — the sections and their
+  links plus the full `menu`, one entry per page (a second name for the same page only widens the match), plus
+  `IN_PAGE_TOOLS`, actions that are a button inside another page (planilla de retiro, cargar seguimientos, nuevo
+  pedido, direcciones…, each gated by `sessionHasPermission`; **rename a button → rename it there too**).
+  Accent/case-insensitive, all words must match; arrows, Enter opens, Esc clears, "/" focuses it. `profile_views.ProfileView` is the self-service `me/` GET/PATCH (screen: the top half of `organizacion.html`,
   "Mi cuenta").
 
 ### Roles & permissions (`apps/accounts`)
 
 There is **no `role` field on `User`** — it's derived, never stored directly:
 
+- **Two fixed roles since 2026-10-21** (user: "es lo mismo que equipos"): `admin` and `subscriber`, shown as
+  **"Comerciante"** (the business owner; the key is unchanged, stored data is never renamed). `designer` and
+  `operator` were merged into `subscriber` by migration `accounts/0030` (their users moved; admin permissions
+  added to them by hand were dropped, decided with the user) and are now aliases of it in `LEGACY_ROLE_ALIASES`,
+  so a leftover Group with that name counts as a merchant; they stay protected names (a custom role called
+  "operator" would fall into subscriber). Any other Group is a custom role, presented as **platform staff**
+  ("Personal de la plataforma" in `roles.html`, purple `staff` badge in `gestionuser.html`): a slice of the admin
+  such as support or reports. What an employee can do inside a business is the team profile's job, not the role.
+- **The admin is the "leviathan" (2026-10-21, user's word)**: `_role_has_permission` returns True for every
+  permission when the effective role is `admin`, without reading `GroupRolePermission` — a new permission reaches
+  it with no migration, and it can't be locked out. Its role can't be edited (`RolePermissionsView.put` → 400
+  `ADMIN_ROLE_LOCKED_MSG`; its GET returns the whole catalog), and **nobody edits the permissions of a role they
+  have** (`OWN_ROLE_LOCKED_MSG`). `RoleSerializer` exposes `locked`/`locked_reason` and `roles.html` shows such a
+  role read-only with the reason. Deleting a custom role moves to `subscriber` only the users left with no role.
 - `permissions_map.get_effective_role()` is the source of truth for "which role": checks canonical Django
-  Groups (`admin`, `designer`, `operator`, `subscriber`) first, then falls back to a custom Group name
+  Groups (`admin`, `subscriber`) first, then falls back to a custom Group name
   (custom roles), then `is_staff → admin`, then `subscriber` (`DEFAULT_ROLE`).
 - `GroupRolePermission` (Group ↔ `RolePermission`) is the source of truth for "which permissions", managed
   under `/api/v1/auth/roles/` and `/api/v1/auth/permissions/` (`role_permission_views.py`).
@@ -361,6 +380,18 @@ There is **no `role` field on `User`** — it's derived, never stored directly:
   `printers.manage`, `account.manage`, `team.manage` — every group that had `orders.create`/`labels.batch`/
   `users.me.edit` got the matching new ones, and `subscriber` also got `orders.create_manual`/`orders.import`/
   `orders.import_mappings` (a team owner has everything of their business).
+  **Split again in migration `accounts/0029` (2026-10-21, user: "pedidos, rótulos y admin más finos")**, each
+  group that had the old key got the new ones: `orders.tracking_import` and `orders.manifest` (from
+  `orders.dispatch`; team access "Despachar"), `labels.template_edit` (update + restore version) and
+  `labels.template_delete` (from `labels.template_create`, which keeps create/duplicate; the template serializer
+  exposes `can_edit`/`can_delete` and `mis_plantillas.html` follows them), `users.delete` (`?permanent=true`; plain
+  deactivate stays `users.deactivate`), `users.export`, `audit.export`, and `reports.view` (the four metrics
+  endpoints and the Reportes page/sidebar — reports without the user list). New team access "Borrar lotes"
+  (`documents.delete`, before part of "Imprimir rótulos"): existing profiles/members/pending invitations that
+  printed got it; the suggested "Depósito" of NEW businesses doesn't (prints, doesn't delete).
+  **The stored session refreshes its permissions**: `auth.js` re-reads `me/` in the background on page load (at
+  most every 2 min, `sessionStorage.userCheckedAt`) and fires `auth:user-updated` (the admin sidebar re-renders).
+  Before, a role change in `roles.html` or a new permission only reached a browser after logging in again.
 
 ### Account data and global catalogs (T#351-356)
 
@@ -461,9 +492,21 @@ unique); two businesses never merge.
   another business doesn't bring that history —, limited to business categories plus `account.update`, without IP/user agent; a member who left for another
   business leaves a `team.leave` row about the OLD business, shown only there). `user_payload` carries `team` {id, name, display_name, role, accesses, all_stores,
   store_ids}. All changes audited in category `team`.
-- Frontend: `equipo.html` (members, invite, edit accesses/stores, transfer), `perfiles_equipo.html`,
+- **Profile editor shared with Roles**: `createProfileEditor(root, {catalog, allowed, save, remove})` in `utils.js`
+  (styles `.pe-*` in `ui.css`) draws profiles on the left and the chosen one's name + accesses on the right, with
+  Guardar/Descartar only on changes — the same layout as `roles.html`. Used by the Perfiles tab of `equipo.html`
+  (`allowed` = the editor's own accesses) and by `roles.html` → Perfiles de los comercios → "Editar perfiles"
+  (`roles_perfiles.js`, `allowed` null): the platform admin edits any business's profiles through
+  `PATCH/DELETE /api/v1/teams/profiles/<id>/` and `POST /api/v1/teams/<team_id>/profiles/` (`users.edit`), which
+  share `create_profile`/`update_profile`/`delete_profile` with the team's own views (same rules: unique name,
+  a profile in use isn't deleted; only the "can't grant what you don't have" limit is lifted).
+- Frontend: `equipo.html` with tabs (2026-10-21, the user found three pages confusing) — Miembros (members,
+  invite, edit accesses/stores, transfer; `equipo.js`, which also drives the tabs, `#miembros|#perfiles|#actividad`),
+  Perfiles (`perfiles_equipo.js`) and Actividad (`actividad_equipo.js`), each script in its own IIFE because they
+  share the page; a profile change fires `team:profiles-changed` and the Miembros tab reloads. `perfiles_equipo.html`/
+  `actividad_equipo.html` only redirect to their tab (the dashboard still links them).
   `invitaciones.html` (the invited person; the dashboard shows a notice when there is one),
-  `actividad_equipo.html`, admin `comercio_usuario.html` (linked from each row of `gestionuser.html`). Shared
+  admin `comercio_usuario.html` (linked from each row of `gestionuser.html`). Shared
   `renderAccessCheckboxes`/`readAccessCheckboxes`/`renderStoreChoice`/`readStoreChoice` in `utils.js`, styles in
   `equipo.css`. The topbar shows the business to an employee. An invitation starts on the profile with FEWEST
   accesses. Menu entries follow the accesses (`DashboardView`).
@@ -571,6 +614,18 @@ change in `label_rendering.py`, change them in the editor too.** `renderDecorati
   "Guardar rótulo" and "Ver cómo sale impreso" at the top. Same palette and font as the rest of the app (orange
   accent, Karla); the label itself uses Helvetica/Arial, the renderer's font. `topbar.js` loads right after
   the `<header>` — in the `<head>` it found no `#appTopbar` and the bar stayed empty.
+- **Text options (2026-10-21)**, per text field and fixed text: `prefix` (a fixed label before the value, e.g.
+  "CP:", hidden with the field by `hide_if_empty`) + `prefix_bold`, `invert` (white on a black band), `frame` (its
+  own box) and `rotate` (90 = reads downward, 270 = upward; the text starts at `top`, its length runs to the
+  bottom edge and `width` is then % of the HEIGHT; `align` is ignored). PDF: `_draw_text_entry` (horizontal
+  still draws in page coordinates, vertical rotates the canvas); band = from 0.3×size below the baseline to the
+  line's top, padded 0.15×size (`TEXT_BAND_*`), the field's whole box horizontally (clamped to the label) and the
+  text's length vertically. ZPL: one field with prefix+value, `^A0R`/`^A0B` (270 right-justified so it hugs the
+  top), band/frame as `^GB` and the inverted text with `^FR`; **two approximations**: inverted text isn't faked
+  bold (a second `^FR` pass would turn it black again), and `prefix_bold` alone is only reprinted when the text
+  starts at the box start (left / 90°). Editor: `text-inverted`/`text-framed`/`text-rot-*` classes and the
+  prefix as a `::before` (so `collectFields`, which reads `textContent`, never saves it into `text`). Tests:
+  `apps/labels/tests/test_text_options.py`.
 - The **field properties panel** (`fieldPropsGroup`) edits those per-field styles: click a text field on
   the canvas and set `font_size`, `bold`, `align`, `width`, `hide_if_empty`, `shrink_to_fit`. It follows
   the same select-then-configure pattern as the QR/barcode panel beside it. An empty or unchecked control
@@ -1441,7 +1496,11 @@ Plain multi-page app, one HTML file per screen, no framework/bundler. Admin page
 (`gestionuser.html`/`roles.html`/`reportes.html`/`auditoria.html`/`pedidos_admin.html`/`soporte_admin.html`)
 share the same script order — `config.js`, `auth.js`, `utils.js`, `admin_common.js`, `admin_sidebar.js`,
 then the page's own script — and each redirects to `dashboard.html` if the caller lacks that page's
-permission (UI-only gating; the backend re-checks every permission server-side).
+permission (UI-only gating; the backend re-checks every permission server-side). **They don't load Bootstrap**
+(removed 2026-10-21: it overrode the font and size of labels/selects/dates, which is why the user filter
+looked "raro"); `gestionuser.css` sets Karla on `body` and carries the few resets they took from it
+(`[hidden]`, `.nav { display: flex }`, ...). `index.html`/`register.html`/`logoutpage.html` still load it.
+In `gestionuser.html` "Crear usuario" is a centred window (`.create-panel` is the backdrop, Esc closes it).
 
 - `assets/js/utils.js` — shared helpers loaded as a classic script (global functions, not an ES module):
   `escapeHtml`, `getErrorMessage`, `showMessage`, `formatDate`, `extractResults`. `showMessage`
@@ -1515,6 +1574,13 @@ permission (UI-only gating; the backend re-checks every permission server-side).
   (`{FRONTEND_URL}/reset-password`) matches nothing in `frontend/` and the link 404s. The login's
   "Olvidaste tu clave?" used to be `href="#!"`: the screen was promised and did not exist. Reused
   `index_test.html` still has the dead link and is left alone (PHP-era leftover).
+- **`roles.html` layout (2026-10-21)**: tabs "Roles de la plataforma" (roles in a left column with "Nuevo rol" at
+  its foot; the chosen role's permissions on the right as one card per category with a count and "Marcar todos",
+  a search box, and Guardar/Descartar enabled only with unsaved changes — switching role or leaving asks first) and
+  "Perfiles de los comercios" (`roles_perfiles.js`, read-only: every business with its team profiles, plus a table
+  of which role permissions each team access gates) from `GET /api/v1/teams/profiles/?search=`
+  (`AdminTeamProfilesView`, `users.view`, 50 businesses max). It shows that the two are layers, not duplicates:
+  the role is the ceiling, the profile what the owner hands out inside it.
 - **`roles.html` renders the whole permission catalog, and holds no list of its own.** It builds the
   sections from `RolePermission.category` and labels each checkbox with `RolePermission.name`, both of
   which the seed migrations already populate in Spanish. It used to carry a hardcoded whitelist of eight
@@ -1578,8 +1644,14 @@ permission (UI-only gating; the backend re-checks every permission server-side).
   through `renderBulkResult` and files through `downloadResponse`, also in `utils.js`. They load
   `pedidos.css` + `imprimir_rotulos.css` + `acciones_masivas.css`. `print_labels.js` keeps its own copy
   of the list (it predates the picker and wasn't reorganized).
-- `ayuda.html` opens with a short FAQ (`#preguntas`, native `<details>`, no JS, styles in `assets/css/ayuda.css`)
-  above the support form; the dashboard's Ayuda card links to it. The answers name buttons and sections as the
+- `ayuda.html` ends with a short FAQ (`#preguntas`, native `<details>`, styles in `assets/css/ayuda.css`) below the
+  support form and "Mis mensajes" (moved there 2026-10-21, user's request): the whole block folds (outer
+  `<details>`, open by default) and so does each question; "Abrir todas/Cerrar todas" is in `ayuda.js`. The
+  dashboard's Ayuda card links to it.
+- `reportes.html` shows one block at a time with tabs (Usuarios · Seguridad · Pedidos · Soporte y actividad, the
+  last only with `support.view_all`/`audit.view`); the chosen tab lives in the `#hash`. Its "Actualizar" and the
+  one in `estado_sistema.html` say "Actualizando…" and then when they finished — before, refreshing with nothing
+  changed looked like a dead button. The answers name buttons and sections as the
   app shows them — **if one is renamed, fix the FAQ too**.
 - **Addresses are not a menu entry.** They live inside `pedidos.html` (its own section, full CRUD); a
   separate `addresses` entry pointing at `pedidos.html#addressesSection` was a second door to the same
@@ -1611,5 +1683,5 @@ permission (UI-only gating; the backend re-checks every permission server-side).
 
 - Validación, permisos, reglas de negocio y autorización van en el backend. El frontend solo presenta.
 - Identidad siempre desde `request.user` (JWT), nunca desde un ID que manda el cliente.
-- Roles: admin, designer, operator, subscriber. Legacy `"user"` = `"subscriber"`. Admin = grupo `admin` +
-  `is_staff`.
+- Roles: admin y subscriber ("Comerciante") + roles personalizados de personal de la plataforma. Legacy
+  `"user"`, `"designer"` y `"operator"` = `"subscriber"`. Admin = grupo `admin` + `is_staff`.

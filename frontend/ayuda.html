@@ -27,14 +27,50 @@
       <main class="main">
         <div class="main-heading">
           <h1>Ayuda / Soporte</h1>
-          <p>Mirá si tu duda está en las preguntas frecuentes; si no, escribinos y te respondemos a la brevedad.</p>
+          <p>Escribinos y te respondemos a la brevedad. Las dudas más comunes están en las <a href="#preguntas">preguntas frecuentes</a>, al final de la página.</p>
         </div>
 
-        <!-- Preguntas frecuentes: <details> nativo, sin JS. Los nombres de
-             botones y secciones son los que se ven en la app; si cambian,
-             cambiarlos acá también. -->
-        <section class="profile-card faq" id="preguntas" aria-labelledby="faqTitle">
-          <div class="profile-card-title" id="faqTitle">Preguntas frecuentes</div>
+        <section class="profile-card" id="nuevo-mensaje">
+          <div class="profile-card-title">Nuevo mensaje</div>
+          <div class="profile-card-body">
+            <div class="field">
+              <label for="subjectInput">Asunto</label>
+              <input type="text" id="subjectInput" placeholder="Ej: Problema con mi pedido" />
+            </div>
+            <div class="field">
+              <label for="messageInput">Mensaje</label>
+              <textarea id="messageInput" rows="6" placeholder="Contanos qué necesitás..." style="width:100%; padding:10px 12px; border:1px solid #e2e8f0; border-radius:8px; font-family:inherit; font-size:14px; resize:vertical;"></textarea>
+            </div>
+            <p id="supportMsg" class="form-message" style="display:none;"></p>
+            <div class="profile-card-actions">
+              <button type="button" class="btn btn-primary" id="sendSupportBtn">
+                Enviar mensaje
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="profile-card" id="mis-mensajes">
+          <div class="profile-card-title">Mis mensajes</div>
+          <div class="profile-card-body">
+            <div id="myMessagesList">
+              <p class="loading-text"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
+            </div>
+          </div>
+        </section>
+        <!-- Preguntas frecuentes, al final de la página: el bloque entero se
+             pliega (<details> de afuera) y cada pregunta también. "Abrir
+             todas"/"Cerrar todas" están en ayuda.js. Los nombres de botones y
+             secciones son los que se ven en la app; si cambian, cambiarlos
+             acá también. -->
+        <details class="profile-card faq" id="preguntas" open>
+          <summary class="profile-card-title faq-head">
+            <span>Preguntas frecuentes</span>
+            <span class="faq-head-hint" aria-hidden="true"></span>
+          </summary>
+          <div class="faq-tools">
+            <button type="button" class="faq-toggle-all" id="faqToggleAll">Abrir todas</button>
+          </div>
           <div class="faq-list">
             <details>
               <summary>¿Cómo conecto mi tienda?</summary>
@@ -77,7 +113,8 @@
               <p>
                 Sí, en <strong>Diseño de rótulos</strong>: elegís una plantilla o creás la tuya, movés los
                 datos, agregás el logo y con <strong>Ver cómo sale impreso</strong> ves el PDF real antes de
-                guardar. Cada tienda puede tener su propia plantilla, remitente y logo.
+                guardar. Tocando un dato podés ponerle una etiqueta delante («CP:»), invertirlo (blanco sobre
+                negro), enmarcarlo o ponerlo vertical. Cada tienda puede tener su propia plantilla, remitente y logo.
               </p>
             </details>
             <details>
@@ -105,36 +142,8 @@
               </p>
             </details>
           </div>
-        </section>
+        </details>
 
-        <section class="profile-card" id="nuevo-mensaje">
-          <div class="profile-card-title">Nuevo mensaje</div>
-          <div class="profile-card-body">
-            <div class="field">
-              <label for="subjectInput">Asunto</label>
-              <input type="text" id="subjectInput" placeholder="Ej: Problema con mi pedido" />
-            </div>
-            <div class="field">
-              <label for="messageInput">Mensaje</label>
-              <textarea id="messageInput" rows="6" placeholder="Contanos qué necesitás..." style="width:100%; padding:10px 12px; border:1px solid #e2e8f0; border-radius:8px; font-family:inherit; font-size:14px; resize:vertical;"></textarea>
-            </div>
-            <p id="supportMsg" class="form-message" style="display:none;"></p>
-            <div class="profile-card-actions">
-              <button type="button" class="btn btn-primary" id="sendSupportBtn">
-                Enviar mensaje
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <section class="profile-card" id="mis-mensajes">
-          <div class="profile-card-title">Mis mensajes</div>
-          <div class="profile-card-body">
-            <div id="myMessagesList">
-              <p class="loading-text"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
-            </div>
-          </div>
-        </section>
       </main>
     </div>
 

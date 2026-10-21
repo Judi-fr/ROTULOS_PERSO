@@ -243,7 +243,7 @@ class DispatchManifestView(APIView):
     No cambia el estado de nada: despachar es otra acción."""
 
     def get_permissions(self):
-        return [IsAuthenticated(), HasRolePermission("orders.dispatch")]
+        return [IsAuthenticated(), HasRolePermission("orders.manifest")]
 
     def post(self, request):
         serializer = ManifestSerializer(data=request.data)
@@ -285,7 +285,8 @@ class TrackingImportPreviewView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def get_permissions(self):
-        return [IsAuthenticated(), HasRolePermission("orders.dispatch")]
+        # Su propio permiso desde 2026-10-21 (antes "despachar", migración 0029).
+        return [IsAuthenticated(), HasRolePermission("orders.tracking_import")]
 
     def post(self, request):
         upload = request.FILES.get("file")
@@ -371,7 +372,8 @@ class TrackingImportConfirmView(APIView):
     (``Order.save``)."""
 
     def get_permissions(self):
-        return [IsAuthenticated(), HasRolePermission("orders.dispatch")]
+        # Su propio permiso desde 2026-10-21 (antes "despachar", migración 0029).
+        return [IsAuthenticated(), HasRolePermission("orders.tracking_import")]
 
     def post(self, request):
         serializer = TrackingConfirmSerializer(data=request.data)

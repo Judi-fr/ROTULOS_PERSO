@@ -8,7 +8,13 @@ navegable que agrega DefaultRouter.
 from django.urls import path
 from rest_framework.routers import SimpleRouter
 
-from .team_views import AdminTeamListView, AdminUserTeamView
+from .team_views import (
+    AdminTeamListView,
+    AdminTeamProfileCreateView,
+    AdminTeamProfilesView,
+    AdminTeamProfileView,
+    AdminUserTeamView,
+)
 from .user_admin_views import UserAdminViewSet
 
 router = SimpleRouter()
@@ -18,4 +24,7 @@ urlpatterns = [
     # El comercio de un usuario (comercios con equipo, apps/accounts/teams.py).
     path("users/<int:pk>/team/", AdminUserTeamView.as_view(), name="user-team"),
     path("teams/", AdminTeamListView.as_view(), name="admin-teams"),
+    path("teams/profiles/", AdminTeamProfilesView.as_view(), name="admin-team-profiles"),
+    path("teams/profiles/<int:pk>/", AdminTeamProfileView.as_view(), name="admin-team-profile"),
+    path("teams/<int:team_id>/profiles/", AdminTeamProfileCreateView.as_view(), name="admin-team-profile-create"),
 ] + router.urls

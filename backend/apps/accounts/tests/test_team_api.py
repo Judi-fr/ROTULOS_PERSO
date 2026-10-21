@@ -321,3 +321,87 @@ class FrontendContractTests(TeamApiTestCase):
         self.assertIn("labels.batch", data["user"]["permissions"])
         self.assertNotIn("stores.manage", data["user"]["permissions"])
         self.assertEqual(data["user"]["team"]["display_name"], "Comercio de owner@example.com")
+
+
+class AdminTeamProfilesTests(TeamApiTestCase):
+    """GET /api/v1/teams/profiles/: los perfiles de cada comercio, de solo
+    lectura, para la pestaña "Perfiles de los comercios" de roles.html."""
+
+    URL = "/api/v1/teams/profiles/"
+
+    def setUp(self):
+        super().setUp()
+        self.team.name = "Mi Comercio"
+        self.team.save()
+        self.admin = make_user("admin@example.com", group="admin")
+        self.admin.is_staff = True
+        self.admin.save()
+
+    def get(self, user, query=""):
+        return self.client.get(f"{self.URL}{query}", **bearer(user))
+
+    def test_lists_each_business_with_its_profiles_and_members(self):
+        add_employee(self.owner, "e@example.com", profile="Depósito")
+        response = self.get(self.admin, "?search=mi comercio")
+        self.assertEqual(response.status_code, 200, response.data)
+        [business] = response.data["teams"]
+        self.assertEqual(business["name"], "Mi Comercio")
+        self.assertEqual(business["owner_email"], "owner@example.com")
+        self.assertEqual(business["member_count"], 2)
+        profiles = {p["name"]: p for p in business["profiles"]}
+        self.assertEqual(set(profiles), {"Todo", "Depósito", "Atención"})
+        self.assertEqual(profiles["Depósito"]["member_count"], 1)
+        self.assertEqual(profiles["Depósito"]["accesses"], ["orders.view", "labels.print", "orders.dispatch"])
+
+    def test_access_catalog_says_which_permissions_each_access_gates(self):
+        accesses = {a["key"]: a for a in self.get(self.admin).data["accesses"]}
+        self.assertEqual(set(accesses), set(teams.ACCESSES))
+        self.assertEqual(accesses["labels.print"]["label"], "Imprimir rótulos")
+        self.assertIn("labels.batch", accesses["labels.print"]["permissions"])
+        self.assertIn("stores.manage", accesses["stores"]["permissions"])
+
+    def test_search_by_owner_email(self):
+        teams.team_for(make_user("otro@example.com"))
+        response = self.get(self.admin, "?search=owner@")
+        self.assertEqual([t["owner_email"] for t in response.data["teams"]], ["owner@example.com"])
+
+    def test_merchant_cannot_read_other_businesses(self):
+        self.assertEqual(self.get(self.owner).status_code, 403)
+
+
+class AdminEditsTeamProfilesTests(TeamApiTestCase):
+    """El admin de la plataforma edita los perfiles de cualquier comercio
+    desde roles.html (Perfiles de los comercios)."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = make_user("admin@example.com", group="admin")
+        self.admin.is_staff = True
+        self.admin.save()
+
+    def call(self, method, url, body=None, user=None):
+        return getattr(self.client, method)(url, body or {}, format="json", **bearer(user or self.admin))
+
+    def test_admin_edits_creates_and_deletes_a_business_profile(self):
+        url = f"/api/v1/teams/profiles/{self.deposito.id}/"
+        response = self.call("patch", url, {"name": "Depósito 2", "accesses": ["orders.view", "documents.delete"]})
+        self.assertEqual(response.status_code, 200, response.data)
+        self.deposito.refresh_from_db()
+        self.assertEqual(self.deposito.name, "Depósito 2")
+        self.assertEqual(self.deposito.accesses, ["documents.delete", "orders.view"])
+        self.assertTrue(AuditLog.objects.filter(action="team.profile_update", actor=self.admin).exists())
+
+        created = self.call("post", f"/api/v1/teams/{self.team.id}/profiles/", {"name": "Ventas", "accesses": ["orders.view"]})
+        self.assertEqual(created.status_code, 201, created.data)
+        self.assertEqual(self.call("delete", f"/api/v1/teams/profiles/{created.data['id']}/").status_code, 204)
+
+    def test_same_rules_as_the_business(self):
+        add_employee(self.owner, "e@example.com", profile="Depósito")
+        self.assertEqual(self.call("delete", f"/api/v1/teams/profiles/{self.deposito.id}/").status_code, 400)
+        response = self.call("patch", f"/api/v1/teams/profiles/{self.deposito.id}/", {"name": "Todo"})
+        self.assertEqual(response.status_code, 400)
+
+    def test_a_merchant_cannot_edit_another_business(self):
+        other = make_user("other@example.com")
+        response = self.call("patch", f"/api/v1/teams/profiles/{self.deposito.id}/", {"name": "X"}, user=other)
+        self.assertEqual(response.status_code, 403)

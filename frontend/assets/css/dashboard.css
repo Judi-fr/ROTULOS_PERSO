@@ -541,3 +541,67 @@ body {
     padding: 24px 18px 40px;
   }
 }
+
+/* Buscador de funciones (dashboard.js, setupToolSearch). */
+.tool-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 560px;
+  margin: 0 0 22px;
+  padding: 10px 14px;
+  background: var(--card);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.tool-search:focus-within { border-color: #fdba74; box-shadow: 0 0 0 3px #ffedd5; }
+.tool-search > .mdi { font-size: 20px; color: #94a3b8; }
+.tool-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+}
+.tool-search-key {
+  padding: 1px 7px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  color: #94a3b8;
+}
+.tool-search:focus-within .tool-search-key { display: none; }
+.tool-search-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
+}
+.tool-search-results a {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  color: #0f172a;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 14px;
+}
+.tool-search-results small { font-weight: 500; font-size: 12px; color: #64748b; }
+.tool-search-results li.active a { background: #fff7ed; color: #c2410c; }
+.tool-search-empty { padding: 10px; color: #64748b; font-size: 13.5px; }

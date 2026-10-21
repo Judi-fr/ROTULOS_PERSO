@@ -106,9 +106,9 @@ class Command(BaseCommand):
         if created:
             user.set_password(password)
             user.save()
-        # operator: el self-service más la carga manual e importación, que es
-        # lo que hace un comerciante de verdad.
-        group, _ = Group.objects.get_or_create(name="operator")
+        # El comerciante: todo lo de su comercio, incluida la carga manual e
+        # importación.
+        group, _ = Group.objects.get_or_create(name="subscriber")
         user.groups.add(group)
         return user, created
 

@@ -123,7 +123,7 @@ class AuditMetricsView(APIView):
     """
 
     def get_permissions(self):
-        return [IsAuthenticated(), HasRolePermission("audit.view")]
+        return [IsAuthenticated(), HasRolePermission("reports.view")]
 
     def get(self, request):
         raw_months = request.query_params.get("months", "6").strip()
@@ -245,7 +245,7 @@ class AuditLogExportView(APIView):
     Mismo permiso que ver el registro (``audit.view``)."""
 
     def get_permissions(self):
-        return [IsAuthenticated(), HasRolePermission("audit.view")]
+        return [IsAuthenticated(), HasRolePermission("audit.export")]
 
     def get(self, request):
         params = request.query_params

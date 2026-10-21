@@ -47,6 +47,16 @@ function getErrorMessage(data, fallback) {
 // Si el aviso quedó fuera de la vista (la acción se hizo más abajo en la
 // página), se lleva la página hasta él: un aviso que no se ve es como no
 // avisar.
+// Si la sesión guardada tiene el permiso. Solo para no ofrecer botones de más
+// en las páginas del comercio (las del admin usan canUseUserPermission de
+// admin_common.js); el backend vuelve a decidir. Sin lista de permisos (una
+// sesión vieja) no se esconde nada.
+function sessionHasPermission(key) {
+  const user = window.Auth?.getCurrentUser?.();
+  const permissions = user && user.permissions;
+  return Array.isArray(permissions) ? permissions.includes(key) : true;
+}
+
 function showMessage(text, type = "error") {
   const el = document.getElementById("pageMessage");
   if (!el) return;
@@ -733,3 +743,174 @@ function appEmptyState({ icon = "list", title, text = "", actionLabel = "", acti
     setTimeout(releaseIfIdle, 60);
   });
 })();
+
+// --- Editor de perfiles del equipo (2026-10-21) ---------------------------
+// El mismo diseño que roles.html: perfiles a la izquierda (con "Nuevo
+// perfil" al pie), y a la derecha el nombre y los accesos del elegido, con
+// Guardar/Descartar que solo se activan con cambios. Lo usan la pestaña
+// Perfiles de equipo.html (el comercio) y roles.html → Perfiles de los
+// comercios (el admin, para cualquier comercio). Quien lo usa pone los datos
+// y las llamadas a la API:
+//   catalog  {clave: "Ver pedidos", ...}
+//   allowed  claves que puede dar quien edita, o null (todas)
+//   save(profile|null, {name, accesses}) → perfil guardado (null = crear)
+//   remove(profile) → promesa
+// Devuelve {update(profiles)} para dibujar la lista (conserva el elegido).
+function createProfileEditor(root, { catalog, allowed = null, save, remove }) {
+  root.classList.add("pe");
+  root.innerHTML = `
+    <aside class="pe-card pe-side">
+      <div class="pe-title">Perfiles</div>
+      <div class="pe-list" role="list"></div>
+      <form class="pe-create">
+        <label>Nuevo perfil</label>
+        <div class="pe-create-row">
+          <input type="text" maxlength="60" placeholder="Ej: Depósito" />
+          <button type="submit" class="pe-btn pe-btn-primary">Crear</button>
+        </div>
+      </form>
+    </aside>
+    <section class="pe-card pe-detail">
+      <div class="pe-detail-head">
+        <label class="pe-name-label">Nombre
+          <input type="text" class="pe-name" maxlength="60" />
+        </label>
+        <span class="pe-count"></span>
+      </div>
+      <div class="pe-toolbar"><button type="button" class="pe-link pe-toggle-all"></button></div>
+      <div class="pe-accesses"></div>
+      <div class="pe-actions">
+        <span class="pe-dirty" hidden>Hay cambios sin guardar</span>
+        <button type="button" class="pe-btn pe-btn-danger pe-delete">Borrar perfil</button>
+        <button type="button" class="pe-btn pe-discard">Descartar</button>
+        <button type="button" class="pe-btn pe-btn-primary pe-save">Guardar cambios</button>
+      </div>
+    </section>`;
+  const listEl = root.querySelector(".pe-list");
+  const detail = root.querySelector(".pe-detail");
+  const nameInput = root.querySelector(".pe-name");
+  const accessesEl = root.querySelector(".pe-accesses");
+  const countEl = root.querySelector(".pe-count");
+  const toggleAll = root.querySelector(".pe-toggle-all");
+  const saveBtn = root.querySelector(".pe-save");
+  const discardBtn = root.querySelector(".pe-discard");
+  const deleteBtn = root.querySelector(".pe-delete");
+  const dirtyNote = root.querySelector(".pe-dirty");
+  let profiles = [];
+  let selected = null;
+
+  const boxes = () => [...accessesEl.querySelectorAll("input")];
+  const editable = () => boxes().filter((box) => !box.disabled);
+
+  function isDirty() {
+    if (!selected) return false;
+    const now = readAccessCheckboxes(accessesEl).sort().join();
+    return nameInput.value.trim() !== selected.name || now !== [...selected.accesses].sort().join();
+  }
+
+  function refresh() {
+    const total = boxes().length;
+    countEl.textContent = selected ? `${readAccessCheckboxes(accessesEl).length} de ${total} accesos` : "";
+    const free = editable();
+    toggleAll.hidden = !free.length;
+    toggleAll.textContent = free.length && free.every((box) => box.checked) ? "Desmarcar todos" : "Marcar todos";
+    const dirty = isDirty();
+    saveBtn.disabled = !dirty;
+    discardBtn.disabled = !dirty;
+    dirtyNote.hidden = !dirty;
+  }
+
+  function show(profile) {
+    selected = profile;
+    detail.hidden = !profile;
+    listEl.querySelectorAll(".pe-item").forEach((item) => {
+      item.classList.toggle("active", Boolean(profile) && item.dataset.id === String(profile.id));
+    });
+    if (!profile) return;
+    nameInput.value = profile.name;
+    renderAccessCheckboxes(accessesEl, catalog, profile.accesses, { allowed });
+    accessesEl.querySelectorAll("input").forEach((box) => box.addEventListener("change", refresh));
+    refresh();
+  }
+
+  async function choose(profile) {
+    if (selected && profile && selected.id === profile.id) return;
+    if (isDirty() && !(await appConfirm("¿Descartar los cambios sin guardar de este perfil?", { confirmLabel: "Descartar" }))) return;
+    show(profile);
+  }
+
+  function renderList() {
+    listEl.innerHTML = "";
+    if (!profiles.length) {
+      listEl.innerHTML = '<p class="pe-empty">Todavía no hay perfiles.</p>';
+    }
+    profiles.forEach((profile) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "pe-item";
+      item.dataset.id = profile.id;
+      const name = document.createElement("span");
+      name.textContent = profile.name;
+      const meta = document.createElement("small");
+      const people = profile.member_count === 1 ? "1 persona" : `${profile.member_count || 0} personas`;
+      meta.textContent = `${profile.accesses.length} accesos · ${people}`;
+      item.append(name, meta);
+      item.addEventListener("click", () => choose(profile));
+      listEl.appendChild(item);
+    });
+  }
+
+  toggleAll.addEventListener("click", () => {
+    const free = editable();
+    const check = !free.every((box) => box.checked);
+    free.forEach((box) => (box.checked = check));
+    refresh();
+  });
+  nameInput.addEventListener("input", refresh);
+  discardBtn.addEventListener("click", () => show(selected));
+  saveBtn.addEventListener("click", async () => {
+    saveBtn.disabled = true;
+    try {
+      const saved = await save(selected, { name: nameInput.value.trim(), accesses: readAccessCheckboxes(accessesEl) });
+      showMessage(`Perfil «${saved.name}» guardado.`, "success");
+    } catch (err) {
+      if (!err.isSessionExpired) showMessage(err.message);
+      refresh();
+    }
+  });
+  deleteBtn.addEventListener("click", async () => {
+    const target = selected;
+    if (!target || !(await appConfirm(`¿Borrar el perfil «${target.name}»?`))) return;
+    try {
+      await remove(target);
+      showMessage(`Perfil «${target.name}» borrado.`, "success");
+    } catch (err) {
+      if (!err.isSessionExpired) showMessage(err.message);
+    }
+  });
+  root.querySelector(".pe-create").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const input = event.target.querySelector("input");
+    const name = input.value.trim();
+    if (!name) return;
+    try {
+      const created = await save(null, { name, accesses: [] });
+      input.value = "";
+      showMessage(`Perfil «${created.name}» creado: elegí sus accesos.`, "success");
+      const fresh = profiles.find((profile) => profile.id === created.id);
+      if (fresh) show(fresh);
+    } catch (err) {
+      if (!err.isSessionExpired) showMessage(err.message);
+    }
+  });
+
+  return {
+    update(next) {
+      profiles = next || [];
+      const keepId = selected && selected.id;
+      renderList();
+      show(profiles.find((profile) => profile.id === keepId) || profiles[0] || null);
+    },
+    hasUnsavedChanges: isDirty,
+  };
+}

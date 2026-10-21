@@ -1,7 +1,10 @@
-// Actividad del equipo (actividad_equipo.html, GET /team/activity/): qué hizo
+// Actividad del equipo (pestaña Actividad de equipo.html, GET /team/activity/): qué hizo
 // cada persona del comercio. El backend ya recorta a los miembros del
 // comercio y a lo del comercio (nunca logins ni cosas de la plataforma).
 
+// Encerrado en una función: comparte la página con equipo.js, que declara
+// los mismos nombres (API_BASE, load, send...).
+(function () {
 const API_BASE = window.APP_CONFIG.API_BASE;
 const TEAM_URL = `${API_BASE}/team/`;
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
@@ -95,3 +98,4 @@ function bootstrap() {
 }
 
 bootstrap();
+})();

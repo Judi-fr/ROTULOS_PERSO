@@ -8,15 +8,15 @@
   padding: 6px 20px 14px;
 }
 
-.faq details {
+.faq-list details {
   border-bottom: 1px solid #e2e8f0;
 }
 
-.faq details:last-child {
+.faq-list details:last-child {
   border-bottom: 0;
 }
 
-.faq summary {
+.faq-list summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -28,12 +28,12 @@
   list-style: none;
 }
 
-.faq summary::-webkit-details-marker {
+.faq-list summary::-webkit-details-marker {
   display: none;
 }
 
 /* Un + que pasa a − al abrir. */
-.faq summary::after {
+.faq-list summary::after {
   content: "+";
   flex: 0 0 auto;
   width: 26px;
@@ -47,24 +47,72 @@
   transition: transform 0.2s;
 }
 
-.faq details[open] summary::after {
+.faq-list details[open] summary::after {
   content: "−";
 }
 
-.faq summary:hover {
+.faq-list summary:hover {
   color: #c2410c;
 }
 
-.faq summary:focus-visible {
+.faq-list summary:focus-visible {
   outline: 2px solid #f97316;
   outline-offset: 2px;
   border-radius: 6px;
 }
 
-.faq details p {
+.faq-list details p {
   margin: 0 0 16px;
   color: #475569;
   font-size: 14.5px;
   line-height: 1.6;
   max-width: 68ch;
+}
+
+/* El bloque entero se pliega: su título es el <summary> de afuera. */
+.faq {
+  margin-top: 20px;
+}
+
+.faq > .faq-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  list-style: none;
+}
+
+.faq > .faq-head::-webkit-details-marker {
+  display: none;
+}
+
+.faq-head-hint::after {
+  content: "Ocultar";
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #c2410c;
+}
+
+.faq:not([open]) .faq-head-hint::after {
+  content: "Mostrar";
+}
+
+.faq-tools {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 20px 0;
+}
+
+.faq-toggle-all {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: #c2410c;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.faq-toggle-all:hover {
+  text-decoration: underline;
 }

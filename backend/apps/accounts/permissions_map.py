@@ -13,9 +13,16 @@ Detalles de la auditoría (ver Parte A) que justifican esta implementación:
 - El modelo ``User`` del proyecto **no posee un campo ``role``**. El rol se
   determina exclusivamente por **Django Groups** (nombrados como el rol) y
   el fallback ``is_staff``.
-- Roles válidos del sistema: admin, designer, operator, subscriber.
+- Roles válidos del sistema: admin y subscriber (en pantalla "Comerciante",
+  el dueño de un comercio). Desde 2026-10-21 no hay más "designer" ni
+  "operator": con los comercios con equipo, lo que hace cada empleado lo
+  deciden los perfiles del comercio, y esos dos roles quedaron repitiendo lo
+  mismo. Sus usuarios pasaron a subscriber (migración 0030). Lo que no es
+  comerciante ni admin completo es un rol PERSONALIZADO: personal de la
+  plataforma con una parte del admin.
 - ``DEFAULT_ROLE`` (fallback) = subscriber.
-- El rol legado ``"user"`` se interpreta como ``subscriber``.
+- El rol legado ``"user"`` se interpreta como ``subscriber``, y también los
+  viejos ``"designer"``/``"operator"`` (por si queda un Group con ese nombre).
 """
 
 from django.contrib.auth import get_user_model
@@ -29,7 +36,7 @@ except Exception:  # pragma: no cover - import temprano durante migraciones
 User = get_user_model()
 
 # Roles válidos del sistema (coinciden con ROLE_CHOICES del backend).
-VALID_ROLES = ("admin", "designer", "operator", "subscriber")
+VALID_ROLES = ("admin", "subscriber")
 DEFAULT_ROLE = "subscriber"
 
 # Alias legacy que deben mapearse a un rol válido.
@@ -39,12 +46,17 @@ LEGACY_ROLE_ALIASES = {
     "administrador": "admin",
     "administradores": "admin",
     "administrator": "admin",
-    "diseñador": "designer",
-    "diseñadores": "designer",
-    "disenador": "designer",
-    "disenadores": "designer",
-    "operador": "operator",
-    "operadores": "operator",
+    "comerciante": DEFAULT_ROLE,
+    "comerciantes": DEFAULT_ROLE,
+    # Roles que existieron hasta 2026-10-21 (migración 0030).
+    "designer": DEFAULT_ROLE,
+    "diseñador": DEFAULT_ROLE,
+    "diseñadores": DEFAULT_ROLE,
+    "disenador": DEFAULT_ROLE,
+    "disenadores": DEFAULT_ROLE,
+    "operator": DEFAULT_ROLE,
+    "operador": DEFAULT_ROLE,
+    "operadores": DEFAULT_ROLE,
 }
 
 
@@ -148,11 +160,25 @@ PERMISSIONS = frozenset(
         "printers.manage",
         "account.manage",
         "team.manage",
+        # Partidos de otros más gruesos (migración 0029, 2026-10-21): cargar
+        # seguimientos y la planilla de retiro (antes "despachar"), editar y
+        # borrar plantillas (antes "crear plantillas"), borrar usuarios para
+        # siempre (antes "desactivar"), exportar usuarios (antes "ver"),
+        # exportar la auditoría (antes "verla") y la pantalla Reportes (antes
+        # un permiso distinto por bloque).
+        "orders.tracking_import",
+        "orders.manifest",
+        "labels.template_edit",
+        "labels.template_delete",
+        "users.delete",
+        "users.export",
+        "audit.export",
+        "reports.view",
     }
 )
 
-# Permisos de self-service: iguales para los tres roles no-admin (designer,
-# operator, subscriber). "subscriber" es hoy el rol de cliente final.
+# Permisos de self-service del comerciante (hasta 2026-10-21 eran también los
+# de designer y operator, que ya no existen).
 _SELF_SERVICE_PERMISSIONS = {
     "users.me.view",
     "users.me.edit",
@@ -190,10 +216,19 @@ _SELF_SERVICE_PERMISSIONS |= {
     "team.manage",
 }
 
-# operator hace, además del self-service de designer/subscriber, la carga
-# OPERATIVA de pedidos (alta manual, importación CSV/Excel, plantillas de
-# mapeo) — ver 0020_seed_order_ingestion_permissions. "orders.create_for_others"
-# queda afuera: eso es exclusivo admin, ni operator lo tiene.
+# Lo que se partió de "orders.dispatch" / "labels.template_create" (migración
+# 0029): quien tenía aquello tiene esto.
+_SELF_SERVICE_PERMISSIONS |= {
+    "orders.tracking_import",
+    "orders.manifest",
+    "labels.template_edit",
+    "labels.template_delete",
+}
+
+# Más la carga OPERATIVA de pedidos (alta manual, importación CSV/Excel,
+# plantillas de mapeo) — ver 0020_seed_order_ingestion_permissions; el nombre
+# viene de cuando era solo del rol "operator". "orders.create_for_others"
+# queda afuera: eso es exclusivo admin.
 _OPERATOR_PERMISSIONS = _SELF_SERVICE_PERMISSIONS | {
     "orders.create_manual",
     "orders.import",
@@ -201,15 +236,12 @@ _OPERATOR_PERMISSIONS = _SELF_SERVICE_PERMISSIONS | {
 }
 
 # Mapeo rol -> conjunto de permisos.
-# Reproduce EXACTAMENTE el comportamiento actual del backend:
+# Es solo el fallback de antes de que exista GroupRolePermission:
 #   - admin: acceso completo (el CRUD admin está protegido por IsAdminUser).
-#   - operator: self-service + carga operativa de pedidos.
-#   - designer / subscriber: acceso a su propio perfil, sus direcciones y
-#     sus pedidos.
+#   - subscriber (comerciante): self-service + carga operativa de pedidos.
+# Un rol personalizado no tiene fallback: sus permisos son los de la tabla.
 ROLE_PERMISSIONS = {
     "admin": set(PERMISSIONS),
-    "designer": set(_SELF_SERVICE_PERMISSIONS),
-    "operator": set(_OPERATOR_PERMISSIONS),
     # El dueño de un comercio tiene todo lo del comercio (diseño de equipos),
     # incluido cargar a mano e importar pedidos.
     "subscriber": set(_OPERATOR_PERMISSIONS),
@@ -224,8 +256,12 @@ TEAM_SCOPED_PERMISSIONS = {
     "documents.view": "orders.view",
     "labels.batch": "labels.print",
     "labels.render": "labels.print",
-    "documents.delete": "labels.print",
+    # Borrar lotes es su propio acceso desde 2026-10-21: imprimir sin poder
+    # borrar lo generado.
+    "documents.delete": "documents.delete",
     "orders.dispatch": "orders.dispatch",
+    "orders.tracking_import": "orders.dispatch",
+    "orders.manifest": "orders.dispatch",
     "orders.cancel": "orders.cancel",
     "orders.create": "orders.import",
     "orders.create_manual": "orders.import",
@@ -236,6 +272,8 @@ TEAM_SCOPED_PERMISSIONS = {
     "labels.edit": "templates",
     "labels.delete": "templates",
     "labels.template_create": "templates",
+    "labels.template_edit": "templates",
+    "labels.template_delete": "templates",
     "plantillas.view": "templates",
     "plantillas.edit": "templates",
     "variables.view": "templates",
@@ -322,7 +360,15 @@ def user_has_permission(user, permission):
 
 
 def _role_has_permission(user, permission):
-    """Lo que el rol global permite (el techo que fija el admin en roles.html)."""
+    """Lo que el rol global permite (el techo que fija el admin en roles.html).
+
+    El admin tiene TODO, siempre, sin mirar la tabla (2026-10-21, pedido del
+    usuario: "el admin es el leviatán"): su rol no se puede editar
+    (``RolePermissionsView``) y un permiso nuevo lo tiene sin que una
+    migración se lo asigne. Así no hay forma de dejar la plataforma sin
+    alguien que la administre."""
+    if get_effective_role(user) == "admin":
+        return True
     # Fuente de verdad: base de datos (si el modelo ya existe).
     if GroupRolePermission is not None:
         # Consultar el Group del rol efectivo mantiene a GroupRolePermission

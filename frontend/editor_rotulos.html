@@ -583,6 +583,33 @@
         outline: 2px solid var(--accent);
       }
 
+      /* Opciones de texto (2026-10-21), las mismas que dibuja
+         _draw_text_entry: franja negra con margen (TEXT_BAND_PAD_RATIO =
+         0,15 de la letra), recuadro al mismo margen, etiqueta fija delante
+         y texto vertical (writing-mode; el de abajo hacia arriba, girado). */
+      .field.text-inverted {
+        background: #000;
+        color: #fff;
+        box-shadow: 0 0 0 0.15em #000;
+      }
+      .field.text-framed {
+        box-shadow: 0 0 0 0.15em #fff, 0 0 0 calc(0.15em + 1px) #000;
+      }
+      .field.text-inverted.text-framed {
+        box-shadow: 0 0 0 calc(0.15em + 1px) #000;
+      }
+      .field[data-prefix]::before {
+        content: attr(data-prefix) "\00a0";
+        font-weight: var(--prefix-weight, inherit);
+      }
+      .field.text-rot-90,
+      .field.text-rot-270 {
+        writing-mode: vertical-rl;
+      }
+      .field.text-rot-270 {
+        transform: rotate(180deg);
+      }
+
       /* Guías del imán (label_editor_snap.js). */
       .snap-guide {
         position: absolute;
@@ -972,6 +999,33 @@
                 <input type="checkbox" id="propShrink" />
                 Achicar para que entre
               </label>
+              <!-- Opciones de 2026-10-21 (prefix, prefix_bold, invert, frame,
+                   rotate): las dibujan _draw_text_entry (PDF) y zpl.py; acá
+                   applyRenderMetrics las muestra en el lienzo. -->
+              <label title="Un texto fijo delante del dato, por ejemplo «CP:» o «Destinatario:». Si el dato viene vacío y está «Ocultar si queda vacío», tampoco sale.">
+                Etiqueta delante
+                <input type="text" id="propPrefix" maxlength="40" placeholder="Ej: CP:" />
+              </label>
+              <label>
+                <input type="checkbox" id="propPrefixBold" />
+                Etiqueta en negrita
+              </label>
+              <label title="Blanco sobre una franja negra, para resaltar el dato. Sale bien en impresoras térmicas.">
+                <input type="checkbox" id="propInvert" />
+                Invertido (blanco sobre negro)
+              </label>
+              <label title="Un marco alrededor de este dato">
+                <input type="checkbox" id="propFrame" />
+                Recuadro
+              </label>
+              <label title="Vertical, el texto arranca arriba y llega como mucho hasta el borde de abajo. La alineación no se usa.">
+                Orientación
+                <select id="propRotate">
+                  <option value="0">Horizontal</option>
+                  <option value="90">Vertical, se lee hacia abajo</option>
+                  <option value="270">Vertical, se lee hacia arriba</option>
+                </select>
+              </label>
               <label title="Se inserta donde estaba el cursor en el texto del campo">
                 Insertar dato
                 <select id="propMarkerSelect"></select>
@@ -1291,10 +1345,37 @@
           // El render mide el ancho desde la X del campo hasta el borde
           // derecho, salvo que el diseño acote con "width" (en %).
           const left = parseFloat(el.style.left) || 0;
-          el.style.width =
-            style.width != null
-              ? Math.min(parseFloat(style.width), 100 - left) + "%"
-              : 100 - left + "%";
+          const top = parseFloat(el.style.top) || 0;
+          const rotate = Number(style.rotate) || 0;
+          el.classList.toggle("text-rot-90", rotate === 90);
+          el.classList.toggle("text-rot-270", rotate === 270);
+          if (rotate) {
+            // Vertical: tan largo como el texto, como mucho hasta el borde de
+            // abajo ("width" es % del ALTO), igual que _draw_text_entry.
+            el.style.width = "auto";
+            el.style.height = "auto";
+            el.style.maxHeight =
+              (style.width != null ? Math.min(parseFloat(style.width), 100 - top) : 100 - top) + "%";
+          } else {
+            el.style.height = "";
+            el.style.maxHeight = "";
+            el.style.width =
+              style.width != null
+                ? Math.min(parseFloat(style.width), 100 - left) + "%"
+                : 100 - left + "%";
+          }
+          el.classList.toggle("text-inverted", Boolean(style.invert));
+          el.classList.toggle("text-framed", Boolean(style.frame));
+          // La etiqueta fija va en un ::before (no es parte del texto que se
+          // guarda: collectFields lee textContent, que no la incluye).
+          const prefix = (style.prefix || "").trim();
+          if (prefix) {
+            el.dataset.prefix = prefix;
+            el.style.setProperty("--prefix-weight", style.prefix_bold ? "700" : "inherit");
+          } else {
+            delete el.dataset.prefix;
+            el.style.removeProperty("--prefix-weight");
+          }
         });
 
         // Logo: caja cuadrada proporcional al lado más corto.
@@ -1921,6 +2002,11 @@
         width: document.getElementById("propWidth"),
         hide_if_empty: document.getElementById("propHideIfEmpty"),
         shrink_to_fit: document.getElementById("propShrink"),
+        prefix: document.getElementById("propPrefix"),
+        prefix_bold: document.getElementById("propPrefixBold"),
+        invert: document.getElementById("propInvert"),
+        frame: document.getElementById("propFrame"),
+        rotate: document.getElementById("propRotate"),
       };
       const FIELD_LABELS = {
         remitente: "Remitente",
@@ -1947,6 +2033,11 @@
         propInputs.align.value = style.align || "left";
         propInputs.hide_if_empty.checked = Boolean(style.hide_if_empty);
         propInputs.shrink_to_fit.checked = Boolean(style.shrink_to_fit);
+        propInputs.prefix.value = style.prefix || "";
+        propInputs.prefix_bold.checked = Boolean(style.prefix_bold);
+        propInputs.invert.checked = Boolean(style.invert);
+        propInputs.frame.checked = Boolean(style.frame);
+        propInputs.rotate.value = String(style.rotate || 0);
       }
 
       function updateSelectedFieldStyle(key, value) {
@@ -1983,6 +2074,18 @@
       );
       propInputs.shrink_to_fit.addEventListener("change", (event) =>
         updateSelectedFieldStyle("shrink_to_fit", event.target.checked),
+      );
+      propInputs.prefix.addEventListener("input", (event) =>
+        updateSelectedFieldStyle("prefix", event.target.value.trim() ? event.target.value : ""),
+      );
+      ["prefix_bold", "invert", "frame"].forEach((key) =>
+        propInputs[key].addEventListener("change", (event) =>
+          updateSelectedFieldStyle(key, event.target.checked),
+        ),
+      );
+      propInputs.rotate.addEventListener("change", (event) =>
+        // 0 (horizontal) es el default del render: no se guarda.
+        updateSelectedFieldStyle("rotate", event.target.value === "0" ? "" : Number(event.target.value)),
       );
 
       // "Insertar dato": pone {{dato}} donde estaba el cursor en el texto del

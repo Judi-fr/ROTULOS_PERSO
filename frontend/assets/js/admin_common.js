@@ -47,11 +47,11 @@ function canViewUsers() {
 // Clave de la clase CSS del badge de rol: SIEMPRE el texto original que
 // manda el backend (role_label, en inglés). No traducir estas claves — solo
 // se traduce el texto que se muestra (ver roleLabelEs / translateRole).
+// Dos roles fijos desde 2026-10-21; los demás son roles personalizados y se
+// muestran con su nombre.
 const roleLabelEs = {
   Admin: "Administrador",
-  Designer: "Diseñador",
-  Operator: "Operador",
-  Subscriber: "Suscriptor",
+  Subscriber: "Comerciante",
   User: "Usuario",
 };
 function translateRole(role) {

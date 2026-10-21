@@ -347,7 +347,7 @@ async function fetchMetricsJsonOrEmpty(url) {
 async function loadOrdersMetrics(months) {
   const grid = document.getElementById("ordersMetricsGrid");
   const empty = document.getElementById("ordersMetricsEmpty");
-  if (!canUseUserPermission("orders.view_all")) {
+  if (!canUseUserPermission("reports.view")) {
     if (grid) grid.style.display = "none";
     if (empty) {
       empty.style.display = "";
@@ -378,18 +378,21 @@ async function loadOrdersMetrics(months) {
 async function loadSupportActivityMetrics(months) {
   const title = document.getElementById("supportActivityTitle");
   const grid = document.getElementById("supportActivityGrid");
-  const canSupport = canUseUserPermission("support.view_all");
-  const canAudit = canUseUserPermission("audit.view");
+  // Todos los bloques piden "reports.view" desde la migración 0029.
+  const canSupport = canUseUserPermission("reports.view");
+  const canAudit = canUseUserPermission("reports.view");
 
   // Bloque entero opcional: si ninguna de las dos partes está disponible
   // (permiso o backend no implementado), ni se muestra el subtítulo.
   if (!canSupport && !canAudit) {
     if (title) title.style.display = "none";
     if (grid) grid.style.display = "none";
+    setReportsTabAvailable("soporte", false);
     return;
   }
   if (title) title.style.display = "";
   if (grid) grid.style.display = "";
+  setReportsTabAvailable("soporte", true);
   setMetricsLoading(REPORTS_SUPPORT_ACTIVITY_IDS);
 
   await loadAuditActionsCatalog();
@@ -434,16 +437,65 @@ async function loadMetrics() {
   await loadSupportActivityMetrics(months);
 }
 
-document.getElementById("reportsRefreshBtn")?.addEventListener("click", () => loadMetrics());
+// Pestañas: un bloque por vez. La elegida queda en el #hash, así un recargo o
+// un link vuelve a la misma.
+const REPORTS_DEFAULT_TAB = "usuarios";
+
+function reportsTabButton(name) {
+  return document.querySelector(`.reports-tab[data-tab="${name}"]`);
+}
+
+function showReportsTab(name) {
+  const button = reportsTabButton(name);
+  if (!button || button.hidden) name = REPORTS_DEFAULT_TAB;
+  document.querySelectorAll(".reports-tab").forEach((tab) => {
+    const active = tab.dataset.tab === name;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  document.querySelectorAll(".reports-panel").forEach((panel) => {
+    panel.hidden = panel.dataset.panel !== name;
+  });
+}
+
+function setReportsTabAvailable(name, available) {
+  const button = reportsTabButton(name);
+  if (!button) return;
+  button.hidden = !available;
+  // La pestaña pedida por el #hash puede aparecer recién ahora.
+  showReportsTab(window.location.hash.slice(1) || REPORTS_DEFAULT_TAB);
+}
+
+document.querySelectorAll(".reports-tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    history.replaceState(null, "", `#${tab.dataset.tab}`);
+    showReportsTab(tab.dataset.tab);
+  });
+});
+showReportsTab(window.location.hash.slice(1) || REPORTS_DEFAULT_TAB);
+
+// "Actualizar" dice que está trabajando y cuándo terminó, como en Estado del sistema.
+async function refreshReports() {
+  const button = document.getElementById("reportsRefreshBtn");
+  button.disabled = true;
+  button.textContent = "Actualizando…";
+  await loadMetrics();
+  button.disabled = false;
+  button.textContent = "Actualizar";
+  const time = new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const stamp = document.getElementById("reportsUpdatedAt");
+  if (stamp) stamp.textContent = `Actualizado a las ${time}`;
+}
+
+document.getElementById("reportsRefreshBtn")?.addEventListener("click", refreshReports);
 document.getElementById("reportsMonthsSelect")?.addEventListener("change", () => loadMetrics());
 
 // ---------------------------------------------------------------------------
-// Esta pantalla requiere el mismo permiso que su bloque principal (Usuarios):
-// users.view. Igual que antes -- Reportes era accesible desde gestionuser.html,
-// que ya exigía ese permiso para todo el mundo.
+// Esta pantalla tiene su propio permiso, "reports.view" (migración 0029): se
+// pueden dar los reportes sin dar la lista de usuarios ni la auditoría.
 // ---------------------------------------------------------------------------
 function bootstrap() {
-  if (!canViewUsers()) {
+  if (!canUseUserPermission("reports.view")) {
     window.location.replace("dashboard.html");
     return;
   }

@@ -12,7 +12,7 @@ def _ensure_groups():
     serializers.py y los filtros de viewsets.py); en mayúscula quedarían
     como grupos "personalizados" distintos de los roles reales.
     """
-    group_names = ["admin", "designer", "operator", "subscriber"]
+    group_names = ["admin", "subscriber"]
     for name in group_names:
         Group.objects.get_or_create(name=name)
 

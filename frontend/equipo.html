@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="X-UA-Compatible" content="ie=edge" />
 
-    <title>Mi equipo</title>
+    <title>Equipo</title>
     <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
     <link rel="stylesheet" href="assets/css/ui.css" />
 
@@ -20,11 +20,11 @@
   </head>
   <body>
     <div class="layout">
-      <header class="topbar" id="appTopbar" data-links='[{"href": "perfiles_equipo.html", "label": "Perfiles"}, {"href": "actividad_equipo.html", "label": "Actividad"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+      <header class="topbar" id="appTopbar" data-links='[{"href": "organizacion.html", "label": "Mi cuenta"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
 
       <main class="main">
         <div class="main-heading">
-          <h1>Mi equipo</h1>
+          <h1>Equipo</h1>
           <p>
             Quiénes trabajan en tu comercio y qué puede hacer cada uno. Todos
             entran con su propio usuario y trabajan sobre las mismas tiendas,
@@ -33,6 +33,18 @@
         </div>
 
         <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <!-- Miembros, perfiles y actividad en una sola pantalla (2026-10-21; antes
+             perfiles_equipo.html y actividad_equipo.html, que ahora redirigen acá).
+             Cada pestaña tiene su JS: equipo.js (y las pestañas), perfiles_equipo.js
+             y actividad_equipo.js. -->
+        <nav class="app-tabs" role="tablist" aria-label="Equipo">
+          <button type="button" class="app-tab active" role="tab" data-tab="miembros" aria-selected="true">Miembros</button>
+          <button type="button" class="app-tab" role="tab" data-tab="perfiles" aria-selected="false">Perfiles</button>
+          <button type="button" class="app-tab" role="tab" data-tab="actividad" aria-selected="false">Actividad</button>
+        </nav>
+
+        <div class="app-tab-panel" data-panel="miembros">
 
         <section class="profile-card">
           <div class="profile-card-title">Comercio</div>
@@ -84,6 +96,58 @@
           </div>
         </section>
 
+        </div>
+
+        <div class="app-tab-panel" data-panel="perfiles" hidden>
+          <p class="access-muted tab-intro">
+            Un perfil es un conjunto de accesos con nombre, como «Depósito». Si cambiás un perfil, cambia para
+            todos los que lo tienen. Elegí uno a la izquierda para ver y cambiar sus accesos.
+          </p>
+          <!-- createProfileEditor (utils.js), desde perfiles_equipo.js. -->
+          <div id="profileEditor"></div>
+        </div>
+
+        <div class="app-tab-panel" data-panel="actividad" hidden>
+          <p class="access-muted tab-intro">
+            Qué hizo cada persona del comercio: despachos, cancelaciones, rótulos, tiendas y cambios del equipo.
+          </p>
+        <section class="profile-card">
+          <div class="profile-card-title">Filtros</div>
+          <form class="profile-card-body activity-filters" id="filterForm">
+            <div class="field">
+              <label for="filterActor">Persona</label>
+              <select id="filterActor"><option value="">Todas</option></select>
+            </div>
+            <div class="field">
+              <label for="filterSearch">Buscar</label>
+              <input id="filterSearch" type="search" placeholder="Pedido, tienda, acción..." />
+            </div>
+            <div class="field">
+              <label for="filterFrom">Desde</label>
+              <input id="filterFrom" type="date" />
+            </div>
+            <div class="field">
+              <label for="filterTo">Hasta</label>
+              <input id="filterTo" type="date" />
+            </div>
+            <button type="submit" class="btn btn-primary">Filtrar</button>
+          </form>
+        </section>
+
+        <section class="profile-card">
+          <div class="profile-card-title">Movimientos</div>
+          <div class="profile-card-body">
+            <div class="table-scroll">
+              <table class="activity-table">
+                <thead><tr><th>Cuándo</th><th>Quién</th><th>Qué</th><th>Sobre qué</th></tr></thead>
+                <tbody id="activityBody"><tr><td colspan="4" class="access-muted"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></td></tr></tbody>
+              </table>
+            </div>
+            <div class="team-actions" id="pager"></div>
+          </div>
+        </section>
+        </div>
+
         <!-- Editar a un miembro: accesos y tiendas. -->
         <dialog id="memberDialog" class="team-dialog">
           <form method="dialog" id="memberForm">
@@ -110,5 +174,7 @@
     <script src="assets/js/utils.js"></script>
     <script src="assets/js/topbar.js"></script>
     <script src="assets/js/equipo.js"></script>
+    <script src="assets/js/perfiles_equipo.js"></script>
+    <script src="assets/js/actividad_equipo.js"></script>
   </body>
 </html>

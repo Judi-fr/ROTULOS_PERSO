@@ -17,10 +17,6 @@
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@mdi/font@4.9.95/css/materialdesignicons.min.css"
     />
-    <link
-      rel="stylesheet"
-      href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
-    />
 
     <link rel="stylesheet" href="assets/css/gestionuser.css" />
     <!-- Enlace al archivo CSS -->
@@ -221,74 +217,116 @@
                   Filtros
                 </button>
                 <div class="filter-panel filter-panel-wide" id="userFilterPanel" style="display:none;">
-                  <label for="userStatusFilter">Estado</label>
-                  <select id="userStatusFilter">
-                    <option value="all">Todos</option>
-                    <option value="active">Activo</option>
-                    <option value="inactive">Inactivo</option>
-                  </select>
-                  <label for="userRoleFilter">Rol</label>
-                  <select id="userRoleFilter">
-                    <option value="all">Todos</option>
-                  </select>
+                  <div class="filter-panel-head">Filtrar usuarios</div>
 
-                  <div class="filter-section-title">Actividad</div>
-                  <label for="userDateJoinedFrom">Registrado desde</label>
-                  <input type="date" id="userDateJoinedFrom" />
-                  <label for="userDateJoinedTo">Registrado hasta</label>
-                  <input type="date" id="userDateJoinedTo" />
-                  <label for="userLastLoginFrom">Último login desde</label>
-                  <input type="date" id="userLastLoginFrom" />
-                  <label for="userLastLoginTo">Último login hasta</label>
-                  <input type="date" id="userLastLoginTo" />
-                  <label class="filter-checkbox-label">
-                    <input type="checkbox" id="userNeverLoggedIn" />
-                    Nunca inició sesión
-                  </label>
-                  <label for="userInactiveDays">Inactivo hace más de (días)</label>
-                  <input type="number" id="userInactiveDays" min="0" placeholder="Ej: 30" />
+                  <div class="filter-section">
+                    <div class="filter-grid">
+                      <div>
+                        <label for="userStatusFilter">Estado</label>
+                        <select id="userStatusFilter">
+                          <option value="all">Todos</option>
+                          <option value="active">Activo</option>
+                          <option value="inactive">Inactivo</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label for="userRoleFilter">Rol</label>
+                        <select id="userRoleFilter">
+                          <option value="all">Todos</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
 
-                  <div class="filter-section-title">Seguridad</div>
-                  <label for="userLockedFilter">Bloqueado</label>
-                  <select id="userLockedFilter">
-                    <option value="all">Todos</option>
-                    <option value="true">Bloqueado</option>
-                    <option value="false">No bloqueado</option>
-                  </select>
-                  <label for="userFailedAttemptsFilter">Intentos fallidos</label>
-                  <select id="userFailedAttemptsFilter">
-                    <option value="all">Todos</option>
-                    <option value="0">0 intentos</option>
-                    <option value="1-2">1-2 intentos</option>
-                    <option value="cerca_de_bloquearse">Cerca de bloquearse</option>
-                  </select>
+                  <div class="filter-section">
+                    <div class="filter-section-title">Actividad</div>
+                    <div class="filter-grid">
+                      <div>
+                        <label for="userDateJoinedFrom">Registrado desde</label>
+                        <input type="date" id="userDateJoinedFrom" />
+                      </div>
+                      <div>
+                        <label for="userDateJoinedTo">Hasta</label>
+                        <input type="date" id="userDateJoinedTo" />
+                      </div>
+                      <div>
+                        <label for="userLastLoginFrom">Último ingreso desde</label>
+                        <input type="date" id="userLastLoginFrom" />
+                      </div>
+                      <div>
+                        <label for="userLastLoginTo">Hasta</label>
+                        <input type="date" id="userLastLoginTo" />
+                      </div>
+                      <div>
+                        <label for="userInactiveDays">Inactivo hace más de</label>
+                        <input type="number" id="userInactiveDays" min="0" placeholder="Días, ej: 30" />
+                      </div>
+                    </div>
+                    <label class="filter-checkbox-label">
+                      <input type="checkbox" id="userNeverLoggedIn" />
+                      Nunca inició sesión
+                    </label>
+                  </div>
 
-                  <div class="filter-section-title">Origen</div>
-                  <label for="userAuthMethodFilter">Método de autenticación</label>
-                  <select id="userAuthMethodFilter">
-                    <option value="all">Todos</option>
-                    <option value="local">Local (email/password)</option>
-                    <option value="google">Google</option>
-                  </select>
+                  <div class="filter-section">
+                    <div class="filter-section-title">Seguridad y origen</div>
+                    <div class="filter-grid">
+                      <div>
+                        <label for="userLockedFilter">Bloqueado</label>
+                        <select id="userLockedFilter">
+                          <option value="all">Todos</option>
+                          <option value="true">Bloqueado</option>
+                          <option value="false">No bloqueado</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label for="userFailedAttemptsFilter">Intentos fallidos</label>
+                        <select id="userFailedAttemptsFilter">
+                          <option value="all">Todos</option>
+                          <option value="0">0 intentos</option>
+                          <option value="1-2">1-2 intentos</option>
+                          <option value="cerca_de_bloquearse">Cerca de bloquearse</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label for="userAuthMethodFilter">Cómo ingresa</label>
+                        <select id="userAuthMethodFilter">
+                          <option value="all">Todos</option>
+                          <option value="local">Email y contraseña</option>
+                          <option value="google">Google</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
 
-                  <div class="filter-section-title">Orden</div>
-                  <label for="userOrderingField">Ordenar por</label>
-                  <select id="userOrderingField">
-                    <option value="id">Sin ordenar</option>
-                    <option value="first_name">Nombre</option>
-                    <option value="email">Email</option>
-                    <option value="date_joined">Fecha de registro</option>
-                    <option value="last_login">Último login</option>
-                  </select>
-                  <label for="userOrderingDir">Dirección</label>
-                  <select id="userOrderingDir">
-                    <option value="asc">Ascendente</option>
-                    <option value="desc">Descendente</option>
-                  </select>
+                  <div class="filter-section">
+                    <div class="filter-section-title">Orden</div>
+                    <div class="filter-grid">
+                      <div>
+                        <label for="userOrderingField">Ordenar por</label>
+                        <select id="userOrderingField">
+                          <option value="id">Sin ordenar</option>
+                          <option value="first_name">Nombre</option>
+                          <option value="email">Email</option>
+                          <option value="date_joined">Fecha de registro</option>
+                          <option value="last_login">Último ingreso</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label for="userOrderingDir">Dirección</label>
+                        <select id="userOrderingDir">
+                          <option value="asc">Ascendente</option>
+                          <option value="desc">Descendente</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
 
-                  <button type="button" class="btn btn-outline filter-clear-btn" id="clearUserFiltersBtn">
-                    Limpiar filtros
-                  </button>
+                  <div class="filter-panel-foot">
+                    <button type="button" class="btn btn-outline filter-clear-btn" id="clearUserFiltersBtn">
+                      Limpiar filtros
+                    </button>
+                  </div>
                 </div>
               </div>
               <button class="btn btn-outline" id="exportUsersBtn" title="Exportar los usuarios seleccionados a Excel">
@@ -356,7 +394,7 @@
                       <polyline points="7 9 12 4 17 9" /></svg
                   ></span>
                 </th>
-                <th style="width: 21%">
+                <th style="width: 19%">
                   <span class="th-sort"
                     >Email
                     <svg
@@ -369,7 +407,7 @@
                       <polyline points="7 9 12 4 17 9" /></svg
                   ></span>
                 </th>
-                <th style="width: 10%">
+                <th style="width: 14%">
                   <span class="th-sort"
                     >Rol
                     <svg
@@ -382,7 +420,7 @@
                       <polyline points="7 9 12 4 17 9" /></svg
                   ></span>
                 </th>
-                <th style="width: 12%">
+                <th style="width: 10%">
                   <span class="th-sort"
                     >Estado
                     <svg
@@ -489,38 +527,40 @@
               </svg>
             </button>
           </div>
-          <div class="field">
-            <label>Nombre completo</label>
-            <input id="fullNameInput" type="text" placeholder="Ingresá el nombre completo" required />
-          </div>
-          <div class="field">
-            <label>Email</label>
-            <input id="emailInput" type="email" placeholder="Ingresá el email" required />
-          </div>
-          <div class="field">
-            <label>Rol</label>
-<select id="roleSelect" required>
-              <option value="">Seleccioná un rol</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Estado</label>
-<select id="statusSelect" required>
-              <option value="">Seleccioná un estado</option>
-              <option value="active">Activo</option>
-              <option value="inactive">Inactivo</option>
-            </select>
-          </div>
-          <div class="field" id="passwordField">
-            <label>Contraseña</label>
-            <input id="passwordInput" type="password" placeholder="Ingresá la contraseña (opcional)" autocomplete="new-password" />
-            <p class="field-hint">Dejar vacío para usar una temporal (obliga a cambiarla).</p>
-          </div>
-          <div class="field field-checkbox">
-            <label class="filter-checkbox-label">
-              <input type="checkbox" id="forcePasswordChangeInput" />
-              <span>Forzar cambio de contraseña en el próximo login</span>
-            </label>
+          <div class="create-panel-grid">
+            <div class="field">
+              <label for="fullNameInput">Nombre completo</label>
+              <input id="fullNameInput" type="text" placeholder="Ej: Ana Pérez" required />
+            </div>
+            <div class="field">
+              <label for="emailInput">Email</label>
+              <input id="emailInput" type="email" placeholder="ana@ejemplo.com" required />
+            </div>
+            <div class="field">
+              <label for="roleSelect">Rol</label>
+              <select id="roleSelect" required>
+                <option value="">Seleccioná un rol</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="statusSelect">Estado</label>
+              <select id="statusSelect" required>
+                <option value="">Seleccioná un estado</option>
+                <option value="active">Activo</option>
+                <option value="inactive">Inactivo</option>
+              </select>
+            </div>
+            <div class="field field-full" id="passwordField">
+              <label for="passwordInput">Contraseña <span class="field-badge">opcional</span></label>
+              <input id="passwordInput" type="password" placeholder="Dejala vacía para generar una temporal" autocomplete="new-password" />
+              <p class="field-hint">Si la dejás vacía se crea una temporal y el usuario tiene que cambiarla al entrar.</p>
+            </div>
+            <div class="field field-checkbox field-full">
+              <label class="filter-checkbox-label">
+                <input type="checkbox" id="forcePasswordChangeInput" />
+                <span>Pedirle que cambie la contraseña la próxima vez que entre</span>
+              </label>
+            </div>
           </div>
           <div class="create-panel-actions">
             <button class="btn btn-cancel" id="cancelCreate" type="button">Cancelar</button>

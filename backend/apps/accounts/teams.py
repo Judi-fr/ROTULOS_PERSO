@@ -21,6 +21,7 @@ from .team_models import Team, TeamMember, TeamProfile
 ACCESSES = {
     "orders.view": "Ver pedidos",
     "labels.print": "Imprimir rótulos",
+    "documents.delete": "Borrar lotes",
     "orders.dispatch": "Despachar",
     "orders.cancel": "Cancelar pedidos",
     "orders.import": "Cargar e importar pedidos",

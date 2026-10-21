@@ -67,8 +67,8 @@ window.OrderShipping = (() => {
   // Una línea con cada transportista y el estado de su cuenta: el nombre lleva a
   // su página (conectar, completar o revisar).
   function renderStrip() {
-    // Mismo permiso (orders.create) que cargar seguimientos desde planilla.
-    el("trackingImportBtn").hidden = !account?.allowed;
+    // Cargar seguimientos tiene su permiso desde la migración 0029.
+    el("trackingImportBtn").hidden = !account?.allowed || !sessionHasPermission("orders.tracking_import");
     const strip = el("carrierStrip");
     if (!account?.allowed) {
       strip.hidden = true;
@@ -229,6 +229,7 @@ window.OrderShipping = (() => {
     el("labelsSelectedBtn").hidden = !withLabel.length;
     el("labelsSelectedBtn").textContent = `Imprimir (${withLabel.length})`;
     el("manifestSelectedBtn").textContent = `Planilla de retiro (${orders.length})`;
+    el("manifestSelectedBtn").hidden = !sessionHasPermission("orders.manifest");
   }
 
   function clearSelection() {

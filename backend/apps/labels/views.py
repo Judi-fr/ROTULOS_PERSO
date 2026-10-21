@@ -230,6 +230,12 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ("list", "retrieve", "preview", "versions", "version_preview"):
             return [IsAuthenticated()]
+        # Crear y duplicar / editar y restaurar / borrar: tres permisos desde
+        # la migración 0029 (antes los tres eran "labels.template_create").
+        if self.action in ("update", "partial_update", "restore_version"):
+            return [IsAuthenticated(), HasRolePermission("labels.template_edit")]
+        if self.action == "destroy":
+            return [IsAuthenticated(), HasRolePermission("labels.template_delete")]
         return [IsAuthenticated(), HasRolePermission("labels.template_create")]
 
     def get_queryset(self):

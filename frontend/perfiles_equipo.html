@@ -2,69 +2,17 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
-
+    <!-- Perfiles del equipo pasó a ser una pestaña de equipo.html (2026-10-21). Esta
+         página queda para los links viejos (y los del panel). -->
+    <meta http-equiv="refresh" content="0; url=equipo.html#perfiles" />
     <title>Perfiles del equipo</title>
     <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
     <link rel="stylesheet" href="assets/css/ui.css" />
-
-    <link
-      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
-      rel="stylesheet"
-    />
-
-    <link rel="stylesheet" href="assets/css/base.css" />
-    <link rel="stylesheet" href="assets/css/pedidos.css" />
-    <link rel="stylesheet" href="assets/css/equipo.css" />
   </head>
   <body>
-    <div class="layout">
-      <header class="topbar" id="appTopbar" data-links='[{"href": "equipo.html", "label": "Mi equipo"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
-
-      <main class="main">
-        <div class="main-heading">
-          <h1>Perfiles del equipo</h1>
-          <p>
-            Un perfil es un conjunto de accesos con nombre, como «Depósito».
-            Si cambiás un perfil, cambia para todos los que lo tienen.
-          </p>
-        </div>
-
-        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
-
-        <section class="profile-card">
-          <div class="profile-card-title">Perfiles</div>
-          <div class="profile-card-body">
-            <ul id="profileList" class="team-list"><li class="access-muted"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></li></ul>
-          </div>
-        </section>
-
-        <section class="profile-card">
-          <div class="profile-card-title" id="profileFormTitle">Nuevo perfil</div>
-          <form class="profile-card-body" id="profileForm">
-            <input type="hidden" id="profileId" />
-            <div class="field">
-              <label for="profileName">Nombre</label>
-              <input id="profileName" type="text" maxlength="60" required placeholder="Depósito" />
-            </div>
-            <fieldset class="team-fieldset">
-              <legend>Accesos</legend>
-              <div id="profileAccess"></div>
-            </fieldset>
-            <div class="form-actions team-form-actions">
-              <button type="button" class="btn btn-outline" id="profileCancel" hidden>Cancelar</button>
-              <button type="submit" class="btn btn-primary" id="profileSubmit">Crear perfil</button>
-            </div>
-          </form>
-        </section>
-      </main>
-    </div>
-
-    <script src="assets/js/config.js"></script>
-    <script src="assets/js/auth.js"></script>
-    <script src="assets/js/utils.js"></script>
-    <script src="assets/js/topbar.js"></script>
-    <script src="assets/js/perfiles_equipo.js"></script>
+    <script>
+      window.location.replace("equipo.html#perfiles");
+    </script>
+    <p>Perfiles del equipo ahora está en <a href="equipo.html#perfiles">Equipo</a>.</p>
   </body>
 </html>

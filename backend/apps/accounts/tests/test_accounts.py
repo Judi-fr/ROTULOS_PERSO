@@ -496,13 +496,13 @@ class PermissionsTests(AuthTestCase):
 class RolesTests(AuthTestCase):
     """Los roles canónicos existen y los legacy fueron eliminados."""
 
-    def test_los_cuatro_roles_canonicos_existen(self):
+    def test_los_dos_roles_fijos_existen_y_los_viejos_no(self):
         from django.contrib.auth.models import Group
 
         nombres = set(Group.objects.values_list("name", flat=True))
-        self.assertTrue(
-            {"admin", "designer", "operator", "subscriber"}.issubset(nombres)
-        )
+        self.assertTrue({"admin", "subscriber"}.issubset(nombres))
+        # designer/operator pasaron a subscriber (0030).
+        self.assertFalse({"designer", "operator"}.intersection(nombres))
 
     def test_los_groups_legacy_fueron_eliminados(self):
         from django.contrib.auth.models import Group
@@ -521,9 +521,14 @@ class RolePermissionSystemTests(AuthTestCase):
     """
 
     ADMIN = "admin"
-    DESIGNER = "designer"
-    OPERATOR = "operator"
     SUBSCRIBER = "subscriber"
+    # Desde 2026-10-21 los roles fijos son admin y subscriber; designer y
+    # operator pasaron a subscriber (migración 0030). Para probar un rol que
+    # no es admin con permisos de menos se usan dos roles de PERSONAL de la
+    # plataforma (personalizados), sembrados en setUp con lo que tenían
+    # designer y operator.
+    STAFF = "soporte"
+    ANALYST = "analista"
 
     ALL_PERMISSIONS = {
         "users.view",
@@ -582,12 +587,21 @@ class RolePermissionSystemTests(AuthTestCase):
         "documents.view_all",
         "orders.create_for_others",
         "integrations.manage",
+        # Partidos de otros más gruesos (0029_seed_split_permissions).
+        "orders.tracking_import",
+        "orders.manifest",
+        "labels.template_edit",
+        "labels.template_delete",
+        "users.delete",
+        "users.export",
+        "audit.export",
+        "reports.view",
     }
 
     # Self-service: perfil propio + direcciones/pedidos propios + soporte +
-    # rótulos propios. Es lo que tienen designer/subscriber (ver
+    # rótulos propios. Es lo que tenía designer (ver
     # 0007_seed_order_permissions, 0012_seed_support_permission y
-    # 0015_seed_label_permissions). operator tiene esto MÁS la carga
+    # 0015_seed_label_permissions). operator tenía esto MÁS la carga
     # operativa de pedidos (ver OPERATOR_PERMISSIONS, 0020).
     ME_VIEW_PERMISSIONS = {
         "users.me.view",
@@ -621,9 +635,15 @@ class RolePermissionSystemTests(AuthTestCase):
         "printers.manage",
         "account.manage",
         "team.manage",
+        # Lo que se partió de orders.dispatch / labels.template_create
+        # (0029_seed_split_permissions).
+        "orders.tracking_import",
+        "orders.manifest",
+        "labels.template_edit",
+        "labels.template_delete",
     }
 
-    # operator: ME_VIEW_PERMISSIONS + carga operativa de pedidos (alta
+    # El que tenía operator: ME_VIEW_PERMISSIONS + carga operativa (alta
     # manual, importación, plantillas de mapeo) — ver 0020.
     OPERATOR_PERMISSIONS = ME_VIEW_PERMISSIONS | {
         "orders.create_manual",
@@ -632,7 +652,7 @@ class RolePermissionSystemTests(AuthTestCase):
     }
 
     # subscriber (el comerciante, dueño de su comercio): desde 0028 tiene
-    # también la carga operativa, o sea lo mismo que operator.
+    # también la carga operativa (lo mismo que tenía operator).
     SUBSCRIBER_PERMISSIONS = OPERATOR_PERMISSIONS
 
     def setUp(self):
@@ -645,10 +665,15 @@ class RolePermissionSystemTests(AuthTestCase):
         self.GroupRolePermission = GroupRolePermission
         self.RolePermission = RolePermission
 
-        # Los Groups los siembra la migración; forzamos su existencia por si
-        # los tests corren con una base ya migrada.
-        for name in (self.ADMIN, self.DESIGNER, self.OPERATOR, self.SUBSCRIBER):
+        # Los Groups fijos los siembra la migración; forzamos su existencia por
+        # si los tests corren con una base ya migrada. Los de personal se crean
+        # acá con sus permisos.
+        for name in (self.ADMIN, self.SUBSCRIBER):
             Group.objects.get_or_create(name=name)
+        for name, keys in ((self.STAFF, self.ME_VIEW_PERMISSIONS), (self.ANALYST, self.OPERATOR_PERMISSIONS)):
+            group = Group.objects.create(name=name)
+            for permission in RolePermission.objects.filter(key__in=keys):
+                GroupRolePermission.objects.create(group=group, permission=permission)
 
         # Usuarios de prueba.
         self.admin_user = User.objects.create_user(
@@ -657,14 +682,14 @@ class RolePermissionSystemTests(AuthTestCase):
             password=STRONG_PASSWORD,
             is_staff=True,
         )
-        self.designer_user = User.objects.create_user(
-            username="perm_designer@example.com",
-            email="perm_designer@example.com",
+        self.staff_user = User.objects.create_user(
+            username="perm_staff@example.com",
+            email="perm_staff@example.com",
             password=STRONG_PASSWORD,
         )
-        self.operator_user = User.objects.create_user(
-            username="perm_operator@example.com",
-            email="perm_operator@example.com",
+        self.analyst_user = User.objects.create_user(
+            username="perm_analyst@example.com",
+            email="perm_analyst@example.com",
             password=STRONG_PASSWORD,
         )
         self.subscriber_user = User.objects.create_user(
@@ -675,17 +700,17 @@ class RolePermissionSystemTests(AuthTestCase):
 
         # Asignar los Groups (roles) a cada usuario.
         self.admin_user.groups.add(Group.objects.get(name=self.ADMIN))
-        self.designer_user.groups.add(Group.objects.get(name=self.DESIGNER))
-        self.operator_user.groups.add(Group.objects.get(name=self.OPERATOR))
+        self.staff_user.groups.add(Group.objects.get(name=self.STAFF))
+        self.analyst_user.groups.add(Group.objects.get(name=self.ANALYST))
         self.subscriber_user.groups.add(Group.objects.get(name=self.SUBSCRIBER))
 
     # --- Datos sembrados -----------------------------------------------------
 
-    def test_los_cuatro_roles_existen(self):
+    def test_quedan_dos_roles_fijos(self):
         names = set(self.Group.objects.values_list("name", flat=True))
-        self.assertTrue(
-            {self.ADMIN, self.DESIGNER, self.OPERATOR, self.SUBSCRIBER}.issubset(names)
-        )
+        self.assertTrue({self.ADMIN, self.SUBSCRIBER}.issubset(names))
+        # designer/operator se fusionaron en subscriber (0030).
+        self.assertFalse({"designer", "operator"}.intersection(names))
 
     def test_los_ocho_permisos_existen(self):
         keys = set(self.RolePermission.objects.values_list("key", flat=True))
@@ -697,16 +722,6 @@ class RolePermissionSystemTests(AuthTestCase):
                 group__name=self.ADMIN
             ).values_list("permission__key", flat=True)
         )
-        designer_perm = set(
-            self.GroupRolePermission.objects.filter(
-                group__name=self.DESIGNER
-            ).values_list("permission__key", flat=True)
-        )
-        operator_perm = set(
-            self.GroupRolePermission.objects.filter(
-                group__name=self.OPERATOR
-            ).values_list("permission__key", flat=True)
-        )
         subscriber_perm = set(
             self.GroupRolePermission.objects.filter(
                 group__name=self.SUBSCRIBER
@@ -714,8 +729,6 @@ class RolePermissionSystemTests(AuthTestCase):
         )
 
         self.assertEqual(admin_perm, self.ALL_PERMISSIONS)
-        self.assertEqual(designer_perm, self.ME_VIEW_PERMISSIONS)
-        self.assertEqual(operator_perm, self.OPERATOR_PERMISSIONS)
         self.assertEqual(subscriber_perm, self.SUBSCRIBER_PERMISSIONS)
 
     def test_re_ejecutar_migracion_no_duplica(self):
@@ -735,16 +748,12 @@ class RolePermissionSystemTests(AuthTestCase):
 
         # El catálogo completo (RolePermission) es exactamente ALL_PERMISSIONS.
         self.assertEqual(self.RolePermission.objects.count(), len(self.ALL_PERMISSIONS))
+        # Lo sembrado por las migraciones: admin tiene el catálogo completo
+        # (ALL_PERMISSIONS) y subscriber SUBSCRIBER_PERMISSIONS. (Los roles de
+        # personal los creó este setUp, no una migración.)
         self.assertEqual(
-            self.GroupRolePermission.objects.count(),
-            # admin tiene el catálogo completo (ALL_PERMISSIONS); designer
-            # tiene ME_VIEW_PERMISSIONS; operator OPERATOR_PERMISSIONS
-            # (ME_VIEW_PERMISSIONS + carga operativa) y subscriber, desde
-            # 0028, lo mismo que operator.
-            len(self.ALL_PERMISSIONS)
-            + len(self.ME_VIEW_PERMISSIONS)
-            + len(self.OPERATOR_PERMISSIONS)
-            + len(self.SUBSCRIBER_PERMISSIONS),
+            self.GroupRolePermission.objects.filter(group__name__in=[self.ADMIN, self.SUBSCRIBER]).count(),
+            len(self.ALL_PERMISSIONS) + len(self.SUBSCRIBER_PERMISSIONS),
         )
 
     # --- Endpoints autenticados (admin) --------------------------------------
@@ -754,13 +763,10 @@ class RolePermissionSystemTests(AuthTestCase):
         resp = self.client.get("/api/v1/auth/roles/")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         names = [r["name"] for r in resp.data]
-        # Los cuatro básicos aparecen primero y en orden canónico; pueden
-        # existir roles personalizados creados por otros tests después.
-        self.assertEqual(
-            names[:4],
-            [self.ADMIN, self.DESIGNER, self.OPERATOR, self.SUBSCRIBER],
-        )
-        self.assertGreaterEqual(len(names), 4)
+        # Los dos fijos aparecen primero y en orden canónico; después los de
+        # personal (alfabético).
+        self.assertEqual(names[:2], [self.ADMIN, self.SUBSCRIBER])
+        self.assertEqual(names[2:], sorted([self.ANALYST, self.STAFF]))
 
     def test_get_permissions_admin(self):
         self.client.force_authenticate(user=self.admin_user)
@@ -784,9 +790,9 @@ class RolePermissionSystemTests(AuthTestCase):
 
     def test_put_role_permissions_admin(self):
         self.client.force_authenticate(user=self.admin_user)
-        designer_group = self.Group.objects.get(name=self.DESIGNER)
+        staff_group = self.Group.objects.get(name=self.STAFF)
         resp = self.client.put(
-            f"/api/v1/auth/roles/{designer_group.id}/permissions/",
+            f"/api/v1/auth/roles/{staff_group.id}/permissions/",
             {"permissions": ["users.view", "users.me.view"]},
             format="json",
         )
@@ -798,9 +804,9 @@ class RolePermissionSystemTests(AuthTestCase):
 
     def test_put_permiso_inexistente_devuelve_400_y_no_modifica(self):
         self.client.force_authenticate(user=self.admin_user)
-        designer_group = self.Group.objects.get(name=self.DESIGNER)
+        staff_group = self.Group.objects.get(name=self.STAFF)
         resp = self.client.put(
-            f"/api/v1/auth/roles/{designer_group.id}/permissions/",
+            f"/api/v1/auth/roles/{staff_group.id}/permissions/",
             {"permissions": ["users.view", "no.existe"]},
             format="json",
         )
@@ -808,7 +814,7 @@ class RolePermissionSystemTests(AuthTestCase):
         # La asignación original no se tocó.
         current = set(
             self.GroupRolePermission.objects.filter(
-                group=designer_group
+                group=staff_group
             ).values_list("permission__key", flat=True)
         )
         self.assertEqual(current, self.ME_VIEW_PERMISSIONS)
@@ -842,8 +848,8 @@ class RolePermissionSystemTests(AuthTestCase):
 
     # --- No admins no pueden tocar -------------------------------------------
 
-    def test_designer_no_puede_modificar_permisos(self):
-        self.client.force_authenticate(user=self.designer_user)
+    def test_personal_no_puede_modificar_permisos(self):
+        self.client.force_authenticate(user=self.staff_user)
         admin_group = self.Group.objects.get(name=self.ADMIN)
         resp = self.client.put(
             f"/api/v1/auth/roles/{admin_group.id}/permissions/",
@@ -852,8 +858,8 @@ class RolePermissionSystemTests(AuthTestCase):
         )
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_operator_no_puede_modificar_permisos(self):
-        self.client.force_authenticate(user=self.operator_user)
+    def test_analista_no_puede_modificar_permisos(self):
+        self.client.force_authenticate(user=self.analyst_user)
         admin_group = self.Group.objects.get(name=self.ADMIN)
         resp = self.client.put(
             f"/api/v1/auth/roles/{admin_group.id}/permissions/",
@@ -872,8 +878,8 @@ class RolePermissionSystemTests(AuthTestCase):
         )
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_designer_no_puede_ver_catalogo(self):
-        self.client.force_authenticate(user=self.designer_user)
+    def test_personal_no_puede_ver_catalogo(self):
+        self.client.force_authenticate(user=self.staff_user)
         resp = self.client.get("/api/v1/auth/roles/")
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
@@ -900,157 +906,181 @@ class RolePermissionSystemTests(AuthTestCase):
     def _grant_permission(self, role_name, permission_key):
         self._restore_permission(role_name, permission_key)
 
-    def test_designer_users_view_otorgar_quitar_y_restaurar(self):
+    def test_staff_users_view_otorgar_quitar_y_restaurar(self):
         from ..permissions_map import get_effective_role, user_has_permission
 
-        self.client.force_authenticate(user=self.designer_user)
-        self.assertEqual(get_effective_role(self.designer_user), self.DESIGNER)
-        self.assertFalse(user_has_permission(self.designer_user, "users.view"))
+        self.client.force_authenticate(user=self.staff_user)
+        self.assertEqual(get_effective_role(self.staff_user), self.STAFF)
+        self.assertFalse(user_has_permission(self.staff_user, "users.view"))
         self.assertEqual(self.client.get("/api/v1/users/").status_code, status.HTTP_403_FORBIDDEN)
 
-        self._grant_permission(self.DESIGNER, "users.view")
-        self.assertTrue(user_has_permission(self.designer_user, "users.view"))
+        self._grant_permission(self.STAFF, "users.view")
+        self.assertTrue(user_has_permission(self.staff_user, "users.view"))
         self.assertEqual(self.client.get("/api/v1/users/").status_code, status.HTTP_200_OK)
 
-        self._remove_permission(self.DESIGNER, "users.view")
-        self.assertFalse(user_has_permission(self.designer_user, "users.view"))
+        self._remove_permission(self.STAFF, "users.view")
+        self.assertFalse(user_has_permission(self.staff_user, "users.view"))
         self.assertEqual(self.client.get("/api/v1/users/").status_code, status.HTTP_403_FORBIDDEN)
 
-        self._grant_permission(self.DESIGNER, "users.view")
-        self.assertTrue(user_has_permission(self.designer_user, "users.view"))
+        self._grant_permission(self.STAFF, "users.view")
+        self.assertTrue(user_has_permission(self.staff_user, "users.view"))
         self.assertEqual(self.client.get("/api/v1/users/").status_code, status.HTTP_200_OK)
 
-    def test_designer_users_create_otorgar_quitar_y_restaurar(self):
-        self.client.force_authenticate(user=self.designer_user)
-        payload = {"email": "designer-create-1@example.com", "password": STRONG_PASSWORD}
+    def test_staff_users_create_otorgar_quitar_y_restaurar(self):
+        self.client.force_authenticate(user=self.staff_user)
+        payload = {"email": "staff-create-1@example.com", "password": STRONG_PASSWORD}
         self.assertEqual(self.client.post("/api/v1/users/", payload, format="json").status_code, status.HTTP_403_FORBIDDEN)
 
-        self._grant_permission(self.DESIGNER, "users.create")
+        self._grant_permission(self.STAFF, "users.create")
         self.assertEqual(self.client.post("/api/v1/users/", payload, format="json").status_code, status.HTTP_201_CREATED)
 
-        self._remove_permission(self.DESIGNER, "users.create")
-        denied = {"email": "designer-create-2@example.com", "password": STRONG_PASSWORD}
+        self._remove_permission(self.STAFF, "users.create")
+        denied = {"email": "staff-create-2@example.com", "password": STRONG_PASSWORD}
         self.assertEqual(self.client.post("/api/v1/users/", denied, format="json").status_code, status.HTTP_403_FORBIDDEN)
 
-        self._grant_permission(self.DESIGNER, "users.create")
-        restored = {"email": "designer-create-3@example.com", "password": STRONG_PASSWORD}
+        self._grant_permission(self.STAFF, "users.create")
+        restored = {"email": "staff-create-3@example.com", "password": STRONG_PASSWORD}
         self.assertEqual(self.client.post("/api/v1/users/", restored, format="json").status_code, status.HTTP_201_CREATED)
 
-    def test_designer_users_edit_otorgar_quitar_y_restaurar(self):
-        self.client.force_authenticate(user=self.designer_user)
-        url = f"/api/v1/users/{self.operator_user.id}/"
+    def test_staff_users_edit_otorgar_quitar_y_restaurar(self):
+        self.client.force_authenticate(user=self.staff_user)
+        url = f"/api/v1/users/{self.analyst_user.id}/"
         self.assertEqual(self.client.patch(url, {"first_name": "No"}, format="json").status_code, status.HTTP_403_FORBIDDEN)
 
-        self._grant_permission(self.DESIGNER, "users.edit")
+        self._grant_permission(self.STAFF, "users.edit")
         self.assertEqual(self.client.patch(url, {"first_name": "Sí"}, format="json").status_code, status.HTTP_200_OK)
 
-        self._remove_permission(self.DESIGNER, "users.edit")
+        self._remove_permission(self.STAFF, "users.edit")
         self.assertEqual(self.client.patch(url, {"last_name": "No"}, format="json").status_code, status.HTTP_403_FORBIDDEN)
 
-        self._grant_permission(self.DESIGNER, "users.edit")
+        self._grant_permission(self.STAFF, "users.edit")
         self.assertEqual(self.client.patch(url, {"last_name": "Sí"}, format="json").status_code, status.HTTP_200_OK)
 
-    def test_designer_me_view_otorgar_quitar_y_restaurar(self):
-        self.client.force_authenticate(user=self.designer_user)
-        self._remove_permission(self.DESIGNER, "users.me.view")
+    def test_personal_me_view_otorgar_quitar_y_restaurar(self):
+        self.client.force_authenticate(user=self.staff_user)
+        self._remove_permission(self.STAFF, "users.me.view")
         self.assertEqual(self.client.get("/api/v1/auth/me/").status_code, status.HTTP_403_FORBIDDEN)
-        self._grant_permission(self.DESIGNER, "users.me.view")
+        self._grant_permission(self.STAFF, "users.me.view")
         self.assertEqual(self.client.get("/api/v1/auth/me/").status_code, status.HTTP_200_OK)
 
-    def test_designer_me_edit_otorgar_quitar_y_restaurar(self):
-        self.client.force_authenticate(user=self.designer_user)
-        self._remove_permission(self.DESIGNER, "users.me.edit")
+    def test_personal_me_edit_otorgar_quitar_y_restaurar(self):
+        self.client.force_authenticate(user=self.staff_user)
+        self._remove_permission(self.STAFF, "users.me.edit")
         self.assertEqual(self.client.patch("/api/v1/auth/me/", {"first_name": "No"}, format="json").status_code, status.HTTP_403_FORBIDDEN)
-        self._grant_permission(self.DESIGNER, "users.me.edit")
+        self._grant_permission(self.STAFF, "users.me.edit")
         self.assertEqual(self.client.patch("/api/v1/auth/me/", {"first_name": "Sí"}, format="json").status_code, status.HTTP_200_OK)
 
-    def test_designer_me_change_password_otorgar_quitar_y_restaurar(self):
-        self.client.force_authenticate(user=self.designer_user)
+    def test_personal_me_change_password_otorgar_quitar_y_restaurar(self):
+        self.client.force_authenticate(user=self.staff_user)
         payload = {
             "current_password": STRONG_PASSWORD,
             "new_password": "NuevaClave2026",
             "confirm_password": "NuevaClave2026",
         }
-        self._remove_permission(self.DESIGNER, "users.me.change_password")
+        self._remove_permission(self.STAFF, "users.me.change_password")
         self.assertEqual(self.client.post("/api/v1/auth/me/change-password/", payload, format="json").status_code, status.HTTP_403_FORBIDDEN)
-        self._grant_permission(self.DESIGNER, "users.me.change_password")
+        self._grant_permission(self.STAFF, "users.me.change_password")
         self.assertEqual(self.client.post("/api/v1/auth/me/change-password/", payload, format="json").status_code, status.HTTP_200_OK)
 
 
-    def test_quitar_users_view_impide_listar_y_reotorgar_restaura(self):
+    # El admin tiene todo siempre (2026-10-21, "el leviatán"): aunque falte
+    # la fila en la tabla, no pierde nada. Quitar y devolver un permiso a un
+    # rol que no es admin lo prueban los test_personal_* de arriba.
+    def test_admin_conserva_users_view_aunque_falte_en_la_tabla(self):
         self.client.force_authenticate(user=self.admin_user)
         self._remove_permission(self.ADMIN, "users.view")
-        self.assertEqual(
-            self.client.get("/api/v1/users/").status_code,
-            status.HTTP_403_FORBIDDEN,
-        )
-        self._restore_permission(self.ADMIN, "users.view")
-        self.assertEqual(
-            self.client.get("/api/v1/users/").status_code,
-            status.HTTP_200_OK,
-        )
+        self.assertEqual(self.client.get("/api/v1/users/").status_code, status.HTTP_200_OK)
 
-    def test_quitar_users_create_impide_crear_y_reotorgar_restaura(self):
+    def test_admin_conserva_users_create_aunque_falte_en_la_tabla(self):
         self.client.force_authenticate(user=self.admin_user)
         self._remove_permission(self.ADMIN, "users.create")
-        payload = {
-            "email": "permission-create@example.com",
-            "password": STRONG_PASSWORD,
-        }
-        self.assertEqual(
-            self.client.post("/api/v1/users/", payload, format="json").status_code,
-            status.HTTP_403_FORBIDDEN,
-        )
-        self._restore_permission(self.ADMIN, "users.create")
+        payload = {"email": "permission-create@example.com", "password": STRONG_PASSWORD}
         self.assertEqual(
             self.client.post("/api/v1/users/", payload, format="json").status_code,
             status.HTTP_201_CREATED,
         )
 
-    def test_quitar_users_edit_impide_patch_y_reotorgar_restaura(self):
+    def test_admin_conserva_users_edit_aunque_falte_en_la_tabla(self):
         self.client.force_authenticate(user=self.admin_user)
         self._remove_permission(self.ADMIN, "users.edit")
-        url = f"/api/v1/users/{self.designer_user.id}/"
+        url = f"/api/v1/users/{self.staff_user.id}/"
         self.assertEqual(
-            self.client.patch(url, {"first_name": "Sin permiso"}, format="json").status_code,
-            status.HTTP_403_FORBIDDEN,
-        )
-        self._restore_permission(self.ADMIN, "users.edit")
-        self.assertEqual(
-            self.client.patch(url, {"first_name": "Con permiso"}, format="json").status_code,
+            self.client.patch(url, {"first_name": "Igual puede"}, format="json").status_code,
             status.HTTP_200_OK,
         )
 
+    def test_el_rol_admin_no_se_puede_editar(self):
+        from ..role_permission_views import ADMIN_ROLE_LOCKED_MSG
+
+        self.client.force_authenticate(user=self.admin_user)
+        admin_group = self.Group.objects.get(name=self.ADMIN)
+        resp = self.client.put(
+            f"/api/v1/auth/roles/{admin_group.id}/permissions/",
+            {"permissions": ["users.view"]},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(resp.data["permissions"], ADMIN_ROLE_LOCKED_MSG)
+        # Y lo que ve la pantalla: el catálogo entero, marcado como bloqueado.
+        resp = self.client.get(f"/api/v1/auth/roles/{admin_group.id}/permissions/")
+        self.assertEqual({p["key"] for p in resp.data["permissions"]}, self.ALL_PERMISSIONS)
+        self.assertTrue(resp.data["role"]["locked"])
+
+    def test_nadie_edita_los_permisos_de_su_propio_rol(self):
+        from ..role_permission_views import OWN_ROLE_LOCKED_MSG
+
+        # Personal de la plataforma que administra roles (is_staff).
+        self.staff_user.is_staff = True
+        self.staff_user.save()
+        self.client.force_authenticate(user=self.staff_user)
+        own = self.Group.objects.get(name=self.STAFF)
+        resp = self.client.put(
+            f"/api/v1/auth/roles/{own.id}/permissions/",
+            {"permissions": sorted(self.ALL_PERMISSIONS)},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(resp.data["permissions"], OWN_ROLE_LOCKED_MSG)
+        roles = {r["name"]: r for r in self.client.get("/api/v1/auth/roles/").data}
+        self.assertTrue(roles[self.STAFF]["locked"])
+        self.assertFalse(roles[self.ANALYST]["locked"])
+        # Otro rol sí.
+        other = self.Group.objects.get(name=self.ANALYST)
+        resp = self.client.put(
+            f"/api/v1/auth/roles/{other.id}/permissions/", {"permissions": ["users.me.view"]}, format="json"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
     def test_quitar_users_me_view_impide_perfil_y_reotorgar_restaura(self):
-        self.client.force_authenticate(user=self.designer_user)
-        self._remove_permission(self.DESIGNER, "users.me.view")
+        self.client.force_authenticate(user=self.staff_user)
+        self._remove_permission(self.STAFF, "users.me.view")
         self.assertEqual(
             self.client.get("/api/v1/auth/me/").status_code,
             status.HTTP_403_FORBIDDEN,
         )
-        self._restore_permission(self.DESIGNER, "users.me.view")
+        self._restore_permission(self.STAFF, "users.me.view")
         self.assertEqual(
             self.client.get("/api/v1/auth/me/").status_code,
             status.HTTP_200_OK,
         )
 
     def test_quitar_users_me_edit_impide_patch_y_reotorgar_restaura(self):
-        self.client.force_authenticate(user=self.designer_user)
-        self._remove_permission(self.DESIGNER, "users.me.edit")
+        self.client.force_authenticate(user=self.staff_user)
+        self._remove_permission(self.STAFF, "users.me.edit")
         payload = {"first_name": "Sin permiso"}
         self.assertEqual(
             self.client.patch("/api/v1/auth/me/", payload, format="json").status_code,
             status.HTTP_403_FORBIDDEN,
         )
-        self._restore_permission(self.DESIGNER, "users.me.edit")
+        self._restore_permission(self.STAFF, "users.me.edit")
         self.assertEqual(
             self.client.patch("/api/v1/auth/me/", payload, format="json").status_code,
             status.HTTP_200_OK,
         )
 
     def test_quitar_cambio_password_impide_y_reotorgar_restaura(self):
-        self.client.force_authenticate(user=self.designer_user)
-        self._remove_permission(self.DESIGNER, "users.me.change_password")
+        self.client.force_authenticate(user=self.staff_user)
+        self._remove_permission(self.STAFF, "users.me.change_password")
         payload = {
             "current_password": STRONG_PASSWORD,
             "new_password": "OtraClave2026",
@@ -1060,7 +1090,7 @@ class RolePermissionSystemTests(AuthTestCase):
             self.client.post("/api/v1/auth/me/change-password/", payload, format="json").status_code,
             status.HTTP_403_FORBIDDEN,
         )
-        self._restore_permission(self.DESIGNER, "users.me.change_password")
+        self._restore_permission(self.STAFF, "users.me.change_password")
         self.assertEqual(
             self.client.post("/api/v1/auth/me/change-password/", payload, format="json").status_code,
             status.HTTP_200_OK,
@@ -1075,8 +1105,8 @@ class RolePermissionSystemTests(AuthTestCase):
         self.assertTrue(user_has_permission(self.admin_user, "users.view"))
         self.assertTrue(user_has_permission(self.admin_user, "users.me.edit"))
 
-        # Designer/operator/subscriber: solo perfil propio.
-        for u in (self.designer_user, self.operator_user, self.subscriber_user):
+        # Personal sin permisos de admin y comerciante: solo perfil propio.
+        for u in (self.staff_user, self.analyst_user, self.subscriber_user):
             self.assertFalse(user_has_permission(u, "users.view"))
             self.assertTrue(user_has_permission(u, "users.me.view"))
 
@@ -1085,7 +1115,7 @@ class RolePermissionSystemTests(AuthTestCase):
 
 
 class CustomRolePermissionTests(AuthTestCase):
-    """Roles PERSONALIZADOS (Groups fuera de admin/designer/operator/subscriber).
+    """Roles PERSONALIZADOS (Groups fuera de admin/subscriber: el personal de la plataforma).
 
     Regresión del bug donde ``permissions_map.normalize_role`` colapsaba
     cualquier Group no reconocido a ``DEFAULT_ROLE`` ("subscriber"): un rol
@@ -1113,7 +1143,7 @@ class CustomRolePermissionTests(AuthTestCase):
         self.GroupRolePermission = GroupRolePermission
         self.RolePermission = RolePermission
 
-        for name in ("admin", "designer", "operator", "subscriber"):
+        for name in ("admin", "subscriber"):
             Group.objects.get_or_create(name=name)
 
         self.admin_user = User.objects.create_user(
@@ -1397,11 +1427,14 @@ class UserAdminCrudTests(AuthTestCase):
 
     def test_admin_crea_usuario_con_payload_del_panel(self):
         # El panel manda full_name/role/status en vez de first_name/groups/is_active.
+        # Un rol de personal de la plataforma (personalizado): el nombre del
+        # rol es el del Group.
+        Group.objects.create(name="soporte")
         self.client.force_authenticate(user=self.admin)
         resp = self.client.post(
             self.URL,
             {"email": "panel@example.com", "password": STRONG_PASSWORD,
-             "full_name": "Panel User", "role": "designer", "status": "active"},
+             "full_name": "Panel User", "role": "soporte", "status": "active"},
             format="json",
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
@@ -1411,7 +1444,7 @@ class UserAdminCrudTests(AuthTestCase):
         self.assertTrue(creado.is_active)
         self.assertEqual(
             set(creado.groups.values_list("name", flat=True)),
-            {"designer"},
+            {"soporte"},
         )
 
     def test_admin_edita_usuario(self):
@@ -1481,25 +1514,27 @@ class UserAdminCrudTests(AuthTestCase):
     # --- Roles (groups) -----------------------------------------------------
 
     def test_admin_asigna_roles_al_crear(self):
+        Group.objects.create(name="soporte")
+        Group.objects.create(name="analista")
         self.client.force_authenticate(user=self.admin)
         resp = self.client.post(
             self.URL,
             {"email": "conrol@example.com", "password": STRONG_PASSWORD,
-             "groups": ["designer", "operator"]},
+             "groups": ["soporte", "analista"]},
             format="json",
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         creado = User.objects.get(email="conrol@example.com")
         self.assertEqual(
             set(creado.groups.values_list("name", flat=True)),
-            {"designer", "operator"},
+            {"soporte", "analista"},
         )
         # La respuesta devuelve los roles por nombre.
-        self.assertEqual(set(resp.data["groups"]), {"designer", "operator"})
+        self.assertEqual(set(resp.data["groups"]), {"soporte", "analista"})
 
     def test_admin_edita_roles(self):
         self.client.force_authenticate(user=self.admin)
-        self.normal.groups.add(Group.objects.get(name="operator"))
+        self.normal.groups.add(Group.objects.create(name="soporte"))
         # Reemplaza los roles por uno solo.
         resp = self.client.patch(
             f"{self.URL}{self.normal.id}/",
@@ -1677,16 +1712,17 @@ class UserBulkActionsTests(AuthTestCase):
         self.assertTrue(self.user_b.is_active)
 
     def test_bulk_set_role_cambia_rol_de_multiples_usuarios(self):
+        Group.objects.create(name="soporte")
         self.client.force_authenticate(user=self.admin)
         resp = self.client.post(
             self.URL,
-            {"ids": [self.user_a.id, self.user_b.id], "action": "set_role", "role": "designer"},
+            {"ids": [self.user_a.id, self.user_b.id], "action": "set_role", "role": "soporte"},
             format="json",
         )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertCountEqual(resp.data["updated"], [self.user_a.id, self.user_b.id])
-        self.assertTrue(self.user_a.groups.filter(name="designer").exists())
-        self.assertTrue(self.user_b.groups.filter(name="designer").exists())
+        self.assertTrue(self.user_a.groups.filter(name="soporte").exists())
+        self.assertTrue(self.user_b.groups.filter(name="soporte").exists())
 
     def test_bulk_set_role_admin_marca_is_staff(self):
         self.client.force_authenticate(user=self.admin)
@@ -1998,8 +2034,6 @@ class RoleCrudTests(AuthTestCase):
 
     ROLES_URL = "/api/v1/auth/roles/"
     ADMIN = "admin"
-    DESIGNER = "designer"
-    OPERATOR = "operator"
     SUBSCRIBER = "subscriber"
     STRONG_PASSWORD = STRONG_PASSWORD
 
@@ -2013,7 +2047,7 @@ class RoleCrudTests(AuthTestCase):
         self.GroupRolePermission = GroupRolePermission
         self.RolePermission = RolePermission
 
-        for name in (self.ADMIN, self.DESIGNER, self.OPERATOR, self.SUBSCRIBER):
+        for name in (self.ADMIN, self.SUBSCRIBER):
             Group.objects.get_or_create(name=name)
 
         self.admin_user = User.objects.create_user(
@@ -2024,12 +2058,12 @@ class RoleCrudTests(AuthTestCase):
         )
         self.admin_user.groups.add(Group.objects.get(name=self.ADMIN))
 
-        self.designer_user = User.objects.create_user(
-            username="crud_designer@example.com",
-            email="crud_designer@example.com",
+        self.merchant_user = User.objects.create_user(
+            username="crud_merchant@example.com",
+            email="crud_merchant@example.com",
             password=STRONG_PASSWORD,
         )
-        self.designer_user.groups.add(Group.objects.get(name=self.DESIGNER))
+        self.merchant_user.groups.add(Group.objects.get(name=self.SUBSCRIBER))
 
     # --- Creación -----------------------------------------------------------
 
@@ -2041,7 +2075,7 @@ class RoleCrudTests(AuthTestCase):
         self.assertTrue(self.Group.objects.filter(name="mi_rol").exists())
 
     def test_no_admin_no_puede_crear_rol(self):
-        self.client.force_authenticate(user=self.designer_user)
+        self.client.force_authenticate(user=self.merchant_user)
         resp = self.client.post(self.ROLES_URL, {"name": "mi_rol"}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
         self.assertFalse(self.Group.objects.filter(name="mi_rol").exists())
@@ -2064,7 +2098,9 @@ class RoleCrudTests(AuthTestCase):
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_no_se_puede_crear_rol_protegido(self):
-        for name in (self.ADMIN, self.DESIGNER, self.OPERATOR, self.SUBSCRIBER):
+        # Los fijos, y los que lo fueron hasta 2026-10-21 (hoy alias de
+        # subscriber: un rol personalizado con ese nombre caería ahí).
+        for name in (self.ADMIN, self.SUBSCRIBER, "designer", "operator", "comerciante"):
             self.client.force_authenticate(user=self.admin_user)
             resp = self.client.post(self.ROLES_URL, {"name": name}, format="json")
             self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
@@ -2109,7 +2145,7 @@ class RoleCrudTests(AuthTestCase):
 
     def test_no_admin_no_puede_eliminar_rol(self):
         group = self.Group.objects.create(name="eliminable")
-        self.client.force_authenticate(user=self.designer_user)
+        self.client.force_authenticate(user=self.merchant_user)
         resp = self.client.delete(f"{self.ROLES_URL}{group.id}/")
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
         self.assertTrue(self.Group.objects.filter(pk=group.pk).exists())
@@ -2121,19 +2157,20 @@ class RoleCrudTests(AuthTestCase):
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertTrue(self.Group.objects.filter(pk=group.pk).exists())
 
-    def test_no_se_puede_eliminar_designer(self):
-        group = self.Group.objects.get(name=self.DESIGNER)
-        self.client.force_authenticate(user=self.admin_user)
-        resp = self.client.delete(f"{self.ROLES_URL}{group.id}/")
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertTrue(self.Group.objects.filter(pk=group.pk).exists())
+    def test_un_group_viejo_designer_u_operator_cuenta_como_comerciante(self):
+        # Si alguno reapareciera (una base vieja, un import), no es un rol
+        # personalizado: es el comerciante, y no se puede borrar como tal.
+        from ..permissions_map import get_effective_role, user_has_permission
 
-    def test_no_se_puede_eliminar_operator(self):
-        group = self.Group.objects.get(name=self.OPERATOR)
-        self.client.force_authenticate(user=self.admin_user)
-        resp = self.client.delete(f"{self.ROLES_URL}{group.id}/")
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertTrue(self.Group.objects.filter(pk=group.pk).exists())
+        for name in ("designer", "operator"):
+            group, _ = self.Group.objects.get_or_create(name=name)
+            user = User.objects.create_user(username=f"viejo_{name}@example.com", email=f"viejo_{name}@example.com")
+            user.groups.add(group)
+            self.assertEqual(get_effective_role(user), self.SUBSCRIBER)
+            self.assertTrue(user_has_permission(user, "orders.import"))
+            self.client.force_authenticate(user=self.admin_user)
+            resp = self.client.delete(f"{self.ROLES_URL}{group.id}/")
+            self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_no_se_puede_eliminar_subscriber(self):
         group = self.Group.objects.get(name=self.SUBSCRIBER)
@@ -2200,13 +2237,13 @@ class RoleCrudTests(AuthTestCase):
         self.GroupRolePermission.objects.create(group=group, permission=perm_view)
 
         admin_group = self.Group.objects.get(name=self.ADMIN)
-        designer_group = self.Group.objects.get(name=self.DESIGNER)
+        subscriber_group = self.Group.objects.get(name=self.SUBSCRIBER)
         admin_before = set(
             self.GroupRolePermission.objects.filter(group=admin_group)
             .values_list("permission__key", flat=True)
         )
-        designer_before = set(
-            self.GroupRolePermission.objects.filter(group=designer_group)
+        subscriber_before = set(
+            self.GroupRolePermission.objects.filter(group=subscriber_group)
             .values_list("permission__key", flat=True)
         )
 
@@ -2220,9 +2257,9 @@ class RoleCrudTests(AuthTestCase):
             admin_before,
         )
         self.assertEqual(
-            set(self.GroupRolePermission.objects.filter(group=designer_group)
+            set(self.GroupRolePermission.objects.filter(group=subscriber_group)
                 .values_list("permission__key", flat=True)),
-            designer_before,
+            subscriber_before,
         )
         self.assertTrue(self.RolePermission.objects.filter(pk=perm_me.pk).exists())
 
@@ -2245,22 +2282,22 @@ class RoleCrudTests(AuthTestCase):
 
     def test_eliminar_rol_de_usuario_con_otro_rol_conserva_el_otro(self):
         group = self.Group.objects.create(name="test_role")
-        designer = self.Group.objects.get(name=self.DESIGNER)
+        staff = self.Group.objects.create(name="soporte")
         user = User.objects.create_user(
             username="multi@example.com",
             email="multi@example.com",
             password=STRONG_PASSWORD,
         )
-        user.groups.add(group, designer)
+        user.groups.add(group, staff)
 
         self.client.force_authenticate(user=self.admin_user)
         self.client.delete(f"{self.ROLES_URL}{group.id}/")
         user.refresh_from_db()
         self.assertFalse(user.groups.filter(pk=group.pk).exists())
-        self.assertTrue(user.groups.filter(pk=designer.pk).exists())
+        self.assertTrue(user.groups.filter(pk=staff.pk).exists())
 
         from ..permissions_map import get_effective_role
-        self.assertEqual(get_effective_role(user), self.DESIGNER)
+        self.assertEqual(get_effective_role(user), "soporte")
 
     def test_caso_completo_eliminacion_rol_personalizado(self):
         """Caso crítico: crear rol, asignar usuario, darle permisos, eliminar y
@@ -2349,11 +2386,8 @@ class RoleCrudTests(AuthTestCase):
         resp = self.client.get(self.ROLES_URL)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         names = [r["name"] for r in resp.data]
-        # Los cuatro básicos primero (orden canónico).
-        self.assertEqual(
-            names[:4],
-            [self.ADMIN, self.DESIGNER, self.OPERATOR, self.SUBSCRIBER],
-        )
+        # Los dos fijos primero (orden canónico).
+        self.assertEqual(names[:2], [self.ADMIN, self.SUBSCRIBER])
         self.assertIn("auditor", names)
 
 
@@ -2871,13 +2905,14 @@ class UserMetricsTests(AuthTestCase):
             password=STRONG_PASSWORD,
             is_staff=True,
         )
-        designer_group, _ = Group.objects.get_or_create(name="designer")
-        self.designer = User.objects.create_user(
-            username="designer_metrics@example.com",
-            email="designer_metrics@example.com",
+        # Un rol de personal de la plataforma, sin permisos de admin.
+        staff_group = Group.objects.create(name="soporte")
+        self.staff = User.objects.create_user(
+            username="staff_metrics@example.com",
+            email="staff_metrics@example.com",
             password=STRONG_PASSWORD,
         )
-        self.designer.groups.add(designer_group)
+        self.staff.groups.add(staff_group)
 
         self.google_user = User.objects.create_user(
             username="google_metrics@example.com", email="google_metrics@example.com",
@@ -2886,7 +2921,7 @@ class UserMetricsTests(AuthTestCase):
         self.google_user.save(update_fields=["password"])
 
     def test_requiere_permisos_admin(self):
-        self.client.force_authenticate(user=self.designer)
+        self.client.force_authenticate(user=self.staff)
         resp = self.client.get(self.URL)
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
@@ -2900,7 +2935,7 @@ class UserMetricsTests(AuthTestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         by_role = {row["role"]: row["count"] for row in resp.data["role_distribution"]}
         self.assertEqual(by_role.get("admin"), 1)
-        self.assertEqual(by_role.get("designer"), 1)
+        self.assertEqual(by_role.get("soporte"), 1)
         # google_user no tiene group ni is_staff -> cae en el fallback subscriber.
         self.assertEqual(by_role.get("subscriber"), 1)
 
@@ -3158,8 +3193,9 @@ class AuditTrailTests(AuthTestCase):
 
         from ..models import GroupRolePermission, RolePermission
 
-        for name in ("admin", "designer", "operator", "subscriber"):
+        for name in ("admin", "subscriber"):
             Group.objects.get_or_create(name=name)
+        Group.objects.create(name="soporte")
 
         self.admin_user = User.objects.create_user(
             username="audit_crud_admin@example.com",
@@ -3265,12 +3301,12 @@ class AuditTrailTests(AuthTestCase):
 
         self.client.force_authenticate(user=self.admin_user)
         resp = self.client.patch(
-            f"/api/v1/users/{self.target_user.id}/", {"role": "designer"}, format="json"
+            f"/api/v1/users/{self.target_user.id}/", {"role": "soporte"}, format="json"
         )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
 
         log = AuditLog.objects.filter(action="user.role_change").latest("created_at")
-        self.assertEqual(log.changes["role"], {"from": "subscriber", "to": "designer"})
+        self.assertEqual(log.changes["role"], {"from": "subscriber", "to": "soporte"})
 
 
 class SupportInboxTests(AuthTestCase):
@@ -3281,7 +3317,7 @@ class SupportInboxTests(AuthTestCase):
         super().setUp()
         from django.contrib.auth.models import Group
 
-        for name in ("admin", "designer", "operator", "subscriber"):
+        for name in ("admin", "subscriber"):
             Group.objects.get_or_create(name=name)
 
         self.admin_user = User.objects.create_user(
@@ -3366,7 +3402,7 @@ class DashboardAdminMenuTests(AuthTestCase):
         super().setUp()
         from django.contrib.auth.models import Group
 
-        for name in ("admin", "designer", "operator", "subscriber"):
+        for name in ("admin", "subscriber"):
             Group.objects.get_or_create(name=name)
 
         self.admin_user = User.objects.create_user(

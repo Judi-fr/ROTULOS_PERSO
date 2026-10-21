@@ -88,3 +88,10 @@
 .status-alerts p {
   margin: 0 0 8px;
 }
+
+/* Mientras "Actualizar" consulta (estado_sistema.js, refreshNow). */
+.main.is-refreshing .status-overall,
+.main.is-refreshing .status-list {
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}

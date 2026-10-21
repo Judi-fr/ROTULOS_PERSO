@@ -43,8 +43,6 @@ User = get_user_model()
 # nada, solo garantiza que el filtro por rol de viewsets.py encuentre el group.
 ROLE_GROUP_MAP = {
     "admin": "admin",
-    "designer": "designer",
-    "operator": "operator",
     "subscriber": "subscriber",
 }
 

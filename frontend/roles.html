@@ -17,10 +17,6 @@
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@mdi/font@4.9.95/css/materialdesignicons.min.css"
     />
-    <link
-      rel="stylesheet"
-      href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
-    />
 
     <link rel="stylesheet" href="assets/css/gestionuser.css" />
   </head>
@@ -41,39 +37,89 @@
           </div>
         </div>
 
-        <section aria-labelledby="rolesTitle">
-          <div class="roles-create">
-            <input
-              type="text"
-              id="newRoleName"
-              placeholder="Nombre del nuevo rol"
-              autocomplete="off"
-            />
-            <button type="button" class="btn btn-primary" id="createRoleBtn">
-              Crear rol
-            </button>
+        <!-- Dos pestañas: los roles de la plataforma (el techo de cada usuario,
+             lo fija el admin) y los perfiles que cada comercio arma para su
+             equipo dentro de ese techo. roles.js maneja las pestañas y los
+             roles; roles_perfiles.js, la segunda pestaña. -->
+        <nav class="reports-tabs" role="tablist" aria-label="Roles y perfiles">
+          <button type="button" class="reports-tab active" role="tab" data-tab="roles" aria-selected="true">Roles de la plataforma</button>
+          <button type="button" class="reports-tab" role="tab" data-tab="perfiles" aria-selected="false">Perfiles de los comercios</button>
+        </nav>
+
+        <p id="rolesMessage" class="roles-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <section class="roles-panel" data-panel="roles" aria-labelledby="rolesTitle">
+          <p class="roles-intro">
+            Hay dos roles fijos: <strong>Administrador</strong> (todo) y <strong>Comerciante</strong> (el dueño
+            de un comercio, con todo lo de su comercio; a su equipo lo reparte con sus perfiles, pestaña
+            <em>Perfiles de los comercios</em>). Los demás son <strong>personal de la plataforma</strong>: una
+            parte del admin, como soporte o reportes.
+          </p>
+          <div class="roles-layout">
+            <aside class="roles-card roles-sidebar">
+              <div class="roles-card-title">Roles</div>
+              <div id="rolesList" class="roles-list" aria-label="Seleccionar rol">
+                <p class="roles-loading"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
+              </div>
+              <form class="roles-create" id="createRoleForm">
+                <label for="newRoleName">Nuevo rol de personal</label>
+                <div class="roles-create-row">
+                  <input type="text" id="newRoleName" placeholder="Ej: Soporte" autocomplete="off" />
+                  <button type="submit" class="btn btn-primary" id="createRoleBtn">Crear</button>
+                </div>
+              </form>
+            </aside>
+
+            <section class="roles-card roles-permissions-card">
+              <div class="roles-permissions-head">
+                <div>
+                  <h2 id="selectedRoleName" class="roles-selected-name">Permisos</h2>
+                  <span id="permissionsCount" class="roles-count"></span>
+                </div>
+                <div class="search-box roles-search">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+                  <input type="text" id="permissionSearch" placeholder="Buscar permiso..." autocomplete="off" />
+                </div>
+              </div>
+              <p id="rolesLockedNote" class="roles-locked-note" hidden></p>
+              <div id="rolePermissionsContent" class="roles-card-body permission-groups">
+                <p class="roles-loading"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
+              </div>
+              <div class="roles-card-actions">
+                <span id="rolesDirty" class="roles-dirty" hidden>Hay cambios sin guardar</span>
+                <button type="button" class="btn btn-outline" id="discardRolePermissions" disabled>Descartar</button>
+                <button type="button" class="btn btn-primary" id="saveRolePermissions" disabled>Guardar cambios</button>
+              </div>
+            </section>
           </div>
+        </section>
 
-          <p id="rolesMessage" class="roles-message" role="status" aria-live="polite" style="display:none;"></p>
-
-          <div class="roles-card">
-            <div class="roles-card-title">Roles del sistema</div>
-            <div id="rolesList" class="roles-list" aria-label="Seleccionar rol">
-              <p class="roles-loading"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
+        <section class="roles-panel" data-panel="perfiles" hidden>
+          <p class="roles-intro">
+            Cada comercio arma sus perfiles (Depósito, Atención…) desde su pantalla <em>Equipo</em>. Acá los ves
+            todos y, con <em>Editar perfiles</em>, los cambiás vos; abajo, qué permisos de rol habilita cada acceso.
+          </p>
+          <div class="table-toolbar team-profiles-toolbar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+              <input type="text" id="teamProfilesSearch" placeholder="Buscar comercio o email del dueño..." autocomplete="off" />
             </div>
           </div>
-
-          <div class="roles-card roles-permissions-card">
-            <div class="roles-card-title">Permisos asignados</div>
-            <div id="rolePermissionsContent" class="roles-card-body">
-              <p class="roles-loading"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
+          <!-- Editar los perfiles de UN comercio: createProfileEditor (utils.js). -->
+          <div id="teamProfileEditing" hidden>
+            <div class="team-profile-editing-head">
+              <button type="button" class="btn btn-outline" id="teamProfileBack">← Todos los comercios</button>
+              <strong id="teamProfileEditingName"></strong>
             </div>
-            <div class="roles-card-actions">
-              <button type="button" class="btn btn-primary" id="saveRolePermissions" disabled>
-                Guardar cambios
-              </button>
-            </div>
+            <div id="adminProfileEditor"></div>
           </div>
+          <div id="teamProfilesList" class="team-profiles-list">
+            <p class="roles-loading"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
+          </div>
+          <details class="roles-card access-catalog">
+            <summary class="roles-card-title">Qué habilita cada acceso</summary>
+            <div id="accessCatalog" class="roles-card-body"></div>
+          </details>
         </section>
       </main>
 
@@ -83,6 +129,7 @@
       <script src="assets/js/admin_common.js"></script>
       <script src="assets/js/admin_sidebar.js"></script>
       <script src="assets/js/roles.js"></script>
+      <script src="assets/js/roles_perfiles.js"></script>
     </div>
   </body>
 </html>

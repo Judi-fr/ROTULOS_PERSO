@@ -67,7 +67,7 @@
       href: "reportes.html",
       label: "Reportes",
       icon: `<line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />`,
-      visible: () => canViewUsers(),
+      visible: () => canUseUserPermission("reports.view"),
     },
   ];
 
@@ -112,4 +112,6 @@
   }
 
   document.addEventListener("DOMContentLoaded", renderAdminSidebar);
+  // auth.js releyó los permisos y cambiaron: la barra muestra lo que corresponde.
+  window.addEventListener("auth:user-updated", renderAdminSidebar);
 })();

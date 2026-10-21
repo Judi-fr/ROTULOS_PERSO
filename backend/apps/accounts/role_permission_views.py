@@ -24,39 +24,43 @@ from rest_framework.views import APIView
 from apps.audit.services import record
 
 from .models import GroupRolePermission, RolePermission
+from .permissions_map import VALID_ROLES as BASE_VALID_ROLES
 
 User = get_user_model()
 
-# Mismo orden canónico que ROLE_CHOICES / VALID_ROLES.
-VALID_ROLES = ("admin", "designer", "operator", "subscriber")
+# Los roles fijos: admin y subscriber (en pantalla "Comerciante"). Todo otro
+# Group es un rol personalizado: personal de la plataforma con una parte del
+# admin (2026-10-21; antes también eran fijos designer y operator).
+VALID_ROLES = BASE_VALID_ROLES
 
 ROLE_LABELS = {
     "admin": "Administrador",
-    "designer": "Diseñador",
-    "operator": "Operador",
-    "subscriber": "Suscriptor",
+    "subscriber": "Comerciante",
 }
 
 # Nombres de roles que NO se pueden crear ni eliminar. Incluye los roles
 # canónicos y los alias legacy que el sistema reconoce (grupos sembrados por
-# 0001_seed_roles, "user" legacy -> subscriber, variantes en español, etc.).
+# 0001_seed_roles, "user" legacy -> subscriber, variantes en español, etc.):
+# un rol personalizado con uno de esos nombres caería en otro rol.
 PROTECTED_ROLE_NAMES = frozenset(
     {
         # Roles canónicos del sistema.
         "admin",
+        "subscriber",
+        "comerciante",
+        "comerciantes",
+        # Los que fueron fijos hasta 2026-10-21 (hoy alias de subscriber).
         "designer",
         "operator",
-        "subscriber",
         # Alias legacy -> admin.
         "administrador",
         "administradores",
         "administrator",
-        # Alias legacy -> designer.
+        # Alias legacy -> subscriber (antes designer/operator).
         "diseñador",
         "diseñadores",
         "disenador",
         "disenadores",
-        # Alias legacy -> operator.
         "operador",
         "operadores",
         # Rol legado genérico -> subscriber.
@@ -81,27 +85,48 @@ def is_basic_role_group(group):
     """True si el Group corresponde a uno de los roles canónicos."""
     return bool(group) and group.name in VALID_ROLES
 
-# Protección del administrador: el rol admin nunca debe quedar sin permisos,
-# para no dejar al sistema sin la posibilidad de administrar roles. Mientras
-# no exista un permiso específico ``roles.edit_permissions`` en el catálogo,
-# se impide solamente que el payload deje al rol admin vacío.
-PROTECTED_ROLE_NO_PERMISSIONS_MSG = (
-    "El rol 'admin' no puede quedar sin permisos asignados."
-)
+# El admin tiene todos los permisos siempre (``permissions_map``): su rol no
+# se edita. Y nadie edita los permisos del rol que tiene él mismo: se podría
+# dejar sin acceso, o darse más de lo que le dieron (2026-10-21).
+ADMIN_ROLE_LOCKED_MSG = "El administrador tiene todos los permisos siempre: su rol no se modifica."
+OWN_ROLE_LOCKED_MSG = "No podés cambiar los permisos de tu propio rol: pedíselo a otro administrador."
+
+
+def role_lock_reason(group, user):
+    """Por qué ``user`` no puede editar los permisos de ``group``, o ``None``."""
+    if group.name == "admin":
+        return ADMIN_ROLE_LOCKED_MSG
+    if user is not None and user.groups.filter(pk=group.pk).exists():
+        return OWN_ROLE_LOCKED_MSG
+    return None
 
 
 class RoleSerializer(serializers.ModelSerializer):
-    """Serializa un Group como rol del sistema (solo lectura)."""
+    """Serializa un Group como rol del sistema (solo lectura). ``locked`` dice
+    si quien pregunta puede editar sus permisos (con el motivo en
+    ``locked_reason``): la pantalla los muestra de solo lectura."""
 
     name = serializers.CharField(read_only=True)
     label = serializers.SerializerMethodField()
+    locked = serializers.SerializerMethodField()
+    locked_reason = serializers.SerializerMethodField()
 
     class Meta:
         model = Group
-        fields = ["id", "name", "label"]
+        fields = ["id", "name", "label", "locked", "locked_reason"]
 
     def get_label(self, obj):
         return ROLE_LABELS.get(obj.name, obj.name.capitalize())
+
+    def _user(self):
+        request = self.context.get("request")
+        return getattr(request, "user", None)
+
+    def get_locked(self, obj):
+        return role_lock_reason(obj, self._user()) is not None
+
+    def get_locked_reason(self, obj):
+        return role_lock_reason(obj, self._user()) or ""
 
 
 class RolePermissionSerializer(serializers.ModelSerializer):
@@ -115,7 +140,7 @@ class RolePermissionSerializer(serializers.ModelSerializer):
 class RoleListView(APIView):
     """GET/POST /api/v1/auth/roles/
 
-    GET:  devuelve todos los roles (los cuatro básicos + personalizados).
+    GET:  devuelve todos los roles (los dos fijos + personalizados).
           Los básicos conservan el orden canónico y aparecen primero; los
           personalizados se ordenan alfabéticamente después.
     POST: crea un rol nuevo (Django Group) sin permisos asignados.
@@ -133,7 +158,7 @@ class RoleListView(APIView):
             .order_by("name")
         )
         all_roles = groups + list(custom_groups)
-        return Response(RoleSerializer(all_roles, many=True).data)
+        return Response(RoleSerializer(all_roles, many=True, context={"request": request}).data)
 
     def post(self, request):
         raw_name = request.data.get("name")
@@ -170,7 +195,7 @@ class RoleListView(APIView):
             changes={"name": {"from": None, "to": group.name}},
         )
         return Response(
-            RoleSerializer(group).data,
+            RoleSerializer(group, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -214,11 +239,16 @@ class RolePermissionsView(APIView):
         if group is None:
             return Response({"detail": "Rol no encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
-        links = GroupRolePermission.objects.filter(group=group).select_related("permission")
-        permissions = [link.permission for link in links]
+        if group.name == "admin":
+            # Lo que de verdad tiene: todo (permissions_map), no lo que diga
+            # la tabla.
+            permissions = list(RolePermission.objects.all())
+        else:
+            links = GroupRolePermission.objects.filter(group=group).select_related("permission")
+            permissions = [link.permission for link in links]
         return Response(
             {
-                "role": RoleSerializer(group).data,
+                "role": RoleSerializer(group, context={"request": request}).data,
                 "permissions": RolePermissionSerializer(permissions, many=True).data,
             }
         )
@@ -227,6 +257,10 @@ class RolePermissionsView(APIView):
         group = self._get_group_or_404(role_id)
         if group is None:
             return Response({"detail": "Rol no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        reason = role_lock_reason(group, request.user)
+        if reason:
+            return Response({"permissions": reason}, status=status.HTTP_400_BAD_REQUEST)
 
         keys = request.data.get("permissions")
         if not isinstance(keys, list):
@@ -245,13 +279,6 @@ class RolePermissionsView(APIView):
         if unknown:
             return Response(
                 {"permissions": f"Permisos inexistentes: {', '.join(sorted(unknown))}."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Protección del administrador: el rol admin no puede quedar vacío.
-        if group.name == "admin" and not keys:
-            return Response(
-                {"permissions": PROTECTED_ROLE_NO_PERMISSIONS_MSG},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -286,7 +313,7 @@ class RolePermissionsView(APIView):
         result_permissions = [link.permission for link in links]
         return Response(
             {
-                "role": RoleSerializer(group).data,
+                "role": RoleSerializer(group, context={"request": request}).data,
                 "permissions": RolePermissionSerializer(result_permissions, many=True).data,
             }
         )
@@ -295,8 +322,8 @@ class RolePermissionsView(APIView):
 class RoleDetailView(APIView):
     """DELETE /api/v1/auth/roles/<role_id>/
 
-    Elimina un rol personalizado. Los roles básicos (admin, designer,
-    operator, subscriber) están protegidos y no pueden eliminarse.
+    Elimina un rol personalizado. Los roles fijos (admin, subscriber) y los
+    nombres reservados están protegidos y no pueden eliminarse.
 
     Al eliminar un rol personalizado:
     - Los usuarios que pertenecían SOLO a ese rol pasan a ``subscriber``.
@@ -329,14 +356,14 @@ class RoleDetailView(APIView):
         if subscriber_group is None:
             subscriber_group = Group.objects.create(name="subscriber")
 
-        # 1. Reasignar usuarios: quienes pertenecían a este rol conservan sus
-        #    demás Groups y además reciben ``subscriber`` como rol efectivo.
-        #    Si ya tenían otro Group de rol válido, seguirán con ese rol; la
-        #    re-asignación de subscriber es segura y no modifica is_staff ni
-        #    is_superuser.
+        # 1. Reasignar usuarios: quien se queda sin ningún otro rol pasa a
+        #    ``subscriber``; quien tenía otro lo conserva tal cual (si se le
+        #    sumara subscriber, el rol fijo le ganaría a su rol de personal).
+        #    No se toca is_staff ni is_superuser.
         role_user_ids = group.user_set.values_list("id", flat=True)
         for user in User.objects.filter(id__in=role_user_ids):
-            user.groups.add(subscriber_group)
+            if not user.groups.exclude(pk=group.pk).exists():
+                user.groups.add(subscriber_group)
 
         # 2. Eliminar asignaciones de permisos del rol (cascade implícito al
         #    borrar el Group, pero lo hacemos explícito para claridad).

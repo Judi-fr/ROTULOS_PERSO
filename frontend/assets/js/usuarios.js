@@ -6,10 +6,10 @@ const statusLabel = {
 // manda el backend (role_label, en inglés). No traducir estas claves —
 // solo se traduce el texto que se muestra (ver translateRole, en
 // assets/js/admin_common.js).
+// Un rol que no es ninguno de los dos fijos es personal de la plataforma
+// (rol personalizado, 2026-10-21): lleva la clase "staff".
 const roleClass = {
   Admin: "admin",
-  Designer: "designer",
-  Operator: "operator",
   Subscriber: "subscriber",
 };
 function formatLockoutRemaining(seconds) {
@@ -188,7 +188,7 @@ function renderUsers(users) {
         </div>
       </td>
       <td class="cell-muted" title="${escapeHtml(u.email || "")}">${escapeHtml(u.email)}</td>
-      <td><span class="badge ${roleClass[role] || ""}">${escapeHtml(roleText)}</span></td>
+      <td><span class="badge ${roleClass[role] || "staff"}">${escapeHtml(roleText)}</span></td>
       <td class="status-cell"><span class="status ${statusKey}"><span class="dot"></span>${escapeHtml(statusText)}</span>${lockedLine}</td>
       <td class="cell-muted">${escapeHtml(u.created_date || "-")}</td>
       <td class="cell-muted">${u.orders_count ?? 0}</td>
@@ -1018,6 +1018,13 @@ document
     resetCreateForm();
     panel.style.display = "none";
   });
+// Ahora es una ventana centrada: Esc la cierra, como a los diálogos.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && panel.style.display === "block") {
+    resetCreateForm();
+    panel.style.display = "none";
+  }
+});
 
 // Crear/Editar usuario: el submit se maneja más abajo (handleAdminSubmit).
 const createUserForm = document.getElementById("createUserForm");
@@ -1131,6 +1138,12 @@ function bootstrap() {
   }
 
   document.getElementById("openCreatePanel").style.display = canUseUserPermission("users.create") ? "" : "none";
+  // Exportar tiene su permiso (migración 0029), aparte de ver la lista.
+  const canExport = canUseUserPermission("users.export");
+  ["exportUsersBtn", "exportUsersCsvBtn"].forEach((id) => {
+    const button = document.getElementById(id);
+    if (button) button.hidden = !canExport;
+  });
   loadMyProfile();
   loadUsers();
   // Cargar dinámicamente TODOS los roles (básicos + personalizados).

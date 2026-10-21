@@ -112,6 +112,7 @@ function fromApiTemplate(template) {
     // guardar cambios en ella (lo decide el backend, ver LabelTemplateSerializer).
     currentVersion: template.current_version || null,
     canEdit: Boolean(template.can_edit),
+    canDelete: Boolean(template.can_delete),
     createdAt: template.created_at,
     updatedAt: template.updated_at,
   };

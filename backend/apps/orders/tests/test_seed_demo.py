@@ -20,7 +20,7 @@ class SeedDemoTests(TestCase):
         self._run()
 
         user = get_user_model().objects.get(username=DEMO_EMAIL)
-        self.assertTrue(user.groups.filter(name="operator").exists())
+        self.assertTrue(user.groups.filter(name="subscriber").exists())
         store = StoreConnection.objects.get(owner=user)
         self.assertEqual(store.platform, StoreConnection.Platform.EMPRETIENDA)
         self.assertTrue(ShippingRate.objects.filter(connection=store).exists())

@@ -1,4 +1,4 @@
-// Mi equipo (equipo.html, GET/PATCH /team/ y sus subrutas): miembros,
+// Mi equipo (equipo.html, pestaña Miembros; GET/PATCH /team/ y sus subrutas): miembros,
 // invitaciones y los accesos de cada uno. El backend decide y valida todo
 // (no se puede dar lo que uno no tiene, ni tocar al dueño ni a uno mismo);
 // acá se arma la pantalla y se muestra cómo terminó cada acción.
@@ -298,7 +298,33 @@ function bootstrap() {
   document.getElementById("inviteForm").addEventListener("submit", invite);
   document.getElementById("memberForm").addEventListener("submit", saveMember);
   document.getElementById("memberCancel").addEventListener("click", () => document.getElementById("memberDialog").close());
+  // Un perfil nuevo o cambiado en la pestaña Perfiles cambia lo que ofrece
+  // "Invitar a alguien" y los accesos de los miembros que lo tienen.
+  document.addEventListener("team:profiles-changed", load);
+  document.querySelectorAll(".app-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      history.replaceState(null, "", `#${tab.dataset.tab}`);
+      showTeamTab(tab.dataset.tab);
+    });
+  });
+  showTeamTab(window.location.hash.slice(1));
   load();
+}
+
+// Pestañas Miembros / Perfiles / Actividad (antes eran tres páginas). La
+// elegida queda en el #hash: perfiles_equipo.html y actividad_equipo.html
+// redirigen a #perfiles y #actividad.
+function showTeamTab(name) {
+  const tabs = [...document.querySelectorAll(".app-tab")];
+  if (!tabs.some((tab) => tab.dataset.tab === name)) name = "miembros";
+  tabs.forEach((tab) => {
+    const active = tab.dataset.tab === name;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  document.querySelectorAll(".app-tab-panel").forEach((panel) => {
+    panel.hidden = panel.dataset.panel !== name;
+  });
 }
 
 bootstrap();

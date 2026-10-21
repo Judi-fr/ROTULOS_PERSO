@@ -26,6 +26,7 @@ from apps.integrations.models import StoreConnection
 
 from . import team_services as services
 from .auth_views import user_payload
+from .permissions_map import TEAM_SCOPED_PERMISSIONS
 from .role_permissions import HasRolePermission
 from .team_models import Team, TeamInvitation, TeamMember, TeamProfile
 from .teams import ACCESSES, member_accesses, membership, store_scope_q
@@ -272,21 +273,68 @@ class ProfileListView(_TeamView):
         return Response([{"id": p.id, "name": p.name, "accesses": p.accesses, "member_count": p.member_count} for p in profiles])
 
     def post(self, request):
-        team = self.team()
+        return create_profile(request, self.team(), grantable=member_accesses(request.user))
+
+
+# Crear / editar / borrar un perfil: lo mismo desde el equipo (``grantable`` =
+# los accesos de quien reparte: nadie da lo que no tiene) y desde el admin de
+# la plataforma (``grantable=None``: puede todo, AdminTeamProfileView).
+def create_profile(request, team, grantable):
+    name = str(request.data.get("name") or "").strip()[:60]
+    if not name:
+        return Response({"detail": "Poné un nombre."}, status=status.HTTP_400_BAD_REQUEST)
+    if team.profiles.filter(name__iexact=name).exists():
+        return Response({"detail": "Ya hay un perfil con ese nombre."}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        accesses = services.clean_accesses(request.data.get("accesses"))
+        if grantable is not None and set(accesses) - grantable:
+            raise services.TeamForbidden("No podés armar un perfil con accesos que vos no tenés.")
+    except services.TeamError as exc:
+        return _error(exc)
+    profile = TeamProfile.objects.create(team=team, name=name, accesses=accesses)
+    _audit(request, "team.profile_update", profile, profile.name, {"accesses": {"from": None, "to": accesses}})
+    return Response(
+        {"id": profile.id, "name": profile.name, "accesses": profile.accesses, "member_count": 0},
+        status=status.HTTP_201_CREATED,
+    )
+
+
+def update_profile(request, profile, grantable):
+    team = profile.team
+    before = {"name": profile.name, "accesses": profile.accesses}
+    try:
+        if "accesses" in request.data:
+            accesses = services.clean_accesses(request.data.get("accesses"))
+            if grantable is not None and set(accesses) - grantable:
+                raise services.TeamForbidden("No podés dar accesos que vos no tenés.")
+            profile.accesses = accesses
+    except services.TeamError as exc:
+        return _error(exc)
+    if "name" in request.data:
         name = str(request.data.get("name") or "").strip()[:60]
         if not name:
             return Response({"detail": "Poné un nombre."}, status=status.HTTP_400_BAD_REQUEST)
-        if team.profiles.filter(name__iexact=name).exists():
+        if team.profiles.filter(name__iexact=name).exclude(pk=profile.pk).exists():
             return Response({"detail": "Ya hay un perfil con ese nombre."}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            accesses = services.clean_accesses(request.data.get("accesses"))
-            if set(accesses) - member_accesses(request.user):
-                raise services.TeamForbidden("No podés armar un perfil con accesos que vos no tenés.")
-        except services.TeamError as exc:
-            return _error(exc)
-        profile = TeamProfile.objects.create(team=team, name=name, accesses=accesses)
-        _audit(request, "team.profile_update", profile, profile.name, {"accesses": {"from": None, "to": accesses}})
-        return Response({"id": profile.id, "name": profile.name, "accesses": profile.accesses, "member_count": 0}, status=status.HTTP_201_CREATED)
+        profile.name = name
+    profile.save()
+    changes = {k: {"from": before[k], "to": getattr(profile, k)} for k in before if before[k] != getattr(profile, k)}
+    _audit(request, "team.profile_update", profile, profile.name, changes)
+    return Response({"id": profile.id, "name": profile.name, "accesses": profile.accesses})
+
+
+def delete_profile(request, profile):
+    in_use = profile.members.exists() or TeamInvitation.objects.filter(
+        profile=profile, status=TeamInvitation.Status.PENDING
+    ).exists()
+    if in_use:
+        return Response(
+            {"detail": "Hay miembros o invitaciones pendientes con este perfil: cambialos antes de borrarlo."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    _audit(request, "team.profile_update", profile, profile.name, {"deleted": {"from": False, "to": True}})
+    profile.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ProfileView(_TeamView):
@@ -295,43 +343,11 @@ class ProfileView(_TeamView):
     accesos que él no tiene."""
 
     def patch(self, request, pk):
-        team = self.team()
-        profile = get_object_or_404(TeamProfile, pk=pk, team=team)
-        before = {"name": profile.name, "accesses": profile.accesses}
-        try:
-            if "accesses" in request.data:
-                accesses = services.clean_accesses(request.data.get("accesses"))
-                missing = set(accesses) - member_accesses(request.user)
-                if missing:
-                    raise services.TeamForbidden("No podés dar accesos que vos no tenés.")
-                profile.accesses = accesses
-        except services.TeamError as exc:
-            return _error(exc)
-        if "name" in request.data:
-            name = str(request.data.get("name") or "").strip()[:60]
-            if not name:
-                return Response({"detail": "Poné un nombre."}, status=status.HTTP_400_BAD_REQUEST)
-            if team.profiles.filter(name__iexact=name).exclude(pk=profile.pk).exists():
-                return Response({"detail": "Ya hay un perfil con ese nombre."}, status=status.HTTP_400_BAD_REQUEST)
-            profile.name = name
-        profile.save()
-        changes = {k: {"from": before[k], "to": getattr(profile, k)} for k in before if before[k] != getattr(profile, k)}
-        _audit(request, "team.profile_update", profile, profile.name, changes)
-        return Response({"id": profile.id, "name": profile.name, "accesses": profile.accesses})
+        profile = get_object_or_404(TeamProfile, pk=pk, team=self.team())
+        return update_profile(request, profile, grantable=member_accesses(request.user))
 
     def delete(self, request, pk):
-        profile = get_object_or_404(TeamProfile, pk=pk, team=self.team())
-        in_use = profile.members.exists() or TeamInvitation.objects.filter(
-            profile=profile, status=TeamInvitation.Status.PENDING
-        ).exists()
-        if in_use:
-            return Response(
-                {"detail": "Hay miembros o invitaciones pendientes con este perfil: cambialos antes de borrarlo."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        _audit(request, "team.profile_update", profile, profile.name, {"deleted": {"from": False, "to": True}})
-        profile.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return delete_profile(request, get_object_or_404(TeamProfile, pk=pk, team=self.team()))
 
 
 class TransferView(APIView):
@@ -503,3 +519,87 @@ class AdminTeamListView(APIView):
                 for t in teams[:50]
             ]
         )
+
+
+class AdminTeamProfilesView(APIView):
+    """GET /api/v1/teams/profiles/?search= — los perfiles de cada comercio, de
+    solo lectura (pestaña "Perfiles de los comercios" de roles.html). Con el
+    catálogo de accesos y qué permisos de rol habilita cada uno: el rol es el
+    techo que fija el admin y el acceso del perfil, lo que el dueño reparte
+    dentro de ese techo (``permissions_map.TEAM_SCOPED_PERMISSIONS``)."""
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission("users.view")]
+
+    def get(self, request):
+        search = (request.query_params.get("search") or "").strip()
+        teams = (
+            Team.objects.select_related("owner")
+            .annotate(member_count=Count("members", distinct=True))
+            .prefetch_related("profiles")
+            .order_by("id")
+        )
+        if search:
+            teams = teams.filter(Q(name__icontains=search) | Q(owner__email__icontains=search))
+        teams = list(teams[:50])
+        profile_members = dict(
+            TeamProfile.objects.filter(team__in=teams)
+            .annotate(n=Count("members"))
+            .values_list("id", "n")
+        )
+        gated = {}
+        for permission, access in TEAM_SCOPED_PERMISSIONS.items():
+            gated.setdefault(access, []).append(permission)
+        return Response(
+            {
+                "accesses": [
+                    {"key": key, "label": label, "permissions": sorted(gated.get(key, []))}
+                    for key, label in ACCESSES.items()
+                ],
+                "teams": [
+                    {
+                        "id": team.id,
+                        "name": team_name(team),
+                        "owner_email": team.owner.email,
+                        "member_count": team.member_count,
+                        "profiles": [
+                            {
+                                "id": profile.id,
+                                "name": profile.name,
+                                "accesses": profile.accesses,
+                                "member_count": profile_members.get(profile.id, 0),
+                            }
+                            for profile in team.profiles.all()
+                        ],
+                    }
+                    for team in teams
+                ],
+            }
+        )
+
+
+class AdminTeamProfileCreateView(APIView):
+    """POST /api/v1/teams/<team_id>/profiles/ — el admin de la plataforma crea
+    un perfil en cualquier comercio (``users.edit``), sin el límite de "no dar
+    lo que no tenés": el admin tiene todo. Auditado como en el equipo."""
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission("users.edit")]
+
+    def post(self, request, team_id):
+        return create_profile(request, get_object_or_404(Team, pk=team_id), grantable=None)
+
+
+class AdminTeamProfileView(APIView):
+    """PATCH/DELETE /api/v1/teams/profiles/<id>/ — el admin edita o borra el
+    perfil de cualquier comercio (``users.edit``). Mismas reglas que el equipo
+    (nombre único, en uso no se borra) salvo el límite de accesos."""
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission("users.edit")]
+
+    def patch(self, request, pk):
+        return update_profile(request, get_object_or_404(TeamProfile, pk=pk), grantable=None)
+
+    def delete(self, request, pk):
+        return delete_profile(request, get_object_or_404(TeamProfile, pk=pk))

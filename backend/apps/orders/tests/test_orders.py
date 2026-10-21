@@ -286,13 +286,14 @@ class OrderImportTests(APITestCase):
     }
 
     def setUp(self):
-        operator_group, _ = Group.objects.get_or_create(name="operator")
+        # El comerciante (antes "operator", migración 0030) importa pedidos.
+        merchant_group, _ = Group.objects.get_or_create(name="subscriber")
         self.user = User.objects.create_user(
             username="operador1@example.com",
             email="operador1@example.com",
             password="Clave123!",
         )
-        self.user.groups.add(operator_group)
+        self.user.groups.add(merchant_group)
 
     def _upload_csv(self, csv_text):
         from django.core.files.uploadedfile import SimpleUploadedFile
