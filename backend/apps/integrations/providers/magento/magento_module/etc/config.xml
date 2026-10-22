@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+    <default>
+        <carriers>
+            <rotulos>
+                <active>0</active>
+                <model>Rotulos\Envio\Model\Carrier\Rotulos</model>
+                <title>Shipping</title>
+                <name>Shipping labels (rates table)</name>
+                <sallowspecific>0</sallowspecific>
+                <showmethod>0</showmethod>
+                <sort_order>10</sort_order>
+            </rotulos>
+        </carriers>
+    </default>
+</config>

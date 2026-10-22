@@ -126,6 +126,34 @@ class ShipmentTests(OcaTestMixin, APITestCase):
         self.assertEqual(call["CantidadPaquetes"], "2")
         self.assertEqual(call["PesoTotal"], "2.500")
 
+    def test_cada_pedido_cotiza_con_sus_propios_bultos(self):
+        other = make_order(self.user, number="2002")
+        response = self.client.post(
+            f"{API}/shipments/quote/",
+            {
+                "carrier": "oca",
+                "order_ids": [self.order.pk, other.pk],
+                "contract": "64665",
+                "package_count": 1,
+                "packages": {str(other.pk): 3},
+            },
+            format="json",
+            **auth_headers_for(self.user),
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        calls = self.oca.calls_to("Tarifar_Envio_Corporativo")
+        self.assertEqual([call["data"]["CantidadPaquetes"] for call in calls], ["1", "3"])
+
+    def test_bultos_por_pedido_fuera_de_rango_se_acotan(self):
+        response = self.client.post(
+            f"{API}/shipments/quote/",
+            {"carrier": "oca", "order_ids": [self.order.pk], "contract": "64665", "packages": {str(self.order.pk): 99}},
+            format="json",
+            **auth_headers_for(self.user),
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(self.oca.calls_to("Tarifar_Envio_Corporativo")[0]["data"]["CantidadPaquetes"], "20")
+
     def test_crear_envio_deja_el_numero_de_envio_como_seguimiento(self):
         response = self.create()
         self.assertEqual(response.status_code, 200, response.content)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+import uuid
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
@@ -318,6 +319,42 @@ class AccountSettings(models.Model):
 
     def __str__(self):
         return self.legal_name or self.user.email
+
+
+def avatar_path(instance, filename):
+    """Nombre al azar: la foto se sirve pública (como los logos) y no tiene
+    que decir de quién es."""
+    return f"accounts/avatars/{uuid.uuid4().hex}.jpg"
+
+
+class PersonalProfile(models.Model):
+    """Lo que cada persona personaliza de sí misma (no del comercio): cómo
+    quiere que la vea su equipo. Una fila opcional, creada al guardar por
+    primera vez; sin ella se usa el nombre y apellido y la foto de Google."""
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="personal_profile")
+    preferred_name = models.CharField("nombre para mostrar", max_length=60, blank=True, default="")
+    phone = models.CharField("teléfono", max_length=50, blank=True, default="")
+    job_title = models.CharField("puesto", max_length=80, blank=True, default="")
+    photo = models.ImageField(upload_to=avatar_path, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "perfil personal"
+        verbose_name_plural = "perfiles personales"
+
+    def __str__(self):
+        return self.preferred_name or self.user.email
+
+
+def personal_profile_for(user):
+    """La fila de ``user`` o ``None``; nunca la crea (leer no escribe)."""
+    if user is None or not getattr(user, "pk", None):
+        return None
+    try:
+        return user.personal_profile
+    except PersonalProfile.DoesNotExist:
+        return None
 
 
 def account_settings_for(user):

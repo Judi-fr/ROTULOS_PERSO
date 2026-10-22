@@ -28,3 +28,8 @@ frontend/assets/apis/vendor/
 .coverage.*
 coverage.xml
 htmlcov/
+
+# El agente de impresión empaquetado para Windows (lo arma el pipeline de CI).
+backend/apps/printing/agent/dist/
+backend/apps/printing/agent/build/
+backend/apps/printing/agent/*.spec

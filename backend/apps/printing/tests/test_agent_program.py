@@ -3,6 +3,7 @@ un servidor en vivo y una "impresora" que es un socket escuchando, como una
 Zebra en el puerto 9100."""
 
 import importlib.util
+import json
 import os
 import shutil
 import socket
@@ -115,3 +116,88 @@ class SystemCommandTests(SimpleTestCase):
         with patch.dict(os.environ, {"ROTULOS_PRINT_COMMAND": "miimpresion --cola {printer} {file}"}):
             command = agent_program.system_command("/tmp/a.pdf", "Laser", "pdf", system="Linux")
         self.assertEqual(command, ["miimpresion", "--cola", "Laser", "/tmp/a.pdf"])
+
+
+class ConfigFileTests(SimpleTestCase):
+    """rotulos_agent.json: lo que hace andar al .exe con doble clic."""
+
+    def setUp(self):
+        self.folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.folder, ignore_errors=True)
+        env = patch.dict(os.environ, {"APPDATA": self.folder, "XDG_CONFIG_HOME": self.folder})
+        env.start()
+        self.addCleanup(env.stop)
+        for key in ("ROTULOS_AGENT_CONFIG", "ROTULOS_SERVER", "ROTULOS_AGENT_TOKEN"):
+            os.environ.pop(key, None)
+
+    def write(self, path, data):
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).write_text(json.dumps(data), encoding="utf-8")
+        return str(path)
+
+    def test_reads_the_file_next_to_the_program_first(self):
+        beside = self.write(Path(self.folder) / "prog" / "rotulos_agent.json", {"server": "https://a/api/v1", "token": "rpa_x"})
+        self.write(Path(agent_program.user_config_dir()) / "rotulos_agent.json", {"server": "otro", "token": "otro"})
+        with patch.object(agent_program, "program_path", return_value=str(Path(self.folder) / "prog" / "RotulosAgente.exe")):
+            data, path = agent_program.load_config()
+        self.assertEqual((data["token"], path), ("rpa_x", beside))
+
+    def test_falls_back_to_the_user_config_folder_and_saves_there(self):
+        saved = agent_program.save_config({"server": "https://a/api/v1", "token": "rpa_y"})
+        self.assertTrue(saved.startswith(self.folder))
+        with patch.object(agent_program, "program_path", return_value=str(Path(self.folder) / "nada" / "a.exe")):
+            data, path = agent_program.load_config()
+        self.assertEqual((data["token"], path), ("rpa_y", saved))
+
+    def test_a_broken_file_says_which_one(self):
+        path = Path(self.folder) / "roto.json"
+        path.write_text("{no es json", encoding="utf-8")
+        with self.assertRaisesRegex(SystemExit, "roto.json"):
+            agent_program.load_config(str(path))
+
+    def test_command_line_wins_over_the_file(self):
+        config = self.write(Path(self.folder) / "c.json", {"server": "https://archivo/api/v1", "token": "rpa_archivo"})
+        with patch.object(agent_program, "run", return_value=0) as run, patch.object(agent_program, "Api") as api:
+            agent_program.main(["--config", config, "--token", "rpa_linea", "--once"])
+        api.assert_called_once_with("https://archivo/api/v1", "rpa_linea")
+        run.assert_called_once()
+
+    def test_without_config_or_a_console_it_explains_what_is_missing(self):
+        with patch.object(agent_program, "program_path", return_value=str(Path(self.folder) / "nada" / "a.exe")), patch.object(
+            agent_program.sys, "stdin", None
+        ), self.assertRaises(SystemExit), patch("sys.stderr"):
+            agent_program.main([])
+
+    def test_first_run_asks_and_saves(self):
+        answers = iter(["https://a/api/v1", "rpa_nuevo"])
+        with patch.object(agent_program, "program_path", return_value=str(Path(self.folder) / "nada" / "a.exe")), patch(
+            "builtins.input", side_effect=lambda _: next(answers)
+        ), patch.object(agent_program.sys, "stdin") as stdin, patch.object(agent_program.platform, "system", return_value="Linux"), patch.object(
+            agent_program, "run", return_value=0
+        ), patch.object(agent_program, "Api"), patch("builtins.print"):
+            stdin.isatty.return_value = True
+            agent_program.main(["--once"])
+        data, _ = agent_program.load_config(str(Path(agent_program.user_config_dir()) / "rotulos_agent.json"))
+        self.assertEqual(data, {"server": "https://a/api/v1", "token": "rpa_nuevo"})
+
+
+class WindowsStartupTests(SimpleTestCase):
+    def test_install_and_remove_the_startup_script(self):
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        env = {"APPDATA": folder}
+        path = agent_program.install_startup(env, program="C:\\Rotulos\\RotulosAgente.exe")
+        self.assertTrue(path.endswith(os.path.join("Startup", "RotulosAgente.bat")))
+        content = Path(path).read_bytes()
+        self.assertEqual(content, b'@echo off\r\nstart "Rotulos" /min "C:\\Rotulos\\RotulosAgente.exe"\r\n')
+        self.assertTrue(agent_program.remove_startup(env))
+        self.assertFalse(os.path.exists(path))
+        self.assertFalse(agent_program.remove_startup(env))
+
+    def test_the_python_script_runs_with_the_current_python(self):
+        script = agent_program.startup_script("C:\\Rotulos\\rotulos_print_agent.py")
+        self.assertIn(f'"{agent_program.sys.executable}" "C:\\Rotulos\\rotulos_print_agent.py"', script)
+
+    def test_startup_options_are_only_for_windows(self):
+        with patch.object(agent_program.platform, "system", return_value="Linux"), self.assertRaises(SystemExit), patch("sys.stderr"):
+            agent_program.main(["--install-startup"])

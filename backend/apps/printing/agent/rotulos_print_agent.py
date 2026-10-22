@@ -8,7 +8,14 @@ más) y el token que te dio la pantalla "Impresoras" al crear el agente.
     python3 rotulos_print_agent.py --server https://tu-dominio/api/v1 --token rpa_...
 
 También toma el token de la variable ROTULOS_AGENT_TOKEN y el servidor de
-ROTULOS_SERVER. Dejalo corriendo: consulta cada pocos segundos. Ctrl+C lo frena.
+ROTULOS_SERVER, o de un archivo rotulos_agent.json ({"server": ..., "token":
+...}, el que baja la pantalla "Impresoras") puesto al lado del programa o en
+la carpeta de configuración del usuario. Si no encuentra ninguno, los pregunta
+y los guarda ahí: así el .exe de Windows anda con doble clic.
+
+En Windows, --install-startup lo deja arrancando solo al prender la PC
+(--remove-startup lo saca). Dejalo corriendo: consulta cada pocos segundos.
+Ctrl+C lo frena.
 
 Cómo imprime, según lo que configuraste para cada impresora:
 - "En la red": le manda el archivo directo a IP:puerto (las térmicas Zebra y
@@ -35,7 +42,9 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
+CONFIG_NAME = "rotulos_agent.json"
+STARTUP_NAME = "RotulosAgente.bat"
 NETWORK_TIMEOUT_SECONDS = 20
 COMMAND_TIMEOUT_SECONDS = 120
 
@@ -203,21 +212,168 @@ def run(api, interval, once=False):
             time.sleep(min(60, interval * (2 ** min(failures, 4))) if failures else interval)
 
 
+# --- Configuración (para el .exe, que se abre con doble clic) -------------------
+
+
+def frozen():
+    """Si corre empaquetado (el .exe hecho con PyInstaller)."""
+    return bool(getattr(sys, "frozen", False))
+
+
+def program_path():
+    return os.path.abspath(sys.executable if frozen() else __file__)
+
+
+def user_config_dir(system=None, environ=None):
+    system = system or platform.system()
+    environ = os.environ if environ is None else environ
+    if system == "Windows":
+        base = environ.get("APPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Roaming")
+        return os.path.join(base, "Rotulos")
+    base = environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, "rotulos")
+
+
+def config_candidates(explicit=""):
+    """Dónde se busca rotulos_agent.json, en orden."""
+    paths = [explicit, os.environ.get("ROTULOS_AGENT_CONFIG", "")]
+    paths.append(os.path.join(os.path.dirname(program_path()), CONFIG_NAME))
+    paths.append(os.path.join(user_config_dir(), CONFIG_NAME))
+    return [path for path in paths if path]
+
+
+def load_config(explicit=""):
+    """``(datos, ruta)`` del primer archivo que exista, o ``({}, None)``."""
+    for path in config_candidates(explicit):
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, ValueError) as error:
+            raise SystemExit(f"No se pudo leer {path}: {error}")
+        if not isinstance(data, dict):
+            raise SystemExit(f"{path} no tiene el formato esperado.")
+        return data, path
+    return {}, None
+
+
+def save_config(data, path=None):
+    path = path or os.path.join(user_config_dir(), CONFIG_NAME)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=2)
+    return path
+
+
+def ask_config(read=None):
+    """Pide servidor y token por consola (primera vez con doble clic)."""
+    read = read or input
+    print("Configurá el agente con los datos de la pantalla «Impresoras» de la app.")
+    server = read("Servidor (termina en /api/v1): ").strip()
+    token = read("Token del agente (rpa_...): ").strip()
+    return {"server": server, "token": token}
+
+
+# --- Arrancar con Windows -------------------------------------------------------
+
+
+def startup_dir(environ=None):
+    environ = os.environ if environ is None else environ
+    base = environ.get("APPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Roaming")
+    return os.path.join(base, "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
+
+
+def startup_script(program=None):
+    """El .bat de la carpeta Inicio: abre el agente minimizado. Con el .py, lo
+    corre con el mismo Python que lo está corriendo ahora."""
+    program = program or program_path()
+    if program.lower().endswith(".exe"):
+        command = f'start "Rotulos" /min "{program}"'
+    else:
+        command = f'start "Rotulos" /min "{sys.executable}" "{program}"'
+    return f"@echo off\r\n{command}\r\n"
+
+
+def install_startup(environ=None, program=None):
+    folder = startup_dir(environ)
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, STARTUP_NAME)
+    with open(path, "w", encoding="ascii", errors="replace", newline="") as handle:
+        handle.write(startup_script(program))
+    return path
+
+
+def remove_startup(environ=None):
+    path = os.path.join(startup_dir(environ), STARTUP_NAME)
+    if os.path.exists(path):
+        os.remove(path)
+        return True
+    return False
+
+
+def pause_if_double_clicked():
+    """El .exe abierto con doble clic cierra su ventana al terminar: sin esto
+    el mensaje de error se ve un instante y nadie sabe qué pasó."""
+    if frozen() and sys.stdin and sys.stdin.isatty():
+        try:
+            input("Apretá Enter para cerrar.")
+        except EOFError:
+            pass
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Agente de impresión de Rótulos.")
     parser.add_argument("--server", default=os.environ.get("ROTULOS_SERVER", ""), help="URL de la API, terminada en /api/v1")
     parser.add_argument("--token", default=os.environ.get("ROTULOS_AGENT_TOKEN", ""), help="Token del agente (rpa_...)")
+    parser.add_argument("--config", default="", help=f"Archivo de configuración ({CONFIG_NAME})")
     parser.add_argument("--interval", type=float, default=3.0, help="Segundos entre consultas (3)")
     parser.add_argument("--once", action="store_true", help="Consultar una sola vez y salir")
+    parser.add_argument("--install-startup", action="store_true", help="Windows: arrancar solo al prender la PC")
+    parser.add_argument("--remove-startup", action="store_true", help="Windows: dejar de arrancar solo")
     args = parser.parse_args(argv)
-    if not args.server or not args.token:
-        parser.error("faltan --server y --token (o ROTULOS_SERVER / ROTULOS_AGENT_TOKEN)")
+
+    if args.install_startup or args.remove_startup:
+        if platform.system() != "Windows":
+            parser.error("--install-startup y --remove-startup son solo para Windows")
+        if args.install_startup:
+            log(f"Listo: el agente va a arrancar solo al prender la PC ({install_startup()}).")
+        else:
+            log("Listo: el agente ya no arranca solo." if remove_startup() else "No estaba configurado para arrancar solo.")
+        return 0
+
+    config, config_path = load_config(args.config)
+    server = args.server or str(config.get("server") or "")
+    token = args.token or str(config.get("token") or "")
+    if (not server or not token) and sys.stdin and sys.stdin.isatty():
+        asked = ask_config()
+        server, token = server or asked["server"], token or asked["token"]
+        if server and token:
+            log(f"Configuración guardada en {save_config({'server': server, 'token': token})}.")
+            if platform.system() == "Windows" and input("¿Arrancar solo al prender la PC? (s/n): ").strip().lower().startswith("s"):
+                log(f"Va a arrancar solo ({install_startup()}).")
+    elif config_path:
+        log(f"Configuración: {config_path}")
+    if not server or not token:
+        parser.error(f"faltan --server y --token (o ROTULOS_SERVER / ROTULOS_AGENT_TOKEN, o {CONFIG_NAME})")
     try:
-        return run(Api(args.server, args.token), args.interval, args.once)
+        return run(Api(server, token), args.interval, args.once)
     except KeyboardInterrupt:
         log("Agente detenido.")
         return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        code = main()
+    except SystemExit as exit_:
+        code = exit_.code
+        if code not in (0, None):
+            if isinstance(code, str):
+                print(code, file=sys.stderr)
+                code = 1
+            pause_if_double_clicked()
+        sys.exit(code)
+    if code:
+        pause_if_double_clicked()
+    sys.exit(code)

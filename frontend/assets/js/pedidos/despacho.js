@@ -137,7 +137,35 @@ window.OrderDispatch = (() => {
   }
 
   function packageCount() {
-    return Math.max(Number(document.getElementById("dispatchPackages")?.value) || 1, 1);
+    return Math.min(Math.max(Number(document.getElementById("dispatchPackages")?.value) || 1, 1), 20);
+  }
+
+  // Los bultos de cada pedido (cada uno puede llevar distintos): {order_id: n}.
+  // Arrancan en los que trae el pedido de la tienda, y "Bultos" de arriba los
+  // pone iguales a todos.
+  function packagesByOrder() {
+    const packages = {};
+    document.querySelectorAll("#dispatchDialog .dispatch-order-packages").forEach((input) => {
+      packages[input.dataset.order] = Math.min(Math.max(Number(input.value) || 1, 1), 20);
+    });
+    return packages;
+  }
+
+  // Los transportistas que todavía no tienen la cuenta lista, con el link para
+  // conectarla: sin esto el selector solo mostraba los listos y parecía que,
+  // por ejemplo, Correo Argentino no existía.
+  function otherCarriersNote() {
+    const others = (account.carriers || []).filter((item) => !item.account.ready);
+    if (!others.length) return null;
+    const note = node("p", { className: "dispatch-hint dispatch-other-carriers" });
+    note.append("También podés despachar con ");
+    others.forEach((item, index) => {
+      if (index) note.append(index === others.length - 1 ? " y " : ", ");
+      const link = node("a", { text: item.name, attrs: { href: `transportista.html?carrier=${encodeURIComponent(item.code)}` } });
+      note.appendChild(link);
+    });
+    note.append(others.length === 1 ? ": conectá tu cuenta." : ": conectá sus cuentas.");
+    return note;
   }
 
   function renderReady() {
@@ -158,7 +186,7 @@ window.OrderDispatch = (() => {
     const contractField = node("label", { className: "dispatch-field", text: "Servicio", attrs: { id: "dispatchContractField" } });
     const contractSelect = node("select", { attrs: { id: "dispatchContract" } });
     contractField.appendChild(contractSelect);
-    const packagesField = node("label", { className: "dispatch-field", text: "Bultos por pedido" });
+    const packagesField = node("label", { className: "dispatch-field", text: "Bultos (para todos)" });
     const packagesInput = node("input", { attrs: { id: "dispatchPackages", type: "number", min: "1", max: "20", value: "1" } });
     packagesField.appendChild(packagesInput);
     options.append(carrierField, contractField, packagesField);
@@ -170,12 +198,21 @@ window.OrderDispatch = (() => {
       info.append(node("strong", { text: orderNumber(order) }), node("span", { text: orderSummary(order) }));
       const price = node("span", { className: "dispatch-price", text: "…" });
       const branch = node("div", { className: "dispatch-branch", attrs: { hidden: "" } });
-      item.append(info, price, branch);
+      const own = node("label", { className: "dispatch-order-packages-field", text: "Bultos" });
+      const ownInput = node("input", {
+        className: "dispatch-order-packages",
+        attrs: { type: "number", min: "1", max: "20", value: String(Math.min(Math.max(Number(order.package_count) || 1, 1), 20)), "data-order": String(order.id), "aria-label": `Bultos de ${orderNumber(order)}` },
+      });
+      ownInput.addEventListener("change", onOptionsChange);
+      own.appendChild(ownInput);
+      item.append(info, own, price, branch);
       list.appendChild(item);
     });
     const total = node("p", { className: "dispatch-total", attrs: { id: "dispatchTotal" } });
     const hint = node("p", { className: "dispatch-hint", attrs: { id: "dispatchHint" } });
     body.append(options, list, total, hint);
+    const others = otherCarriersNote();
+    if (others) body.appendChild(others);
 
     const manual = manualLink();
     if (manual) footer.appendChild(manual);
@@ -199,7 +236,12 @@ window.OrderDispatch = (() => {
       onCarrierChange();
     });
     contractSelect.addEventListener("change", onOptionsChange);
-    packagesInput.addEventListener("change", onOptionsChange);
+    packagesInput.addEventListener("change", () => {
+      document.querySelectorAll("#dispatchDialog .dispatch-order-packages").forEach((input) => {
+        input.value = String(packageCount());
+      });
+      onOptionsChange();
+    });
     onCarrierChange();
   }
 
@@ -276,6 +318,7 @@ window.OrderDispatch = (() => {
           order_ids: orders.map((order) => order.id),
           contract: contract.code,
           package_count: packageCount(),
+          packages: packagesByOrder(),
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -349,6 +392,7 @@ window.OrderDispatch = (() => {
       order_ids: orders.map((order) => order.id),
       contract: contract.code,
       package_count: packageCount(),
+      packages: packagesByOrder(),
     };
     if (contract.kind === "branch") payload.branches = branches;
     try {

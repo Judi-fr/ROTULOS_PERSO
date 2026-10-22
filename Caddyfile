@@ -19,11 +19,11 @@
 		reverse_proxy api:8000
 	}
 
-	# Imágenes públicas que muestra el frontend (logos, miniaturas de
+	# Imágenes públicas que muestra el frontend (logos, fotos de perfil, miniaturas de
 	# plantillas y de rótulos guardados, con nombres al azar). Las sirve Caddy
 	# directo desde el volumen compartido: hacerlas pasar por Django sería
 	# gastar un worker de gunicorn en mandar un archivo.
-	@public_media path /media/store_logos/* /media/accounts/logos/* /media/labels/templates/* /media/labels/logos/* /media/labels/thumbs/*
+	@public_media path /media/store_logos/* /media/accounts/logos/* /media/accounts/avatars/* /media/labels/templates/* /media/labels/logos/* /media/labels/thumbs/*
 	handle @public_media {
 		root * /srv
 		file_server

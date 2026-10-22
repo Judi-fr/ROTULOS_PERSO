@@ -14,6 +14,7 @@ urlpatterns = [
     path("profiles/<int:pk>/", views.ProfileView.as_view(), name="team-profile"),
     path("transfer/", views.TransferView.as_view(), name="team-transfer"),
     path("activity/", views.TeamActivityView.as_view(), name="team-activity"),
+    path("activity/mine/", views.MyActivityView.as_view(), name="team-my-activity"),
     path("my-invitations/", views.MyInvitationListView.as_view(), name="team-my-invitations"),
     path(
         "my-invitations/<int:pk>/<str:decision>/",

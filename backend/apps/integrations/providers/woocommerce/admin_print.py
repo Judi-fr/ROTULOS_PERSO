@@ -27,60 +27,24 @@ zip desde ``tiendas.html`` (``plugin_zip``).
 
 from __future__ import annotations
 
-import base64
-import hashlib
-import hmac
 import io
-import json
-import time
 import zipfile
 from pathlib import Path
 
 from ...models import StoreConnection
-from ...store_print import PrintError
+from ...store_print import MAX_CLOCK_SKEW_SECONDS, SIGNATURE_HEADER, PrintError, verify_signed_request
 
-SIGNATURE_HEADER = "X-Rotulos-Signature"
+__all__ = ["MAX_CLOCK_SKEW_SECONDS", "SIGNATURE_HEADER", "PrintError", "plugin_zip", "verify_plugin_request"]
+
 PLUGIN_DIR = Path(__file__).resolve().parent / "wordpress_plugin" / "rotulos-envio"
 PLUGIN_ZIP_NAME = f"{PLUGIN_DIR.name}.zip"
-# Margen para el reloj del hosting de la tienda, que no siempre está en hora.
-MAX_CLOCK_SKEW_SECONDS = 300
 
 
 def verify_plugin_request(raw_body, signature, now=None):
     """``(connection, data)`` de un pedido firmado del plugin (imprimir o
-    cotizar), o ``PrintError``. La tienda sale del cuerpo, pero solo vale si
-    la firma coincide con SU secreto. El resto de ``data`` lo valida quien lo
-    usa (``rates``)."""
-    try:
-        data = json.loads(raw_body or b"{}")
-    except ValueError as exc:
-        raise PrintError("El pedido de impresión no es válido.") from exc
-    if not isinstance(data, dict):
-        raise PrintError("El pedido de impresión no es válido.")
-
-    store_id = str(data.get("store") or "").strip()
-    connection = None
-    if store_id.isdigit():
-        connection = StoreConnection.objects.filter(
-            pk=int(store_id), platform=StoreConnection.Platform.WOOCOMMERCE
-        ).first()
-    secret = connection.webhook_secret if connection is not None else ""
-    expected = base64.b64encode(hmac.new(secret.encode("utf-8"), raw_body or b"", hashlib.sha256).digest())
-    if not secret or not signature or not hmac.compare_digest(signature.strip().encode("utf-8"), expected):
-        raise PrintError("El plugin no está vinculado con esta tienda. Volvé a conectarla desde la app.")
-
-    try:
-        sent_at = int(data.get("ts"))
-    except (TypeError, ValueError):
-        sent_at = 0
-    if abs((now or time.time()) - sent_at) > MAX_CLOCK_SKEW_SECONDS:
-        raise PrintError("El pedido de impresión venció. Revisá que el reloj del servidor de la tienda esté en hora.")
-
-    if connection.status != StoreConnection.Status.ACTIVE:
-        raise PrintError("Esta tienda está desconectada de la app. Volvé a conectarla para imprimir.")
-    if connection.owner_id is None:
-        raise PrintError("Esta tienda todavía no está vinculada a una cuenta de la app.")
-    return connection, data
+    cotizar), o ``PrintError``. La verificación es la compartida con el módulo
+    de Magento (``store_print.verify_signed_request``)."""
+    return verify_signed_request(raw_body, signature, StoreConnection.Platform.WOOCOMMERCE, now=now)
 
 
 def plugin_zip():

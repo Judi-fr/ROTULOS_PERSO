@@ -1,0 +1,18 @@
+{
+    "name": "rotulos/module-envio",
+    "description": "Shipping labels: instant order sync, print and dispatch from the order grid, and checkout rates.",
+    "type": "magento2-module",
+    "version": "1.0.0",
+    "license": "proprietary",
+    "require": {
+        "php": ">=7.4",
+        "magento/framework": ">=103.0",
+        "magento/module-sales": "*",
+        "magento/module-shipping": "*",
+        "magento/module-ui": "*"
+    },
+    "autoload": {
+        "files": ["registration.php"],
+        "psr-4": {"Rotulos\\Envio\\": ""}
+    }
+}

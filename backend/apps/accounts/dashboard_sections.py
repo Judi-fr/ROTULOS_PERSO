@@ -79,13 +79,14 @@ def build_sections(user):
         # atajo a cada parte de la página (así la tarjeta no queda vacía).
         [
             ("Equipo", "equipo.html", "team.manage"),
-            ("Perfiles del equipo", "perfiles_equipo.html", "team.manage"),
-            ("Actividad", "actividad_equipo.html", "team.manage"),
+            ("Perfiles del equipo", "equipo.html#perfiles", "team.manage"),
+            ("Actividad", "equipo.html#actividad", "team.manage"),
         ]
         if can("team.manage")
         else [
             ("Tu perfil", "organizacion.html#perfil", None),
             ("Datos del comercio", "organizacion.html#comercio", None),
+            ("Tu actividad", "mi_actividad.html", "users.me.view"),
         ],
     )
     add(

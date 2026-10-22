@@ -47,7 +47,13 @@ from .providers.empretienda.views import (
     EmpretiendaImportConfirmView,
     EmpretiendaImportPreviewView,
 )
-from .providers.magento.views import MagentoManualConnectView
+from .providers.magento.views import (
+    MagentoManualConnectView,
+    MagentoModuleDownloadView,
+    MagentoPrintLinkView,
+    MagentoRatesView,
+    magento_print_document,
+)
 from .providers.shopify.views import (
     ShopifyLaunchView,
     ShopifyManualConnectView,
@@ -144,6 +150,10 @@ urlpatterns = (
         path("woocommerce/print/<str:token>", woocommerce_print_document, name="woocommerce-print"),
         path("vtex/connect-manual/", VtexManualConnectView.as_view(), name="vtex-connect-manual"),
         path("magento/connect-manual/", MagentoManualConnectView.as_view(), name="magento-connect-manual"),
+        path("magento/module/", MagentoModuleDownloadView.as_view(), name="magento-module"),
+        path("magento/rates/", MagentoRatesView.as_view(), name="magento-rates"),
+        path("magento/print-link/", MagentoPrintLinkView.as_view(), name="magento-print-link"),
+        path("magento/print/<str:token>", magento_print_document, name="magento-print"),
         path("empretienda/connect/", EmpretiendaConnectView.as_view(), name="empretienda-connect"),
         path("empretienda/import/preview/", EmpretiendaImportPreviewView.as_view(), name="empretienda-import-preview"),
         path("empretienda/import/confirm/", EmpretiendaImportConfirmView.as_view(), name="empretienda-import-confirm"),

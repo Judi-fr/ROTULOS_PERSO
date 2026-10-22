@@ -15,6 +15,8 @@ Además de mantener el payload clásico (``email``, ``first_name``/``last_name``
   ``viewsets.py`` (filtros por rol) y ``permissions_map.py``.
 """
 
+import re
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -455,8 +457,8 @@ class ProfileSerializer(serializers.ModelSerializer):
     """Perfil del usuario autenticado (self-service).
 
     A diferencia de ``UserAdminSerializer`` (CRUD del admin), acá el usuario
-    opera sobre su PROPIA cuenta, así que solo ``first_name`` y ``last_name``
-    son editables:
+    opera sobre su PROPIA cuenta, así que de ``User`` solo ``first_name`` y
+    ``last_name`` son editables:
 
     - ``email`` es la identidad (username) del proyecto y no se cambia por
       esta vía (queda para el admin).
@@ -464,9 +466,21 @@ class ProfileSerializer(serializers.ModelSerializer):
       pueda auto-promoverse.
     - ``has_usable_password`` le dice al frontend si la cuenta tiene una
       contraseña propia (login manual) o entró solo por Google (sin password).
+
+    ``preferred_name``/``phone``/``job_title``/``photo`` son del perfil
+    personal (``PersonalProfile``, ``personal_profiles.py``): lo que ve su
+    equipo. ``photo`` se manda como archivo o data URL, ``null``/``""`` la
+    quita, y se devuelve como URL.
     """
 
+    PHONE_CHARS = re.compile(r"^[0-9+()\-. ]*$")
+
     groups = serializers.SlugRelatedField(slug_field="name", many=True, read_only=True)
+    preferred_name = serializers.CharField(required=False, allow_blank=True, max_length=60)
+    phone = serializers.CharField(required=False, allow_blank=True, max_length=50)
+    job_title = serializers.CharField(required=False, allow_blank=True, max_length=80)
+    # Se reemplaza en __init__ por un ImageOrDataUrlField (import tardío).
+    photo = serializers.CharField(required=False, allow_null=True, write_only=True)
     has_usable_password = serializers.SerializerMethodField()
     display_name = serializers.SerializerMethodField()
     role = serializers.SerializerMethodField()
@@ -489,6 +503,10 @@ class ProfileSerializer(serializers.ModelSerializer):
             "role",
             "permissions",
             "email_verified",
+            "preferred_name",
+            "phone",
+            "job_title",
+            "photo",
         ]
         read_only_fields = [
             "id",
@@ -507,9 +525,68 @@ class ProfileSerializer(serializers.ModelSerializer):
     def get_has_usable_password(self, obj):
         return obj.has_usable_password()
 
+    def __init__(self, *args, **kwargs):
+        # Import tardío: apps.labels importa de apps.accounts.
+        from apps.labels.serializers import ImageOrDataUrlField
+
+        from .personal_profiles import AVATAR_MAX_BYTES
+
+        super().__init__(*args, **kwargs)
+        self.fields["photo"] = ImageOrDataUrlField(
+            required=False, allow_null=True, write_only=True, max_bytes=AVATAR_MAX_BYTES, field_label="Foto"
+        )
+
     def get_display_name(self, obj):
-        full = " ".join(filter(None, [obj.first_name, obj.last_name])).strip()
-        return full or obj.email or f"Usuario {obj.pk}"
+        from .personal_profiles import display_name
+
+        return display_name(obj)
+
+    def validate_phone(self, value):
+        value = value.strip()
+        if not self.PHONE_CHARS.match(value):
+            raise serializers.ValidationError("El teléfono solo puede tener números, espacios y + - ( ).")
+        return value
+
+    def validate_photo(self, value):
+        from .personal_profiles import AVATAR_MAX_BYTES, normalize_photo
+
+        if value is None:
+            return None
+        if getattr(value, "size", 0) > AVATAR_MAX_BYTES:
+            raise serializers.ValidationError("La foto no puede pesar más de 2 MB.")
+        return normalize_photo(value)
+
+    def to_representation(self, instance):
+        from .models import personal_profile_for
+        from .personal_profiles import photo_url
+
+        data = super().to_representation(instance)
+        profile = personal_profile_for(instance)
+        data["preferred_name"] = profile.preferred_name if profile else ""
+        data["phone"] = profile.phone if profile else ""
+        data["job_title"] = profile.job_title if profile else ""
+        data["photo"] = photo_url(profile, self.context.get("request"))
+        return data
+
+    def update(self, instance, validated_data):
+        from .models import PersonalProfile
+
+        personal = {key: validated_data.pop(key) for key in ("preferred_name", "phone", "job_title", "photo") if key in validated_data}
+        instance = super().update(instance, validated_data)
+        if personal:
+            profile, _ = PersonalProfile.objects.get_or_create(user=instance)
+            old_photo = profile.photo.name if profile.photo else None
+            for key, value in personal.items():
+                if key != "photo":
+                    setattr(profile, key, value.strip())
+            if "photo" in personal:
+                profile.photo = personal["photo"]
+            profile.save()
+            # La foto anterior no queda colgada en el disco.
+            if "photo" in personal and old_photo and old_photo != (profile.photo.name if profile.photo else None):
+                profile.photo.storage.delete(old_photo)
+            instance.personal_profile = profile
+        return instance
 
     def get_role(self, obj):
         return get_user_role(obj)

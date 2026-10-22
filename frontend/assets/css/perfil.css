@@ -213,3 +213,37 @@
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
+
+/* Foto propia (perfil personal, perfil.js): ocupa toda la fila de la grilla. */
+.profile-photo-field {
+  grid-column: 1 / -1;
+}
+
+.profile-photo-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.profile-photo {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.profile-photo-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.profile-photo-actions .field-hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}

@@ -38,6 +38,23 @@ function renderPager(data, page) {
   if (data.next) add("Siguiente", page + 1);
 }
 
+// Quién lo hizo: su foto y su nombre para mostrar (row.actor, el perfil
+// personal de un miembro actual); de alguien que ya no está, solo el email.
+function actorCell(row) {
+  const wrap = document.createElement("span");
+  wrap.className = "activity-actor";
+  const actor = row.actor;
+  if (!actor) {
+    wrap.textContent = row.actor_email || "—";
+    return wrap;
+  }
+  const name = document.createElement("span");
+  name.textContent = actor.display_name || row.actor_email;
+  name.title = [row.actor_email, actor.job_title].filter(Boolean).join(" · ");
+  wrap.append(personAvatar({ ...actor, email: row.actor_email }, "person-avatar person-avatar-small"), name);
+  return wrap;
+}
+
 async function load(page = 1) {
   const body = document.getElementById("activityBody");
   try {
@@ -48,10 +65,11 @@ async function load(page = 1) {
     body.innerHTML = rows.length ? "" : '<tr><td colspan="4" class="access-muted">No hay movimientos con esos filtros.</td></tr>';
     rows.forEach((row) => {
       const tr = document.createElement("tr");
-      [formatDateTimeShort(row.created_at), row.actor_email, row.action_label || row.action, row.target_repr || ""].forEach(
+      [formatDateTimeShort(row.created_at), null, row.action_label || row.action, row.target_repr || ""].forEach(
         (text) => {
           const td = document.createElement("td");
-          td.textContent = text;
+          if (text === null) td.appendChild(actorCell(row));
+          else td.textContent = text;
           tr.appendChild(td);
         }
       );
@@ -79,7 +97,8 @@ async function loadMembers() {
   data.members.forEach((member) => {
     const option = document.createElement("option");
     option.value = member.user_id;
-    option.textContent = member.name ? `${member.name} (${member.email})` : member.email;
+    const shown = member.display_name || member.name;
+    option.textContent = shown && shown !== member.email ? `${shown} (${member.email})` : member.email;
     select.appendChild(option);
   });
 }

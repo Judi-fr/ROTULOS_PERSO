@@ -208,6 +208,11 @@ class StoreProvider:
     # puede ofrecer el precio de un transportista (``apps.carriers.checkout``).
     quotes_at_checkout = False
 
+    # False cuando los pedidos igual entran sin avisos (Magento: por el repaso,
+    # y nuestro módulo solo los adelanta). Sin URL pública, entonces, no se
+    # marca la tienda con el aviso de que falta.
+    webhooks_required = True
+
     @property
     def webhook_events(self):
         return tuple(self.order_sync_events) + tuple(self.uninstall_events) + tuple(self.extra_webhook_events)
@@ -332,6 +337,26 @@ class StoreProvider:
         del propio comerciante, ver ``ShopifyProvider.own_app_token``). Se
         prueba solo cuando falla ``verify_webhook``."""
         return False
+
+    def ensure_webhook_secret(self, connection):
+        """El secreto por tienda (``webhook_secret_per_store``), creado una sola
+        vez leyendo la fila bloqueada: el worker trae copias viejas de las
+        conexiones, y una sin secreto generaría otro distinto del que ya usa la
+        tienda. (WooCommerce y VTEX tienen su propia copia de esto.)"""
+        if not connection.webhook_secret:
+            import secrets
+
+            from django.db import transaction
+
+            from ..models import StoreConnection
+
+            with transaction.atomic():
+                fresh = StoreConnection.objects.select_for_update().get(pk=connection.pk)
+                if not fresh.webhook_secret:
+                    fresh.webhook_secret = secrets.token_urlsafe(32)
+                    fresh.save(update_fields=["webhook_secret_encrypted", "updated_at"])
+            connection.webhook_secret_encrypted = fresh.webhook_secret_encrypted
+        return connection.webhook_secret
 
     def configure_admin_print(self, connection, base_url):
         """Deja lista la impresión de rótulos desde el admin de la tienda,

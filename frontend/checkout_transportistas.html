@@ -40,6 +40,8 @@
 
         <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
         <p id="accountNotice" class="filters-hint" style="display:none;"></p>
+        <!-- Los transportistas que cotizan pero todavía no tienen cuenta, con el link para conectarla. -->
+        <p id="missingCarriers" class="filters-hint" hidden></p>
 
         <!-- Backend: apps/carriers/checkout_views.py (GET/PUT carriers/checkout/, POST carriers/checkout/test/).
              Una tarjeta por tienda y, adentro, un bloque por transportista con cuenta. -->

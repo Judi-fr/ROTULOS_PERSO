@@ -69,10 +69,28 @@ function showToken(agent) {
     <strong>Agente «${escapeHtml(agent.name)}» creado.</strong>
     Copiá este token ahora: <strong>no se vuelve a mostrar</strong>.
     <code>${escapeHtml(agent.token)}</code>
-    En la PC del agente, con el programa descargado, corré:
+    <strong>Windows:</strong> descargá la configuración y guardala en la misma carpeta que
+    RotulosAgente.exe; después abrí el .exe con doble clic (la primera vez te ofrece arrancar solo al prender la PC).
+    <div class="form-actions">
+      <button type="button" class="btn btn-primary" id="downloadConfig">Descargar la configuración</button>
+    </div>
+    <strong>Mac o Linux:</strong> con el programa de Python descargado, corré:
     <pre>${escapeHtml(command)}</pre>
     <button type="button" class="btn btn-outline" id="copyCommand">Copiar el comando</button>`;
   box.hidden = false;
+  // rotulos_agent.json: lo que el agente lee al abrirse sin parámetros. Se
+  // arma acá porque el token solo existe en esta respuesta.
+  document.getElementById("downloadConfig").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify({ server, token: agent.token }, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "rotulos_agent.json";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
   document.getElementById("copyCommand").addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(command);
@@ -124,10 +142,12 @@ async function revokeAgent(agent) {
 
 async function downloadAgent(event) {
   event.preventDefault();
+  // El mismo programa: como .exe para Windows (si el servidor lo tiene) o el .py.
+  const windows = event.currentTarget.id === "downloadAgentWindows";
   try {
-    const response = await apiFetch(DOWNLOAD_URL);
+    const response = await apiFetch(windows ? `${DOWNLOAD_URL}?platform=windows` : DOWNLOAD_URL);
     if (!response.ok) await readJson(response, "No se pudo descargar el programa.");
-    await downloadResponse(response, "rotulos_print_agent.py");
+    await downloadResponse(response, windows ? "RotulosAgente.exe" : "rotulos_print_agent.py");
   } catch (err) {
     if (err.isSessionExpired) return;
     showMessage(err.message);
@@ -288,6 +308,7 @@ async function init() {
   document.getElementById("printerForm").addEventListener("submit", savePrinter);
   document.getElementById("printerCancel").addEventListener("click", resetPrinterForm);
   document.getElementById("downloadAgent").addEventListener("click", downloadAgent);
+  document.getElementById("downloadAgentWindows").addEventListener("click", downloadAgent);
   ["printerFormat", "printerConnection"].forEach((id) =>
     document.getElementById(id).addEventListener("change", syncPrinterFields)
   );

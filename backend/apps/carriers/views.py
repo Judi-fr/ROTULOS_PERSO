@@ -9,8 +9,9 @@ no se nombra a ninguno.
 - ``branches/<carrier>/?cp=&state=`` GET: sucursales que entregan ahí.
 - ``shipments/`` GET (los envíos propios de todos los transportistas,
   ``?order=``/``?status=``/``?carrier=``) y POST ``{carrier, order_ids,
-  contract, branches?, package_count?}``; ``shipments/quote/`` POST (lo mismo,
-  sin crear nada).
+  contract, branches?, package_count?, packages?}``; ``shipments/quote/`` POST
+  (lo mismo, sin crear nada). ``packages`` = ``{order_id: bultos}`` para los
+  pedidos que no llevan los mismos bultos que el resto (``package_count``).
 - ``shipments/print/`` POST ``{shipment_ids}``: un PDF con nuestro rótulo y la
   etiqueta del transportista de cada envío, de cualquier transportista.
 - ``shipments/<id>/`` GET, ``.../label/?file_type=pdf|zpl``, ``.../refresh/``,
@@ -316,15 +317,30 @@ def _requested_orders(request, data):
         return Response({"order_ids": ["Elegí al menos un pedido."]}, status=status.HTTP_400_BAD_REQUEST)
     if len(ids) > MAX_ORDERS:
         return Response({"order_ids": [f"Se pueden procesar hasta {MAX_ORDERS} pedidos por vez."]}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        package_count = min(max(int(data.get("package_count") or 1), 1), 20)
-    except (TypeError, ValueError):
-        package_count = 1
+    package_count = _clamp_packages(data.get("package_count"))
     orders = {
         order.pk: order
         for order in Order.objects.filter(order_scope_q(request.user), pk__in=[i for i in ids if str(i).isdigit()], user=data_owner(request.user)).select_related("address")
     }
     return provider, account, ids, orders, package_count
+
+
+MAX_PACKAGES = 20
+
+
+def _clamp_packages(value, default=1):
+    try:
+        return min(max(int(value or default), 1), MAX_PACKAGES)
+    except (TypeError, ValueError):
+        return default
+
+
+def _packages_for(order, data, default):
+    """Los bultos de ``order``: los suyos de ``packages`` si vinieron (cada
+    pedido puede llevar distintos), si no los de todos (``package_count``)."""
+    packages = data.get("packages") if isinstance(data.get("packages"), dict) else {}
+    own = packages.get(str(order.pk), packages.get(order.pk))
+    return _clamp_packages(own, default) if own not in (None, "") else default
 
 
 def _money(value):
@@ -348,7 +364,9 @@ class ShipmentQuoteView(_CarrierView):
                 continue
             number = common.order_number(order)
             try:
-                quote = provider.quote_order(account, order, data.get("contract"), package_count=package_count)
+                quote = provider.quote_order(
+                    account, order, data.get("contract"), package_count=_packages_for(order, data, package_count)
+                )
             except ShipmentError as exc:
                 results.append({"order_id": order.pk, "number": number, "ok": False, "detail": str(exc)})
                 continue
@@ -410,7 +428,7 @@ class ShipmentCollectionView(_CarrierView):
                     data.get("contract"),
                     branch_id=str(branch.get("id") or ""),
                     branch_name=str(branch.get("name") or ""),
-                    package_count=package_count,
+                    package_count=_packages_for(order, data, package_count),
                 )
             except ShipmentError as exc:
                 results.append({"order_id": order.pk, "number": common.order_number(order), "ok": False, "detail": str(exc)})

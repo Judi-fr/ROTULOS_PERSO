@@ -4,7 +4,11 @@
   ``updated_at``) y despacho (shipment con seguimiento).
 - ``oauth.py``: la firma OAuth 1.0a de cada pedido a la API.
 - ``views.py``: ``POST magento/connect-manual/`` (las credenciales de una
-  Integración que pega el comerciante).
+  Integración que pega el comerciante) y lo que llama nuestro módulo:
+  ``print-link/``, ``print/<token>``, ``rates/`` y ``module/`` (el zip).
+- ``admin_module.py`` + ``magento_module/`` (fase 2): nuestro módulo
+  "Rotulos_Envio" en PHP — avisos de pedidos al instante, acciones masivas en
+  Ventas → Pedidos (imprimir, planilla, despachar) y cotización en el checkout.
 - ``tests/``: contra un Magento simulado que verifica la firma.
 
 Fuera de esta carpeta quedan solo las piezas que van en lugares fijos: la

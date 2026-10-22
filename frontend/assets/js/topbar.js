@@ -36,7 +36,8 @@
   function build(node, user) {
     const email = (user && user.email) || "—";
     const name = (user && (user.display_name || user.full_name)) || (user && user.email) || "Usuario";
-    const picture = user && user.picture;
+    // La foto que subió (perfil personal) gana sobre la de Google.
+    const picture = user && (user.photo || user.picture);
 
     node.replaceChildren();
 

@@ -93,6 +93,10 @@
     transition:background .15s,color .15s;
   }
   .nav a:hover{ background:var(--sidebar-hover); color:#fff; }
+  /* Punto de falla en "Estado del sistema" (admin_sidebar.js, /health/system/). */
+  .nav-alert{ margin-left:auto; width:9px; height:9px; border-radius:50%; flex:none; }
+  .nav-alert-error{ background:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,.25); }
+  .nav-alert-warning{ background:#f59e0b; box-shadow:0 0 0 3px rgba(245,158,11,.25); }
   .nav a.active{
     background:var(--sidebar-active);
     color:#fff;

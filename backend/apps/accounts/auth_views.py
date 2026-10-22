@@ -69,14 +69,19 @@ def tokens_for_user(user):
     }
 
 
-def user_payload(user, picture=""):
+def user_payload(user, picture="", request=None):
     """Objeto ``user`` que acompaña a los tokens en cada respuesta de login.
 
     ``picture`` solo lo aporta Google (viene en el ID token y no se
-    persiste); en el login con email/contraseña queda vacío.
+    persiste); en el login con email/contraseña queda vacío. ``photo`` es la
+    foto que la persona subió (perfil personal) y gana sobre ``picture``.
     """
     from .authentication import user_must_change_password
+    from .models import personal_profile_for
     from .permissions_map import PERMISSIONS, get_effective_role, user_has_permission
+    from .personal_profiles import display_name, photo_url
+
+    profile = personal_profile_for(user)
 
     return {
         "id": user.id,
@@ -84,6 +89,8 @@ def user_payload(user, picture=""):
         "first_name": user.first_name,
         "last_name": user.last_name,
         "picture": picture,
+        "display_name": display_name(user, profile),
+        "photo": photo_url(profile, request),
         "is_staff": user.is_staff,
         "role": get_effective_role(user),
         "permissions": sorted(
@@ -119,7 +126,7 @@ def auth_response(user, picture="", request=None):
     """Respuesta estándar de login: tokens JWT + objeto user. Con
     ``X-Auth-Mode: cookie`` los tokens van en cookies HttpOnly y no en el
     cuerpo (``auth_cookies.deliver_tokens``)."""
-    response = Response({**tokens_for_user(user), "user": user_payload(user, picture)})
+    response = Response({**tokens_for_user(user), "user": user_payload(user, picture, request)})
     return deliver_tokens(request, response) if request is not None else response
 
 
@@ -520,7 +527,7 @@ class RegisterView(APIView):
             {
                 "detail": "Cuenta creada con éxito.",
                 **tokens_for_user(user),
-                "user": user_payload(user),
+                "user": user_payload(user, request=request),
             },
             status=status.HTTP_201_CREATED,
         )

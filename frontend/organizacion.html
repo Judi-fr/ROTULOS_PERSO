@@ -21,7 +21,7 @@
   </head>
   <body>
     <div class="layout">
-      <header class="topbar" id="appTopbar" data-links='[{"href": "equipo.html", "label": "Equipo", "perm": "team.manage"}, {"href": "equipo.html#actividad", "label": "Actividad", "perm": "team.manage"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+      <header class="topbar" id="appTopbar" data-links='[{"href": "equipo.html", "label": "Equipo", "perm": "team.manage"}, {"href": "equipo.html#actividad", "label": "Actividad", "perm": "team.manage"}, {"href": "mi_actividad.html", "label": "Tu actividad"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
 
       <main class="main">
         <div class="main-heading">
@@ -46,6 +46,19 @@
         <section class="profile-card">
           <div class="profile-card-title">Datos personales</div>
           <div class="profile-card-body account-grid">
+            <!-- Foto propia (perfil personal): la ve el equipo y sale arriba.
+                 Sin foto se usa la de Google o el dibujo automático. -->
+            <div class="field profile-photo-field">
+              <label for="photoInput">Foto</label>
+              <div class="profile-photo-row">
+                <img id="photoPreview" class="profile-photo" alt="Tu foto" />
+                <div class="profile-photo-actions">
+                  <input id="photoInput" type="file" accept="image/png,image/jpeg,image/webp" />
+                  <button type="button" class="btn btn-outline" id="photoRemove" hidden>Quitar la foto</button>
+                  <p class="field-hint">Se recorta cuadrada. Hasta 2 MB.</p>
+                </div>
+              </div>
+            </div>
             <div class="field">
               <label for="firstNameInput">Nombre</label>
               <input type="text" id="firstNameInput" placeholder="Nombre" autocomplete="given-name" />
@@ -53,6 +66,18 @@
             <div class="field">
               <label for="lastNameInput">Apellido</label>
               <input type="text" id="lastNameInput" placeholder="Apellido" autocomplete="family-name" />
+            </div>
+            <div class="field">
+              <label for="preferredNameInput">Nombre para mostrar</label>
+              <input type="text" id="preferredNameInput" maxlength="60" placeholder="Cómo te ve tu equipo (opcional)" autocomplete="nickname" />
+            </div>
+            <div class="field">
+              <label for="jobTitleInput">Puesto</label>
+              <input type="text" id="jobTitleInput" maxlength="80" placeholder="Por ejemplo: Depósito, Ventas" autocomplete="organization-title" />
+            </div>
+            <div class="field">
+              <label for="phoneInput">Teléfono</label>
+              <input type="tel" id="phoneInput" maxlength="50" placeholder="Lo ve tu equipo (opcional)" autocomplete="tel" />
             </div>
             <div class="field">
               <label>Email</label>

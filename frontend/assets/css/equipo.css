@@ -162,3 +162,36 @@
 .table-scroll {
   overflow-x: auto;
 }
+
+/* Foto y datos del perfil personal de cada miembro (equipo.js, actividad_equipo.js). */
+.team-person {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.team-person-info {
+  min-width: 0;
+}
+
+.person-avatar {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  background: #f5f7fb;
+}
+
+.person-avatar-small {
+  width: 24px;
+  height: 24px;
+}
+
+.activity-actor {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}

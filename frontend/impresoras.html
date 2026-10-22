@@ -41,7 +41,11 @@
           <div class="profile-card-body">
             <ol class="print-steps">
               <li>Creá un agente acá, con un nombre que te diga en qué PC está.</li>
-              <li>Descargá el programa y corrélo en esa PC con el comando que te mostramos (necesita Python 3).</li>
+              <li>
+                En esa PC, descargá el programa y el archivo de configuración que te damos al crearlo, en la misma
+                carpeta. En Windows es el .exe: doble clic y listo. En Mac o Linux, el de Python 3 con el comando
+                que te mostramos.
+              </li>
               <li>Dejalo abierto: cuando esté "En línea", ya podés mandar rótulos.</li>
             </ol>
             <div id="tokenBox" class="print-token" hidden></div>
@@ -62,7 +66,8 @@
               </div>
               <div class="form-actions">
                 <button type="submit" class="btn btn-primary">Crear agente</button>
-                <a class="btn btn-outline" id="downloadAgent" href="#">Descargar el programa</a>
+                <a class="btn btn-outline" id="downloadAgentWindows" href="#">Descargar para Windows (.exe)</a>
+                <a class="btn btn-outline" id="downloadAgent" href="#">Descargar para Mac o Linux (Python)</a>
               </div>
             </form>
           </div>

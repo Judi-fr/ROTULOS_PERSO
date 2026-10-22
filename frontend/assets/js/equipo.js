@@ -110,14 +110,24 @@ function renderMembers() {
     const item = document.createElement("li");
     item.className = "team-item";
     const info = document.createElement("div");
+    info.className = "team-person-info";
     info.innerHTML = `
       <strong></strong> <span class="team-role team-role-${member.role}"></span>
+      <div class="access-muted person-contact"></div>
       <div class="access-muted access-summary"></div>
       <div class="access-muted store-summary"></div>`;
-    info.querySelector("strong").textContent = member.name || member.email;
+    // display_name/job_title/phone/photo: su perfil personal (Mi cuenta).
+    const shownName = member.display_name || member.name || member.email;
+    info.querySelector("strong").textContent = member.job_title ? `${shownName} · ${member.job_title}` : shownName;
     info.querySelector(".team-role").textContent = member.role === "owner" ? "Dueño" : "Empleado";
-    info.querySelector(".access-summary").textContent = `${member.name ? member.email + " · " : ""}${accessSummary(member)}`;
+    const contact = [shownName !== member.email ? member.email : "", member.phone || ""].filter(Boolean).join(" · ");
+    info.querySelector(".person-contact").textContent = contact;
+    info.querySelector(".person-contact").hidden = !contact;
+    info.querySelector(".access-summary").textContent = accessSummary(member);
     info.querySelector(".store-summary").textContent = storeSummary(member);
+    const person = document.createElement("div");
+    person.className = "team-person";
+    person.append(personAvatar(member), info);
     const actions = document.createElement("div");
     actions.className = "team-actions";
     if (member.role !== "owner" && member.user_id !== myId) {
@@ -127,7 +137,7 @@ function renderMembers() {
       );
       if (meIsOwner) actions.append(button("Hacerlo dueño", "btn-outline", () => transfer(member)));
     }
-    item.append(info, actions);
+    item.append(person, actions);
     list.appendChild(item);
   });
 }

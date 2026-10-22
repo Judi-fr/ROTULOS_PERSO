@@ -92,6 +92,10 @@ class FakeMagento:
         self.comments = {}
         self.creds = dict(CREDS)
         self.rest_path = "/rest/V1/"  # "/index.php/rest/V1/" = hosting sin reescritura
+        # Nuestro módulo (fase 2): sin instalar, su ruta no existe (404).
+        self.module_installed = False
+        self.module_allowed = True
+        self.module_config = None
 
     def _signature_ok(self, method, url, header):
         parsed = urlparse(url)
@@ -145,6 +149,13 @@ class FakeMagento:
             history = json["statusHistory"]
             self.orders[order_id]["status_histories"].append(history)
             return fake_response(200, True)
+        if method == "POST" and path == "rotulos/config":
+            if not self.module_installed:
+                return fake_response(404, {"message": "Request does not match any route."})
+            if not self.module_allowed:
+                return fake_response(401, {"message": "The consumer isn't authorized to access Rotulos_Envio::config."})
+            self.module_config = json
+            return fake_response(200, "1.0.0")
         raise AssertionError(f"Pedido no simulado: {method} {path}")
 
     @staticmethod

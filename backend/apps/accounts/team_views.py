@@ -26,6 +26,7 @@ from apps.integrations.models import StoreConnection
 
 from . import team_services as services
 from .auth_views import user_payload
+from .personal_profiles import public_fields
 from .permissions_map import TEAM_SCOPED_PERMISSIONS
 from .role_permissions import HasRolePermission
 from .team_models import Team, TeamInvitation, TeamMember, TeamProfile
@@ -73,13 +74,15 @@ def _profile(team, value):
     return get_object_or_404(TeamProfile, pk=value, team=team)
 
 
-def member_data(member):
+def member_data(member, request=None):
     user = member.user
     return {
         "id": member.id,
         "user_id": user.id,
         "email": user.email,
         "name": " ".join(filter(None, [user.first_name, user.last_name])),
+        # Su perfil personal: nombre para mostrar, puesto, teléfono y foto.
+        **public_fields(user, request),
         "role": member.role,
         "profile": member.profile_id,
         "profile_name": member.profile.name if member.profile_id else "",
@@ -130,7 +133,7 @@ class TeamView(_TeamView):
 
     def get(self, request):
         team = self.team()
-        members = team.members.select_related("user", "profile")
+        members = team.members.select_related("user", "user__personal_profile", "profile")
         members = sorted(members, key=lambda m: (m.role != TeamMember.Role.OWNER, m.joined_at))
         invitations = team.invitations.filter(
             status=TeamInvitation.Status.PENDING, expires_at__gt=timezone.now()
@@ -141,7 +144,7 @@ class TeamView(_TeamView):
             {
                 "team": {"id": team.id, "name": team.name, "display_name": team_name(team), "owner_email": team.owner.email},
                 "me": {"role": membership(request.user).role, "accesses": sorted(member_accesses(request.user))},
-                "members": [member_data(member) for member in members],
+                "members": [member_data(member, request) for member in members],
                 "invitations": [invitation_data(invitation) for invitation in invitations],
                 "profiles": [
                     {"id": p.id, "name": p.name, "accesses": p.accesses, "member_count": p.member_count} for p in profiles
@@ -194,7 +197,7 @@ class MemberView(_TeamView):
             )
         except services.TeamError as exc:
             return _error(exc)
-        after = member_data(member)
+        after = member_data(member, request)
         changes = {key: {"from": before[key], "to": after[key]} for key in ("profile", "accesses", "all_stores", "store_ids") if before[key] != after[key]}
         _audit(request, "team.member_update", member.user, member.user.email, changes)
         return Response(after)
@@ -376,11 +379,18 @@ ACTIVITY_EXTRA_ACTIONS = ("account.update",)
 
 class TeamActivitySerializer(AuditLogSerializer):
     """La auditoría para el dueño, sin la IP ni el navegador de sus empleados:
-    eso es de la plataforma, no del comercio."""
+    eso es de la plataforma, no del comercio. Suma cómo se ve quien lo hizo
+    (``actor``: nombre para mostrar, puesto, foto), leído una vez por página
+    en ``TeamActivityView.get_serializer_context``."""
 
     class Meta(AuditLogSerializer.Meta):
         fields = [field for field in AuditLogSerializer.Meta.fields if field not in ("ip_address", "user_agent")]
         read_only_fields = fields
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["actor"] = self.context.get("people", {}).get(instance.actor_id)
+        return data
 
 
 class TeamActivityView(_TeamView, ListAPIView):
@@ -390,6 +400,12 @@ class TeamActivityView(_TeamView, ListAPIView):
 
     serializer_class = TeamActivitySerializer
     pagination_class = AuditLogPagination
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        members = self.team().members.select_related("user", "user__personal_profile")
+        context["people"] = {member.user_id: public_fields(member.user, self.request) for member in members}
+        return context
 
     def get_queryset(self):
         # Solo lo que cada uno hizo DESDE que está en este comercio: quien
@@ -407,6 +423,37 @@ class TeamActivityView(_TeamView, ListAPIView):
         # le cuenta a B que dejó A.
         about_any_team = Q(category="team", target_type="team")
         return filter_logs(self.request.query_params).filter((since & business & ~about_any_team) | about_team)
+
+
+class MyActivityView(ListAPIView):
+    """GET activity/mine/ — lo que hizo la persona que pregunta en su comercio
+    actual, para cualquier miembro (no hace falta el acceso "Equipo"): un
+    empleado puede revisar qué despachó o imprimió. Misma regla que
+    ``TeamActivityView`` (desde que se sumó, solo categorías del comercio) y
+    los mismos filtros salvo ``actor``, que es siempre él."""
+
+    serializer_class = TeamActivitySerializer
+    pagination_class = AuditLogPagination
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission("users.me.view")]
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["people"] = {self.request.user.pk: public_fields(self.request.user, self.request)}
+        return context
+
+    def get_queryset(self):
+        member = membership(self.request.user)
+        business = Q(category__in=ACTIVITY_CATEGORIES) | Q(action__in=ACTIVITY_EXTRA_ACTIONS)
+        params = self.request.query_params.copy()
+        params.pop("actor", None)
+        return filter_logs(params).filter(
+            business,
+            ~Q(category="team", target_type="team") | Q(target_id=str(member.team_id)),
+            actor=self.request.user,
+            created_at__gte=member.joined_at,
+        )
 
 
 # --- Las invitaciones del propio usuario ---------------------------------------
@@ -462,7 +509,7 @@ class MyInvitationActionView(APIView):
         _audit(request, "team.join", invitation.team, team_name(invitation.team))
         # Los permisos cambiaron: el frontend guarda el usuario actualizado.
         return Response(
-            {"status": invitation.status, "team_name": team_name(invitation.team), "user": user_payload(request.user)}
+            {"status": invitation.status, "team_name": team_name(invitation.team), "user": user_payload(request.user, request=request)}
         )
 
 

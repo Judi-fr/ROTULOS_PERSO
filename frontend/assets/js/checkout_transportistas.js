@@ -210,15 +210,30 @@ async function load() {
     const stores = data.stores || [];
 
     const notice = el("accountNotice");
+    // Sin ninguna cuenta lo dice el aviso de abajo (missingCarriers), con los links.
     const problems = [];
-    if (!carriers.length) {
-      problems.push("Todavía no conectaste ningún transportista: hacelo desde Mis pedidos.");
-    }
     carriers
       .filter((carrier) => carrier.account_problems.length)
       .forEach((carrier) => problems.push(`${carrier.name}: ${carrier.account_problems.join("; ")}.`));
     notice.textContent = problems.join(" ");
     notice.style.display = problems.length ? "" : "none";
+
+    // Sin esto, un transportista sin cuenta (p. ej. Correo Argentino) no aparecía
+    // en ningún lado de esta página y parecía que no existía.
+    const missing = (data.carriers || []).filter((carrier) => !carrier.account_exists);
+    const missingNotice = el("missingCarriers");
+    missingNotice.replaceChildren();
+    if (missing.length) {
+      missingNotice.append(carriers.length ? "También podés cotizar con " : "Podés cotizar con ");
+      missing.forEach((carrier, index) => {
+        if (index) missingNotice.append(index === missing.length - 1 ? " y " : ", ");
+        missingNotice.appendChild(
+          make("a", { text: carrier.name, attrs: { href: `transportista.html?carrier=${encodeURIComponent(carrier.code)}` } })
+        );
+      });
+      missingNotice.append(": primero conectá tu cuenta.");
+    }
+    missingNotice.hidden = !missing.length;
 
     const container = el("storeCards");
     container.replaceChildren();

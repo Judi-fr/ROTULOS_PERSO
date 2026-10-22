@@ -153,6 +153,9 @@ def _register_webhooks(connection, provider):
         if connection.last_error == MISSING_BASE_URL_ERROR:
             connection.last_error = ""
             connection.save(update_fields=["last_error", "updated_at"])
+    elif not provider.webhooks_required:
+        # Los pedidos igual entran por el repaso (Magento sin nuestro módulo).
+        logger.info("Tienda %s sin INTEGRATIONS_PUBLIC_BASE_URL: sin avisos al instante.", connection.pk)
     else:
         logger.warning("Tienda %s conectada sin INTEGRATIONS_PUBLIC_BASE_URL: no se registran webhooks.", connection.pk)
         connection.last_error = MISSING_BASE_URL_ERROR

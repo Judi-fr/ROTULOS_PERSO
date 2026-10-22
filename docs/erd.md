@@ -46,6 +46,15 @@ erDiagram
         datetime created_at
         datetime updated_at
     }
+    PersonalProfile {
+        bigauto id PK
+        auto user_id FK
+        char preferred_name
+        char phone
+        char job_title
+        file photo
+        datetime updated_at
+    }
     RolePermission {
         bigauto id PK
         char key UK
@@ -667,6 +676,7 @@ erDiagram
     User ||--o| EmailVerification : "user"
     User ||--o| LoginLockout : "user"
     User ||--o| PasswordChangeRequirement : "user"
+    User ||--o| PersonalProfile : "user"
     User ||--o| Team : "owner"
     User ||--o| TeamMember : "user"
     WebhookEndpoint ||--o{ WebhookDelivery : "endpoint"

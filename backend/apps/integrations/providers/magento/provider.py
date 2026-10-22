@@ -21,9 +21,11 @@ Lo que cambia respecto de las otras plataformas:
   oculta los datos de los compradores.
 - **No hay webhooks** en Magento Open Source. Los pedidos entran por el
   repaso (``supports_reconciliation``, cada ``MAGENTO_RECONCILE_MINUTES``),
-  que acá es barato y exacto: la API filtra por ``updated_at``. Los avisos al
-  instante quedan para la fase 2 (un módulo nuestro instalado en la tienda,
-  como el plugin de WooCommerce).
+  que acá es barato y exacto: la API filtra por ``updated_at``. Con nuestro
+  módulo instalado (fase 2, ``magento_module/``, ver ``admin_module.py``) la
+  tienda además avisa cada pedido guardado al instante
+  (``MODULE_ORDER_EVENT``), imprime/despacha desde su grilla de pedidos y
+  cotiza en su checkout. El módulo es opcional: sin él todo sigue andando.
 - **Despachar crea un envío (shipment)** con el número de seguimiento;
   Magento le manda el email al comprador. Nunca se factura: en Magento
   facturar es cobrar el pago, y eso es del comerciante. "Entregado" no existe
@@ -34,6 +36,9 @@ Lo que cambia respecto de las otras plataformas:
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import logging
 import re
@@ -55,6 +60,8 @@ from ..base import (
     ProviderRejectedError,
     StoreInfo,
     StoreProvider,
+    WebhookMessage,
+    get_header,
 )
 from ..woocommerce.provider import AR_STATES, COUNTRY_NAMES
 from .oauth import _encode, oauth1_header
@@ -69,6 +76,13 @@ REST_PATHS = ("/rest/V1/", "/index.php/rest/V1/")
 CANCELLED_STATES = ("canceled", "closed")
 COMPLETE_STATE = "complete"
 SHIPPED_ORDER_STATUSES = ("dispatched", "in_transit", "delivered")
+# El aviso que manda nuestro módulo cada vez que se guarda un pedido
+# (``Observer/OrderSaved.php``), firmado con el secreto de la tienda.
+MODULE_ORDER_EVENT = "rotulos/order_saved"
+# Lo que el módulo publica en su API REST para que le escribamos a dónde
+# avisar, qué tienda es y con qué firmar (``etc/webapi.xml``).
+MODULE_CONFIG_PATH = "rotulos/config"
+MODULE_SIGNATURE_HEADER = "X-Rotulos-Signature"
 # Los transportistas que no son de Magento se informan como "custom": el
 # nombre del correo va en el título del seguimiento.
 CUSTOM_CARRIER_CODE = "custom"
@@ -160,8 +174,13 @@ def search_criteria(filters=(), *, page=1, page_size=50, sort_field="", sort_dir
 
 class MagentoProvider(StoreProvider):
     platform = "magento"
-    # Sin webhooks en la fase 1: todo entra por el repaso.
-    order_sync_events = ()
+    # Solo con nuestro módulo instalado; sin él todo entra por el repaso, así
+    # que los avisos no son obligatorios (``webhooks_required``).
+    order_sync_events = (MODULE_ORDER_EVENT,)
+    webhooks_required = False
+    webhook_secret_per_store = True
+    # El método de envío del módulo pregunta el precio en el checkout (rates.py).
+    quotes_at_checkout = True
     requires_shop_domain = True
     uses_authorization_code = False
     uses_install_url = False
@@ -463,16 +482,90 @@ class MagentoProvider(StoreProvider):
                 done.append("comment")
         return done
 
-    # --- Webhooks (fase 2) -------------------------------------------------
+    # --- Nuestro módulo (fase 2) ---------------------------------------------
 
     def register_webhooks(self, connection, url, events):
-        """Magento Open Source no tiene webhooks: nada que registrar (los
-        pedidos entran por el repaso)."""
+        """Magento no tiene webhooks que registrar por API: los avisos los manda
+        nuestro módulo, al que ``configure_admin_print`` le escribe la URL. Acá
+        solo se asegura el secreto con el que los va a firmar."""
+        self.ensure_webhook_secret(connection)
         return []
 
-    def verify_webhook(self, raw_body, headers):
-        return False
+    def configure_admin_print(self, connection, base_url):
+        """Le escribe a nuestro módulo (``POST /V1/rotulos/config``, su propia
+        API, con las credenciales de la Integración) a dónde avisar los
+        pedidos, pedir la impresión y la cotización, qué tienda es y el
+        secreto con el que firmar. Sin el módulo esa ruta no existe (404): no
+        es un error, la tienda funciona igual. Si la Integración no tiene el
+        permiso del módulo (401/403) tampoco queda vinculado."""
+        from django.urls import reverse
+
+        body = {
+            "storeId": str(connection.pk),
+            "secret": self.ensure_webhook_secret(connection),
+            "webhookUrl": f"{base_url}{reverse('magento-webhooks')}?store={connection.pk}",
+            "printLinkUrl": f"{base_url}{reverse('magento-print-link')}",
+            "ratesUrl": f"{base_url}{reverse('magento-rates')}",
+        }
+        try:
+            response = self.api_request(connection, "POST", MODULE_CONFIG_PATH, json_body=body)
+        except ProviderNotFoundError:
+            _remember_module(connection, False)
+            return False
+        except ProviderAuthError as exc:
+            logger.warning("La Integración de la tienda %s no tiene permiso para el módulo: %s", connection.pk, exc)
+            _remember_module(connection, False)
+            return False
+        except ProviderError as exc:
+            # Una falla pasajera no dice nada del módulo: se deja lo que había.
+            logger.warning("No se pudo configurar el módulo de la tienda %s: %s", connection.pk, exc)
+            return False
+        version = _json(response)
+        _remember_module(connection, True, version if isinstance(version, str) else "")
+        return True
+
+    def verify_webhook(self, raw_body, headers, connection=None):
+        secret = connection.webhook_secret if connection is not None else ""
+        signature = get_header(headers, MODULE_SIGNATURE_HEADER).strip()
+        if not secret or not signature:
+            return False
+        digest = hmac.new(secret.encode("utf-8"), raw_body or b"", hashlib.sha256).digest()
+        return hmac.compare_digest(signature.encode("utf-8"), base64.b64encode(digest))
 
     def parse_webhook(self, raw_body, headers):
-        raise ValueError("Magento todavía no manda avisos: los pedidos entran por el repaso periódico.")
+        """El aviso del módulo: ``{"event": "order_saved", "order_id",
+        "updated_at"}``. ``{"event": "ping"}`` (el botón "Probar conexión" del
+        módulo) se contesta sin encolar nada. En la cola queda solo el id: el
+        worker vuelve a pedir el pedido."""
+        try:
+            payload = json.loads((raw_body or b"").decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise ValueError("El aviso debe ser JSON válido.") from None
+        if not isinstance(payload, dict):
+            raise ValueError("El aviso debe ser un objeto.")
+        event = _text(payload.get("event"))
+        if event == "ping":
+            return None
+        if event != "order_saved":
+            raise ValueError(f"Aviso desconocido: {event or '(vacío)'}.")
+        order_id = _text(payload.get("order_id"))
+        if not order_id.isdigit():
+            raise ValueError("El aviso no trae el id del pedido.")
+        return WebhookMessage(
+            store_id="",
+            event_type=MODULE_ORDER_EVENT,
+            resource_id=order_id,
+            payload={"id": order_id, "updated_at": _text(payload.get("updated_at"))},
+        )
 
+
+def _remember_module(connection, linked, version=""):
+    """``preferences["print_plugin"]`` (la misma clave que el plugin de
+    WooCommerce: ``tiendas.html`` la muestra igual) y la versión del módulo.
+    Con un UPDATE y no ``save()``: el worker trae copias viejas de la tienda."""
+    preferences = dict(connection.preferences or {}, print_plugin=linked)
+    if version:
+        preferences["magento_module_version"] = version[:20]
+    if preferences != (connection.preferences or {}):
+        connection.preferences = preferences
+        type(connection).objects.filter(pk=connection.pk).update(preferences=preferences)

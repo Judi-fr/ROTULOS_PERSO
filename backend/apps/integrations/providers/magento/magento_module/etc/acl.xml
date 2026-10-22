@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<!--
+  Rotulos_Envio::config lets the app write this module's connection settings
+  through its REST API (etc/webapi.xml): tick it in the Integration you created
+  for the app. Rotulos_Envio::print gates the order grid mass actions.
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Acl/etc/acl.xsd">
+    <acl>
+        <resources>
+            <resource id="Magento_Backend::admin">
+                <resource id="Magento_Sales::sales">
+                    <resource id="Rotulos_Envio::envio" title="Shipping labels" sortOrder="90">
+                        <resource id="Rotulos_Envio::config" title="Shipping labels: connection settings" sortOrder="10"/>
+                        <resource id="Rotulos_Envio::print" title="Shipping labels: print and dispatch" sortOrder="20"/>
+                    </resource>
+                </resource>
+            </resource>
+        </resources>
+    </acl>
+</config>

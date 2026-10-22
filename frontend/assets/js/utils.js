@@ -422,6 +422,26 @@ async function attachCarrierSuggestions(input) {
   input.setAttribute("autocomplete", "off");
 }
 
+// --- Perfil personal (foto, nombre para mostrar, puesto) ----------------------
+// ``person`` es un usuario o un miembro del equipo: ``photo`` (la que subió),
+// ``picture`` (la de Google, solo al entrar con Google) o, sin ninguna, el
+// dibujo automático por email que usaba siempre la barra de arriba.
+const PERSON_AVATAR_FALLBACK = "https://api.dicebear.com/7.x/avataaars/svg?seed=";
+
+function personAvatarUrl(person) {
+  const p = person || {};
+  return p.photo || p.picture || `${PERSON_AVATAR_FALLBACK}${encodeURIComponent(p.email || "")}`;
+}
+
+function personAvatar(person, className = "person-avatar") {
+  const img = document.createElement("img");
+  img.className = className;
+  img.alt = "";
+  img.loading = "lazy";
+  img.src = personAvatarUrl(person);
+  return img;
+}
+
 // --- Comercios con equipo (equipo.html, perfiles_equipo.html) ---------------
 // Los accesos que el dueño reparte vienen del backend (GET /team/ → accesses,
 // {clave: etiqueta}); acá solo se dibujan como tildes y se leen.

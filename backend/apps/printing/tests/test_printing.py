@@ -1,6 +1,7 @@
 """Cola de impresión (T#322-T#328): agentes, impresoras, trabajos y el
 protocolo del agente."""
 
+import os
 import shutil
 import tempfile
 from datetime import timedelta
@@ -121,6 +122,21 @@ class AgentAndPrinterTests(PrintingTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("rotulos_print_agent.py", response["Content-Disposition"])
         self.assertIn(b"def main", b"".join(response.streaming_content))
+
+    def test_windows_download_is_the_exe_when_the_server_has_it(self):
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        missing = os.path.join(folder, "RotulosAgente.exe")
+        with override_settings(PRINT_AGENT_WINDOWS_EXE=missing):
+            response = self.client.get("/api/v1/printing/agent/download/?platform=windows", **self.headers)
+            self.assertEqual(response.status_code, 404)
+            self.assertIn("Python", response.data["detail"])
+            with open(missing, "wb") as exe:
+                exe.write(b"MZ-de-prueba")
+            response = self.client.get("/api/v1/printing/agent/download/?platform=windows", **self.headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('filename="RotulosAgente.exe"', response["Content-Disposition"])
+        self.assertEqual(b"".join(response.streaming_content), b"MZ-de-prueba")
 
 
 class JobFlowTests(PrintingTestCase):

@@ -37,7 +37,7 @@ class DashboardSectionTests(APITestCase):
         self.assertEqual(data["business"]["url"], "organizacion.html")
         self.assertEqual(
             [link["url"] for link in data["business"]["links"]],
-            ["equipo.html", "perfiles_equipo.html", "actividad_equipo.html"],
+            ["equipo.html", "equipo.html#perfiles", "equipo.html#actividad"],
         )
 
     def test_employee_sees_only_what_their_accesses_allow(self):
@@ -47,7 +47,7 @@ class DashboardSectionTests(APITestCase):
         self.assertEqual([link["url"] for link in data["orders"]["links"]], ["estado_pedidos.html"])
         self.assertEqual([link["url"] for link in data["print"]["links"]], ["documentos.html", "cola_impresion.html"])
         self.assertEqual(
-            [link["url"] for link in data["business"]["links"]], ["organizacion.html#perfil", "organizacion.html#comercio"]
+            [link["url"] for link in data["business"]["links"]], ["organizacion.html#perfil", "organizacion.html#comercio", "mi_actividad.html"]
         )
 
     def test_carriers_only_opens_stores_section_on_rates(self):

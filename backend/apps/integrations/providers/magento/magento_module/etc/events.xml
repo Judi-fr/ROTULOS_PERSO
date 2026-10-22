@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- After the order is committed, so the app reading it back sees the change. -->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+    <event name="sales_order_save_commit_after">
+        <observer name="rotulos_envio_order_saved" instance="Rotulos\Envio\Observer\OrderSaved"/>
+    </event>
+</config>

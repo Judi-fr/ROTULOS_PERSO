@@ -86,9 +86,52 @@ stages:
               summaryFileLocation: backend/coverage.xml
             displayName: Publicar cobertura
 
+  # El agente de impresión como .exe para Windows, así el comerciante no
+  # necesita instalar Python. PyInstaller no compila para otro sistema: por eso
+  # corre en una máquina Windows. Se publica como artefacto y la imagen de la
+  # API lo lleva adentro (PRINT_AGENT_WINDOWS_EXE) para servirlo desde
+  # "Impresoras".
+  - stage: AgentWindows
+    displayName: Agente para Windows
+    dependsOn: []
+    jobs:
+      - job: exe
+        displayName: PyInstaller
+        pool:
+          vmImage: windows-latest
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              # 3.12: la última que PyInstaller 6.11 da por probada.
+              versionSpec: "3.12"
+            displayName: Python 3.12
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install pyinstaller==6.11.1
+            displayName: Instalar PyInstaller
+
+          - script: >-
+              pyinstaller --onefile --console --clean --noconfirm
+              --name RotulosAgente
+              --distpath $(Build.ArtifactStagingDirectory)
+              rotulos_print_agent.py
+            workingDirectory: backend/apps/printing/agent
+            displayName: Armar RotulosAgente.exe
+
+          # Que el .exe arranque de verdad (y no solo que se haya armado).
+          - script: $(Build.ArtifactStagingDirectory)\RotulosAgente.exe --help
+            displayName: Probar el .exe
+
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: $(Build.ArtifactStagingDirectory)/RotulosAgente.exe
+              artifact: rotulos-agent-windows
+            displayName: Publicar el .exe como artefacto
+
   - stage: Image
     displayName: Imagen de la API
-    dependsOn: Test
+    dependsOn: [Test, AgentWindows]
     # En un PR alcanza con que pasen los tests; la imagen se arma para lo
     # que ya entró a una rama.
     condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
@@ -96,6 +139,12 @@ stages:
       - job: image
         displayName: Docker
         steps:
+          - task: DownloadPipelineArtifact@2
+            inputs:
+              artifact: rotulos-agent-windows
+              path: backend/apps/printing/agent/dist
+            displayName: Traer el agente para Windows
+
           - script: |
               set -euo pipefail
               docker build -t rotulos-api:$(Build.SourceVersion) -t rotulos-api:latest backend

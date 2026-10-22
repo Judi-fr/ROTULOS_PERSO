@@ -4,6 +4,7 @@ permiso que generar el lote). Todo es propio: cada consulta filtra por
 
 from pathlib import Path
 
+from django.conf import settings
 from django.http import FileResponse
 from django.http import Http404
 from django.shortcuts import get_object_or_404
@@ -175,12 +176,24 @@ class PrintJobViewSet(
 
 class AgentDownloadView(APIView):
     """``GET /printing/agent/download/`` — el programa del agente (un solo
-    archivo de Python 3, sin dependencias)."""
+    archivo de Python 3, sin dependencias). ``?platform=windows``: el mismo
+    programa empaquetado como .exe (``PRINT_AGENT_WINDOWS_EXE``), que no
+    necesita Python; 404 si este servidor no lo tiene."""
 
     def get_permissions(self):
         return [IsAuthenticated(), HasRolePermission(MANAGE_PERMISSION)]
 
     def get(self, request):
+        if request.query_params.get("platform") == "windows":
+            exe = Path(settings.PRINT_AGENT_WINDOWS_EXE)
+            if not exe.is_file():
+                return Response(
+                    {"detail": "El programa para Windows todavía no está en este servidor: usá el de Python."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            return FileResponse(
+                exe.open("rb"), as_attachment=True, filename="RotulosAgente.exe", content_type="application/vnd.microsoft.portable-executable"
+            )
         return FileResponse(
             AGENT_SCRIPT.open("rb"),
             as_attachment=True,

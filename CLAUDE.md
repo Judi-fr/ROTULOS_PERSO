@@ -335,6 +335,20 @@ exact midnight. It reads `.get()`, so it takes query params or a JSON body dict 
   pedido, direcciones…, each gated by `sessionHasPermission`; **rename a button → rename it there too**).
   Accent/case-insensitive, all words must match; arrows, Enter opens, Esc clears, "/" focuses it. `profile_views.ProfileView` is the self-service `me/` GET/PATCH (screen: the top half of `organizacion.html`,
   "Mi cuenta").
+- **Own activity** (`GET /api/v1/team/activity/mine/`, `MyActivityView`, `users.me.view`, 2026-10-22): any member
+  sees what THEY did in their current business (same rules as the team's Activity, `actor` forced to them); page
+  `mi_actividad.html` + `assets/js/mi_actividad.js`, linked from Mi cuenta (topbar, and the dashboard card for whoever
+  doesn't manage the team). The admin sidebar's "Estado del sistema" gets a red/amber dot when `/health/system/` says
+  error/warning (`admin_sidebar.js`, at most once a minute per tab).
+- **Personal profile (`PersonalProfile`, `personal_profiles.py`, 2026-10-22)**: what each PERSON customizes about
+  themself, not the business — `preferred_name` (shown as `display_name`, else first+last name, else email),
+  `phone`, `job_title` and an own `photo` (file or data URL, 2 MB, cropped to a 256 px square JPEG without EXIF,
+  random name under `media/accounts/avatars/`, public in Caddy like the logos; `null` removes it and the old file
+  is deleted). Optional row, created on the first save; edited through `me/` (`ProfileSerializer`). `user_payload`
+  carries `display_name` and `photo` (which wins over Google's `picture`); the team's `members` and each
+  `activity/` row's `actor` carry `public_fields` (name, job title, phone, photo). Frontend: `personAvatar`/
+  `personAvatarUrl` in `utils.js` (photo → Google → dicebear), the topbar, `equipo.js`, `actividad_equipo.js`.
+  Tests: `apps/accounts/tests/test_personal_profile.py`.
 
 ### Roles & permissions (`apps/accounts`)
 
@@ -504,7 +518,7 @@ unique); two businesses never merge.
   invite, edit accesses/stores, transfer; `equipo.js`, which also drives the tabs, `#miembros|#perfiles|#actividad`),
   Perfiles (`perfiles_equipo.js`) and Actividad (`actividad_equipo.js`), each script in its own IIFE because they
   share the page; a profile change fires `team:profiles-changed` and the Miembros tab reloads. `perfiles_equipo.html`/
-  `actividad_equipo.html` only redirect to their tab (the dashboard still links them).
+  `actividad_equipo.html` only redirect to their tab (old links; the dashboard points straight to `equipo.html#perfiles`/`#actividad`).
   `invitaciones.html` (the invited person; the dashboard shows a notice when there is one),
   admin `comercio_usuario.html` (linked from each row of `gestionuser.html`). Shared
   `renderAccessCheckboxes`/`readAccessCheckboxes`/`renderStoreChoice`/`readStoreChoice` in `utils.js`, styles in
@@ -811,8 +825,15 @@ printer in the merchant's network, so a small **agent** runs on one of their PCs
 - The agent prints "network" printers by opening a socket to host:port (works the same on any OS) and
   "system" ones with `lp` (`-o raw` for ZPL) on Linux/Mac, `copy /b` to the share for ZPL on Windows and
   SumatraPDF for PDF on Windows; `ROTULOS_PRINT_COMMAND` (`{file}`, `{printer}`) overrides all of it.
-  **Windows is A CONFIRMAR** (written, not tried on a real Windows PC), and there is no installer yet (a
-  merchant needs Python; packaging it as an .exe is the next step).
+  **Windows is A CONFIRMAR** (written, not tried on a real Windows PC). **The .exe (2026-10-22)**: the
+  backend pipeline's `AgentWindows` stage builds `RotulosAgente.exe` with PyInstaller on `windows-latest` and the
+  `Image` stage drops it in `apps/printing/agent/dist/` before `docker build`, so the API serves it at
+  `agent/download/?platform=windows` (`PRINT_AGENT_WINDOWS_EXE`; 404 with a "use the Python one" message when the
+  server doesn't have it, e.g. locally). For double click the agent (1.1.0) reads `rotulos_agent.json`
+  (`{server, token}`, downloaded from `impresoras.html` right when the token is shown) next to the program or in
+  the user config folder, asks and saves it when missing, offers to start with Windows (`--install-startup` /
+  `--remove-startup`: a `.bat` in the Startup folder) and waits for Enter before closing on an error.
+  Packaging was tried on Linux only (the frozen binary reads the json beside it).
 - Frontend: `impresoras.html` + `assets/js/impresoras.js` (agents with the one-time token and the command to
   run, printers CRUD), `cola_impresion.html` + `assets/js/cola_impresion.js` (menu `print_queue`; refreshes
   every 5 s while something is pending/printing, 20 s otherwise; warns when no agent is online), and in
@@ -942,7 +963,7 @@ Empretienda (no API: its exported sales spreadsheet is imported).
   `MAX_ORDERS_PER_DISPATCH` (30) per action. The store-facing texts say "Despachar con tu transportista"
   (Woo plugin 1.4.0, Shopify `rotulos-perso-8`, the Tiendanube link renamed in the Partner Portal).
   Cambiar estado / Exportar were left out on purpose: every store already has them and the store owns the
-  status. Not available in Magento/VTEX (no admin module of ours yet) nor Empretienda (no API). Per platform:
+  status. Magento has them through our module (phase 2, below); not available in VTEX (no admin module of ours) nor Empretienda (no API). Per platform:
   WooCommerce plugin 1.4.0 (three bulk actions, dispatch with a 90 s timeout, failures shown as an admin
   notice); Tiendanube = one Partner Portal link per action, each to its page (`imprimir_tiendanube.html`,
   `planilla_tiendanube.html`, `despachar_tiendanube.html`, same JS with `<body data-action>`; the user
@@ -1149,8 +1170,21 @@ Empretienda (no API: its exported sales spreadsheet is imported).
     the missing track is added (`shipment/track`) and the shipment email resent. Magento has no field
     for a custom carrier's tracking URL: it goes in a buyer-visible order comment, never repeated.
     **We never invoice** (in Magento invoicing captures the payment). "Delivered" doesn't exist there.
-  - Phase 2 (not done): our own Magento module for instant order notifications, a "print labels" mass
-    action and checkout quotes (a Magento carrier calling our rates) — like the WooCommerce plugin.
+  - **Phase 2 — our module "Rotulos_Envio" (`magento_module/`, `admin_module.py`, 2026-10-22, written WITHOUT a
+    store, A CONFIRMAR)**, like the WooCommerce plugin and optional (without it everything still works by
+    reconciliation): an observer on `sales_order_save_commit_after` POSTs `{event: order_saved, order_id}` to the
+    generic `magento/webhooks/?store=<id>` (`order_sync_events = ("rotulos/order_saved",)`,
+    `webhook_secret_per_store`; only the id is queued, the worker refetches); three mass actions in Sales → Orders
+    (labels / manifest / dispatch → `magento/print-link/` → redirect to `magento/print/<token>`); a carrier
+    (`carriers/rotulos`) that quotes at checkout through `magento/rates/` (Woo's `rates.quote`, reused as is; 5 s
+    timeout, answers cached 5 min). Everything is signed like the Woo plugin — the verification moved to
+    `store_print.verify_signed_request` (Woo's `verify_plugin_request` now wraps it). Nothing to configure by hand:
+    `configure_admin_print` writes store/secret/URLs through the module's own REST route `POST /V1/rotulos/config`
+    (ACL `Rotulos_Envio::config`, which the merchant ticks in their Integration and reauthorizes); 404 = module not
+    installed and 401/403 = permission missing, both leave `print_plugin` false without touching the store.
+    `webhooks_required = False` (new `StoreProvider` flag): without `INTEGRATIONS_PUBLIC_BASE_URL` a Magento store
+    is not marked with the missing-URL error. Zip at `GET magento/module/` (unpacks as `app/code/Rotulos/Envio`),
+    shown on each Magento store in `tiendas.html` (`renderMagentoModule`). PHP checked with `php -l` only.
 - **Empretienda (`providers/empretienda/`) — no API at all** (none public or for partners as of
   2026-10; DUX, which integrates it, also imports by hand). Its only output is the spreadsheet from
   "Gestión de ventas → Listado de ventas → Exportar". So `EmpretiendaProvider` talks to nobody: it
@@ -1323,6 +1357,7 @@ implements the remote calls (`quote`, `submit` → `CreatedShipment`, `label`, `
 best-effort, then `apply_shipping` → order PREPARING with `carrier`/tracking/URL), `apply_events`
 (forward-only, returns/cancellation override), `cancel_shipment`, `due_shipments`. Andreani predates it:
 `andreani/provider.py` wraps its existing `shipments.py` and keeps its own routes.
+- **Packages per order** (2026-10-22): `shipments/` and `shipments/quote/` also take `packages: {order_id: n}` (1-20) over the shared `package_count`; the Despachar dialog has one "Bultos" box per order (starting at the order's `package_count`) plus "Bultos (para todos)".
 - **Common API** (`views.py`; `orders.dispatch`, account/checkout/push writes `carriers.manage`, reads of the list and shipments `orders.view`): `GET carriers/` (catalog + the user's account state per
   carrier: `ready`, `missing`, `quote_missing`), `GET/PUT accounts/<carrier>/` (+ `carrier_info`),
   `POST accounts/<carrier>/test/`, `GET branches/<carrier>/?cp=&state=`, `GET/POST shipments/` (POST
@@ -1382,6 +1417,12 @@ best-effort, then `apply_shipping` → order PREPARING with `carrier`/tracking/U
   `carrier`; `checkout_views.py`, whose validation/saving Andreani's old `andreani/checkout/` view now
   reuses). Page `checkout_transportistas.html` (one card per store, one collapsible block per carrier
   with an account); `checkout_andreani.html` only redirects there.
+- **Trying Correo without credentials** (2026-10-22): `python manage.py fake_correo_server` (launch config
+  `fake-correo`) serves the tests' `FakeCorreo` on `http://127.0.0.1:8098` — both APIs under `/paqar/v1` and
+  `/micorreo/v1`, real PDF labels saying "PRUEBA", and each tracking query advances one step (imposición →
+  en tránsito → entregado). Point `CORREO_ARGENTINO_PAQAR_BASE_QA`/`CORREO_ARGENTINO_MICORREO_BASE_QA` there in
+  `.env`, restart the backend, and save the account in QA with agreement `18017`, API key `clave-paqar`, service
+  `CP`, MiCorreo `api-user`/`api-pass`, customer `0090000025`. Local only.
 - Not done yet: real-account checks of every "A CONFIRMAR".
 
 #### Andreani

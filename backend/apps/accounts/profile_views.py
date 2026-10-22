@@ -6,7 +6,7 @@ nombre y apellido; el email (identidad/username) y los campos sensibles
 quedan fuera de su alcance (ver ``ProfileSerializer``).
 
     GET   /api/v1/auth/me/   -> perfil del usuario autenticado
-    PATCH /api/v1/auth/me/   -> edita first_name / last_name
+    PATCH /api/v1/auth/me/   -> edita nombre y apellido y el perfil personal (nombre para mostrar, teléfono, puesto, foto)
 """
 
 from rest_framework.generics import RetrieveUpdateAPIView
@@ -25,7 +25,7 @@ class ProfileView(RetrieveUpdateAPIView):
     defecto del proyecto).
 
     Solo se habilitan GET y PATCH: no se expone PUT para no invitar a un
-    reemplazo total del recurso cuando lo único editable es el nombre.
+    reemplazo total del recurso.
     """
 
     serializer_class = ProfileSerializer

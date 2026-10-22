@@ -265,6 +265,9 @@ function renderStoreCard(store) {
   if (store.platform === "woocommerce" && store.status === "active") {
     card.appendChild(renderPrintPlugin(store));
   }
+  if (store.platform === "magento" && store.status === "active") {
+    card.appendChild(renderMagentoModule(store));
+  }
   if (store.supports_rates_push && store.status === "active") {
     card.appendChild(renderRatesPush(store));
   }

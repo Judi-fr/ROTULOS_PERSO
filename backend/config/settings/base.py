@@ -660,6 +660,12 @@ LOGGING = {
 PRINT_JOB_CONFIRM_TIMEOUT_SECONDS = env.int("PRINT_JOB_CONFIRM_TIMEOUT_SECONDS", default=300)
 # Un agente cuenta como "en línea" si consultó en este lapso.
 PRINT_AGENT_ONLINE_SECONDS = env.int("PRINT_AGENT_ONLINE_SECONDS", default=60)
+# El agente empaquetado para Windows (un .exe hecho con PyInstaller en el
+# pipeline de CI, backend/azure-pipelines.yml, que lo deja acá antes de armar la
+# imagen). Sin el archivo, la descarga de Windows contesta 404 y queda el .py.
+PRINT_AGENT_WINDOWS_EXE = env.str(
+    "PRINT_AGENT_WINDOWS_EXE", default=str(BASE_DIR / "apps" / "printing" / "agent" / "dist" / "RotulosAgente.exe")
+)
 
 # ---------------------------------------------------------------------------
 # Monitoreo y alertas (apps.monitoring)

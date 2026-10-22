@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<!-- Sales > Orders: three more mass actions, handled by
+     Controller/Adminhtml/Order/MassAction.php. -->
+<listing xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Ui:etc/ui_configuration.xsd">
+    <listingToolbar name="listing_top">
+        <massaction name="listing_massaction">
+            <action name="rotulos_labels">
+                <settings>
+                    <type>rotulos_labels</type>
+                    <label translate="true">Print shipping labels</label>
+                    <url path="rotulos/order/massAction">
+                        <param name="type">labels</param>
+                    </url>
+                </settings>
+            </action>
+            <action name="rotulos_manifest">
+                <settings>
+                    <type>rotulos_manifest</type>
+                    <label translate="true">Pickup manifest</label>
+                    <url path="rotulos/order/massAction">
+                        <param name="type">manifest</param>
+                    </url>
+                </settings>
+            </action>
+            <action name="rotulos_dispatch">
+                <settings>
+                    <type>rotulos_dispatch</type>
+                    <label translate="true">Dispatch with your carrier</label>
+                    <url path="rotulos/order/massAction">
+                        <param name="type">dispatch</param>
+                    </url>
+                    <confirm>
+                        <title translate="true">Dispatch with your carrier</title>
+                        <message translate="true">The app creates the shipments with your carrier and downloads their labels. Continue?</message>
+                    </confirm>
+                </settings>
+            </action>
+        </massaction>
+    </listingToolbar>
+</listing>

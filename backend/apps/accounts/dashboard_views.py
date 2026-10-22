@@ -232,7 +232,7 @@ class DashboardView(APIView):
                 {
                     "key": "team_activity",
                     "label": "Actividad del equipo",
-                    "url": "actividad_equipo.html",
+                    "url": "equipo.html#actividad",
                     "enabled": True,
                 }
             )

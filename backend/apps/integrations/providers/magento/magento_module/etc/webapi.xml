@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<!-- POST /rest/V1/rotulos/config: the app writes where to send orders, print
+     requests and rate requests, which store this is and the signing secret. -->
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Webapi:etc/webapi.xsd">
+    <route url="/V1/rotulos/config" method="POST">
+        <service class="Rotulos\Envio\Api\ConfigInterface" method="save"/>
+        <resources>
+            <resource ref="Rotulos_Envio::config"/>
+        </resources>
+    </route>
+</routes>
