@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>Comercios dados de baja</title>
+    <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
+    <link rel="stylesheet" href="assets/css/ui.css" />
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="assets/css/gestionuser.css" />
+    <link rel="stylesheet" href="assets/css/comercios_baja.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- SIDEBAR: renderizado por assets/js/admin_sidebar.js -->
+      <div id="adminSidebar" data-active="closed_teams"></div>
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1>Comercios dados de baja</h1>
+            <p>Sus datos siguen guardados. Reactivar le devuelve el comercio a su dueño.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn btn-outline" id="logoutAdminBtn" type="button">Cerrar sesión</button>
+          </div>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <section class="roles-card">
+          <div class="roles-card-title closed-head">
+            <span>Comercios</span>
+            <input id="closedSearch" type="search" placeholder="Buscar por nombre o mail del dueño" />
+          </div>
+          <div id="closedList" class="closed-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/admin_common.js"></script>
+    <script src="assets/js/admin_sidebar.js"></script>
+    <script src="assets/js/comercios_baja.js"></script>
+  </body>
+</html>

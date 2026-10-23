@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.core.management import CommandError, call_command
 from django.test import TestCase, override_settings
 
+from apps.accounts.team_models import Team
 from apps.integrations.models import ShippingRate, StoreConnection
 from apps.orders.management.commands.seed_demo import DEMO_EMAIL, MANUAL_ORDERS, STORE_ORDERS
 from apps.orders.models import Address, Order
@@ -19,8 +20,12 @@ class SeedDemoTests(TestCase):
     def test_crea_cuenta_tienda_tarifas_y_pedidos_en_todos_los_estados(self):
         self._run()
 
-        user = get_user_model().objects.get(username=DEMO_EMAIL)
-        self.assertTrue(user.groups.filter(name="subscriber").exists())
+        person = get_user_model().objects.get(username=DEMO_EMAIL)
+        self.assertTrue(person.groups.filter(name="subscriber").exists())
+        # Todo es del comercio demo: cuelga de su usuario de datos.
+        team = Team.objects.get(owner=person, closed_at=None)
+        user = team.data_user
+        self.assertNotEqual(user, person)
         store = StoreConnection.objects.get(owner=user)
         self.assertEqual(store.platform, StoreConnection.Platform.EMPRETIENDA)
         self.assertTrue(ShippingRate.objects.filter(connection=store).exists())

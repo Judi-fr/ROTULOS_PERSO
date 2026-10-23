@@ -365,4 +365,4 @@ def account_settings_for(user):
 
 
 # Comercios con equipo (dueño + empleados): ver team_models.py y teams.py.
-from .team_models import Team, TeamInvitation, TeamMember, TeamProfile  # noqa: E402,F401
+from .team_models import Team, TeamInvitation, TeamJoinRequest, TeamMember, TeamProfile  # noqa: E402,F401

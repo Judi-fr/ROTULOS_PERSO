@@ -116,6 +116,8 @@ def sync_all(now=None):
 
 
 def _mail_new(now):
+    from apps.accounts.teams import business_display_name, mail_person
+
     if not settings.NOTICES_MAIL_ENABLED:
         return
     retry = timedelta(seconds=settings.NOTICES_MAIL_RETRY_SECONDS)
@@ -130,27 +132,31 @@ def _mail_new(now):
         by_owner.setdefault(notice.owner, []).append(notice)
     for owner, items in by_owner.items():
         ids = [notice.pk for notice in items]
-        if not owner.email or not owner.is_active:
+        # Los avisos cuelgan del usuario de datos del comercio: el mail va a
+        # la persona dueña.
+        person = mail_person(owner)
+        if person is None or not person.email:
             MerchantNotice.objects.filter(pk__in=ids).update(mail_attempted_at=now)
             continue
         try:
-            _send(owner, items)
+            _send(person, items, business_display_name(owner))
         except Exception:  # noqa: BLE001 - un SMTP caído no frena el monitoreo
-            logger.exception("No se pudo mandar el aviso a %s", owner.email)
+            logger.exception("No se pudo mandar el aviso a %s", person.email)
             MerchantNotice.objects.filter(pk__in=ids).update(mail_attempted_at=now)
             continue
         MerchantNotice.objects.filter(pk__in=ids).update(mailed_at=now, mail_attempted_at=now)
 
 
-def _send(owner, items):
+def _send(person, items, business):
     subject = items[0].title if len(items) == 1 else f"{len(items)} cosas para revisar en tu comercio"
-    lines = ["Hay algo para revisar en tu comercio:", ""]
+    # Una persona puede ser dueña de varios comercios: el mail dice cuál.
+    lines = [f"Hay algo para revisar en tu comercio «{business}»:", ""]
     for notice in items:
         lines.append(f"- {notice.title}")
         if notice.detail:
             lines.append(f"  {notice.detail[:300]}")
     lines += ["", f"Ver los avisos: {settings.FRONTEND_URL.rstrip('/')}/notificaciones.html"]
-    send_mail(f"{settings.MONITORING_SUBJECT_PREFIX} {subject}", "\n".join(lines), settings.DEFAULT_FROM_EMAIL, [owner.email])
+    send_mail(f"{settings.MONITORING_SUBJECT_PREFIX} {subject}", "\n".join(lines), settings.DEFAULT_FROM_EMAIL, [person.email])
 
 
 def visible_notices(user):

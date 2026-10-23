@@ -10,6 +10,7 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from ..models import Address, Order
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 User = get_user_model()
 
@@ -41,6 +42,7 @@ class OrdersSelfServiceTests(APITestCase):
             city="Springfield",
             is_default=True,
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     # --- Direcciones -------------------------------------------------
 
@@ -205,6 +207,7 @@ class AdminOrdersTests(APITestCase):
             user=self.user, street="Calle 1", city="CABA", is_default=True
         )
         self.order = Order.objects.create(user=self.user, address=self.address)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_no_admin_recibe_403(self):
         response = self.client.get("/api/v1/admin/orders/", **auth_headers_for(self.user))
@@ -294,6 +297,7 @@ class OrderImportTests(APITestCase):
             password="Clave123!",
         )
         self.user.groups.add(merchant_group)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _upload_csv(self, csv_text):
         from django.core.files.uploadedfile import SimpleUploadedFile

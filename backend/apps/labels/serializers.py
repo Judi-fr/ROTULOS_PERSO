@@ -24,6 +24,7 @@ from PIL import Image, UnidentifiedImageError
 from rest_framework import serializers
 
 from apps.accounts.permissions_map import get_effective_role, user_has_permission
+from apps.accounts.teams import contact_email as owner_contact_email
 from apps.orders.models import Order
 from apps.accounts.teams import data_owner, order_scope_q
 
@@ -415,7 +416,9 @@ class ImageOrDataUrlField(serializers.ImageField):
 
 
 class LabelTemplateSerializer(serializers.ModelSerializer):
-    owner_email = serializers.EmailField(source="owner.email", read_only=True, default=None)
+    # El mail de la persona dueña del comercio (los datos cuelgan de su
+    # usuario de datos, que no es una persona).
+    owner_email = serializers.SerializerMethodField()
     preview = ImageOrDataUrlField(
         required=False, allow_null=True, max_bytes=300 * 1024, field_label="Miniatura"
     )
@@ -456,6 +459,9 @@ class LabelTemplateSerializer(serializers.ModelSerializer):
             "width_cm": {"min_value": Decimal("5"), "max_value": Decimal("30")},
             "height_cm": {"min_value": Decimal("5"), "max_value": Decimal("40")},
         }
+
+    def get_owner_email(self, obj):
+        return owner_contact_email(getattr(obj, "owner", None)) or None
 
     def validate_design(self, value):
         return validate_design(value)
@@ -578,7 +584,9 @@ class AdminLabelSerializer(serializers.ModelSerializer):
     """Lectura de rótulos de TODOS los usuarios (panel admin, ``labels.view_all``).
     Solo lectura, igual criterio que ``AdminOrderSerializer``."""
 
-    user_email = serializers.EmailField(source="user.email", read_only=True)
+    # El mail de la persona dueña del comercio (los datos cuelgan de su
+    # usuario de datos, que no es una persona).
+    user_email = serializers.SerializerMethodField()
     template_name = serializers.CharField(source="template.name", read_only=True, default=None)
 
     class Meta:
@@ -601,6 +609,9 @@ class AdminLabelSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = fields
+
+    def get_user_email(self, obj):
+        return owner_contact_email(getattr(obj, "user", None)) or None
 
 # ---------------------------------------------------------------------------
 # ElementLayout/LayoutElement/LayoutVariable: plantillas por elementos +

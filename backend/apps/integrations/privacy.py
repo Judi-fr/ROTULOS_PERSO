@@ -132,9 +132,16 @@ def build_data_report(connection, payload):
 
 
 def send_data_report(connection, report):
-    """Envía el reporte al dueño de la tienda. ``False`` si la tienda no
-    tiene una cuenta con email vinculada (no hay a quién mandarlo)."""
+    """Envía el reporte a la persona dueña del comercio de la tienda (la
+    tienda cuelga del usuario de datos del comercio, que no recibe mails),
+    aunque el comercio esté dado de baja: el pedido es por ley. ``False`` si
+    no hay a quién mandarlo."""
+    from apps.accounts.teams import team_of_data_user
+
     owner = connection.owner
+    team = team_of_data_user(owner)
+    if team is not None:
+        owner = team.owner
     if owner is None or not owner.email:
         return False
 

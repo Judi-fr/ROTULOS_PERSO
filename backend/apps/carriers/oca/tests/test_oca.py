@@ -15,6 +15,7 @@ from apps.integrations.tests.helpers import auth_headers_for, make_user
 from apps.orders.models import Address, Order
 
 from .fake_oca import PASSWORD, USER, OcaTestMixin
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 API = "/api/v1/carriers"
 
@@ -52,6 +53,7 @@ class AccountTests(OcaTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_cargar_la_cuenta_y_probar_trae_las_operativas(self):
         response = self.client.put(
@@ -105,6 +107,7 @@ class ShipmentTests(OcaTestMixin, APITestCase):
         self.user = make_user("comercio@example.com")
         self.account = self.make_oca_account(self.user)
         self.order = make_order(self.user)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def create(self, contract="64665", **extra):
         payload = {"carrier": "oca", "order_ids": [self.order.pk], "contract": contract, **extra}

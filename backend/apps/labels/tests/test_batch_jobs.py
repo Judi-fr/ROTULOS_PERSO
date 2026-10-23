@@ -21,6 +21,7 @@ from apps.printing.models import Printer, PrintJob
 from apps.printing.services import create_agent
 
 from ..batch_jobs import run_pending_batches
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 User = get_user_model()
 
@@ -38,6 +39,7 @@ class BatchJobTests(APITestCase):
         self.headers = {"HTTP_AUTHORIZATION": f"Bearer {RefreshToken.for_user(self.user).access_token}"}
         address = Address.objects.create(user=self.user, recipient_name="María", street="Corrientes", number="1", city="CABA")
         self.orders = [Order.objects.create(user=self.user, address=address) for _ in range(3)]
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def batch(self, orders=None, **extra):
         ids = [order.pk for order in (orders or self.orders)]

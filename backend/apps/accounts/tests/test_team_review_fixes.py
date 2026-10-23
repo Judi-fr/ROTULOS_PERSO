@@ -17,7 +17,7 @@ from apps.labels.models import LabelTemplate
 from apps.orders.models import Address, Order
 
 from .test_store_scope import DESIGN, store
-from .test_team_permissions import add_employee, bearer, make_user
+from .test_team_permissions import add_employee, bearer, make_owner, make_user
 
 
 def csv_file(rows):
@@ -119,7 +119,7 @@ class ReviewFixesTests(APITestCase):
     def test_an_old_designer_group_still_imports_as_a_merchant(self):
         # "designer" ya no es un rol (migración 0030): un Group viejo con ese
         # nombre cuenta como comerciante, que importa.
-        designer = make_user("designer@example.com", group="designer")
+        designer = make_owner("designer@example.com", group="designer")
         response = self.client.post("/api/v1/integrations/empretienda/import/preview/", {}, format="multipart", **bearer(designer))
         self.assertNotEqual(response.status_code, 403)
 
@@ -131,11 +131,13 @@ class PermanentDeleteTests(APITestCase):
         self.admin.save()
 
     def test_permanent_delete_of_a_solo_user_works(self):
-        user = make_user("solo@example.com")
-        teams.team_for(user)
+        user = make_owner("solo@example.com")
+        data_user = teams.data_owner(user)
         response = self.client.delete(f"/api/v1/users/{user.id}/?permanent=true", **bearer(self.admin))
         self.assertEqual(response.status_code, 204, getattr(response, "data", None))
         self.assertFalse(type(user).objects.filter(pk=user.pk).exists())
+        # Su comercio sin empleados se va con él, con su usuario de datos.
+        self.assertFalse(type(user).objects.filter(pk=data_user.pk).exists())
 
     def test_permanent_delete_refuses_an_owner_with_employees(self):
         owner = make_user("owner@example.com")

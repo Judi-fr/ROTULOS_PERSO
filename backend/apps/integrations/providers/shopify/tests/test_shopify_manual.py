@@ -18,6 +18,7 @@ from apps.integrations.providers import get_provider
 from apps.integrations.tokens import access_token_for
 from .test_shopify_connection import SECRET, SHOP, SHOPIFY_SETTINGS, WEBHOOKS_URL, ShopifyTestMixin
 from apps.integrations.tests.helpers import auth_headers_for, make_user
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 MANUAL_URL = "/api/v1/integrations/shopify/connect-manual/"
 OWN_ID = "id-de-la-app-propia"
@@ -29,6 +30,7 @@ class ShopifyManualConnectTests(ShopifyTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _connect(self, **overrides):
         body = {"shop": "mitienda", "client_id": OWN_ID, "client_secret": OWN_SECRET}

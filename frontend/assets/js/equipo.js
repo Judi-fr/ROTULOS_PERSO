@@ -1,5 +1,5 @@
 // Mi equipo (equipo.html, pestaña Miembros; GET/PATCH /team/ y sus subrutas): miembros,
-// invitaciones y los accesos de cada uno. El backend decide y valida todo
+// invitaciones, el código para sumarse y sus pedidos, y los accesos de cada uno. El backend decide y valida todo
 // (no se puede dar lo que uno no tiene, ni tocar al dueño ni a uno mismo);
 // acá se arma la pantalla y se muestra cómo terminó cada acción.
 
@@ -9,6 +9,7 @@ const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
 let state = null; // la última respuesta de GET /team/
 let editing = null; // el miembro abierto en el diálogo
+let approving = null; // o el pedido para sumarse que se está aprobando
 let inviteEditor = null;
 let memberEditor = null;
 
@@ -169,6 +170,55 @@ function renderInvitations() {
   });
 }
 
+// Pedidos para sumarse con el código: aprobar abre el mismo diálogo que
+// "Cambiar accesos" (perfil + tiendas); rechazar pregunta antes.
+function renderJoinRequests() {
+  const requests = state.join_requests || [];
+  document.getElementById("joinRequestSection").hidden = !requests.length;
+  const list = document.getElementById("joinRequestList");
+  list.replaceChildren();
+  requests.forEach((request) => {
+    const item = document.createElement("li");
+    item.className = "team-item";
+    const info = document.createElement("div");
+    info.className = "team-person-info";
+    const name = document.createElement("strong");
+    const shownName = request.display_name || request.name || request.email;
+    name.textContent = shownName;
+    const contact = document.createElement("div");
+    contact.className = "access-muted";
+    contact.textContent = `${shownName !== request.email ? `${request.email} · ` : ""}pidió sumarse el ${formatDate(request.created_at)}`;
+    info.append(name, contact);
+    const person = document.createElement("div");
+    person.className = "team-person";
+    person.append(personAvatar(request), info);
+    const actions = document.createElement("div");
+    actions.className = "team-actions";
+    actions.append(
+      button("Aprobar", "btn-primary", () => openJoinRequest(request)),
+      button("Rechazar", "btn-outline", () => rejectJoinRequest(request))
+    );
+    item.append(person, actions);
+    list.appendChild(item);
+  });
+}
+
+function joinLink(code) {
+  return new URL(`unirse.html?code=${encodeURIComponent(code)}`, window.location.href).href;
+}
+
+function renderJoinCode() {
+  const { code, enabled } = state.join_code || {};
+  const value = document.getElementById("joinCodeValue");
+  value.textContent = code || "—";
+  value.classList.toggle("is-off", !enabled);
+  document.getElementById("joinCodeToggle").textContent = enabled ? "Apagar" : "Prender";
+  document.getElementById("joinCodeCopy").disabled = !enabled;
+  document.getElementById("joinCodeLink").textContent = enabled
+    ? joinLink(code)
+    : "Apagado: nadie puede pedir sumarse con el código.";
+}
+
 async function load() {
   try {
     const response = await apiFetch(TEAM_URL);
@@ -177,6 +227,8 @@ async function load() {
     state = data;
     document.getElementById("teamName").value = data.team.name || "";
     renderMembers();
+    renderJoinRequests();
+    renderJoinCode();
     renderInvitations();
     if (!inviteEditor) {
       inviteEditor = accessEditor(document.getElementById("inviteAccess"), { isNew: true });
@@ -190,7 +242,9 @@ async function load() {
 
 function openMember(member) {
   editing = member;
+  approving = null;
   document.getElementById("memberDialogTitle").textContent = `Accesos de ${member.email}`;
+  document.getElementById("memberSave").textContent = "Guardar";
   memberEditor = accessEditor(document.getElementById("memberAccess"), {
     profileId: member.profile,
     custom: member.custom_accesses,
@@ -202,9 +256,81 @@ function openMember(member) {
   document.getElementById("memberDialog").showModal();
 }
 
+function openJoinRequest(request) {
+  editing = null;
+  approving = request;
+  document.getElementById("memberDialogTitle").textContent = `Sumar a ${request.email}`;
+  document.getElementById("memberSave").textContent = "Aprobar";
+  memberEditor = accessEditor(document.getElementById("memberAccess"), { isNew: true });
+  renderStoreChoice(document.getElementById("memberStores"), state.stores, { allStores: true });
+  document.getElementById("memberDialog").showModal();
+}
+
+async function approveJoinRequest(body) {
+  const request = approving;
+  try {
+    await send(`${TEAM_URL}join-requests/${request.id}/approve/`, "POST", body, "No se pudo aprobar el pedido.");
+    document.getElementById("memberDialog").close();
+    await load();
+    showMessage(`${request.email} ya es parte del comercio.`, "success");
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    document.getElementById("memberDialog").close();
+    showMessage(err.message);
+  }
+}
+
+async function rejectJoinRequest(request) {
+  if (!await appConfirm(`¿Rechazar el pedido de ${request.email} para sumarse?`, { confirmLabel: "Rechazar" })) return;
+  try {
+    await send(`${TEAM_URL}join-requests/${request.id}/reject/`, "POST", null, "No se pudo rechazar el pedido.");
+    await load();
+    showMessage(`Rechazaste el pedido de ${request.email}.`, "success");
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    showMessage(err.message);
+  }
+}
+
+async function copyJoinLink() {
+  const link = joinLink(state.join_code.code);
+  try {
+    await navigator.clipboard.writeText(link);
+    showMessage("Link copiado: pasáselo a quien quieras sumar.", "success");
+  } catch {
+    await appPrompt("Copiá el link:", link);
+  }
+}
+
+async function toggleJoinCode() {
+  const enabled = !state.join_code.enabled;
+  try {
+    state.join_code = await send(`${TEAM_URL}join-code/`, "PATCH", { enabled }, "No se pudo cambiar el código.");
+    renderJoinCode();
+    showMessage(enabled ? "Código prendido." : "Código apagado: nadie puede pedir sumarse con él.", "success");
+  } catch (err) {
+    if (!err.isSessionExpired) showMessage(err.message);
+  }
+}
+
+async function regenerateJoinCode() {
+  if (!await appConfirm("¿Cambiar el código? El de ahora (y su link) deja de servir.", { confirmLabel: "Cambiar código" })) return;
+  try {
+    state.join_code = await send(`${TEAM_URL}join-code/regenerate/`, "POST", null, "No se pudo cambiar el código.");
+    renderJoinCode();
+    showMessage("Código nuevo listo: el anterior ya no sirve.", "success");
+  } catch (err) {
+    if (!err.isSessionExpired) showMessage(err.message);
+  }
+}
+
 async function saveMember(event) {
   event.preventDefault();
   const body = { ...memberEditor.read(), ...readStoreChoice(document.getElementById("memberStores")) };
+  if (approving) {
+    await approveJoinRequest(body);
+    return;
+  }
   try {
     await send(`${TEAM_URL}members/${editing.id}/`, "PATCH", body, "No se pudieron guardar los accesos.");
     document.getElementById("memberDialog").close();
@@ -236,7 +362,9 @@ async function transfer(member) {
     "Solo el nuevo dueño puede devolvértela.";
   if (!await appConfirm(question)) return;
   try {
-    await send(`${TEAM_URL}transfer/`, "POST", { member_id: member.id }, "No se pudo pasar la titularidad.");
+    const data = await send(`${TEAM_URL}transfer/`, "POST", { member_id: member.id }, "No se pudo pasar la titularidad.");
+    // Ahora es empleado: la sesión guardada tiene que saberlo.
+    if (data.user) window.Auth.saveSession(data.user);
     showMessage(`${member.email} es el nuevo dueño del comercio.`, "success");
     await load();
   } catch (err) {
@@ -308,6 +436,9 @@ function bootstrap() {
   document.getElementById("inviteForm").addEventListener("submit", invite);
   document.getElementById("memberForm").addEventListener("submit", saveMember);
   document.getElementById("memberCancel").addEventListener("click", () => document.getElementById("memberDialog").close());
+  document.getElementById("joinCodeCopy").addEventListener("click", copyJoinLink);
+  document.getElementById("joinCodeToggle").addEventListener("click", toggleJoinCode);
+  document.getElementById("joinCodeRegenerate").addEventListener("click", regenerateJoinCode);
   // Un perfil nuevo o cambiado en la pestaña Perfiles cambia lo que ofrece
   // "Invitar a alguien" y los accesos de los miembros que lo tienen.
   document.addEventListener("team:profiles-changed", load);

@@ -14,6 +14,7 @@ from apps.integrations.models import StoreConnection
 from apps.integrations.stores import STATE_SALT, make_oauth_state, make_share_token
 from apps.integrations.tests.helpers import auth_headers_for, fake_response, make_user
 from .test_tiendanube_oauth import CALLBACK_URL, FRONTEND, TEST_SETTINGS
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 SHARE_LINK_URL = "/api/v1/integrations/tiendanube/install-share-link/"
 PUBLIC_BASE = "https://rotulos.example.com"
@@ -28,6 +29,7 @@ def share_open_url(token):
 class InstallShareLinkTests(APITestCase):
     def setUp(self):
         self.user = make_user("comercio@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_requiere_estar_logueado(self):
         response = self.client.post(SHARE_LINK_URL)
@@ -87,6 +89,7 @@ class InstallShareLinkTests(APITestCase):
 class SharedInstallCallbackTests(APITestCase):
     def setUp(self):
         self.user = make_user("comercio@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _callback(self, state, **extra):
         token_response = fake_response(json_data={"access_token": "tok", "user_id": 777, "scope": "read_orders"})

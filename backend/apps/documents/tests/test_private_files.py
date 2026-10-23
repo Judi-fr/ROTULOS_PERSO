@@ -15,6 +15,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from apps.documents.models import Document, UploadedLabelFile
 from apps.labels.models import LabelTemplate
 from apps.orders.models import Address, Order
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 User = get_user_model()
 DESIGN = {"destinatario": {"left": 6, "top": 38}}
@@ -27,6 +28,7 @@ def bearer(user):
 class BatchFileNameTests(APITestCase):
     def test_batch_file_is_not_guessable_but_downloads_with_a_clean_name(self):
         user = User.objects.create_user(username="u@example.com", email="u@example.com", password="Clave123!")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         address = Address.objects.create(user=user, recipient_name="Ana", street="Calle", number="1", city="CABA")
         order = Order.objects.create(user=user, address=address)
         template = LabelTemplate.objects.create(owner=user, name="P", width_cm=10, height_cm=15, design=DESIGN)

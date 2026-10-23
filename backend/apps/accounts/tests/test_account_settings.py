@@ -24,6 +24,7 @@ from apps.orders.manifest import render_manifest_pdf
 from apps.orders.models import Address, Order
 
 from ..models import AccountSettings, cuit_is_valid
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 User = get_user_model()
 URL = "/api/v1/auth/me/account/"
@@ -45,6 +46,7 @@ class AccountSettingsTestCase(APITestCase):
         self.user = User.objects.create_user(username="cuenta@example.com", email="cuenta@example.com", password="Clave123!")
         self.user.groups.add(Group.objects.get_or_create(name="subscriber")[0])
         self.headers = {"HTTP_AUTHORIZATION": f"Bearer {RefreshToken.for_user(self.user).access_token}"}
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def patch(self, data):
         return self.client.patch(URL, data, format="json", **self.headers)
@@ -101,6 +103,7 @@ class AccountSettingsUsageTests(AccountSettingsTestCase):
             sender_phone="11 5555-0000",
         )
         self.address = Address.objects.create(user=self.user, recipient_name="María", street="Corrientes", number="1000", city="CABA")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_manual_order_uses_account_sender(self):
         order = Order.objects.create(user=self.user, address=self.address)

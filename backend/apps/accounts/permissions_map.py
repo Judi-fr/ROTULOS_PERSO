@@ -354,8 +354,13 @@ def user_has_permission(user, permission):
     access = TEAM_SCOPED_PERMISSIONS.get(permission)
     if access is None:
         return True
-    from .teams import can_access
+    from .teams import can_access, membership
 
+    # El admin no necesita comercio: sin uno conserva todo lo de su rol (lo
+    # que lee o crea datos igual responde ``no_team``). En un comercio, como
+    # cualquiera, vale lo que tiene ahí.
+    if get_effective_role(user) == "admin" and membership(user) is None:
+        return True
     return can_access(user, access)
 
 

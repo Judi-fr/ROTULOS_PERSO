@@ -566,6 +566,12 @@ class ProfileSerializer(serializers.ModelSerializer):
         data["phone"] = profile.phone if profile else ""
         data["job_title"] = profile.job_title if profile else ""
         data["photo"] = photo_url(profile, self.context.get("request"))
+        # El comercio de esta request (X-Team-Id) y todos los suyos: el
+        # frontend refresca con esto la sesión de cada pestaña.
+        from .auth_views import team_payload, teams_payload
+
+        data["team"] = team_payload(instance)
+        data["teams"] = teams_payload(instance)
         return data
 
     def update(self, instance, validated_data):

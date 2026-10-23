@@ -10,6 +10,7 @@ from apps.audit.models import AuditLog
 from apps.carriers.models import ManualCarrier
 from apps.labels.models import LabelSize
 from apps.orders.models import Address, Order
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 User = get_user_model()
 
@@ -24,6 +25,7 @@ class CatalogTests(APITestCase):
         self.admin.groups.add(Group.objects.get_or_create(name="admin")[0])
         self.merchant = User.objects.create_user(username="tienda@example.com", email="tienda@example.com", password="Clave123!")
         self.merchant.groups.add(Group.objects.get_or_create(name="subscriber")[0])
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_admin_manages_manual_carriers_and_merchants_only_read(self):
         url = "/api/v1/carriers/manual-carriers/"

@@ -1037,7 +1037,7 @@ async function loadMyProfile() {
     }
     const user = await response.json();
     const stored = getCurrentUser();
-    localStorage.setItem("user", JSON.stringify({ ...stored, ...user }));
+    window.Auth.saveSession({ ...stored, ...user });
   } catch (err) {
     if (err.isSessionExpired) return;
     console.error("Error al cargar perfil:", err);

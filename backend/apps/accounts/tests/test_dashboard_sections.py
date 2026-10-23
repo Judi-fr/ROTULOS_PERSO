@@ -10,6 +10,7 @@ from apps.integrations.models import StoreConnection
 from apps.labels.models import LabelTemplate
 
 from .test_team_permissions import add_employee, bearer, make_user
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 URL = "/api/v1/auth/users/me/dashboard/"
 
@@ -21,6 +22,7 @@ def sections(client, user):
 class DashboardSectionTests(APITestCase):
     def setUp(self):
         self.owner = make_user("owner@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_owner_gets_six_sections_with_their_links(self):
         data = sections(self.client, self.owner)
@@ -70,6 +72,7 @@ class DashboardSectionTests(APITestCase):
 class OnboardingTests(APITestCase):
     def setUp(self):
         self.owner = make_user("owner@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def steps(self, user=None):
         onboarding = self.client.get(URL, **bearer(user or self.owner)).data["onboarding"]

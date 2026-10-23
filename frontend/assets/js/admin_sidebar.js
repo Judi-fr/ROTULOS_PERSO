@@ -49,6 +49,13 @@
       visible: () => canUseUserPermission("support.view_all"),
     },
     {
+      id: "closed_teams",
+      href: "comercios_baja.html",
+      label: "Comercios dados de baja",
+      icon: `<rect x="2" y="4" width="20" height="5" rx="1" /><path d="M4 9v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9" /><line x1="10" y1="13" x2="14" y2="13" />`,
+      visible: () => canViewUsers(),
+    },
+    {
       id: "catalogs",
       href: "catalogos.html",
       label: "Catálogos",

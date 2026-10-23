@@ -15,6 +15,7 @@ from ..models import (
     LayoutVariable,
     mm_to_px,
 )
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 User = get_user_model()
 
@@ -51,6 +52,7 @@ class BaseLabelsTests(APITestCase):
             is_staff=True,
         )
         self.client.force_authenticate(self.user)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _payload(self):
         return {

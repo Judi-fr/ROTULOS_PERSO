@@ -21,6 +21,7 @@ from apps.orders.models import Address, Order
 
 from ..models import PrintAgent, Printer, PrintJob
 from ..services import STALE_ERROR
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 User = get_user_model()
 ZPL = b"^XA^FO50,50^A0N,40,40^FDHola^FS^XZ"
@@ -44,6 +45,7 @@ class PrintingTestCase(APITestCase):
         self.other = User.objects.create_user(username="otro@example.com", email="otro@example.com", password="Clave123!")
         self.other.groups.add(subscriber)
         self.headers = bearer(self.user)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def create_agent(self, user=None, name="PC del depósito"):
         response = self.client.post("/api/v1/printing/agents/", {"name": name}, format="json", **bearer(user or self.user))
@@ -144,6 +146,7 @@ class JobFlowTests(PrintingTestCase):
         super().setUp()
         self.agent, self.token = self.create_agent()
         self.printer = self.create_printer(self.agent)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def queue(self, document=None):
         document = document or self.make_document()

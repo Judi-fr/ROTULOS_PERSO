@@ -19,6 +19,7 @@ from apps.integrations.models import StoreConnection
 from ..bulk import detect_columns, normalize_order_key
 from ..models import Address, Order
 from .test_orders import auth_headers_for
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 User = get_user_model()
 
@@ -70,6 +71,7 @@ class BulkTestBase(APITestCase):
 
         other_address = Address.objects.create(user=self.other, street="Otra", number="2", city="CABA")
         self.foreign = Order.objects.create(user=self.other, address=other_address, external_number="1001")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def post(self, url, payload, user=None, **kwargs):
         return self.client.post(url, payload, format=kwargs.pop("format", "json"), **auth_headers_for(user or self.user), **kwargs)

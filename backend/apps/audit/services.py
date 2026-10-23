@@ -33,6 +33,17 @@ def _extract_user_agent(request):
     return (request.META.get("HTTP_USER_AGENT") or "")[:300]
 
 
+def _team_id(actor, target):
+    """El comercio en el que pasó: el del target si es un comercio, si no el
+    del actor (``teams.audit_team_id``)."""
+    from apps.accounts.team_models import Team
+    from apps.accounts.teams import audit_team_id
+
+    if isinstance(target, Team):
+        return target.pk
+    return audit_team_id(actor)
+
+
 def record(
     request=None,
     *,
@@ -45,6 +56,7 @@ def record(
     target_repr="",
     changes=None,
     actor_email="",
+    team_id=None,
 ):
     """Crea un ``AuditLog``.
 
@@ -53,6 +65,8 @@ def record(
     - ``actor_email``: si no se indica, se toma de ``actor.email``. Para
       eventos sin actor autenticado (login fallido, por ejemplo) hay que
       pasarlo explícitamente con el email intentado.
+    - ``team_id``: el comercio en el que pasó; si no se indica, el del target
+      (si es un comercio) o el comercio actual del actor.
     - ``target``: instancia relacionada con el evento (un ``User``, un
       ``Group``, un ``Order``, ...). Si se pasa, completa ``target_type``/
       ``target_id``/``target_repr`` con valores razonables salvo que ya
@@ -77,6 +91,8 @@ def record(
         # que envuelve cada test) evita que un fallo acá deje inutilizable la
         # transacción del flujo principal que la llama.
         with transaction.atomic():
+            if team_id is None:
+                team_id = _team_id(actor, target)
             AuditLog.objects.create(
                 actor=actor,
                 actor_email=actor_email,
@@ -86,6 +102,7 @@ def record(
                 target_id=str(target_id) if target_id else "",
                 target_repr=target_repr,
                 changes=changes or {},
+                team_id=team_id,
                 ip_address=_extract_ip(request),
                 user_agent=_extract_user_agent(request),
             )

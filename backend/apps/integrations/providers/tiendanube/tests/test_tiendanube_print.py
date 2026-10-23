@@ -16,6 +16,7 @@ from apps.integrations.models import StoreConnection
 from apps.integrations.providers.base import ProviderNotFoundError
 from apps.integrations.tests.test_store_integration_base import tiendanube_order
 from apps.integrations.tests.helpers import auth_headers_for, make_user
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 PRINT_LINK_URL = "/api/v1/integrations/tiendanube/print-link/"
 BASE_URL = "https://rotulos.example.com"
@@ -25,6 +26,7 @@ BASE_URL = "https://rotulos.example.com"
 class TiendanubePrintLinkTests(APITestCase):
     def setUp(self):
         self.owner = make_user("comercio@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         self.connection = StoreConnection.objects.create(
             platform="tiendanube", external_store_id="989346", owner=self.owner, access_token="tok"
         )
@@ -34,6 +36,7 @@ class TiendanubePrintLinkTests(APITestCase):
         )
         self.get_order = patcher.start()
         self.addCleanup(patcher.stop)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _get_order(self, connection, order_id):
         if str(order_id) not in self.remote:
@@ -75,7 +78,9 @@ class TiendanubePrintLinkTests(APITestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_tienda_de_otro_usuario_no_se_imprime(self):
-        response = self._link({"store": "989346", "ids": [501]}, user=make_user("otro@example.com"))
+        other = make_user("otro@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        response = self._link({"store": "989346", "ids": [501]}, user=other)
         self.assertEqual(response.status_code, 404)
         self.get_order.assert_not_called()
 

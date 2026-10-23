@@ -934,3 +934,145 @@ function createProfileEditor(root, { catalog, allowed = null, save, remove }) {
     hasUnsavedChanges: isDirty,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Varios comercios por persona (apps/accounts/teams.py)
+// ---------------------------------------------------------------------------
+
+const TEAM_ROLE_LABELS = { owner: "Dueño", employee: "Empleado" };
+
+// Selector del comercio actual (barra de arriba y panel). Cada pestaña
+// trabaja en el suyo: al elegir otro, Auth.switchTeam lo guarda y recarga.
+// La última opción lleva a crear un comercio o sumarse a otro. Sin
+// comercios no dibuja nada.
+function renderTeamSwitcher(container, user) {
+  if (!container) return;
+  container.replaceChildren();
+  const teams = (user && Array.isArray(user.teams) && user.teams) || [];
+  if (!teams.length) return;
+  const current = user.team ? String(user.team.id) : "";
+
+  const select = document.createElement("select");
+  select.className = "team-switcher";
+  select.setAttribute("aria-label", "Comercio en el que estás trabajando");
+  select.title = "Comercio en el que estás trabajando";
+  teams.forEach((team) => {
+    const option = document.createElement("option");
+    option.value = String(team.id);
+    option.textContent = `${team.display_name || team.name || "Comercio"} · ${TEAM_ROLE_LABELS[team.role] || team.role}`;
+    option.selected = String(team.id) === current;
+    select.appendChild(option);
+  });
+  const other = document.createElement("option");
+  other.value = "__start__";
+  other.textContent = "Crear o sumarme a otro comercio…";
+  select.appendChild(other);
+
+  select.addEventListener("change", async () => {
+    if (select.value === "__start__") {
+      window.location.href = "comercio_inicio.html";
+      return;
+    }
+    select.disabled = true;
+    try {
+      await window.Auth.switchTeam(select.value);
+    } catch (err) {
+      select.disabled = false;
+      select.value = current;
+      if (!err.isSessionExpired) showMessage(err.message);
+    }
+  });
+  container.appendChild(select);
+}
+
+// Las invitaciones pendientes de la persona (/team/my-invitations/), con
+// Aceptar/Rechazar. Aceptar SUMA un comercio (no saca de los otros) y la
+// pestaña pasa a trabajar en él: onAccepted(data) decide qué sigue.
+// La usan invitaciones.html y comercio_inicio.html.
+function renderMyInvitations(list, { onAccepted, onChanged, emptyText = "No tenés invitaciones pendientes." } = {}) {
+  const url = `${window.APP_CONFIG.API_BASE}/team/my-invitations/`;
+
+  async function answer(invitation, decision) {
+    if (decision === "accept") {
+      const question =
+        `¿Sumarte al comercio «${invitation.team_name}»?\n\n` +
+        "Vas a trabajar sobre sus tiendas, pedidos y plantillas, con los accesos que te dieron. " +
+        "Tus otros comercios siguen igual.";
+      if (!await appConfirm(question, { confirmLabel: "Sumarme" })) return;
+    }
+    try {
+      const response = await window.Auth.apiFetch(`${url}${invitation.id}/${decision}/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(getErrorMessage(data, "No se pudo responder la invitación."));
+      if (decision === "accept") {
+        if (data.user) window.Auth.saveSession(data.user);
+        if (onAccepted) onAccepted(data);
+        return;
+      }
+      showMessage(`Rechazaste la invitación de «${invitation.team_name}».`, "success");
+      await load();
+      if (onChanged) onChanged();
+    } catch (err) {
+      if (!err.isSessionExpired) showMessage(err.message);
+    }
+  }
+
+  function render(invitations) {
+    list.replaceChildren();
+    if (!invitations.length) {
+      const empty = document.createElement("li");
+      empty.className = "access-muted";
+      empty.textContent = emptyText;
+      list.appendChild(empty);
+      return;
+    }
+    invitations.forEach((invitation) => {
+      const item = document.createElement("li");
+      item.className = "team-item";
+      const info = document.createElement("div");
+      const name = document.createElement("strong");
+      name.textContent = invitation.team_name;
+      const who = document.createElement("div");
+      who.className = "access-muted";
+      who.textContent = `Te invitó ${invitation.invited_by || "el dueño"} · vence ${formatDate(invitation.expires_at)}`;
+      const what = document.createElement("div");
+      what.className = "access-muted";
+      const names = invitation.access_labels || invitation.accesses || [];
+      what.textContent = `${invitation.profile_name ? `Perfil «${invitation.profile_name}»: ` : ""}${names.join(", ") || "sin accesos"}`;
+      info.append(name, who, what);
+      const actions = document.createElement("div");
+      actions.className = "team-actions";
+      const accept = document.createElement("button");
+      accept.type = "button";
+      accept.className = "btn btn-primary btn-small";
+      accept.textContent = "Aceptar";
+      accept.addEventListener("click", () => answer(invitation, "accept"));
+      const decline = document.createElement("button");
+      decline.type = "button";
+      decline.className = "btn btn-outline btn-small";
+      decline.textContent = "Rechazar";
+      decline.addEventListener("click", () => answer(invitation, "decline"));
+      actions.append(accept, decline);
+      item.append(info, actions);
+      list.appendChild(item);
+    });
+  }
+
+  async function load() {
+    try {
+      const response = await window.Auth.apiFetch(url);
+      const data = await response.json().catch(() => []);
+      if (!response.ok) throw new Error(getErrorMessage(data, "No se pudieron leer tus invitaciones."));
+      render(data);
+      return data;
+    } catch (err) {
+      if (!err.isSessionExpired) showMessage(err.message);
+      return [];
+    }
+  }
+
+  return { load };
+}

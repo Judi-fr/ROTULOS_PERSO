@@ -24,6 +24,7 @@ from apps.integrations.providers import get_provider
 from apps.integrations.stores import enqueue_store_setup
 from apps.integrations.tests.helpers import auth_headers_for, make_user
 from .test_woocommerce import BASE_URL, WOO_SETTINGS, WooTestMixin, woo_order
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 PRINT_LINK_URL = "/api/v1/integrations/woocommerce/print-link/"
 RATES_URL = "/api/v1/integrations/woocommerce/rates/"
@@ -34,6 +35,7 @@ class PluginConfigTests(WooTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.connection = self._connection(owner=make_user("comercio@example.com"))
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_al_conectar_se_configura_el_plugin(self):
         self.woo.plugin_settings = {}
@@ -72,7 +74,9 @@ class PluginConfigTests(WooTestMixin, APITestCase):
 
     def test_verificar_plugin_de_tienda_ajena_no_se_puede(self):
         url = f"/api/v1/integrations/stores/{self.connection.pk}/check-print-plugin/"
-        response = self.client.post(url, **auth_headers_for(make_user("otro@example.com")))
+        other = make_user("otro@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        response = self.client.post(url, **auth_headers_for(other))
         self.assertEqual(response.status_code, 404)
 
     def test_sin_el_plugin_la_tienda_se_conecta_igual(self):
@@ -92,6 +96,7 @@ class WooCommercePrintTests(WooTestMixin, APITestCase):
         self.connection = self._connection(owner=self.owner)
         self.secret = get_provider("woocommerce").ensure_webhook_secret(self.connection)
         self.woo.orders = {101: woo_order(101), 102: woo_order(102)}
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _link(self, ids, *, secret=None, store=None, ts=None):
         body = json.dumps(
@@ -158,9 +163,9 @@ class WooCommercePrintTests(WooTestMixin, APITestCase):
 
 class PluginDownloadTests(APITestCase):
     def test_el_zip_trae_la_carpeta_del_plugin(self):
-        response = self.client.get(
-            "/api/v1/integrations/woocommerce/print-plugin/", **auth_headers_for(make_user("comercio@example.com"))
-        )
+        merchant = make_user("comercio@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        response = self.client.get("/api/v1/integrations/woocommerce/print-plugin/", **auth_headers_for(merchant))
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/zip")
@@ -200,6 +205,7 @@ class WooCommerceRatesTests(WooTestMixin, APITestCase):
                 delivery_days_min=3,
                 delivery_days_max=5,
             )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _quote(self, *, secret=None, ts=None, **fields):
         body = {"store": str(self.connection.pk), "ts": int(ts if ts is not None else time.time())}

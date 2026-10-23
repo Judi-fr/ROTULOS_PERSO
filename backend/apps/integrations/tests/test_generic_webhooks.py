@@ -18,6 +18,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from apps.orders.models import Address, Order
 
 from ..models import IncomingWebhook, IntegrationKey, WebhookDelivery, WebhookEndpoint
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 User = get_user_model()
 
@@ -65,6 +66,7 @@ class IncomingWebhookSignatureTests(APITestCase):
             "id": "TIENDA-0001",
         }
         self.body = json.dumps(self.payload).encode("utf-8")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _post(self, body, signature):
         headers = {}
@@ -117,6 +119,7 @@ class OutgoingWebhookDispatchTests(APITestCase):
             url="https://erp.example.com/webhooks/buspack/",
             secret=WebhookEndpoint.generate_secret(),
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     @staticmethod
     def _ok_response(mock_post):

@@ -111,8 +111,9 @@ def build_sections(user):
 
 
 def onboarding(user):
-    """``{"steps": [...]}`` para el dueño de un comercio; ``None`` para un
-    empleado o el admin (la guía es de quien arma el comercio)."""
+    """``{"steps": [...]}`` para el dueño del comercio actual; ``None`` para
+    un empleado, el admin o quien no tiene comercio (la guía es de quien arma
+    el comercio)."""
     from apps.carriers.models import CarrierAccount
     from apps.integrations.models import StoreConnection
     from apps.labels.models import LabelTemplate
@@ -120,8 +121,11 @@ def onboarding(user):
     from .models import AccountSettings, TeamMember
     from .teams import membership
 
-    if get_effective_role(user) == "admin" or membership(user).role != TeamMember.Role.OWNER:
+    member = membership(user)
+    if get_effective_role(user) == "admin" or member is None or member.role != TeamMember.Role.OWNER:
         return None
+    # Los datos son del comercio (su usuario de datos), no de la persona.
+    user = member.team.data_user
     settings_row = AccountSettings.objects.filter(user=user).first()
     steps = [
         {

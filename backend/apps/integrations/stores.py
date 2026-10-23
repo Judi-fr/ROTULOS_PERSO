@@ -35,6 +35,8 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
+from apps.accounts.teams import live_data_owner_q
+
 from .events import enqueue_event
 from .models import StoreConnection
 from .providers.base import OWN_APP_CLIENT_ID_PREF, ProviderError
@@ -138,7 +140,9 @@ def read_share_token(token, platform):
     data = signing.loads(token or "", salt=SHARE_SALT, max_age=max_age)
     if not isinstance(data, dict) or data.get("p") != platform:
         raise signing.BadSignature("El link no corresponde a esta plataforma.")
-    user = get_user_model().objects.filter(pk=data.get("u"), is_active=True).first()
+    # ``u`` es el usuario de datos del comercio (inactivo, sin login): vale
+    # mientras el comercio siga abierto.
+    user = get_user_model().objects.filter(live_data_owner_q(), pk=data.get("u")).first()
     if user is None:
         raise signing.BadSignature("El usuario del link no existe o está inactivo.")
     return user
@@ -159,7 +163,7 @@ def read_oauth_state(state, platform, shop_domain=""):
         raise signing.BadSignature("El state no corresponde a esta tienda.")
     if data.get("u") is None:
         return None
-    user = get_user_model().objects.filter(pk=data.get("u"), is_active=True).first()
+    user = get_user_model().objects.filter(live_data_owner_q(), pk=data.get("u")).first()
     if user is None:
         raise signing.BadSignature("El usuario del state no existe o está inactivo.")
     return user

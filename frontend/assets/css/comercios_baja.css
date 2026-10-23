@@ -1,0 +1,57 @@
+/* Comercios dados de baja (comercios_baja.html). */
+.closed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.closed-head input {
+  min-width: 240px;
+  padding: 6px 10px;
+  border: 1px solid #d9d9e3;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.closed-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border-top: 1px solid #eee;
+}
+
+.closed-item:first-child {
+  border-top: 0;
+}
+
+.closed-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  font-size: 14px;
+}
+
+.closed-muted {
+  color: #6b6b7b;
+  font-size: 13px;
+}
+
+.closed-reason {
+  font-style: italic;
+}
+
+@media (max-width: 640px) {
+  .closed-item {
+    flex-direction: column;
+  }
+
+  .closed-head input {
+    min-width: 0;
+    width: 100%;
+  }
+}

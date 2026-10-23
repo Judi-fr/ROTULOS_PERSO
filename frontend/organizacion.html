@@ -213,6 +213,48 @@
             <button type="submit" class="btn btn-primary" id="saveBtn">Guardar</button>
           </div>
         </form>
+
+        <!-- BAJA DEL COMERCIO (assets/js/baja_comercio.js): solo el dueño. -->
+        <section class="profile-card close-team-card" id="closeTeamSection" hidden>
+          <div class="profile-card-title">Dar de baja el comercio</div>
+          <div class="profile-card-body">
+            <p class="close-team-text">
+              Tus tiendas se desconectan, se apagan los transportistas, las impresoras y
+              las claves de API, y vos y tu equipo dejan de ver los pedidos, rótulos y
+              plantillas de este comercio. Nada se borra: queda guardado y el
+              administrador de la plataforma lo puede reactivar si se lo pedís por
+              <a href="ayuda.html">Ayuda</a>. Tu cuenta sigue funcionando, con tus
+              otros comercios si tenés.
+            </p>
+            <form id="closeTeamForm" class="close-team-form">
+              <div class="field">
+                <label for="closeTeamReason">¿Por qué te das de baja? (opcional)</label>
+                <textarea id="closeTeamReason" rows="2" maxlength="2000"></textarea>
+              </div>
+              <div class="field">
+                <label for="closeTeamConfirm">Para confirmar, escribí <strong>BAJA</strong></label>
+                <input id="closeTeamConfirm" type="text" autocomplete="off" />
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn close-team-btn" id="closeTeamBtn" disabled>Dar de baja el comercio</button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <!-- SALIR DEL COMERCIO (assets/js/salir_comercio.js): solo un empleado. -->
+        <section class="profile-card" id="leaveTeamSection" hidden>
+          <div class="profile-card-title">Salir de este comercio</div>
+          <div class="profile-card-body">
+            <p class="close-team-text" id="leaveTeamText">
+              Dejás de ver sus tiendas, pedidos y plantillas. Lo que hiciste queda en
+              el comercio. Para volver, te tienen que invitar o aprobar de nuevo.
+            </p>
+            <div class="form-actions">
+              <button type="button" class="btn btn-outline" id="leaveTeamBtn">Salir de este comercio</button>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
 
@@ -222,5 +264,7 @@
     <script src="assets/js/topbar.js"></script>
     <script src="assets/js/perfil.js"></script>
     <script src="assets/js/organizacion.js"></script>
+    <script src="assets/js/baja_comercio.js"></script>
+    <script src="assets/js/salir_comercio.js"></script>
   </body>
 </html>

@@ -11,6 +11,7 @@ from apps.labels.label_rendering import build_label_context
 from apps.labels.models import LabelTemplate
 from apps.orders.models import Address, Order
 from apps.orders.tests.test_orders import auth_headers_for
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 User = get_user_model()
 
@@ -32,6 +33,7 @@ class StoreSenderTests(APITestCase):
             external_store_id="111",
             name="Tienda A",
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _patch(self, payload, user=None, store=None):
         store = store or self.store
@@ -104,6 +106,7 @@ class StoreSenderLabelContextTests(APITestCase):
         self.order = Order.objects.create(
             user=self.user, address=self.address, store_connection=self.store, external_id="o1"
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_sin_remitente_configurado_usa_el_nombre_de_la_tienda(self):
         context = build_label_context(order=self.order)
@@ -160,6 +163,7 @@ class StoreLogoAndTemplateTests(APITestCase):
         self.foreign_template = LabelTemplate.objects.create(
             owner=self.other, name="Ajena", width_cm=10, height_cm=15, design={}
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _patch(self, payload, fmt="json"):
         return self.client.patch(
@@ -222,6 +226,7 @@ class StorePrinterDensityTests(APITestCase):
         self.user = User.objects.create_user(
             username="impresora@example.com", email="impresora@example.com", password="Clave123!"
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         self.user.groups.add(subscriber)
         self.store = StoreConnection.objects.create(
             owner=self.user,
@@ -229,6 +234,7 @@ class StorePrinterDensityTests(APITestCase):
             external_store_id="777",
             name="Tienda con térmica",
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _patch(self, payload):
         return self.client.patch(
@@ -282,6 +288,7 @@ class StorePrinterDensityTests(APITestCase):
         otro = User.objects.create_user(
             username="ajeno3@example.com", email="ajeno3@example.com", password="Clave123!"
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         otro.groups.add(Group.objects.get(name="subscriber"))
         response = self.client.patch(
             f"/api/v1/integrations/stores/{self.store.pk}/settings/",

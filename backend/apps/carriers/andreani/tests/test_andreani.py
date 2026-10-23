@@ -19,6 +19,7 @@ from apps.labels.label_rendering import build_label_context
 from apps.orders.models import Address, Order
 
 from .fake_andreani import PASSWORD, USER, AndreaniTestMixin, event
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 API = "/api/v1/carriers/andreani"
 
@@ -44,6 +45,7 @@ class AccountTests(AndreaniTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_cargar_la_cuenta_sin_devolver_la_contraseña(self):
         response = self.client.put(
@@ -101,6 +103,7 @@ class PayloadTests(AndreaniTestMixin, TestCase):
         super().setUp()
         self.user = make_user("comercio@example.com")
         self.account = self.make_account(self.user)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_domicilio(self):
         payload = service.build_order_payload(self.account, make_order(self.user), "400006709", package_count=2)
@@ -126,8 +129,10 @@ class ShipmentTests(AndreaniTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         self.account = self.make_account(self.user)
         self.order = make_order(self.user)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _create(self, **data):
         payload = {"order_ids": [self.order.pk], "contract": "400006709"}
@@ -211,7 +216,9 @@ class ShipmentTests(AndreaniTestMixin, APITestCase):
     def test_etiqueta_de_un_envio_ajeno(self):
         self._create()
         shipment = CarrierShipment.objects.get(order=self.order)
-        response = self.client.get(f"{API}/shipments/{shipment.pk}/label/", **auth_headers_for(make_user("otro@example.com")))
+        other = make_user("otro@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        response = self.client.get(f"{API}/shipments/{shipment.pk}/label/", **auth_headers_for(other))
         self.assertEqual(response.status_code, 404)
 
     def test_cancelar_le_saca_el_seguimiento_al_pedido(self):
@@ -242,6 +249,7 @@ class QuoteTests(AndreaniTestMixin, APITestCase):
         self.user = make_user("comercio@example.com")
         self.account = self.make_account(self.user)
         self.order = make_order(self.user)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _quote(self, **data):
         payload = {"order_ids": [self.order.pk], "contract": "400006709"}
@@ -303,6 +311,7 @@ class QuoteTests(AndreaniTestMixin, APITestCase):
 class BranchTests(AndreaniTestMixin, APITestCase):
     def test_sucursales_y_puntos_hop_por_codigo_postal(self):
         user = make_user("comercio@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         self.make_account(user)
         response = self.client.get(f"{API}/branches/", {"cp": "C1414ABC"}, **auth_headers_for(user))
 
@@ -322,6 +331,7 @@ class TrackingTests(AndreaniTestMixin, TestCase):
         self.order = make_order(self.user)
         self.shipment = service.create_shipment(None, self.account, self.order, "400006709")
         self.number = self.shipment.tracking_number
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _sync(self):
         changed = service.sync_shipment(CarrierShipment.objects.get(pk=self.shipment.pk))

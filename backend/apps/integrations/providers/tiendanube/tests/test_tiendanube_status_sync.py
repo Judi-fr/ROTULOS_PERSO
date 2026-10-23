@@ -15,6 +15,7 @@ from apps.integrations.tests.test_store_integration_base import tiendanube_order
 from apps.integrations.tests.helpers import auth_headers_for
 from .test_tiendanube_oauth import TEST_SETTINGS
 from .test_tiendanube_sync import TiendanubeTestCase
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 LATER = "2026-09-10T15:00:00+0000"
 EARLIER = "2026-09-10T12:00:00+0000"
@@ -25,6 +26,7 @@ class StoreStatusSyncTests(TiendanubeTestCase):
     def setUp(self):
         super().setUp()
         self.provider = get_provider("tiendanube")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _upsert(self, **overrides):
         order, result = upsert_store_order(self.connection, self.provider.normalize_order(tiendanube_order(**overrides)))

@@ -1,6 +1,7 @@
 """``python manage.py seed_demo`` — datos de ejemplo para desarrollo y demos.
 
-Crea (o completa, si ya existen) una cuenta de comerciante con:
+Crea (o completa, si ya existen) una cuenta de comerciante con su comercio
+("Comercio demo", del que cuelga todo lo de abajo) y:
 
 - una tienda conectada de ejemplo (Empretienda: es la única plataforma que no
   habla con ninguna API, así que la tienda no dispara llamadas reales ni
@@ -30,6 +31,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.accounts.team_models import Team
+from apps.accounts.teams import create_team, team_display_name
 from apps.integrations.models import ShippingRate, StoreConnection
 from apps.integrations.providers import NormalizedOrder
 from apps.orders.ingestion import upsert_store_order
@@ -40,6 +43,7 @@ DEMO_EMAIL = "demo@rotulos.local"
 # de desarrollo; se cambia con --password.
 DEMO_PASSWORD = "Demo2026"
 DEMO_STORE_DOMAIN = "tienda-demo.empretienda.com.ar"
+DEMO_TEAM_NAME = "Comercio demo"
 
 # (número, destinatario, calle, altura, ciudad, provincia, CP, estado, peso kg, días atrás, transportista, seguimiento)
 STORE_ORDERS = [
@@ -83,14 +87,18 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             user, user_created = self._user(email.strip().lower(), password)
-            store = self._store(user)
+            # Los datos son del comercio: cuelgan de su usuario de datos.
+            team = self._team(user)
+            data_user = team.data_user
+            store = self._store(data_user)
             rates = self._rates(store)
             created_store = self._store_orders(store)
-            created_manual = self._manual_orders(user)
-            self._own_address(user)
+            created_manual = self._manual_orders(data_user)
+            self._own_address(data_user)
 
         self.stdout.write(self.style.SUCCESS("Datos de ejemplo listos."))
         self.stdout.write(f"  Cuenta: {user.email} ({'creada' if user_created else 'ya existía, no se cambió la contraseña'})")
+        self.stdout.write(f"  Comercio: {team_display_name(team)} (id {team.pk})")
         self.stdout.write(f"  Tienda: {store.name} (id {store.pk})")
         self.stdout.write(f"  Tarifas nuevas: {rates}")
         self.stdout.write(f"  Pedidos nuevos: {created_store} de la tienda, {created_manual} cargados a mano")
@@ -111,6 +119,18 @@ class Command(BaseCommand):
         group, _ = Group.objects.get_or_create(name="subscriber")
         user.groups.add(group)
         return user, created
+
+    def _team(self, user):
+        """El comercio demo de la cuenta: el que ya tiene la tienda demo, o uno
+        con ese nombre; si no hay, lo crea."""
+        store = StoreConnection.objects.filter(
+            platform=StoreConnection.Platform.EMPRETIENDA, external_store_id=DEMO_STORE_DOMAIN
+        ).first()
+        teams = Team.objects.filter(owner=user, closed_at=None)
+        team = (teams.filter(data_user_id=store.owner_id).first() if store else None) or teams.filter(
+            name=DEMO_TEAM_NAME
+        ).first()
+        return team or create_team(user, name=DEMO_TEAM_NAME)
 
     def _store(self, user):
         store, created = StoreConnection.objects.get_or_create(

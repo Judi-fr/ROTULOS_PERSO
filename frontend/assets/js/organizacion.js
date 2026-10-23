@@ -141,9 +141,30 @@
     }
   }
 
+  // Sin comercio no hay datos del comercio: la sección se reemplaza por el
+  // camino para crear uno o sumarse (el perfil personal sigue arriba).
+  function hideBusinessSection() {
+    const title = document.getElementById("comercio");
+    const help = title.nextElementSibling;
+    document.getElementById("accountForm").hidden = true;
+    if (help) help.hidden = true;
+    const note = document.createElement("p");
+    note.className = "account-section-help";
+    note.textContent = "Todavía no estás en ningún comercio. ";
+    const link = document.createElement("a");
+    link.href = "comercio_inicio.html";
+    link.textContent = "Crear uno o sumarte a uno";
+    note.appendChild(link);
+    title.after(note);
+  }
+
   if (!window.Auth.hasSession()) {
     window.location.replace("index.html");
+  } else if (!window.Auth.getCurrentUser().team) {
+    hideBusinessSection();
   } else {
+    const team = window.Auth.getCurrentUser().team;
+    document.getElementById("comercio").textContent = `Datos del comercio «${team.display_name || team.name}»`;
     init();
   }
 })();

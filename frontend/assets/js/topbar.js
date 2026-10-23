@@ -7,6 +7,8 @@
 //   <header class="topbar" id="appTopbar"
 //           data-links='[{"href":"dashboard.html","label":"Volver al panel"}]'></header>
 //
+// Muestra el selector de comercio (una persona puede estar en varios).
+//
 // El botón "Cerrar sesión" lo pone esta barra siempre, con el id logoutBtn
 // de antes: cada página le sigue enganchando su listener (window.Auth.logout).
 //
@@ -61,15 +63,23 @@
     emailEl.className = "topbar-user-email";
     emailEl.id = "userEmail";
     emailEl.textContent = email;
-    // Un empleado ve en qué comercio está trabajando (apps/accounts/teams.py).
-    const team = user && user.team;
-    if (team && team.role === "employee") {
-      emailEl.textContent = `${email} · ${team.display_name || team.name || "Comercio"}`;
-    }
     info.appendChild(nameEl);
     info.appendChild(emailEl);
     userBox.appendChild(info);
     node.appendChild(userBox);
+
+    // El comercio en el que trabaja ESTA pestaña, y el cambio a otro
+    // (renderTeamSwitcher, utils.js; apps/accounts/teams.py). Algunas páginas
+    // cargan esta barra antes que utils.js: entonces se dibuja al terminar
+    // de cargar.
+    const teamBox = document.createElement("div");
+    teamBox.className = "topbar-team";
+    node.appendChild(teamBox);
+    const drawSwitcher = () => {
+      if (typeof renderTeamSwitcher === "function") renderTeamSwitcher(teamBox, user);
+    };
+    if (typeof renderTeamSwitcher === "function") drawSwitcher();
+    else document.addEventListener("DOMContentLoaded", drawSwitcher, { once: true });
 
     const actions = document.createElement("div");
     actions.className = "topbar-actions";

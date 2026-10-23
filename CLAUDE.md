@@ -281,7 +281,7 @@ domain (host-only; `AUTH_COOKIE_DOMAIN` if ever needed); HttpOnly; SameSite=Lax;
 cookie requires `X-Auth-Mode`** (403 otherwise) — a custom header forces a CORS preflight, so another site
 can't forge a write. `CookieTokenRefreshView` takes the refresh from the body or the cookie (rotation +
 blacklist unchanged) and, in cookie mode, a dead one answers 401 and clears the cookies; logout revokes the
-cookie's refresh and clears both. CORS: `CORS_ALLOW_CREDENTIALS` and `x-auth-mode` allowed. A browser
+cookie's refresh and clears both. CORS: `CORS_ALLOW_CREDENTIALS` and `x-auth-mode` allowed (and `x-team-id`, the current business — see Teams). A browser
 holding an old `localStorage` refresh trades it once for cookies on load (`auth.js`), so nobody is logged
 out by the change. Tests: `apps/accounts/tests/test_auth_cookies.py`.
 
@@ -326,7 +326,7 @@ exact midnight. It reads `.get()`, so it takes query params or a JSON body dict 
   Ayuda: FAQ, write to support, notices). The same tools appear in that main screen's topbar (`data-links` items may carry
   `"perm"`, which `topbar.js` checks against the stored session). `menu` is still sent (its tests and anything
   reading it). `onboarding(user)`: four first steps (store, business data, template, carrier) computed from
-  the data, only for a business OWNER who isn't the admin; "Ocultar" is per browser (localStorage). Icons:
+  the data of the current business, only for its OWNER who isn't the admin; "Ocultar" is per browser (localStorage). Icons:
   `@mdi/font@4.9.95` from jsdelivr — `cdn.materialdesignicons.com` stopped answering and every icon was blank;
   some 5.x names (`printer-outline`, `storefront-outline`) don't exist in 4.x. **Function search** (2026-10-21, above the
   cards; `setupToolSearch` in `dashboard.js`): searches every tool the user can reach — the sections and their
@@ -410,7 +410,7 @@ There is **no `role` field on `User`** — it's derived, never stored directly:
 ### Account data and global catalogs (T#351-356)
 
 **Account data (`AccountSettings`, `apps/accounts/models.py`).** Decided 2026-10-16 as the account of one user;
-since 2026-10-19 it is **the business's** data: the row hangs from the team OWNER (like every business row,
+since 2026-10-19 it is **the business's** data: the row hangs from the business's data user (like every business row,
 see "Teams") — read by anyone in the team, edited with `account.manage`. One optional row, created on the
 first save: `legal_name`, `tax_id` (CUIT, validated with AFIP's check digit — `cuit_is_valid` — and stored as
 `XX-XXXXXXXX-X`), `sender_name`/`sender_address`/`sender_phone`, `logo`, and preferences `default_template`,
@@ -445,30 +445,59 @@ permission, `?include_inactive=1` only for managers, delete = deactivate, audite
   `labels/0012`; same 5-30 × 5-40 cm limits as a template): the editor's "Medida" select
   (`assets/js/label_editor_sizes.js`) fills width/height; typing numbers that match none shows "Otra medida".
 
-### Teams — a business with an owner and employees (`apps/accounts/teams.py`, 2026-10-19)
+### Teams — businesses with an owner and employees (`apps/accounts/teams.py`, 2026-10-19; several per person 2026-10-23)
 
 Decided with the user (spec `docs/superpowers/specs/2026-10-19-equipos-design.md`, plan
 `docs/superpowers/plans/2026-10-19-equipos.md`): a business ("comercio") is a team — one **owner** and zero or
 more **employees**, each with their own login, all working on the same stores, orders, templates, carrier
-accounts, printers, rates and business data. **A user belongs to exactly one business** (`TeamMember.user` is
-unique); two businesses never merge.
-- **Data still hangs from the OWNER user** — none of the 24 `owner`/`user` FKs changed. Every view that reads or
-  creates business data uses **`teams.data_owner(request.user)`** instead of `request.user`; for a merchant on
-  their own it IS `request.user`, so nothing changed for them. What stays `request.user`: permission checks,
-  the audit actor, authorship fields (`created_by`, `uploaded_by`, template versions), support messages,
-  profile and session. Models keyed only by authorship stay personal (photo imports `LabelImport`/
-  `UploadedLabelFile`, System 2 `ElementLayout`/`LayoutVariable`). The OAuth `state` and the Tiendanube share
-  link carry the owner, so a store connected by an employee belongs to the business. Admin-only things (API
-  keys, outgoing webhooks, ingest) were not touched.
-- Models (`team_models.py`, imported from `models.py`): `Team` (owner, name), `TeamMember` (role owner|employee,
-  `profile` or custom `accesses`, `all_stores` + `stores`), `TeamProfile` (named access set per business;
-  every business starts with "Todo", "Depósito", "Atención"), `TeamInvitation`. **`teams.membership(user)`
-  creates a solo business on first use** (the project uses no signals; two first requests at once are
-  safe: the loser of the `IntegrityError` reads the winner's); migration `accounts/0027` created one for every
-  existing user, admins included. **One membership read per request**: `TeamCacheMiddleware` opens a
-  per-request cache (`request_cache()`, a `ContextVar`) that `membership()` uses — every permission check and
-  `data_owner` used to query again. Outside a request (worker, shell, direct test calls) nothing is cached.
-  Whatever changes a membership calls `teams.forget(user)` (the `team_services` functions do).
+accounts, printers, rates and business data. **Since 2026-10-23 (stage 1 of "varios comercios por persona") a
+person starts with NO business and can be in several**, with a different role in each (owner of one, employee of
+another), creating as many as they want. Two businesses never merge. **A store belongs to ONE business**: sharing
+a store between businesses was considered as a stage 2 and dropped (2026-10-23, the user's boss: it makes no sense).
+- **Data hangs from each business's DATA USER** (`Team.data_user`, OneToOne, PROTECT): an internal user
+  (`comercio-<hex>@datos.invalid`, inactive, unusable password) — none of the 24 `owner`/`user` FKs changed.
+  `Team.owner` is the PERSON (FK, nullable only for a closed business whose owner was deleted). Every view that
+  reads or creates business data uses **`teams.data_owner(request.user)`** = the data user of the CURRENT
+  business. What stays `request.user`: permission checks, the audit actor, authorship fields (`created_by`,
+  `uploaded_by`, template versions), support messages, profile and session. Models keyed only by authorship
+  stay personal (photo imports `LabelImport`/`UploadedLabelFile`, System 2 `ElementLayout`/`LayoutVariable`).
+  The OAuth `state` and the Tiendanube share link carry the data user (= the business), so a store connected by
+  an employee belongs to the business; `read_oauth_state`/`read_share_token` and print agents accept it via
+  `teams.live_data_owner_q` (an active person OR the data user of an OPEN business) instead of `is_active`.
+- **Data users are not people** (`teams.internal_users_q()`): hidden from the user admin (list, summary, CSV,
+  bulk actions, detail → 404, metrics — `user_admin_views.people()`), never mailed. Whatever used the owner as a
+  person goes through helpers: `mail_person(data_user)` (merchant notices, the privacy `customers/data_request`
+  report: the owner person; the notice mail names the business), `business_display_name(user)` (label/manifest/
+  export fallback when there is no sender or recipient name), `contact_email(user)` (admin serializers'
+  `owner_email`/`user_email`), `team_of_data_user(user)`. Order metrics count businesses, not users.
+  `account.update` is audited against the team. A background label batch carries `view_all` from the requester
+  (the document's user is the data user).
+- **Current business of a request**: the frontend sends `X-Team-Id` (per tab, see Frontend); `TeamCacheMiddleware`
+  puts it in a `ContextVar` and `membership(user)` uses it if the person is a member of that OPEN business; else
+  (no header, forged or stale one) the one with the latest `TeamMember.last_used_at` (set by `switch/`, create and
+  accept), else the newest. **`membership()` never creates anything: no business → `None`**; `data_owner`/`team_for`
+  raise `teams.NoTeam` (403 `{"detail", "code": "no_team"}`), team-scoped permissions are False and
+  `HasRolePermission` raises `NoTeam` for them, so the frontend sends the person to `comercio_inicio.html`. Inside a
+  request membership rows are read once (`request_cache()`), outside (worker, shell) every call reads the DB;
+  whatever changes a membership calls `teams.forget(user)`; `teams.use_team(id)` switches the request (switch,
+  create and accept answer the user seen from the new business). Per-member helpers for OTHER people of a business:
+  `accesses_of(member)`, `stores_of(member)`. The Tiendanube print-link (opened by Tiendanube in a new tab) first
+  moves to whichever of the person's businesses owns that store.
+- The platform admin needs no business: the administration works without one; to work as a merchant they create or
+  join one like anybody.
+- Models (`team_models.py`, imported from `models.py`): `Team` (owner, data_user, name, `join_code` +
+  `join_code_enabled`, closing fields), `TeamMember` (FK user, unique `(team, user)`, one OWNER per team, role
+  owner|employee, `profile` or custom `accesses`, `all_stores` + `stores`, `last_used_at`), `TeamProfile` (named
+  access set per business; every business starts with "Todo", "Depósito", "Atención"), `TeamInvitation`,
+  `TeamJoinRequest` (pending|approved|rejected|cancelled, one pending per team+user). `teams.create_team(owner,
+  name, data_user=None)` makes the data user, the owner membership, the profiles and the code. Migrations
+  `accounts/0033-0035`: open businesses with NO data and no other member were deleted (those people see the start
+  screen); the rest got a data user and their `OWNED_DATA` + `MerchantNotice` rows moved to it; closed ones use their
+  former archive user as data user and `owner` = the old `former_owner` (field removed). `0034` doesn't undo
+  (reverse is a no-op). Tests: `test_multi_team.py`, `test_multi_team_migration.py`. **Pending, the user asked to
+  be reminded**: ~older tests give their user a business whose data user is the person itself
+  (`apps/accounts/tests/team_helpers.give_solo_team`, one line per setUp) — a shape production never has; they
+  want them rewritten for real (grep `give_solo_team`).
 - **The 12 accesses** (`teams.ACCESSES`, the merchant's words): ver pedidos, imprimir rótulos, despachar,
   cancelar, cargar e importar, plantillas, tiendas, transportistas y tarifas, impresoras, datos del comercio,
   equipo, exportar. Owner = all; employee = their profile's (a profile change applies to everyone on it) or
@@ -485,27 +514,53 @@ unique); two businesses never merge.
   containing orders of other stores, or of unknown stores. The tracking-import preview, `/labels/render/`,
   the label↔order link and rates writes are scoped too. **Careful:
   `Q(...) | Q()` returns the first Q alone** — an empty scope must not be OR-ed (see the `Label` list).
-- **Joining** (`team_services.py`): the owner (or anyone with the "Equipo" access) invites by email
-  (`POST /team/invitations/`, mail with a link to `invitaciones.html`, `TEAM_INVITATION_DAYS` = 7; invite and
-  resend share the `team_invite` throttle, `TEAM_INVITE_THROTTLE_RATE` 30/hour, because each one mails any
-  address; the mail goes INSIDE the transaction, so a failed send leaves no invitation and answers 502); the person
-  must **accept** with a verified email equal to the invitation's (`/team/my-invitations/<id>/accept|decline/`;
-  the accept answers the refreshed `user` payload). Only if their own business is empty (`owned_data_count`
-  over `OWNED_DATA`, the registry of business models) and has no other members; the empty one is discarded.
-  The platform admin assigns directly, no acceptance (`POST /users/<id>/team/ {team_id, role}`, same rule).
-  **No escalation**: whoever hands out accesses can only give accesses/stores they have, never touch
-  themself or the owner, and (if not the owner) never touch a member with accesses or stores they lack. Removing an employee leaves their data in the business and gives them a new empty one.
-  **Transfer** (`POST /team/transfer/`, owner only) moves every `OWNED_DATA` row to the new owner in one
-  transaction; the old owner stays as employee with "Todo". "Deleting the business" does not exist (yet). The admin's permanent user delete
-  refuses an owner with employees (transfer first) and otherwise deletes their team with them (`Team.owner` is
-  PROTECT).
+- **Joining** (`team_services.py`), always ADDS a business (never removes the others):
+  - **Invitation by email**: the owner (or anyone with the "Equipo" access) invites (`POST /team/invitations/`,
+    mail with a link to `invitaciones.html`, `TEAM_INVITATION_DAYS` = 7; invite and resend share the `team_invite`
+    throttle, `TEAM_INVITE_THROTTLE_RATE` 30/hour, because each one mails any address; the mail goes INSIDE the
+    transaction, so a failed send leaves no invitation and answers 502); the person must **accept** with a verified
+    email equal to the invitation's (`/team/my-invitations/<id>/accept|decline/`; the accept answers the `user` seen
+    from the joined business).
+  - **Fixed code/link of the business** (`Team.join_code`, 10 chars without ambiguous ones): seen, switched off and
+    regenerated in Equipo → Miembros (`GET/PATCH /team/join-code/ {enabled}`, `POST /team/join-code/regenerate/`).
+    Whoever uses it (`POST /team/join/ {code}` from `comercio_inicio.html` or `unirse.html?code=`; dashes/case/a
+    pasted link are tolerated; throttle `team_join`, `TEAM_JOIN_THROTTLE_RATE` 10/hour; a wrong and a disabled code
+    answer the same) is PENDING until someone with "Equipo" approves choosing profile and stores
+    (`POST /team/join-requests/<id>/approve|reject/`, same no-escalation as inviting) — `GET /team/` lists them in
+    `join_requests`. The person sees/cancels theirs at `GET/DELETE /team/my-join-requests/[<id>/]`.
+  - The platform admin adds directly, no acceptance (`POST /users/<id>/team/ {team_id, role}`); `GET` lists every
+    business of the user.
+  - **Create** (`POST /team/create/ {name}`, any logged-in person), **switch** (`POST /team/switch/ {team_id}`) and
+    **leave** (`POST /team/leave/`, an employee; the owner must transfer or close first; what they did stays).
+  **No escalation**: whoever hands out accesses can only give accesses/stores they have IN THAT business, never touch
+  themself or the owner, and (if not the owner) never touch a member with accesses or stores they lack. Removing an
+  employee only deletes the membership. **Transfer** (`POST /team/transfer/`, owner only) only swaps roles and
+  `Team.owner` (data stays on the data user); the old owner stays as employee with "Todo".
+  **Closing the business = soft delete** (`POST /team/close/ {confirm: "BAJA", reason}`, owner only,
+  `team_services.close_team`): nothing is deleted — the data stays on the data user and every membership is removed,
+  so nobody sees it; each person keeps their account and their other businesses (none is created). Stores are
+  revoked and their `external_store_id` gets `#baja-<team id>` so the same store can be connected again as a NEW
+  row; carrier accounts, print agents, API keys and webhooks are switched off (ids in `closed_state`), pending print
+  jobs, invitations and join requests cancelled, the code switched off; `closed_at`/`closed_by`/`close_reason` keep
+  who and why. The admin lists them at `GET /teams/closed/` and gives one back with `POST /teams/<id>/reopen/`
+  (`reopen_team`, `users.edit`) as one MORE business of its owner: data, store ids (unless taken meanwhile →
+  warning) and switched-off rows come back, employees don't (re-invited), stores need reconnecting (tokens were
+  dropped). Screens: block at the bottom of Mi cuenta (`baja_comercio.js`) and admin `comercios_baja.html`. Audited
+  `team.close`/`team.reopen`. Tests `test_team_close.py`, `test_multi_team.py`. The admin's permanent user delete
+  refuses an owner of an open business with employees (transfer first) and otherwise deletes their open businesses
+  and their data users with them; closed ones keep their data, owner set to null.
 - API `/api/v1/team/` (`team.manage`): `GET` (members, pending invitations, profiles, catalog, stores, `me`),
   `PATCH {name}`, `members/<id>/` PATCH/DELETE, `invitations/` (only pending AND not expired are listed) +
   `<id>/` DELETE + `<id>/resend/`, `profiles/` (creating one also respects no-escalation)
-  CRUD (in use → 400), `transfer/`, member PATCH is a real PATCH (what isn't sent stays), `activity/` (the audit of CURRENT members, only since each one joined — someone coming from
-  another business doesn't bring that history —, limited to business categories plus `account.update`, without IP/user agent; a member who left for another
-  business leaves a `team.leave` row about the OLD business, shown only there). `user_payload` carries `team` {id, name, display_name, role, accesses, all_stores,
-  store_ids}. All changes audited in category `team`.
+  CRUD (in use → 400), `transfer/`, member PATCH is a real PATCH (what isn't sent stays), `activity/`. **Activity per
+  business**: `AuditLog.team_id` (plain int, `audit/0012`) is filled by `audit.services.record` (the target's id if it
+  is a Team, else `teams.audit_team_id(actor)`: the data user's business or the actor's current one), so `activity/`
+  and `activity/mine/` show the rows of THIS business only; rows written before (team_id null) keep the old rule
+  (current members, since they joined, business categories plus `account.update`). Without IP/user agent.
+  `user_payload` (and `me/`, and the dashboard response) carries `team` = the current one {id, name, display_name,
+  role, accesses, all_stores, store_ids} or `null`, and `teams: [{id, name, display_name, role}]`. All changes
+  audited in category `team` (`team.create`, `team.join_request|join_approve|join_reject|join_code_update`,
+  `team.leave`, ...).
 - **Profile editor shared with Roles**: `createProfileEditor(root, {catalog, allowed, save, remove})` in `utils.js`
   (styles `.pe-*` in `ui.css`) draws profiles on the left and the chosen one's name + accesses on the right, with
   Guardar/Descartar only on changes — the same layout as `roles.html`. Used by the Perfiles tab of `equipo.html`
@@ -522,8 +577,21 @@ unique); two businesses never merge.
   `invitaciones.html` (the invited person; the dashboard shows a notice when there is one),
   admin `comercio_usuario.html` (linked from each row of `gestionuser.html`). Shared
   `renderAccessCheckboxes`/`readAccessCheckboxes`/`renderStoreChoice`/`readStoreChoice` in `utils.js`, styles in
-  `equipo.css`. The topbar shows the business to an employee. An invitation starts on the profile with FEWEST
-  accesses. Menu entries follow the accesses (`DashboardView`).
+  `equipo.css`. An invitation starts on the profile with FEWEST accesses. Menu entries follow the accesses
+  (`DashboardView`). Miembros also shows "Código para sumarse" (copy link, switch off, regenerate) and "Pedidos para
+  sumarse" (approve with the member dialog, reject).
+- **Several businesses in the frontend**: `auth.js` keeps the current business PER TAB (`sessionStorage.teamId`;
+  `localStorage.lastTeamId` is where a new tab starts) and `withSession` sends it as `X-Team-Id` on every request;
+  the stored `user` is also per tab (sessionStorage first, localStorage as the last used). `saveSession` syncs
+  `teamId` with `user.team`; `Auth.switchTeam(id)` posts `switch/` and reloads. A 403 `code: no_team` sends to
+  `comercio_inicio.html` except on the pages usable without a business (comercio_inicio, unirse, invitaciones,
+  organizacion, ayuda). The selector is `renderTeamSwitcher(container, user)` (`utils.js`, styles in `ui.css`): in the
+  shared topbar and in the dashboard header; its last option goes to `comercio_inicio.html`. The dashboard without a
+  business sends a merchant to `comercio_inicio.html` (the admin gets a notice instead).
+  `comercio_inicio.html` (`comercio_inicio.js`): create, pending invitations (`renderMyInvitations`, shared with
+  `invitaciones.js`), paste a code, own pending requests. `unirse.html?code=` (`unirse.js`): without a session keeps
+  `localStorage.pendingJoinCode` and `index.html` comes back after login. Mi cuenta: "Salir de este comercio" for an
+  employee (`salir_comercio.js`); without a business its "Datos del comercio" part is replaced by a link to start one.
 - Local testing: `.claude/launch.json` → `backend-sin-mail` runs the API with mails to the console (the local
   `.env` uses real SMTP and an invitation sends a real mail).
 

@@ -20,11 +20,18 @@
   const CHANGE_PASSWORD_URL = SCRIPT_URL
     ? new URL("../../cambiar-password.html", SCRIPT_URL).href
     : "cambiar-password.html";
+  const TEAM_START_URL = SCRIPT_URL
+    ? new URL("../../comercio_inicio.html", SCRIPT_URL).href
+    : "comercio_inicio.html";
+
+  // Páginas que se usan sin comercio: un `no_team` ahí no redirige.
+  const NO_TEAM_PAGES = /\/(comercio_inicio|unirse|invitaciones|organizacion|ayuda|index|register|logoutpage)\.html$/;
 
   const AUTH_BASE = `${window.APP_CONFIG.API_BASE}/auth`;
   const REFRESH_URL = `${AUTH_BASE}/refresh/`;
   const LOGOUT_URL = `${AUTH_BASE}/logout/`;
   const ME_URL = `${AUTH_BASE}/me/`;
+  const TEAM_SWITCH_URL = `${window.APP_CONFIG.API_BASE}/team/switch/`;
 
   // La sesión viaja en cookies HttpOnly que pone el backend
   // (backend/apps/accounts/auth_cookies.py): este código nunca ve los tokens.
@@ -36,17 +43,54 @@
   // que es también la marca de "hay sesión" para las páginas.
   const AUTH_MODE_HEADERS = { "X-Auth-Mode": "cookie" };
 
+  // Una persona puede estar en varios comercios. Cada pestaña trabaja en el
+  // suyo (sessionStorage) y lo manda en X-Team-Id; una pestaña nueva arranca
+  // en el último que se usó (localStorage). El backend valida que sea suyo.
+  // El `user` (permisos del comercio, rol, etc.) se guarda igual: por
+  // pestaña, y el último también para las pestañas nuevas.
+  function readStorage(storage, key) {
+    try {
+      return storage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+
+  function writeStorage(storage, key, value) {
+    try {
+      if (value === null || value === undefined) storage.removeItem(key);
+      else storage.setItem(key, value);
+    } catch {
+      // Sin almacenamiento la app sigue andando con el comercio por defecto.
+    }
+  }
+
+  function getCurrentTeamId() {
+    return readStorage(sessionStorage, "teamId") || readStorage(localStorage, "lastTeamId") || "";
+  }
+
+  function setCurrentTeamId(teamId) {
+    const value = teamId ? String(teamId) : null;
+    writeStorage(sessionStorage, "teamId", value);
+    if (value) writeStorage(localStorage, "lastTeamId", value);
+  }
+
   function withSession(options = {}) {
+    const teamId = getCurrentTeamId();
     return {
       ...options,
       credentials: "include",
-      headers: { ...(options.headers || {}), ...AUTH_MODE_HEADERS },
+      headers: {
+        ...(options.headers || {}),
+        ...AUTH_MODE_HEADERS,
+        ...(teamId ? { "X-Team-Id": teamId } : {}),
+      },
     };
   }
 
   function getCurrentUser() {
     try {
-      return JSON.parse(localStorage.getItem("user") || "{}");
+      return JSON.parse(readStorage(sessionStorage, "user") || readStorage(localStorage, "user") || "{}");
     } catch {
       return {};
     }
@@ -61,10 +105,18 @@
   // Lo que hace cada login (index.html, register.html) con la respuesta: las
   // cookies ya las dejó el navegador; acá solo se guarda quién es.
   function saveSession(user) {
-    localStorage.setItem("user", JSON.stringify(user || {}));
+    const value = JSON.stringify(user || {});
+    writeStorage(sessionStorage, "user", value);
+    localStorage.setItem("user", value);
+    // El comercio que el backend resolvió para esta pestaña.
+    if (user && user.team) setCurrentTeamId(user.team.id);
+    else if (user && user.id) writeStorage(sessionStorage, "teamId", null);
   }
 
   function clearSession() {
+    writeStorage(sessionStorage, "user", null);
+    writeStorage(sessionStorage, "teamId", null);
+    writeStorage(localStorage, "lastTeamId", null);
     localStorage.removeItem("user");
     // Restos de cuando los tokens vivían acá.
     localStorage.removeItem("access");
@@ -148,9 +200,32 @@
         pendingError.isSessionExpired = true;
         throw pendingError;
       }
+      // Sin comercio: a crear uno o sumarse, salvo en las páginas que se
+      // usan sin comercio (ahí la página muestra lo que corresponda).
+      if (body && body.code === "no_team" && !NO_TEAM_PAGES.test(window.location.pathname)) {
+        window.location.replace(TEAM_START_URL);
+        const noTeamError = new Error("Sin comercio");
+        noTeamError.isSessionExpired = true;
+        throw noTeamError;
+      }
     }
 
     return response;
+  }
+
+  // Cambia el comercio de ESTA pestaña: el backend lo guarda como el último
+  // usado y devuelve el usuario visto desde él; después se recarga la página
+  // (todo lo que muestra es del comercio anterior).
+  async function switchTeam(teamId) {
+    const response = await apiFetch(TEAM_SWITCH_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Team-Id": String(teamId) },
+      body: JSON.stringify({ team_id: teamId }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || "No se pudo cambiar de comercio.");
+    saveSession(data.user);
+    window.location.reload();
   }
 
   // Revoca el refresh en el backend y borra las cookies (best-effort), limpia
@@ -203,9 +278,13 @@
     saveSession,
     withSession,
     getCurrentUser,
+    getCurrentTeamId,
+    setCurrentTeamId,
+    switchTeam,
     clearSession,
     logout,
     apiFetch,
+    TEAM_START_URL,
   };
 
   refreshStoredUser();

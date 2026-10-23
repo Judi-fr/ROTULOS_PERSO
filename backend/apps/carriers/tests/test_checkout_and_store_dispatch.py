@@ -22,6 +22,7 @@ from apps.integrations.providers.woocommerce import rates as woocommerce_rates
 from apps.integrations.shipping_rates import has_checkout_prices
 from apps.integrations.tests.helpers import auth_headers_for, make_user
 from apps.orders.models import Order
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 API = "/api/v1/carriers/checkout"
 
@@ -51,6 +52,7 @@ class Base(AndreaniTestMixin, OcaTestMixin, CorreoTestMixin, APITestCase):
         self.store = StoreConnection.objects.create(
             owner=self.user, platform="tiendanube", external_store_id="555", name="Mi tienda", access_token="t"
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def enable(self, code, contract, **values):
         checkout_for(code).save_config(self.store, {"enabled": True, "contract": contract, **values})
@@ -135,6 +137,7 @@ class CheckoutTests(Base):
 
     def test_tienda_ajena_o_transportista_inexistente(self):
         other = make_user("otro@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         response = self.client.put(f"{API}/", {"store": self.store.pk, "carrier": "oca"}, format="json", **auth_headers_for(other))
         self.assertEqual(response.status_code, 400)
         response = self.client.put(f"{API}/", {"store": self.store.pk, "carrier": "dhl"}, format="json", **auth_headers_for(self.user))

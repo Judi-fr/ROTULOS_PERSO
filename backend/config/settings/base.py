@@ -191,6 +191,9 @@ REST_FRAMEWORK = {
         # Invitar o reenviar una invitación a un comercio manda un mail a
         # cualquier dirección (apps/accounts/team_views.py).
         "team_invite": env("TEAM_INVITE_THROTTLE_RATE", default="30/hour"),
+        # Pedir sumarse con un código: pocos intentos, para que no se puedan
+        # probar códigos a lo bruto.
+        "team_join": env("TEAM_JOIN_THROTTLE_RATE", default="10/hour"),
     },
 }
 
@@ -204,7 +207,7 @@ CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
 # otro origen solo las lleva con credenciales, y el header X-Auth-Mode tiene
 # que estar permitido en el preflight.
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_HEADERS = (*default_cors_headers, "x-auth-mode")
+CORS_ALLOW_HEADERS = (*default_cors_headers, "x-auth-mode", "x-team-id")
 
 # El navegador solo le deja leer al JavaScript de otro origen un puñado de
 # cabeceras estándar. Sin esta lista, el frontend (otro puerto que la API)

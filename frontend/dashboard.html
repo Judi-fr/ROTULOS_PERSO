@@ -35,6 +35,8 @@
             <span class="topbar-user-email" id="userEmail">—</span>
           </div>
         </div>
+        <!-- El comercio de esta pestaña y el cambio a otro (renderTeamSwitcher). -->
+        <div class="topbar-team" id="teamSwitcher"></div>
         <div class="topbar-actions">
           <a
             class="btn btn-outline"
@@ -75,6 +77,11 @@
         </div>
 
         <p id="dashboardMessage" class="dashboard-message" role="status" aria-live="polite" style="display:none;"></p>
+        <!-- El admin sin comercio: puede crear uno o sumarse (dashboard.js). -->
+        <p id="noTeamNotice" class="dashboard-message info" hidden>
+          No estás trabajando en ningún comercio.
+          <a href="comercio_inicio.html">Crear uno o sumarte a uno</a>
+        </p>
         <!-- Invitaciones a un comercio (dashboard.js / loadInvitationNotice). -->
         <p id="invitationNotice" class="dashboard-message info" hidden></p>
 

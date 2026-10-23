@@ -157,6 +157,9 @@ const IN_PAGE_TOOLS = [
   { label: "Mis direcciones", url: "pedidos.html#addressesSection", section: "Pedidos", perm: "addresses.manage" },
   { label: "Cambiar mi contraseña", url: "organizacion.html#perfil", section: "Mi cuenta", perm: null },
   { label: "Datos del comercio", url: "organizacion.html#comercio", section: "Mi cuenta", perm: null },
+  { label: "Crear o sumarme a otro comercio", url: "comercio_inicio.html", section: "Mi cuenta", perm: null },
+  { label: "Código para sumarse al comercio", url: "equipo.html#miembros", section: "Mi cuenta", perm: "team.manage" },
+  { label: "Salir de este comercio", url: "organizacion.html#leaveTeamSection", section: "Mi cuenta", perm: null },
   { label: "Preguntas frecuentes", url: "ayuda.html#preguntas", section: "Ayuda", perm: null },
 ];
 
@@ -513,6 +516,18 @@ async function loadInvitationNotice() {
   }
 }
 
+// El panel trae el comercio actual y la lista de comercios recién leídos: la
+// sesión guardada de la pestaña se pone al día (otra pestaña o el dueño pudo
+// haberlos cambiado).
+function keepStoredTeams(data) {
+  const stored = getCurrentUser();
+  if (!stored || !stored.id) return;
+  const next = { ...stored, team: data.team || null, teams: data.teams || [] };
+  if (JSON.stringify(next.team) !== JSON.stringify(stored.team) || JSON.stringify(next.teams) !== JSON.stringify(stored.teams)) {
+    window.Auth.saveSession(next);
+  }
+}
+
 async function loadDashboard() {
   try {
     const response = await apiFetch(DASHBOARD_URL);
@@ -521,13 +536,25 @@ async function loadDashboard() {
       return;
     }
     const data = await response.json();
+    // Sin comercio no hay nada del trabajo del comercio: a crear uno o
+    // sumarse. El admin entra igual (la administración no necesita comercio).
+    if (!data.team && !(data.user && data.user.is_admin)) {
+      window.location.replace("comercio_inicio.html");
+      return;
+    }
+    keepStoredTeams(data);
     renderUser(data.user || {});
+    renderTeamSwitcher(document.getElementById("teamSwitcher"), { team: data.team, teams: data.teams });
     renderBackToAdminLink(data.user || {});
     renderOnboarding(data.onboarding);
     renderSections(data.sections || []);
     setupToolSearch(data.sections || [], data.menu || []);
-    loadOrderSummary();
     loadInvitationNotice();
+    if (!data.team) {
+      document.getElementById("noTeamNotice").hidden = false;
+      return;
+    }
+    loadOrderSummary();
     loadNotices();
   } catch (err) {
     if (!err || !err.isSessionExpired) {

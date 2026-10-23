@@ -12,6 +12,7 @@ from apps.integrations.models import StoreConnection
 
 from ..models import Address, Order
 from .test_orders import auth_headers_for
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 User = get_user_model()
 
@@ -41,6 +42,7 @@ class OrderStoreFilterTests(APITestCase):
 
         other_address = Address.objects.create(user=self.other, street="Otra", number="2", city="CABA")
         Order.objects.create(user=self.other, address=other_address, store_connection=self.foreign_store, external_id="x1")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _list_ids(self, query=""):
         response = self.client.get(f"/api/v1/orders/{query}", **auth_headers_for(self.user))
@@ -85,6 +87,7 @@ class OrderStatusFilterTests(APITestCase):
         self.dispatched = Order.objects.create(user=self.user, address=address)
         self.dispatched.status = Order.Status.DISPATCHED
         self.dispatched.save(update_fields=["status"])
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _ids(self, query):
         response = self.client.get(f"/api/v1/orders/{query}", **auth_headers_for(self.user))
@@ -139,6 +142,7 @@ class OrderDateFilterTests(APITestCase):
                 created_at=timezone.make_aware(datetime(2026, 9, day, 12, 0))
             )
             self.orders[day] = order
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def ids(self, response):
         results = response.data["results"] if "results" in response.data else response.data

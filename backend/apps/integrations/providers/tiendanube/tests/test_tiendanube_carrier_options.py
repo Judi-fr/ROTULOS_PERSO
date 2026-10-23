@@ -18,6 +18,7 @@ from apps.integrations.providers.tiendanube import rates
 from apps.integrations.tests.helpers import auth_headers_for
 
 from .test_tiendanube_labels import LABEL_SETTINGS, StoreLabelTestCase
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 CARRIER_SETTINGS = dict(LABEL_SETTINGS, STORE_LABEL_CARRIER_NAME="Rótulos")
 CARRIER_ID = 4242
@@ -32,6 +33,7 @@ class CarrierOptionsTestCase(StoreLabelTestCase):
         self.api.set("POST", "shipping_carriers", 201, {"id": CARRIER_ID, "name": "Rótulos"})
         self.api.set("GET", OPTIONS_PATH, 200, [])
         self.api.set("POST", OPTIONS_PATH, 201, {"id": 1})
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def rate(self, code="standard", name="Envío estándar", **overrides):
         values = {
@@ -245,6 +247,7 @@ class AndreaniSettingResyncTests(CarrierOptionsTestCase):
         # API falsa reemplazaría a la de Tiendanube (las dos parchean requests).
         AndreaniTestMixin.make_account(self, self.owner)
         self.mark_registered()
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def put(self, **values):
         data = {"store": self.connection.pk, "enabled": True, "contract": "400006709", "name": "Andreani"}

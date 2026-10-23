@@ -13,6 +13,7 @@ from apps.audit.models import AuditLog
 
 from ..models import LabelTemplate, LabelTemplateVersion
 from .test_labels import VALID_DESIGN, auth_headers_for
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 User = get_user_model()
 MOVED_DESIGN = {**VALID_DESIGN, "cp": {"left": 50, "top": 56, "text": "CP: 1000"}}
@@ -32,6 +33,7 @@ class TemplateVersionTests(APITestCase):
         self.other = User.objects.create_user(username="ajeno@example.com", email="ajeno@example.com", password="Clave123!")
         self.other.groups.add(subscriber)
         self.headers = auth_headers_for(self.user)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def url(self, template_id, suffix=""):
         return f"/api/v1/labels/templates/{template_id}/{suffix}"

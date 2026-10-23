@@ -36,9 +36,13 @@ def should_run_async(item_count: int) -> bool:
     return item_count > settings.LABELS_BATCH_SYNC_MAX_ITEMS
 
 
-def queue_batch(document, items, template, output, page_layout, skipped_existing_count, dpmm, printer=None):
+def queue_batch(
+    document, items, template, output, page_layout, skipped_existing_count, dpmm, printer=None, view_all=False
+):
     """Deja el lote pendiente en ``document.job`` (el documento ya existe, en
-    "processing")."""
+    "processing"). ``view_all``: quien lo pidió puede ver los pedidos de
+    todos (el documento cuelga del usuario de datos del comercio, que no es
+    quien lo pidió)."""
     kind = "labels" if items and isinstance(items[0], Label) else "orders"
     document.job = {
         "kind": kind,
@@ -49,6 +53,7 @@ def queue_batch(document, items, template, output, page_layout, skipped_existing
         "skipped_existing_count": skipped_existing_count,
         "dpmm": dpmm,
         "printer_id": printer.pk if printer is not None else None,
+        "view_all": bool(view_all),
         "attempts": 0,
         "claimed_at": None,
     }
@@ -91,7 +96,8 @@ def _load_items(document, job):
         # Mismo criterio que el request: lo de otro usuario solo si podía verlo todo.
         from apps.accounts.permissions_map import user_has_permission
 
-        if not user_has_permission(document.user, "labels.view_all"):
+        view_all = job["view_all"] if "view_all" in job else user_has_permission(document.user, "labels.view_all")
+        if not view_all:
             queryset = queryset.filter(user=document.user)
     found = {item.pk: item for item in queryset}
     return [found[pk] for pk in ids if pk in found], len(ids) - len(found)

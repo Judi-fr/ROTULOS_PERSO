@@ -1,7 +1,6 @@
 """Pendientes de los comercios con equipo (2026-10-20): límite de
 invitaciones, mail fallido, invitaciones vencidas, planilla con pedidos de
-otra tienda, una sola consulta de membresía por request y la carrera del
-primer uso."""
+otra tienda y una sola consulta de membresía por request."""
 
 from datetime import timedelta
 from unittest import mock
@@ -18,7 +17,7 @@ from apps.accounts.models import TeamInvitation, TeamMember
 from apps.orders.models import Address, Order
 
 from .test_store_scope import store
-from .test_team_permissions import add_employee, bearer, make_user
+from .test_team_permissions import add_employee, bearer, make_owner, make_user
 
 INVITE = "/api/v1/team/invitations/"
 
@@ -26,7 +25,7 @@ INVITE = "/api/v1/team/invitations/"
 class InvitationFollowupTests(APITestCase):
     def setUp(self):
         cache.clear()
-        self.owner = make_user("owner@example.com")
+        self.owner = make_owner("owner@example.com")
         self.team = teams.team_for(self.owner)
         self.profile = self.team.profiles.get(name="Depósito")
 
@@ -68,11 +67,12 @@ class InvitationFollowupTests(APITestCase):
 
 class ManifestScopeTests(APITestCase):
     def test_manifest_with_an_order_of_another_store_is_refused(self):
-        owner = make_user("owner@example.com")
-        t1, t2 = store(owner, "1"), store(owner, "2")
-        address = Address.objects.create(user=owner, street="C", number="1", city="CABA")
-        o1 = Order.objects.create(user=owner, address=address, store_connection=t1, external_id="1")
-        o2 = Order.objects.create(user=owner, address=address, store_connection=t2, external_id="2")
+        owner = make_owner("owner@example.com")
+        data = teams.data_owner(owner)
+        t1, t2 = store(data, "1"), store(data, "2")
+        address = Address.objects.create(user=data, street="C", number="1", city="CABA")
+        o1 = Order.objects.create(user=data, address=address, store_connection=t1, external_id="1")
+        o2 = Order.objects.create(user=data, address=address, store_connection=t2, external_id="2")
         limited, member = add_employee(owner, "limitado@example.com", profile="Todo")
         member.all_stores = False
         member.save()
@@ -86,8 +86,7 @@ class ManifestScopeTests(APITestCase):
 
 class MembershipCacheTests(TestCase):
     def test_membership_is_read_once_per_request(self):
-        user = make_user("u@example.com")
-        teams.team_for(user)
+        user = make_owner("u@example.com")
         with teams.request_cache():
             with CaptureQueriesContext(connection) as queries:
                 for _ in range(5):
@@ -96,22 +95,20 @@ class MembershipCacheTests(TestCase):
         self.assertEqual(len(queries), 1)
 
     def test_without_a_request_nothing_is_cached(self):
-        user = make_user("u@example.com")
-        teams.team_for(user)
+        user = make_owner("u@example.com")
         with CaptureQueriesContext(connection) as queries:
             teams.membership(user)
             teams.membership(user)
         self.assertEqual(len(queries), 2)
 
     def test_a_change_inside_the_request_is_seen(self):
-        owner = make_user("owner@example.com")
+        owner = make_owner("owner@example.com")
         employee = make_user("e@example.com")
         with teams.request_cache():
-            self.assertEqual(teams.data_owner(employee), employee)
-            TeamMember.objects.filter(user=employee).delete()
+            self.assertIsNone(teams.membership(employee))
             TeamMember.objects.create(team=teams.team_for(owner), user=employee, role=TeamMember.Role.EMPLOYEE)
             teams.forget(employee)
-            self.assertEqual(teams.data_owner(employee), owner)
+            self.assertEqual(teams.data_owner(employee), teams.team_for(owner).data_user)
 
     def test_api_requests_use_the_cache(self):
         from django.conf import settings
@@ -119,27 +116,12 @@ class MembershipCacheTests(TestCase):
         self.assertIn("apps.accounts.teams.TeamCacheMiddleware", settings.MIDDLEWARE)
 
 
-class FirstUseRaceTests(TestCase):
-    def test_two_first_requests_at_once_do_not_fail(self):
-        user = make_user("nuevo@example.com")
-        real_create = teams.create_team
-
-        def other_request_wins(owner):
-            # Otra request creó el comercio entre el "no existe" y el "crear".
-            real_create(owner)
-            raise IntegrityError("UNIQUE constraint failed: accounts_teammember.user_id")
-
-        with mock.patch.object(teams, "create_team", side_effect=other_request_wins):
-            member = teams.membership(user)
-        self.assertEqual(member.role, TeamMember.Role.OWNER)
-
-
 class TeamMinorFollowupTests(APITestCase):
     """Los cuatro menores que quedaron de la revisión (2026-10-20)."""
 
     def setUp(self):
         cache.clear()
-        self.owner = make_user("owner@example.com")
+        self.owner = make_owner("owner@example.com")
         self.team = teams.team_for(self.owner)
 
     def test_creating_a_profile_respects_no_escalation(self):
@@ -152,7 +134,7 @@ class TeamMinorFollowupTests(APITestCase):
         self.assertEqual(response.status_code, 201, response.data)
 
     def test_member_patch_keeps_what_was_not_sent(self):
-        t1 = store(self.owner, "1")
+        t1 = store(self.team.data_user, "1")
         _, member = add_employee(self.owner, "e@example.com", profile="Depósito")
         response = self.client.patch(
             f"/api/v1/team/members/{member.id}/", {"all_stores": False, "store_ids": [t1.id]}, format="json", **bearer(self.owner)
@@ -167,14 +149,9 @@ class TeamMinorFollowupTests(APITestCase):
         member.refresh_from_db()
         self.assertEqual((member.profile.name, member.all_stores), ("Atención", False))
 
-    def test_leaving_for_another_business_shows_in_the_old_one(self):
+    def test_leaving_shows_in_the_business_she_left(self):
         employee, _ = add_employee(self.owner, "e@example.com", profile="Todo")
-        other_owner = make_user("otro@example.com")
-        other_team = teams.team_for(other_owner)
-        invite = {"email": "e@example.com", "profile": other_team.profiles.get(name="Depósito").id}
-        self.client.post("/api/v1/team/invitations/", invite, format="json", **bearer(other_owner))
-        invitation = TeamInvitation.objects.get()
-        self.assertEqual(self.client.post(f"/api/v1/team/my-invitations/{invitation.id}/accept/", **bearer(employee)).status_code, 200)
+        self.assertEqual(self.client.post("/api/v1/team/leave/", **bearer(employee)).status_code, 200)
         rows = self.client.get("/api/v1/team/activity/", **bearer(self.owner)).data["results"]
         self.assertIn(("e@example.com", "team.leave"), [(row["actor_email"], row["action"]) for row in rows])
 

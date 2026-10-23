@@ -24,6 +24,7 @@ from apps.integrations.providers.shopify.provider import query_string_hmac
 from apps.integrations.stores import IMPORT_ORDERS_EVENT, STATE_SALT, enqueue_store_setup, make_oauth_state
 from apps.integrations.tokens import access_token_for
 from apps.integrations.tests.helpers import auth_headers_for, fake_response, make_user
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 SECRET = "secreto-shopify"
 SHOP = "mitienda.myshopify.com"
@@ -179,6 +180,7 @@ class ShopifyTestMixin:
         patcher = patch("apps.integrations.providers.shopify.provider.requests.post", side_effect=self.fake)
         patcher.start()
         self.addCleanup(patcher.stop)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _redirect_params(self, response):
         self.assertEqual(response.status_code, 302)
@@ -201,6 +203,7 @@ class ShopifyTestMixin:
 class ShopDomainTests(TestCase):
     def setUp(self):
         self.provider = get_provider("shopify")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_acepta_lo_que_escribiria_un_comerciante(self):
         for value in ("mitienda", "MiTienda.myshopify.com", "https://mitienda.myshopify.com/admin", " mitienda "):
@@ -217,6 +220,7 @@ class ShopifyInstallUrlTests(ShopifyTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_url_de_la_tienda_con_state_atado_a_usuario_y_tienda(self):
         response = self.client.get(INSTALL_URL, {"shop": "mitienda"}, **auth_headers_for(self.user))
@@ -246,6 +250,7 @@ class ShopifyCallbackTests(ShopifyTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _callback(self, state=None, shop=SHOP, **extra):
         params = {"code": "codigo-1", "shop": shop, "timestamp": "1790000000", "host": "YWRtaW4"}
@@ -384,6 +389,7 @@ class ShopifyTokenRefreshTests(ShopifyTestMixin, TestCase):
     def setUp(self):
         super().setUp()
         self.provider = get_provider("shopify")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_token_vigente_no_se_renueva(self):
         connection = self._connection()

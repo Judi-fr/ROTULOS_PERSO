@@ -13,6 +13,7 @@ from apps.integrations.stores import PUSH_SHIPPING_RATES_EVENT
 from apps.integrations.tests.helpers import auth_headers_for, make_user
 
 from .fake_vtex import VTEX_SETTINGS, VtexTestMixin
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 
 def rate(pk, postal_from, postal_to, up_to_kg, price, code="standard", **extra):
@@ -78,6 +79,7 @@ class PublishRatesTests(VtexTestMixin, APITestCase):
         self.cheap = ShippingRate.objects.create(
             connection=self.connection, postal_code_from="1000", postal_code_to="1999", weight_up_to_kg=Decimal("5"), price=Decimal("2000")
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _publish(self, enabled=True, store=None):
         return self.client.post(

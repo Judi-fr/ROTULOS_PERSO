@@ -30,6 +30,7 @@ from ..zpl import (
     render_label_zpl,
     render_labels_zpl,
 )
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 
 User = get_user_model()
@@ -400,6 +401,7 @@ class RenderEndpointZplTests(APITestCase):
         self.user = User.objects.create_user(
             username="zebra@example.com", email="zebra@example.com", password="Clave123!"
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         self.user.groups.add(subscriber)
         self.template = LabelTemplate.objects.create(
             name="Para térmica",
@@ -418,6 +420,7 @@ class RenderEndpointZplTests(APITestCase):
         )
         self.order = Order.objects.create(user=self.user, address=self.address)
         self.client.force_authenticate(user=self.user)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _post(self, **extra):
         payload = {"template_id": self.template.pk, "order_id": self.order.pk}
@@ -469,6 +472,7 @@ class RenderEndpointZplTests(APITestCase):
         otro = User.objects.create_user(
             username="ajeno@example.com", email="ajeno@example.com", password="Clave123!"
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         otro.groups.add(Group.objects.get(name="subscriber"))
         self.client.force_authenticate(user=otro)
         self.assertEqual(self._post(format="zpl").status_code, 404)
@@ -512,6 +516,7 @@ class BatchZplTests(APITestCase):
             )
             self.orders.append(Order.objects.create(user=self.user, address=address))
         self.client.force_authenticate(user=self.user)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _post(self, **extra):
         payload = {
@@ -598,6 +603,7 @@ class BatchZplDensidadDeLaTiendaTests(APITestCase):
             design={"destinatario": {"left": 10, "top": 20, "text": "{{destinatario}}"}},
         )
         self.client.force_authenticate(user=self.user)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _tienda(self, external_id, dpmm=None):
         return self.StoreConnection.objects.create(

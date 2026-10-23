@@ -101,25 +101,40 @@ def user_payload(user, picture="", request=None):
         # loguea, sin esperar al primer 403 (ver authentication.py, que es
         # quien realmente lo hace cumplir del lado del servidor).
         "must_change_password": user_must_change_password(user),
-        # El comercio y lo que el usuario puede hacer en él (teams.py): el
-        # frontend lo usa para el menú y para no mostrar lo que no puede.
+        # El comercio actual y lo que el usuario puede hacer en él (teams.py):
+        # el frontend lo usa para el menú y para no mostrar lo que no puede.
+        # ``None`` = todavía no está en ningún comercio.
         "team": team_payload(user),
+        # Todos sus comercios, para el selector de arriba.
+        "teams": teams_payload(user),
     }
 
 
 def team_payload(user):
-    from .teams import member_accesses, membership
+    from .teams import accesses_of, membership, team_display_name
 
     member = membership(user)
+    if member is None:
+        return None
     return {
         "id": member.team_id,
         "name": member.team.name,
-        "display_name": member.team.name or f"Comercio de {member.team.owner.email}",
+        "display_name": team_display_name(member.team),
         "role": member.role,
-        "accesses": sorted(member_accesses(user)),
+        "accesses": sorted(accesses_of(member)),
         "all_stores": member.role == member.Role.OWNER or member.all_stores,
         "store_ids": sorted(member.stores.values_list("id", flat=True)),
     }
+
+
+def teams_payload(user):
+    from .teams import memberships, team_display_name
+
+    members = sorted(memberships(user), key=lambda m: (team_display_name(m.team).lower(), m.team_id))
+    return [
+        {"id": m.team_id, "name": m.team.name, "display_name": team_display_name(m.team), "role": m.role}
+        for m in members
+    ]
 
 
 def auth_response(user, picture="", request=None):

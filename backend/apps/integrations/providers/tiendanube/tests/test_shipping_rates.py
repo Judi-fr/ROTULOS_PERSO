@@ -11,6 +11,7 @@ from apps.integrations.models import ShippingRate, StoreConnection
 from .test_tiendanube_sync import TiendanubeTestCase
 from apps.integrations.tests.helpers import auth_headers_for, make_user
 from .test_tiendanube_oauth import TEST_SETTINGS
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 RATE_SETTINGS = dict(TEST_SETTINGS, INTEGRATIONS_PUBLIC_BASE_URL="https://rotulos.example.com")
 
@@ -173,6 +174,7 @@ class RatesCallbackTests(TiendanubeTestCase):
             f"/api/v1/integrations/tiendanube/rates/"
             f"{store_labels.make_callback_token(self.connection)}"
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_contesta_las_tarifas_sin_sesion(self):
         response = self.client.post(self.url, data=cart(), format="json")
@@ -237,6 +239,7 @@ class ShippingRateApiTests(TiendanubeTestCase):
 
     def test_no_se_puede_cargar_una_tarifa_en_la_tienda_de_otro(self):
         intruso = make_user("intruso@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
         response = self.client.post(
             self.URL, self.payload(), format="json", **auth_headers_for(intruso)
@@ -292,6 +295,7 @@ class ShippingRateApiTests(TiendanubeTestCase):
             price=Decimal("4500"),
         )
         intruso = make_user("otro2@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
         response = self.client.get(self.URL, **auth_headers_for(intruso))
 

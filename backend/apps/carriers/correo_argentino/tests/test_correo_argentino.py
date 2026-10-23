@@ -13,6 +13,7 @@ from apps.integrations.tests.helpers import auth_headers_for, make_user
 from apps.orders.models import Address, Order
 
 from .fake_correo import AGREEMENT, API_KEY, CUSTOMER_ID, MICORREO_PASSWORD, MICORREO_USER, CorreoTestMixin
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 API = "/api/v1/carriers"
 
@@ -47,6 +48,7 @@ class AccountTests(CorreoTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_cuenta_nueva_arranca_con_el_clasico_y_las_claves_no_vuelven(self):
         empty = self.client.get(f"{API}/accounts/correo_argentino/", **auth_headers_for(self.user))
@@ -100,6 +102,7 @@ class ShipmentTests(CorreoTestMixin, APITestCase):
         self.user = make_user("comercio@example.com")
         self.account = self.make_correo_account(self.user)
         self.order = make_order(self.user)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def create(self, contract="CP-D", **extra):
         payload = {"carrier": "correo_argentino", "order_ids": [self.order.pk], "contract": contract, **extra}

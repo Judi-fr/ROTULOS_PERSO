@@ -27,6 +27,7 @@ from apps.integrations.providers import get_provider
 from apps.integrations.providers.woocommerce.tests.test_woocommerce import BASE_URL, WOO_SETTINGS, WooTestMixin, woo_order
 from apps.integrations.tests.helpers import make_user
 from apps.orders.models import Order
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 PRINT_LINK_URL = "/api/v1/integrations/woocommerce/print-link/"
 
@@ -70,6 +71,7 @@ class StoreActionTests(WooTestMixin, APITestCase):
             patcher = patch(target, **kwargs)
             patcher.start()
             self.addCleanup(patcher.stop)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _link(self, ids, action=None):
         data = {"store": str(self.connection.pk), "ids": ids, "ts": int(time.time())}
@@ -182,6 +184,7 @@ class TiendanubeStoreActionTests(APITestCase):
         )
         patcher.start()
         self.addCleanup(patcher.stop)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_planilla_desde_el_link_de_tiendanube(self):
         from apps.integrations.tests.helpers import auth_headers_for

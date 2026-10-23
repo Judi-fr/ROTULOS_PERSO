@@ -17,6 +17,7 @@ from apps.integrations.shipping_rates import has_checkout_prices
 from apps.integrations.tests.helpers import auth_headers_for, make_user
 
 from .fake_andreani import AndreaniTestMixin
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 API = "/api/v1/carriers/andreani"
 
@@ -35,6 +36,7 @@ class CheckoutTestCase(AndreaniTestMixin, APITestCase):
         self.store = StoreConnection.objects.create(
             owner=self.user, platform="tiendanube", external_store_id="555", name="Mi tienda", access_token="t"
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def enable(self, store=None, **values):
         data = {"enabled": True, "contract": "400006709", "name": "Andreani a domicilio"}
@@ -173,6 +175,7 @@ class CheckoutSettingsTests(CheckoutTestCase):
 
     def test_la_tienda_de_otro_no_se_toca(self):
         other = make_user("otro@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         response = self.client.put(
             f"{API}/checkout/", {"store": self.store.pk, "enabled": False}, format="json", **auth_headers_for(other)
         )

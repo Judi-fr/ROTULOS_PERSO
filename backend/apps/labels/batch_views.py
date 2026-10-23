@@ -483,7 +483,17 @@ class LabelBatchView(APIView):
         # Un lote grande lo genera el worker (batch_jobs.py): la respuesta
         # sale enseguida con el documento "processing" y queued=true.
         if should_run_async(len(items)):
-            queue_batch(document, items, template, output, page_layout, skipped_existing_count, dpmm, printer)
+            queue_batch(
+                document,
+                items,
+                template,
+                output,
+                page_layout,
+                skipped_existing_count,
+                dpmm,
+                printer,
+                view_all=user_has_permission(request.user, "labels.view_all"),
+            )
             payload = DocumentSerializer(document, context={"request": request}).data
             payload["queued"] = True
             if printer is not None:

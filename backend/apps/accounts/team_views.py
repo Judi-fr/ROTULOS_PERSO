@@ -1,6 +1,8 @@
-"""``/api/v1/team/``: el equipo del comercio (miembros, perfiles,
-invitaciones, titularidad) y las invitaciones del propio usuario. Más la
-asignación de comercio del admin (``/api/v1/users/<id>/team/``).
+"""``/api/v1/team/``: el equipo del comercio actual (miembros, perfiles,
+invitaciones, código para sumarse, titularidad), lo de la propia persona
+(crear un comercio, cambiar de comercio, sumarse, salir, sus invitaciones y
+pedidos). Más la asignación de comercio del admin
+(``/api/v1/users/<id>/team/``).
 
 La lógica vive en ``team_services.py``; acá solo se lee el pedido, se llama
 y se audita. Identidad siempre desde ``request.user``.
@@ -29,8 +31,19 @@ from .auth_views import user_payload
 from .personal_profiles import public_fields
 from .permissions_map import TEAM_SCOPED_PERMISSIONS
 from .role_permissions import HasRolePermission
-from .team_models import Team, TeamInvitation, TeamMember, TeamProfile
-from .teams import ACCESSES, member_accesses, membership, store_scope_q
+from .team_models import Team, TeamInvitation, TeamJoinRequest, TeamMember, TeamProfile
+from .teams import (
+    ACCESSES,
+    NoTeam,
+    accesses_of,
+    mark_used,
+    member_accesses,
+    membership,
+    memberships,
+    store_scope_q,
+    team_display_name,
+    use_team,
+)
 
 User = get_user_model()
 TEAM_PERMISSION = "team.manage"
@@ -87,7 +100,7 @@ def member_data(member, request=None):
         "profile": member.profile_id,
         "profile_name": member.profile.name if member.profile_id else "",
         "custom_accesses": member.accesses,
-        "accesses": sorted(member_accesses(user)),
+        "accesses": sorted(accesses_of(member)),
         "all_stores": member.role == TeamMember.Role.OWNER or member.all_stores,
         "store_ids": sorted(member.stores.values_list("id", flat=True)),
         "joined_at": member.joined_at,
@@ -110,14 +123,33 @@ def invitation_data(invitation):
 
 
 def team_name(team):
-    return team.name or f"Comercio de {team.owner.email}"
+    return team_display_name(team)
 
 
-def _record_leave(request, previous, user, actor=None):
-    """Si ``user`` era empleado de otro comercio, deja constancia en ESE
-    comercio (su actividad lo muestra aunque ya no sea miembro)."""
-    if previous.role == TeamMember.Role.EMPLOYEE and membership(user).team_id != previous.team_id:
-        _audit(request, "team.leave", previous.team, user.email, actor=actor)
+def join_request_data(join_request, request=None):
+    user = join_request.user
+    return {
+        "id": join_request.id,
+        "user_id": user.id,
+        "email": user.email,
+        "name": " ".join(filter(None, [user.first_name, user.last_name])),
+        **public_fields(user, request),
+        "created_at": join_request.created_at,
+    }
+
+
+def _user_response(request, team_id=None, **extra):
+    """El usuario visto desde ``team_id`` (o desde su comercio actual)."""
+    if team_id is not None:
+        use_team(team_id)
+    return Response({**extra, "user": user_payload(request.user, request=request)})
+
+
+def _current_member(request):
+    member = membership(request.user)
+    if member is None:
+        raise NoTeam()
+    return member
 
 
 class _TeamView(APIView):
@@ -125,7 +157,7 @@ class _TeamView(APIView):
         return [IsAuthenticated(), HasRolePermission(TEAM_PERMISSION)]
 
     def team(self):
-        return membership(self.request.user).team
+        return _current_member(self.request).team
 
 
 class TeamView(_TeamView):
@@ -139,13 +171,20 @@ class TeamView(_TeamView):
             status=TeamInvitation.Status.PENDING, expires_at__gt=timezone.now()
         ).select_related("profile", "invited_by")
         profiles = team.profiles.annotate(member_count=Count("members"))
-        stores = StoreConnection.objects.filter(store_scope_q(request.user), owner=team.owner).order_by("name", "id")
+        stores = StoreConnection.objects.filter(store_scope_q(request.user), owner=team.data_user).order_by("name", "id")
         return Response(
             {
-                "team": {"id": team.id, "name": team.name, "display_name": team_name(team), "owner_email": team.owner.email},
+                "team": {
+                    "id": team.id,
+                    "name": team.name,
+                    "display_name": team_name(team),
+                    "owner_email": team.owner.email if team.owner else "",
+                },
                 "me": {"role": membership(request.user).role, "accesses": sorted(member_accesses(request.user))},
                 "members": [member_data(member, request) for member in members],
                 "invitations": [invitation_data(invitation) for invitation in invitations],
+                "join_code": {"code": team.join_code, "enabled": team.join_code_enabled},
+                "join_requests": [join_request_data(r, request) for r in services.pending_join_requests(team)],
                 "profiles": [
                     {"id": p.id, "name": p.name, "accesses": p.accesses, "member_count": p.member_count} for p in profiles
                 ],
@@ -359,14 +398,34 @@ class TransferView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        team = membership(request.user).team
+        team = _current_member(request).team
         target = get_object_or_404(TeamMember, pk=request.data.get("member_id"), team=team)
         try:
             services.transfer_ownership(team, request.user, target)
         except services.TeamError as exc:
             return _error(exc)
         _audit(request, "team.transfer", team, team_name(team), {"owner": {"from": request.user.email, "to": target.user.email}})
-        return Response({"owner_email": target.user.email})
+        return _user_response(request, owner_email=target.user.email)
+
+
+class CloseTeamView(APIView):
+    """POST close/ ``{confirm, reason}`` — el dueño da de baja el comercio
+    (lo chequea el servicio). Nada se borra: ver ``services.close_team``.
+    Devuelve el usuario visto desde otro de sus comercios (o sin comercio)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        team = _current_member(request).team
+        name = team_name(team)
+        try:
+            services.close_team(
+                team, request.user, confirm=request.data.get("confirm"), reason=request.data.get("reason") or ""
+            )
+        except services.TeamError as exc:
+            return _error(exc)
+        _audit(request, "team.close", team, name, {"closed": {"from": False, "to": True}})
+        return _user_response(request, team_name=name)
 
 
 # Lo que hace la gente del comercio con los datos del comercio. Nunca lo de
@@ -408,21 +467,23 @@ class TeamActivityView(_TeamView, ListAPIView):
         return context
 
     def get_queryset(self):
-        # Solo lo que cada uno hizo DESDE que está en este comercio: quien
-        # viene de otro comercio no trae su historial (sería de ese otro).
         team = self.team()
+        business = Q(category__in=ACTIVITY_CATEGORIES) | Q(action__in=ACTIVITY_EXTRA_ACTIONS)
+        # Las filas nuevas saben en qué comercio pasaron (``AuditLog.team_id``):
+        # una persona que está en varios no mezcla lo de uno con lo de otro.
+        here = Q(team_id=team.pk) & business
+        # Las de antes (sin ``team_id``): lo que cada miembro ACTUAL hizo desde
+        # que está en este comercio (quien viene de otro no trae su historial),
+        # más lo que le pasó al comercio aunque quien lo hizo ya no esté.
         since = Q(pk__in=[])
         for user_id, joined_at in team.members.values_list("user_id", "joined_at"):
             since |= Q(actor_id=user_id, created_at__gte=joined_at)
-        business = Q(category__in=ACTIVITY_CATEGORIES) | Q(action__in=ACTIVITY_EXTRA_ACTIONS)
-        # Lo que le pasó al comercio aunque quien lo hizo ya no esté (alguien
-        # que se fue a otro comercio).
         about_team = Q(category="team", target_type="team", target_id=str(team.pk))
         # Un movimiento "sobre un comercio" (se sumó, lo dejó, se renombró) se
-        # muestra solo en el comercio del que habla: quien se pasó de A a B no
-        # le cuenta a B que dejó A.
+        # muestra solo en el comercio del que habla.
         about_any_team = Q(category="team", target_type="team")
-        return filter_logs(self.request.query_params).filter((since & business & ~about_any_team) | about_team)
+        before = Q(team_id=None) & ((since & business & ~about_any_team) | about_team)
+        return filter_logs(self.request.query_params).filter(here | before)
 
 
 class MyActivityView(ListAPIView):
@@ -444,15 +505,16 @@ class MyActivityView(ListAPIView):
         return context
 
     def get_queryset(self):
-        member = membership(self.request.user)
+        member = _current_member(self.request)
         business = Q(category__in=ACTIVITY_CATEGORIES) | Q(action__in=ACTIVITY_EXTRA_ACTIONS)
         params = self.request.query_params.copy()
         params.pop("actor", None)
+        here = Q(team_id=member.team_id)
+        before = Q(team_id=None) & (~Q(category="team", target_type="team") | Q(target_id=str(member.team_id)))
+        # Desde que está (esta vez) en el comercio: si se fue y volvió, lo de
+        # antes no es de su membresía actual.
         return filter_logs(params).filter(
-            business,
-            ~Q(category="team", target_type="team") | Q(target_id=str(member.team_id)),
-            actor=self.request.user,
-            created_at__gte=member.joined_at,
+            business, here | before, actor=self.request.user, created_at__gte=member.joined_at
         )
 
 
@@ -500,17 +562,169 @@ class MyInvitationActionView(APIView):
             services.decline(invitation)
             _audit(request, "team.decline", invitation, invitation.email)
             return Response({"status": invitation.status})
-        previous = membership(request.user)
         try:
             services.accept(invitation, request.user)
         except services.TeamError as exc:
             return _error(exc)
-        _record_leave(request, previous, request.user)
         _audit(request, "team.join", invitation.team, team_name(invitation.team))
-        # Los permisos cambiaron: el frontend guarda el usuario actualizado.
-        return Response(
-            {"status": invitation.status, "team_name": team_name(invitation.team), "user": user_payload(request.user, request=request)}
+        # Entra al comercio que aceptó: el frontend guarda el usuario de ESE
+        # comercio y lo pone como el actual de la pestaña.
+        return _user_response(
+            request, invitation.team_id, status=invitation.status, team_name=team_name(invitation.team)
         )
+
+
+# --- Lo de la propia persona: sus comercios ------------------------------------
+
+
+class CreateTeamView(APIView):
+    """POST create/ ``{name}`` — cualquier persona con sesión crea un comercio
+    propio (uno más). Devuelve el usuario visto desde el comercio nuevo."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            team = services.create_business(request.user, request.data.get("name"))
+        except services.TeamError as exc:
+            return _error(exc)
+        _audit(request, "team.create", team, team_name(team))
+        return _user_response(request, team.id, team={"id": team.id, "display_name": team_name(team)})
+
+
+class SwitchTeamView(APIView):
+    """POST switch/ ``{team_id}`` — pasa a trabajar en otro de sus comercios:
+    queda como el último usado y devuelve el usuario visto desde él."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        member = next((m for m in memberships(request.user) if str(m.team_id) == str(request.data.get("team_id"))), None)
+        if member is None:
+            return Response({"detail": "No sos parte de ese comercio."}, status=status.HTTP_404_NOT_FOUND)
+        mark_used(member)
+        return _user_response(request, member.team_id)
+
+
+class LeaveTeamView(APIView):
+    """POST leave/ — la persona se va del comercio actual (el dueño no).
+    Lo que hizo queda en el comercio."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        member = _current_member(request)
+        team = member.team
+        try:
+            services.leave(member)
+        except services.TeamError as exc:
+            return _error(exc)
+        _audit(request, "team.leave", team, request.user.email)
+        return _user_response(request, team_name=team_name(team))
+
+
+class JoinWithCodeView(APIView):
+    """POST join/ ``{code}`` — pide sumarse con el código del comercio. Queda
+    pendiente hasta que lo aprueben. Con límite, para que no se puedan
+    probar códigos a lo bruto."""
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "team_join"
+
+    def post(self, request):
+        try:
+            join_request, created = services.request_join(request.user, request.data.get("code"))
+        except services.TeamError as exc:
+            return _error(exc)
+        if created:
+            _audit(request, "team.join_request", join_request.team, request.user.email)
+        return Response(
+            {"id": join_request.id, "status": join_request.status, "team_name": team_name(join_request.team)},
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class MyJoinRequestListView(APIView):
+    """GET my-join-requests/ — los pedidos pendientes de la persona."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        rows = TeamJoinRequest.objects.filter(
+            user=request.user, status=TeamJoinRequest.Status.PENDING, team__closed_at=None
+        ).select_related("team__owner")
+        return Response([{"id": r.id, "team_name": team_name(r.team), "created_at": r.created_at} for r in rows])
+
+
+class MyJoinRequestView(APIView):
+    """DELETE my-join-requests/<id>/ — la persona cancela su pedido."""
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        join_request = get_object_or_404(
+            TeamJoinRequest, pk=pk, user=request.user, status=TeamJoinRequest.Status.PENDING
+        )
+        services.cancel_join(join_request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class JoinCodeView(_TeamView):
+    """GET/PATCH join-code/ ``{enabled}`` — el código del comercio actual."""
+
+    def get(self, request):
+        team = self.team()
+        return Response({"code": team.join_code, "enabled": team.join_code_enabled})
+
+    def patch(self, request):
+        team = self.team()
+        before = team.join_code_enabled
+        services.set_join_code_enabled(team, request.data.get("enabled") is not False)
+        if before != team.join_code_enabled:
+            _audit(request, "team.join_code_update", team, team_name(team), {"enabled": {"from": before, "to": team.join_code_enabled}})
+        return Response({"code": team.join_code, "enabled": team.join_code_enabled})
+
+
+class JoinCodeRegenerateView(_TeamView):
+    """POST join-code/regenerate/ — código nuevo: el viejo deja de servir."""
+
+    def post(self, request):
+        team = self.team()
+        services.regenerate_join_code(team)
+        _audit(request, "team.join_code_update", team, team_name(team), {"code": {"from": "***", "to": "***"}})
+        return Response({"code": team.join_code, "enabled": team.join_code_enabled})
+
+
+class JoinRequestDecisionView(_TeamView):
+    """POST join-requests/<id>/approve/ ``{profile|accesses, all_stores,
+    store_ids}`` y POST join-requests/<id>/reject/."""
+
+    def post(self, request, pk, decision):
+        if decision not in ("approve", "reject"):
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        team = self.team()
+        join_request = get_object_or_404(
+            TeamJoinRequest.objects.select_related("user"), pk=pk, team=team, status=TeamJoinRequest.Status.PENDING
+        )
+        try:
+            if decision == "reject":
+                services.reject_join(join_request, request.user)
+                _audit(request, "team.join_reject", join_request.user, join_request.user.email)
+                return Response({"status": join_request.status})
+            all_stores, store_ids = _store_choice(request.data)
+            member = services.approve_join(
+                join_request,
+                request.user,
+                profile=_profile(team, request.data.get("profile")),
+                accesses=request.data.get("accesses") or [],
+                all_stores=all_stores,
+                store_ids=store_ids,
+            )
+        except services.TeamError as exc:
+            return _error(exc)
+        _audit(request, "team.join_approve", join_request.user, join_request.user.email)
+        return Response(member_data(member, request), status=status.HTTP_201_CREATED)
 
 
 # --- Admin de la plataforma ----------------------------------------------------
@@ -526,25 +740,29 @@ class AdminUserTeamView(APIView):
 
     def get(self, request, pk):
         user = get_object_or_404(User, pk=pk)
-        member = membership(user)
         return Response(
             {
                 "user": {"id": user.id, "email": user.email},
-                "role": member.role,
-                "team": {"id": member.team_id, "name": team_name(member.team), "owner_email": member.team.owner.email},
+                "teams": [
+                    {
+                        "id": member.team_id,
+                        "name": team_name(member.team),
+                        "owner_email": member.team.owner.email if member.team.owner else "",
+                        "role": member.role,
+                    }
+                    for member in memberships(user)
+                ],
             }
         )
 
     def post(self, request, pk):
         user = get_object_or_404(User, pk=pk)
-        team = get_object_or_404(Team, pk=request.data.get("team_id"))
+        team = get_object_or_404(Team, pk=request.data.get("team_id"), closed_at=None)
         role = request.data.get("role") or TeamMember.Role.EMPLOYEE
-        previous = membership(user)
         try:
             member = services.admin_assign(user, team, role)
         except services.TeamError as exc:
             return _error(exc)
-        _record_leave(request, previous, user)
         _audit(request, "team.admin_assign", user, user.email, {"team": {"from": None, "to": team_name(team)}, "role": {"from": None, "to": member.role}})
         return Response({"role": member.role, "team": {"id": team.id, "name": team_name(team)}})
 
@@ -557,12 +775,22 @@ class AdminTeamListView(APIView):
 
     def get(self, request):
         search = (request.query_params.get("search") or "").strip()
-        teams = Team.objects.select_related("owner").annotate(member_count=Count("members")).order_by("id")
+        teams = (
+            Team.objects.filter(closed_at=None)
+            .select_related("owner")
+            .annotate(member_count=Count("members"))
+            .order_by("id")
+        )
         if search:
             teams = teams.filter(Q(name__icontains=search) | Q(owner__email__icontains=search))
         return Response(
             [
-                {"id": t.id, "name": team_name(t), "owner_email": t.owner.email, "member_count": t.member_count}
+                {
+                    "id": t.id,
+                    "name": team_name(t),
+                    "owner_email": t.owner.email if t.owner else "",
+                    "member_count": t.member_count,
+                }
                 for t in teams[:50]
             ]
         )
@@ -581,7 +809,8 @@ class AdminTeamProfilesView(APIView):
     def get(self, request):
         search = (request.query_params.get("search") or "").strip()
         teams = (
-            Team.objects.select_related("owner")
+            Team.objects.filter(closed_at=None)
+            .select_related("owner")
             .annotate(member_count=Count("members", distinct=True))
             .prefetch_related("profiles")
             .order_by("id")
@@ -607,7 +836,7 @@ class AdminTeamProfilesView(APIView):
                     {
                         "id": team.id,
                         "name": team_name(team),
-                        "owner_email": team.owner.email,
+                        "owner_email": team.owner.email if team.owner else "",
                         "member_count": team.member_count,
                         "profiles": [
                             {
@@ -650,3 +879,57 @@ class AdminTeamProfileView(APIView):
 
     def delete(self, request, pk):
         return delete_profile(request, get_object_or_404(TeamProfile, pk=pk))
+
+
+class AdminClosedTeamListView(APIView):
+    """GET /api/v1/teams/closed/?search= — los comercios dados de baja, con
+    su dueño real, cuándo, quién, el motivo y cuántos datos quedaron
+    guardados (``users.view``)."""
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission("users.view")]
+
+    def get(self, request):
+        search = (request.query_params.get("search") or "").strip()
+        teams = (
+            Team.objects.exclude(closed_at=None)
+            .select_related("owner", "data_user", "closed_by")
+            .order_by("-closed_at")
+        )
+        if search:
+            teams = teams.filter(Q(name__icontains=search) | Q(owner__email__icontains=search))
+        return Response(
+            [
+                {
+                    "id": team.id,
+                    "name": team.name or f"Comercio de {team.owner.email if team.owner else '(usuario borrado)'}",
+                    "owner_email": team.owner.email if team.owner else "",
+                    "closed_at": team.closed_at,
+                    "closed_by": team.closed_by.email if team.closed_by else "",
+                    "reason": team.close_reason,
+                    "data": services.owned_data_count(team.data_user),
+                    "store_count": len((team.closed_state or {}).get("stores") or {}),
+                }
+                for team in teams[:100]
+            ]
+        )
+
+
+class AdminTeamReopenView(APIView):
+    """POST /api/v1/teams/<id>/reopen/ — el admin le devuelve el comercio a su
+    dueño (``users.edit``)."""
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission("users.edit")]
+
+    def post(self, request, pk):
+        team = get_object_or_404(Team, pk=pk)
+        try:
+            warnings = services.reopen_team(team)
+        except services.TeamError as exc:
+            return _error(exc)
+        team.refresh_from_db()
+        _audit(request, "team.reopen", team, team_name(team), {"closed": {"from": True, "to": False}})
+        return Response(
+            {"id": team.id, "name": team_name(team), "owner_email": team.owner.email if team.owner else "", "warnings": warnings}
+        )

@@ -13,6 +13,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from apps.orders.models import Address, Order
 
 from ..models import Label, LabelSequence, LabelTemplate
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 User = get_user_model()
 
@@ -67,6 +68,7 @@ class LabelsSelfServiceTests(APITestCase):
             user=self.other_user, street="Otra calle", city="Rosario", is_default=True
         )
         self.other_order = Order.objects.create(user=self.other_user, address=self.other_address)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _create_label(self, user=None, **overrides):
         payload = {
@@ -232,6 +234,7 @@ class LabelTemplatesTests(APITestCase):
             password="Clave123!",
         )
         self.user.groups.add(subscriber_group)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_non_admin_can_create_own_private_template_but_not_a_public_one(self):
         # labels.template_create (self-service, los cuatro roles) alcanza
@@ -326,6 +329,7 @@ class AdminLabelsTests(APITestCase):
             height_cm=15,
             design=VALID_DESIGN,
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_non_admin_receives_403_on_admin_listing(self):
         response = self.client.get("/api/v1/labels/admin/", **auth_headers_for(self.user))
@@ -442,6 +446,7 @@ class LabelBatchForeignOrderTests(APITestCase):
             height_cm=15,
             design=VALID_DESIGN,
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_batch_with_foreign_order_id_returns_400_and_creates_no_document(self):
         response = self.client.post(
@@ -490,6 +495,7 @@ class LabelSequenceTests(APITestCase):
             password="Clave123!",
         )
         self.user.groups.add(subscriber_group)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_next_value_is_consecutive(self):
         first = LabelSequence.next_value(self.user, key="envios")
@@ -655,6 +661,7 @@ class LabelBatchComputedContextTests(APITestCase):
             height_cm=15,
             design=VALID_DESIGN,
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_batch_of_three_resolves_bulto_de_bultos_per_item(self):
         from unittest.mock import patch

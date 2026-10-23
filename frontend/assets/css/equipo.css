@@ -195,3 +195,30 @@
   align-items: center;
   gap: 8px;
 }
+
+/* Código para sumarse (pestaña Miembros, equipo.js). */
+.join-code-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.join-code {
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: #f1f5f9;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.join-code.is-off {
+  color: #94a3b8;
+  text-decoration: line-through;
+}
+
+#joinCodeLink {
+  overflow-wrap: anywhere;
+}

@@ -23,11 +23,13 @@ from apps.orders.ingestion import upsert_store_order
 from apps.orders.models import Order
 
 from .fake_magento import CREDS, EXTERNAL_ID, MAGENTO_SETTINGS, SITE, MagentoTestMixin, _encode, magento_order
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 
 class SiteUrlTests(TestCase):
     def setUp(self):
         self.provider = get_provider("magento")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_acepta_lo_que_pegaria_un_comerciante(self):
         cases = {
@@ -76,6 +78,7 @@ class OAuthSignatureTests(TestCase):
 class NormalizeOrderTests(TestCase):
     def setUp(self):
         self.provider = get_provider("magento")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_traduce_lo_que_necesita_el_rotulo(self):
         normalized = self.provider.normalize_order(magento_order(55))
@@ -113,6 +116,7 @@ class ManualConnectTests(MagentoTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _connect(self, **data):
         payload = dict(CREDS, site_url="mitienda.com.ar")
@@ -168,6 +172,7 @@ class ImportAndReconcileTests(MagentoTestMixin, TestCase):
     def setUp(self):
         super().setUp()
         self.connection = self._connection(owner=make_user("comercio@example.com"))
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_configurar_importa_todas_las_paginas_aunque_magento_repita_la_ultima(self):
         self.magento.orders = {i: magento_order(i, created_at=f"2026-10-0{i} 10:00:00") for i in (1, 2, 3)}
@@ -210,6 +215,7 @@ class PushFulfillmentTests(MagentoTestMixin, APITestCase):
         self.magento.orders = {90: magento_order(90)}
         order, _ = upsert_store_order(self.connection, get_provider("magento").normalize_order(magento_order(90)))
         self.order = Order.objects.get(pk=order.pk)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _ship(self, **data):
         data.setdefault("status", "dispatched")

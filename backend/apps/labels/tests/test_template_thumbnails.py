@@ -17,6 +17,7 @@ from rest_framework.test import APITestCase
 from ..models import LabelTemplate
 from ..thumbnails import THUMBNAIL_WIDTH_PX
 from .test_labels import TINY_PNG_DATA_URL, VALID_DESIGN, auth_headers_for
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 User = get_user_model()
 
@@ -34,6 +35,7 @@ class TemplateThumbnailTests(APITestCase):
         )
         self.user.groups.add(Group.objects.get_or_create(name="subscriber")[0])
         self.headers = auth_headers_for(self.user)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def create_template(self, **overrides):
         payload = {"name": "Mi plantilla", "width_cm": "10", "height_cm": "15", "design": VALID_DESIGN}

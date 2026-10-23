@@ -64,6 +64,32 @@
           </div>
         </section>
 
+        <!-- Pedidos para sumarse con el código (equipo.js): se aprueban
+             eligiendo perfil y tiendas, como una invitación. -->
+        <section class="profile-card" id="joinRequestSection" hidden>
+          <div class="profile-card-title">Pedidos para sumarse</div>
+          <div class="profile-card-body">
+            <ul id="joinRequestList" class="team-list"></ul>
+          </div>
+        </section>
+
+        <section class="profile-card">
+          <div class="profile-card-title">Código para sumarse</div>
+          <div class="profile-card-body">
+            <p class="access-muted">
+              Pasale este código o el link a quien quieras sumar: lo pide con su cuenta
+              y queda pendiente hasta que lo apruebes acá arriba, eligiendo qué puede hacer.
+            </p>
+            <div class="join-code-row">
+              <code id="joinCodeValue" class="join-code">—</code>
+              <button type="button" class="btn btn-outline btn-small" id="joinCodeCopy">Copiar link</button>
+              <button type="button" class="btn btn-outline btn-small" id="joinCodeToggle">Apagar</button>
+              <button type="button" class="btn btn-outline btn-small" id="joinCodeRegenerate">Cambiar código</button>
+            </div>
+            <p class="access-muted" id="joinCodeLink"></p>
+          </div>
+        </section>
+
         <section class="profile-card">
           <div class="profile-card-title">Invitar a alguien</div>
           <form class="profile-card-body" id="inviteForm">

@@ -24,11 +24,13 @@ from apps.orders.ingestion import upsert_store_order
 from apps.orders.models import Order
 
 from .fake_vtex import ACCOUNT, BASE_URL, KEYS, VTEX_SETTINGS, WEBHOOKS_URL, VtexTestMixin, invoice, vtex_order
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 
 class AccountNameTests(TestCase):
     def setUp(self):
         self.provider = get_provider("vtex")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_acepta_lo_que_pegaria_un_comerciante(self):
         for value in (
@@ -49,6 +51,7 @@ class AccountNameTests(TestCase):
 class NormalizeOrderTests(TestCase):
     def setUp(self):
         self.provider = get_provider("vtex")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_traduce_lo_que_necesita_el_rotulo(self):
         normalized = self.provider.normalize_order(vtex_order("1172452900788-01"))
@@ -101,6 +104,7 @@ class ManualConnectTests(VtexTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _connect(self, **data):
         payload = {"account": "https://micuenta.myvtex.com/admin", "app_key": KEYS[0], "app_token": KEYS[1]}
@@ -155,6 +159,7 @@ class SetupAndHookTests(VtexTestMixin, APITestCase):
         super().setUp()
         self.owner = make_user("comercio@example.com")
         self.connection = self._connection(owner=self.owner)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _delivery_url(self):
         return f"{BASE_URL}{WEBHOOKS_URL}?store={self.connection.pk}"
@@ -259,6 +264,7 @@ class FeedReconciliationTests(VtexTestMixin, TestCase):
     def setUp(self):
         super().setUp()
         self.connection = self._connection(owner=make_user("comercio@example.com"))
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_se_encola_con_el_intervalo_de_vtex(self):
         now = timezone.now()
@@ -307,6 +313,7 @@ class PushFulfillmentTests(VtexTestMixin, APITestCase):
         self.vtex.orders = {self.ORDER_ID: vtex_order(self.ORDER_ID)}
         order, _ = upsert_store_order(self.connection, get_provider("vtex").normalize_order(vtex_order(self.ORDER_ID)))
         self.order = Order.objects.get(pk=order.pk)
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _remote(self):
         return self.vtex.orders[self.ORDER_ID]

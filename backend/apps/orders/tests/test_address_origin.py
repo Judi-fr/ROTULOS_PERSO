@@ -10,6 +10,7 @@ from apps.orders.ingestion import create_order_from_data
 from apps.orders.models import Address, Order
 
 from .test_orders import auth_headers_for
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 User = get_user_model()
 
@@ -32,6 +33,7 @@ class AddressOriginTests(APITestCase):
             number="2000",
             city="CABA",
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_la_agenda_solo_lista_las_propias(self):
         response = self.client.get("/api/v1/addresses/", **auth_headers_for(self.user))

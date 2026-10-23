@@ -18,7 +18,7 @@ from rest_framework.views import APIView
 from apps.accounts.permissions_map import user_has_permission
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
-from apps.accounts.teams import data_owner, store_scope_q
+from apps.accounts.teams import data_owner, membership, memberships, store_scope_q, use_team
 
 from ... import store_print
 from ...models import StoreConnection
@@ -46,6 +46,33 @@ class TiendanubePrintLinkView(APIView):
 
     def get_permissions(self):
         return [IsAuthenticated(), HasRolePermission("labels.batch")]
+
+    def initial(self, request, *args, **kwargs):
+        # Tiendanube abre la página en una pestaña nueva, que arranca en el
+        # último comercio usado: si la tienda es de OTRO de los comercios de
+        # la persona, se trabaja en ese (antes de chequear los permisos).
+        self._use_team_of_store(request)
+        super().initial(request, *args, **kwargs)
+
+    @staticmethod
+    def _use_team_of_store(request):
+        store_id = str(request.data.get("store") or "").strip()
+        if not store_id or not getattr(request.user, "is_authenticated", False):
+            return
+        current = membership(request.user)
+        owners = dict(
+            StoreConnection.objects.filter(
+                platform=StoreConnection.Platform.TIENDANUBE,
+                external_store_id=store_id,
+                status=StoreConnection.Status.ACTIVE,
+            ).values_list("owner_id", "id")
+        )
+        if current is not None and current.team.data_user_id in owners:
+            return
+        for member in memberships(request.user):
+            if member.team.data_user_id in owners:
+                use_team(member.team_id)
+                return
 
     def post(self, request):
         stores = StoreConnection.objects.filter(

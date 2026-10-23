@@ -12,6 +12,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .auth_views import team_payload, teams_payload
 from .dashboard_sections import build_sections, onboarding
 from .permissions_map import get_effective_role, user_has_permission
 
@@ -260,5 +261,9 @@ class DashboardView(APIView):
                 # El panel agrupado y los primeros pasos (dashboard_sections.py).
                 "sections": build_sections(user),
                 "onboarding": onboarding(user),
+                # El comercio actual (o None: el panel manda a crear uno o a
+                # sumarse) y todos los suyos, para el selector.
+                "team": team_payload(user),
+                "teams": teams_payload(user),
             }
         )

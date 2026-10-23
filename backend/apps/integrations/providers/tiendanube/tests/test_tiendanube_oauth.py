@@ -19,6 +19,7 @@ from apps.integrations.providers import get_provider
 from apps.integrations.stores import STATE_SALT, make_claim_token, make_oauth_state
 from apps.integrations.tests.helpers import auth_headers_for, fake_response, make_user
 from apps.integrations.tests.test_store_integration_base import tiendanube_order
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 User = get_user_model()
 
@@ -42,6 +43,7 @@ TEST_SETTINGS = {
 class TiendanubeInstallUrlTests(APITestCase):
     def setUp(self):
         self.user = make_user("comercio@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_requiere_estar_logueado(self):
         response = self.client.get(INSTALL_URL)
@@ -86,6 +88,7 @@ class TiendanubeCallbackTests(APITestCase):
                 "domains": [],
             },
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     @staticmethod
     def _token_response(token):
@@ -254,6 +257,7 @@ class StoreConnectionApiTests(APITestCase):
         self.theirs = StoreConnection.objects.create(
             owner=self.other, platform="tiendanube", external_store_id="222", name="Ajena", access_token="tok-ajeno"
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_lista_solo_las_tiendas_propias_y_sin_token(self):
         response = self.client.get(STORES_URL, **auth_headers_for(self.user))

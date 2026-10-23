@@ -25,6 +25,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from apps.accounts.models import account_settings_for
+from apps.accounts.teams import business_display_name
 
 from .bulk import format_weight, order_number
 
@@ -51,7 +52,7 @@ def manifest_sender(orders, user):
     stores = {order.store_connection_id for order in orders}
     store = orders[0].store_connection if len(stores) == 1 and orders else None
     sender = sender_fields(user, store)
-    name = sender["remitente"] or user.get_full_name() or user.email
+    name = sender["remitente"] or business_display_name(user)
     return name, sender["remitente_domicilio"], sender["remitente_telefono"]
 
 
@@ -121,7 +122,7 @@ def render_manifest_pdf(orders, user, carrier=""):
         locality = ", ".join(filter(None, [address.city, address.state]))
         if address.postal_code:
             locality = f"{locality} ({address.postal_code})" if locality else address.postal_code
-        recipient = address.recipient_name or order.user.get_full_name() or order.user.email
+        recipient = address.recipient_name or business_display_name(order.user)
         store_name = order.store_connection.name if order.store_connection else ""
         number = f"#{order_number(order)}"
         rows.append(

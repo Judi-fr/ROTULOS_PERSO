@@ -14,7 +14,7 @@ from apps.integrations.models import StoreConnection
 from apps.labels.models import LabelTemplate
 from apps.orders.models import Address, Order
 
-from .test_team_permissions import add_employee, bearer, make_user
+from .test_team_permissions import add_employee, bearer, make_owner, make_user
 
 BASE = "/api/v1/team/"
 
@@ -25,7 +25,7 @@ def unverified(user):
 
 class TeamApiTestCase(APITestCase):
     def setUp(self):
-        self.owner = make_user("owner@example.com")
+        self.owner = make_owner("owner@example.com")
         self.team = teams.team_for(self.owner)
         self.deposito = self.team.profiles.get(name="Depósito")
 
@@ -57,7 +57,7 @@ class InvitationTests(TeamApiTestCase):
         member = TeamMember.objects.get(user=employee)
         self.assertEqual((member.team, member.role, member.profile), (self.team, "employee", self.deposito))
         self.assertFalse(Team.objects.filter(owner=employee).exists())
-        self.assertEqual(teams.data_owner(employee), self.owner)
+        self.assertEqual(teams.data_owner(employee), self.team.data_user)
 
     def test_invitation_for_unregistered_email_waits_for_registration(self):
         self.assertEqual(self.invite("nuevo@example.com").status_code, 201)
@@ -74,19 +74,20 @@ class InvitationTests(TeamApiTestCase):
         unverified(employee)
         response = self.post(f"{BASE}my-invitations/{invitation.id}/accept/", user=employee)
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(teams.data_owner(employee), employee)
+        self.assertIsNone(teams.membership(employee))
 
-    def test_user_with_data_cannot_join(self):
+    def test_a_user_with_her_own_business_keeps_it_when_joining(self):
         employee = make_user("e@example.com")
+        own = teams.create_team(employee, name="Propio")
         StoreConnection.objects.create(
-            owner=employee, platform=StoreConnection.Platform.TIENDANUBE, external_store_id="99", name="Mi tienda"
+            owner=own.data_user, platform=StoreConnection.Platform.TIENDANUBE, external_store_id="99", name="Mi tienda"
         )
         self.invite("e@example.com")
         invitation = TeamInvitation.objects.get()
         response = self.post(f"{BASE}my-invitations/{invitation.id}/accept/", user=employee)
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("tienda", str(response.data["detail"]))
-        self.assertEqual(teams.data_owner(employee), employee)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual({m.team_id for m in teams.memberships(employee)}, {own.pk, self.team.pk})
+        self.assertEqual(StoreConnection.objects.get(external_store_id="99").owner, own.data_user)
 
     def test_expired_invitation_cannot_be_accepted(self):
         employee = make_user("e@example.com")
@@ -163,7 +164,7 @@ class MemberTests(TeamApiTestCase):
 
     def test_member_limited_to_stores_of_the_team(self):
         store = StoreConnection.objects.create(
-            owner=self.owner, platform=StoreConnection.Platform.TIENDANUBE, external_store_id="1", name="T1"
+            owner=self.team.data_user, platform=StoreConnection.Platform.TIENDANUBE, external_store_id="1", name="T1"
         )
         foreign = StoreConnection.objects.create(
             owner=make_user("ajeno@example.com"), platform=StoreConnection.Platform.TIENDANUBE, external_store_id="2"
@@ -178,13 +179,14 @@ class MemberTests(TeamApiTestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(teams.allowed_store_ids(member.user), {store.id})
 
-    def test_removed_employee_starts_empty_and_data_stays(self):
+    def test_removed_employee_is_left_without_it_and_data_stays(self):
         employee, member = add_employee(self.owner, "e@example.com", profile="Todo")
-        address = Address.objects.create(user=self.owner, street="C", number="1", city="CABA")
-        order = Order.objects.create(user=self.owner, address=address)
+        address = Address.objects.create(user=self.team.data_user, street="C", number="1", city="CABA")
+        order = Order.objects.create(user=self.team.data_user, address=address)
         self.assertEqual(self.client.delete(f"{BASE}members/{member.id}/", **bearer(self.owner)).status_code, 204)
-        self.assertEqual(teams.data_owner(employee), employee)
-        self.assertEqual(Order.objects.get(pk=order.pk).user, self.owner)
+        self.assertIsNone(teams.membership(employee))
+        self.assertFalse(Team.objects.filter(owner=employee).exists())
+        self.assertEqual(Order.objects.get(pk=order.pk).user, self.team.data_user)
 
 
 class ProfileTests(TeamApiTestCase):
@@ -199,14 +201,15 @@ class ProfileTests(TeamApiTestCase):
 
 
 class TransferTests(TeamApiTestCase):
-    def test_transfer_moves_every_owned_row(self):
+    def test_transfer_swaps_roles_and_leaves_the_data_where_it_is(self):
         new_owner, member = add_employee(self.owner, "nuevo@example.com", profile="Todo")
+        data = self.team.data_user
         store = StoreConnection.objects.create(
-            owner=self.owner, platform=StoreConnection.Platform.TIENDANUBE, external_store_id="1", name="T1"
+            owner=data, platform=StoreConnection.Platform.TIENDANUBE, external_store_id="1", name="T1"
         )
-        address = Address.objects.create(user=self.owner, street="C", number="1", city="CABA")
-        order = Order.objects.create(user=self.owner, address=address, store_connection=store, external_id="1")
-        template = LabelTemplate.objects.create(owner=self.owner, name="P", width_cm=10, height_cm=15, design={})
+        address = Address.objects.create(user=data, street="C", number="1", city="CABA")
+        order = Order.objects.create(user=data, address=address, store_connection=store, external_id="1")
+        template = LabelTemplate.objects.create(owner=data, name="P", width_cm=10, height_cm=15, design={})
 
         self.assertEqual(self.post(f"{BASE}transfer/", {"member_id": member.id}, new_owner).status_code, 403)
         response = self.post(f"{BASE}transfer/", {"member_id": member.id})
@@ -215,10 +218,11 @@ class TransferTests(TeamApiTestCase):
         self.assertEqual(Team.objects.get(pk=self.team.pk).owner, new_owner)
         for obj, field in ((store, "owner"), (address, "user"), (order, "user"), (template, "owner")):
             obj.refresh_from_db()
-            self.assertEqual(getattr(obj, field), new_owner, obj)
+            self.assertEqual(getattr(obj, field), data, obj)
         old = teams.membership(self.owner)
         self.assertEqual((old.role, old.profile.name), ("employee", "Todo"))
-        self.assertEqual(teams.data_owner(self.owner), new_owner)
+        self.assertEqual(teams.membership(new_owner).role, "owner")
+        self.assertEqual(teams.data_owner(self.owner), data)
 
 
 class AdminAssignTests(TeamApiTestCase):
@@ -232,14 +236,17 @@ class AdminAssignTests(TeamApiTestCase):
         user = make_user("u@example.com")
         response = self.post(f"/api/v1/users/{user.id}/team/", {"team_id": self.team.id, "role": "employee"}, self.admin)
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(teams.data_owner(user), self.owner)
-        self.assertEqual(self.client.get(f"/api/v1/users/{user.id}/team/", **bearer(self.admin)).data["team"]["id"], self.team.id)
+        self.assertEqual(teams.data_owner(user), self.team.data_user)
+        listed = self.client.get(f"/api/v1/users/{user.id}/team/", **bearer(self.admin)).data["teams"]
+        self.assertEqual([row["id"] for row in listed], [self.team.id])
 
-    def test_admin_cannot_merge_teams_with_data(self):
+    def test_admin_adds_without_taking_her_out_of_her_business(self):
         user = make_user("u@example.com")
-        Address.objects.create(user=user, street="C", number="1", city="CABA")
+        own = teams.create_team(user, name="Propio")
+        Address.objects.create(user=own.data_user, street="C", number="1", city="CABA")
         response = self.post(f"/api/v1/users/{user.id}/team/", {"team_id": self.team.id, "role": "employee"}, self.admin)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual({m.team_id for m in teams.memberships(user)}, {own.pk, self.team.pk})
 
     def test_merchant_cannot_use_admin_assign(self):
         user = make_user("u@example.com")
@@ -361,7 +368,7 @@ class AdminTeamProfilesTests(TeamApiTestCase):
         self.assertIn("stores.manage", accesses["stores"]["permissions"])
 
     def test_search_by_owner_email(self):
-        teams.team_for(make_user("otro@example.com"))
+        teams.create_team(make_user("otro@example.com"))
         response = self.get(self.admin, "?search=owner@")
         self.assertEqual([t["owner_email"] for t in response.data["teams"]], ["owner@example.com"])
 

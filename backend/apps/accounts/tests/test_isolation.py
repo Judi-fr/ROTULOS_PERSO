@@ -1,5 +1,5 @@
-"""Los datos son del comercio: un empleado trabaja sobre los del dueño, y
-nada cruza de un comercio a otro."""
+"""Los datos son del comercio (cuelgan de su usuario de datos): un empleado
+trabaja sobre ellos, y nada cruza de un comercio a otro."""
 
 from urllib.parse import parse_qs, urlparse
 
@@ -15,7 +15,9 @@ from apps.labels.models import LabelTemplate
 from apps.orders.models import Address, Order
 from apps.printing.models import Printer
 
-from .test_team_permissions import add_employee, bearer, make_user
+from apps.accounts import teams
+
+from .test_team_permissions import add_employee, bearer, make_owner
 
 DESIGN = {"destinatario": {"left": 6, "top": 38}}
 
@@ -41,11 +43,12 @@ def seed_team_data(owner, tag):
 
 class IsolationTests(APITestCase):
     def setUp(self):
-        self.owner_a = make_user("owner-a@example.com")
+        self.owner_a = make_owner("owner-a@example.com")
         self.employee, _ = add_employee(self.owner_a, "emp-a@example.com", profile="Todo")
-        self.owner_b = make_user("owner-b@example.com")
-        self.a = seed_team_data(self.owner_a, "a")
-        self.b = seed_team_data(self.owner_b, "b")
+        self.owner_b = make_owner("owner-b@example.com")
+        self.data_a = teams.data_owner(self.owner_a)
+        self.a = seed_team_data(self.data_a, "a")
+        self.b = seed_team_data(teams.data_owner(self.owner_b), "b")
 
     def get(self, url, user=None):
         return self.client.get(url, **bearer(user or self.employee))
@@ -75,7 +78,7 @@ class IsolationTests(APITestCase):
             **bearer(self.employee),
         )
         self.assertEqual(order.status_code, 201, order.data)
-        self.assertEqual(Order.objects.get(id=order.data["id"]).user, self.owner_a)
+        self.assertEqual(Order.objects.get(id=order.data["id"]).user, self.data_a)
 
         template = self.client.post(
             "/api/v1/labels/templates/",
@@ -84,7 +87,7 @@ class IsolationTests(APITestCase):
             **bearer(self.employee),
         )
         self.assertEqual(template.status_code, 201, template.data)
-        self.assertEqual(LabelTemplate.objects.get(id=template.data["id"]).owner, self.owner_a)
+        self.assertEqual(LabelTemplate.objects.get(id=template.data["id"]).owner, self.data_a)
 
         address = self.client.post(
             "/api/v1/addresses/",
@@ -93,7 +96,7 @@ class IsolationTests(APITestCase):
             **bearer(self.employee),
         )
         self.assertEqual(address.status_code, 201, address.data)
-        self.assertEqual(Address.objects.get(id=address.data["id"]).user, self.owner_a)
+        self.assertEqual(Address.objects.get(id=address.data["id"]).user, self.data_a)
 
         # La auditoría nombra a la persona real.
         self.assertTrue(AuditLog.objects.filter(actor=self.employee).exists())
@@ -119,8 +122,8 @@ class IsolationTests(APITestCase):
         return {item["id"] for item in data.get("results", data)}
 
     @override_settings(TIENDANUBE_APP_ID="9999", TIENDANUBE_CLIENT_SECRET="secreto")
-    def test_store_connect_from_employee_is_owned_by_owner(self):
+    def test_store_connect_from_employee_is_owned_by_the_team(self):
         response = self.get("/api/v1/integrations/tiendanube/install-url/")
         self.assertEqual(response.status_code, 200, response.data)
         state = parse_qs(urlparse(response.data["authorize_url"]).query)["state"][0]
-        self.assertEqual(read_oauth_state(state, "tiendanube"), self.owner_a)
+        self.assertEqual(read_oauth_state(state, "tiendanube"), self.data_a)

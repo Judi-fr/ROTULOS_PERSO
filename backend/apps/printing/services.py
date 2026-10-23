@@ -23,6 +23,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
+from apps.accounts.teams import live_data_owner_q
 from apps.documents.models import Document
 
 from .models import PrintAgent, Printer, PrintJob
@@ -61,7 +62,7 @@ def agent_for_token(token: str):
         return None
     return (
         PrintAgent.objects.select_related("owner")
-        .filter(token_hash=hash_token(token), is_active=True, owner__is_active=True)
+        .filter(live_data_owner_q("owner__"), token_hash=hash_token(token), is_active=True)
         .first()
     )
 

@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.audit.services import record
-from apps.accounts.teams import data_owner
+from apps.accounts.teams import data_owner, team_display_name, team_for
 
 from .models import AccountSettings, cuit_is_valid
 from .role_permissions import HasRolePermission
@@ -130,9 +130,10 @@ class AccountSettingsView(APIView):
                 request,
                 category="users",
                 action="account.update",
-                target=data_owner(request.user),
-                target_type="user",
-                target_repr=data_owner(request.user).email,
+                # Los datos son del comercio (no de una persona).
+                target=team_for(request.user),
+                target_type="team",
+                target_repr=team_display_name(team_for(request.user)),
                 changes=changes,
             )
         return Response(AccountSettingsSerializer(saved, context={"request": request}).data)

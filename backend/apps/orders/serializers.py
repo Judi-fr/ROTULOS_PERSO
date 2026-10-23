@@ -2,6 +2,7 @@
 
 from rest_framework import serializers
 
+from apps.accounts.teams import contact_email as owner_contact_email
 from apps.accounts.teams import data_owner
 
 from .models import Address, ImportMapping, Order, OrderImport, OrderStatusEvent
@@ -152,7 +153,9 @@ class AdminOrderSerializer(serializers.ModelSerializer):
     (``orders.view_all``). Solo lectura: el admin no crea ni cancela
     pedidos ajenos desde acá (ver ``AdminOrderListView``)."""
 
-    user_email = serializers.EmailField(source="user.email", read_only=True)
+    # El mail de la persona dueña del comercio (los datos cuelgan de su
+    # usuario de datos, que no es una persona).
+    user_email = serializers.SerializerMethodField()
     address = AddressSerializer(read_only=True)
     status_label = serializers.CharField(source="get_status_display", read_only=True)
     last_event = serializers.SerializerMethodField()
@@ -189,6 +192,9 @@ class AdminOrderSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = fields
+
+    def get_user_email(self, obj):
+        return owner_contact_email(getattr(obj, "user", None)) or None
 
     def get_last_event(self, obj):
         # ``status_events`` viene prefetched y ordenado ascendente (Meta.ordering

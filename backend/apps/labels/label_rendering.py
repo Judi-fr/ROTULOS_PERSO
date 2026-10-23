@@ -40,6 +40,8 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas as pdf_canvas
 
+from apps.accounts.teams import business_display_name
+
 from .models import LabelSequence
 
 logger = logging.getLogger(__name__)
@@ -283,8 +285,7 @@ def build_label_context(order=None, label=None):
     # se usa el usuario: un pedido propio a una dirección propia.
     recipient_name = (
         (getattr(address, "recipient_name", "") or "").strip()
-        or order.user.get_full_name()
-        or order.user.email
+        or business_display_name(order.user)
     )
     # Remitente = el cliente que despacha (la app es multi-cliente, no hay un
     # remitente fijo para todos): el nombre de su tienda si el pedido vino de
@@ -294,7 +295,7 @@ def build_label_context(order=None, label=None):
     # se usa el nombre de la tienda.
     store = getattr(order, "store_connection", None)
     sender = sender_fields(order.user, store)
-    sender_name = sender["remitente"] or order.user.get_full_name() or order.user.email
+    sender_name = sender["remitente"] or business_display_name(order.user)
     # Sin tracking real, el código es el id del pedido con ceros a la
     # izquierda: es una referencia interna nuestra, no la de un courier,
     # y la app es multi-cliente (ningún prefijo de cliente acá).

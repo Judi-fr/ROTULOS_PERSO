@@ -11,6 +11,8 @@ from __future__ import annotations
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
+from apps.accounts.teams import contact_email as owner_contact_email
+
 from .models import Document, UploadedLabelFile, validar_archivo
 
 
@@ -45,13 +47,18 @@ class AdminDocumentSerializer(DocumentSerializer):
     """Lectura de documentos de TODOS los usuarios (panel admin,
     ``documents.view_all``). Mismo criterio que ``AdminLabelSerializer``."""
 
-    user_email = serializers.EmailField(source="user.email", read_only=True)
+    # El mail de la persona dueña del comercio (los datos cuelgan de su
+    # usuario de datos, que no es una persona).
+    user_email = serializers.SerializerMethodField()
 
     class Meta(DocumentSerializer.Meta):
         fields = ["id", "user", "user_email"] + [
             f for f in DocumentSerializer.Meta.fields if f != "id"
         ]
         read_only_fields = fields
+
+    def get_user_email(self, obj):
+        return owner_contact_email(getattr(obj, "user", None)) or None
 
 class UploadedLabelFileSerializer(serializers.ModelSerializer):
     """Un archivo fuente subido (para importar), distinto de ``Document``.

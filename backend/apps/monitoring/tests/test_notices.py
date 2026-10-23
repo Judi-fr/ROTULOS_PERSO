@@ -17,6 +17,7 @@ from apps.integrations.models import StoreConnection, StoreLabelRequest
 from apps.monitoring import notices
 from apps.monitoring.models import MerchantNotice
 from apps.printing.models import Printer, PrintJob
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 URL = "/api/v1/notices/"
 
@@ -32,6 +33,7 @@ class NoticeTests(APITestCase):
     def setUp(self):
         self.owner = make_user("owner@example.com")
         self.other = make_user("otro@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def keys(self, user=None):
         response = self.client.get(URL, **bearer(user or self.owner))

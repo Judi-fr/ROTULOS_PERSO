@@ -23,6 +23,7 @@ from apps.integrations.stores import GENERATE_LABEL_EVENT
 from apps.integrations.tests.helpers import auth_headers_for, make_user
 from .test_tiendanube_oauth import TEST_SETTINGS
 from .test_tiendanube_sync import TiendanubeTestCase
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 PUBLIC_BASE_URL = "https://rotulos.example.com"
 LABEL_SETTINGS = dict(TEST_SETTINGS, INTEGRATIONS_PUBLIC_BASE_URL=PUBLIC_BASE_URL)
@@ -93,6 +94,7 @@ class StoreLabelTestCase(TiendanubeTestCase):
         # La respuesta al PATCH de estado no se usa, pero sin ruta cargada
         # la API falsa contesta 404.
         self.api.set("PATCH", LABEL_API_PATH, 200, {"id": LABEL_ID})
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _generate(self, items=None):
         return self.client.post(
@@ -564,6 +566,7 @@ class StoreLabelListApiTests(StoreLabelTestCase):
         super().setUp()
         self._generate()
         self.label_request = StoreLabelRequest.objects.get()
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_requiere_estar_logueado(self):
         self.assertEqual(self.client.get(self.URL).status_code, 401)
@@ -594,6 +597,7 @@ class StoreLabelListApiTests(StoreLabelTestCase):
 
     def test_un_usuario_no_ve_los_rotulos_de_la_tienda_de_otro(self):
         intruso = make_user("otro@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
         response = self.client.get(self.URL, **auth_headers_for(intruso))
 

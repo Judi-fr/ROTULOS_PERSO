@@ -1,4 +1,4 @@
-"""Comercios con equipo: modelos y comercio propio de cada usuario."""
+"""Comercios con equipo: modelos, comercio de cada request y usuario de datos."""
 
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, connection
@@ -16,33 +16,62 @@ def make_user(email, **extra):
 
 
 class TeamForTests(TestCase):
-    def test_team_for_creates_solo_team_with_suggested_profiles(self):
+    def test_nobody_gets_a_team_by_asking(self):
         user = make_user("solo@example.com")
-        team = teams.team_for(user)
+        self.assertIsNone(teams.membership(user))
+        with self.assertRaises(teams.NoTeam):
+            teams.team_for(user)
+        with self.assertRaises(teams.NoTeam):
+            teams.data_owner(user)
+        self.assertFalse(Team.objects.exists())
+
+    def test_create_team_with_suggested_profiles_and_data_user(self):
+        user = make_user("solo@example.com")
+        team = teams.create_team(user, name="Solo")
         self.assertEqual(team.owner, user)
         self.assertEqual(teams.membership(user).role, TeamMember.Role.OWNER)
+        self.assertEqual(teams.team_for(user), team)
+        self.assertEqual(teams.data_owner(user), team.data_user)
+        self.assertNotEqual(team.data_user, user)
         profiles = {profile.name: profile.accesses for profile in team.profiles.all()}
         self.assertEqual(set(profiles), {"Todo", "Depósito", "Atención"})
         self.assertEqual(profiles["Depósito"], ["orders.view", "labels.print", "orders.dispatch"])
         self.assertEqual(sorted(profiles["Todo"]), sorted(teams.ACCESSES))
-        # Llamarlo de nuevo no crea otro.
-        self.assertEqual(teams.team_for(user), team)
-        self.assertEqual(Team.objects.count(), 1)
 
-    def test_data_owner_of_employee_is_team_owner(self):
+    def test_data_owner_of_employee_is_the_team_data_user(self):
         owner = make_user("owner@example.com")
         employee = make_user("employee@example.com")
-        team = teams.team_for(owner)
+        team = teams.create_team(owner)
         TeamMember.objects.create(team=team, user=employee, role=TeamMember.Role.EMPLOYEE)
-        self.assertEqual(teams.data_owner(employee), owner)
-        self.assertEqual(teams.data_owner(owner), owner)
+        self.assertEqual(teams.data_owner(employee), team.data_user)
+        self.assertEqual(teams.data_owner(owner), team.data_user)
 
-    def test_user_belongs_to_one_team_only(self):
+    def test_a_person_can_be_in_several_teams_once_each(self):
         owner = make_user("owner@example.com")
         employee = make_user("employee@example.com")
-        teams.team_for(employee)
+        own = teams.create_team(employee)
+        team = teams.create_team(owner)
+        TeamMember.objects.create(team=team, user=employee, role=TeamMember.Role.EMPLOYEE)
+        self.assertEqual({m.team_id for m in teams.memberships(employee)}, {own.pk, team.pk})
         with self.assertRaises(IntegrityError):
-            TeamMember.objects.create(team=teams.team_for(owner), user=employee, role=TeamMember.Role.EMPLOYEE)
+            TeamMember.objects.create(team=team, user=employee, role=TeamMember.Role.EMPLOYEE)
+
+    def test_one_owner_per_team(self):
+        team = teams.create_team(make_user("owner@example.com"))
+        with self.assertRaises(IntegrityError):
+            TeamMember.objects.create(team=team, user=make_user("other@example.com"), role=TeamMember.Role.OWNER)
+
+    def test_header_picks_the_team_only_if_it_is_hers(self):
+        person = make_user("p@example.com")
+        first = teams.create_team(person, name="Primero")
+        second = teams.create_team(person, name="Segundo")
+        stranger = teams.create_team(make_user("x@example.com"))
+        with teams.request_cache(first.pk):
+            self.assertEqual(teams.team_for(person), first)
+        with teams.request_cache(stranger.pk):
+            self.assertEqual(teams.team_for(person), second)  # el último usado
+        with teams.request_cache():
+            self.assertEqual(teams.team_for(person), second)
 
 
 class TeamMigrationTests(TransactionTestCase):

@@ -7,6 +7,7 @@ from rest_framework import serializers
 
 from apps.labels.serializers import ImageOrDataUrlField
 from apps.accounts.teams import allowed_store_ids, data_owner
+from apps.accounts.teams import contact_email as owner_contact_email
 
 from . import shipping_rates
 from .providers.tiendanube import labels as store_labels
@@ -234,7 +235,9 @@ class StoreClaimSerializer(serializers.Serializer):
 
 
 class IntegrationKeySerializer(serializers.ModelSerializer):
-    owner_email = serializers.EmailField(source="owner.email", read_only=True)
+    # El mail de la persona dueña del comercio (los datos cuelgan de su
+    # usuario de datos, que no es una persona).
+    owner_email = serializers.SerializerMethodField()
 
     class Meta:
         model = IntegrationKey
@@ -251,6 +254,9 @@ class IntegrationKeySerializer(serializers.ModelSerializer):
         # key_hash nunca se expone (ver el docstring del modelo); prefix
         # solo se puede LEER, lo genera la vista al crear la clave.
         read_only_fields = ["id", "owner_email", "prefix", "last_used_at", "created_at"]
+
+    def get_owner_email(self, obj):
+        return owner_contact_email(getattr(obj, "owner", None)) or None
 
 
 class IncomingWebhookSerializer(serializers.ModelSerializer):

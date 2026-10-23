@@ -9,6 +9,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from ..models import MAX_BYTES_IMAGEN, UploadedLabelFile, detectar_tipo
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 User = get_user_model()
 
@@ -58,6 +59,7 @@ class SubidaDeDocumentosTests(APITestCase):
         self.otro = User.objects.create_user(
             username="beto", email="beto@test.com", password="x"
         )
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_requiere_autenticacion(self):
         respuesta = self.client.post(self.url, {"file": archivo("r.png", PNG)})

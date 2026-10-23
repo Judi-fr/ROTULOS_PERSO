@@ -31,6 +31,7 @@ from apps.integrations.stores import (
 from apps.integrations.tests.test_store_integration_base import tiendanube_order
 from apps.integrations.tests.helpers import fake_response, make_user
 from .test_tiendanube_oauth import TEST_SETTINGS
+from apps.accounts.tests.team_helpers import give_solo_teams
 
 WEBHOOKS_URL = "/api/v1/integrations/tiendanube/webhooks/"
 PUBLIC_BASE_URL = "https://rotulos.example.com"
@@ -67,6 +68,7 @@ class FakeTiendanubeApi:
 class TiendanubeTestCase(APITestCase):
     def setUp(self):
         self.owner = make_user("comercio@example.com")
+        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         self.connection = StoreConnection.objects.create(
             owner=self.owner,
             platform="tiendanube",

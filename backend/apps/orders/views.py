@@ -26,7 +26,8 @@ from apps.accounts.permissions_map import user_has_permission
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
 from apps.common.date_filters import date_range_q
-from apps.accounts.teams import data_owner, order_scope_q
+from apps.accounts.team_models import Team
+from apps.accounts.teams import business_display_name, contact_email, data_owner, order_scope_q
 
 from .ingestion import TARGET_FIELDS, create_order_from_data, validate_mapped_row
 from .models import Address, Order
@@ -373,23 +374,32 @@ class OrderMetricsView(APIView):
             for key, data in sorted(transition_totals.items())
         ]
 
-        top_users_qs = (
-            base_qs.values("user__email")
+        # Los pedidos cuelgan del usuario de datos de cada comercio: cada fila
+        # es un comercio, nombrado por su nombre y el mail de la persona dueña.
+        top_users_qs = list(
+            base_qs.values("user_id")
             .annotate(count=Count("id"), last_order_at=Max("created_at"))
             .order_by("-count")[:10]
         )
+        owners = User.objects.in_bulk([row["user_id"] for row in top_users_qs])
         top_users_by_orders = [
-            {"email": row["user__email"], "count": row["count"], "last_order_at": row["last_order_at"]}
+            {
+                "email": contact_email(owners.get(row["user_id"])),
+                "name": business_display_name(owners.get(row["user_id"])),
+                "count": row["count"],
+                "last_order_at": row["last_order_at"],
+            }
             for row in top_users_qs
         ]
 
-        total_users = User.objects.count()
+        # Comercios (abiertos) con pedidos sobre el total de comercios.
+        total_users = Team.objects.filter(closed_at=None).count()
         users_with_orders_count = base_qs.values("user_id").distinct().count()
         users_with_orders = {
             "count": users_with_orders_count,
             "total_users": total_users,
             "percentage": (
-                round(users_with_orders_count * 100 / total_users, 1) if total_users else 0.0
+                min(100.0, round(users_with_orders_count * 100 / total_users, 1)) if total_users else 0.0
             ),
         }
 

@@ -78,3 +78,36 @@
 .account-logo img[hidden] {
   display: none;
 }
+
+/* Baja del comercio (baja_comercio.js): al final, en rojo, solo el dueño. */
+.close-team-card {
+  margin-top: 36px;
+  border-color: #f1b8b4;
+}
+
+.close-team-card .profile-card-title {
+  color: #b42318;
+}
+
+.close-team-text {
+  margin: 0 0 14px;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.close-team-form textarea,
+.close-team-form input {
+  width: 100%;
+}
+
+.close-team-btn {
+  background: #b42318;
+  border-color: #b42318;
+  color: #fff;
+}
+
+.close-team-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

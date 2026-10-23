@@ -23,11 +23,22 @@ def make_user(email, group="subscriber"):
     return user
 
 
+def make_owner(email, group="subscriber", name=""):
+    """Una persona con su comercio (con su propio usuario de datos)."""
+    user = make_user(email, group)
+    teams.create_team(user, name=name)
+    return user
+
+
 def add_employee(owner, email, *, profile=None, accesses=()):
-    """Suma un empleado al comercio de ``owner`` (como lo hará la API de la Tarea 6)."""
+    """Suma un empleado (que no está en ningún otro comercio) al comercio
+    actual de ``owner`` (si ``owner`` todavía no tiene comercio, el
+    transitorio "solo" de ``team_helpers``)."""
+    from .team_helpers import give_solo_team
+
     employee = make_user(email)
-    team = teams.team_for(owner)
-    TeamMember.objects.filter(user=employee).delete()
+    member = teams.membership(owner)
+    team = member.team if member is not None else give_solo_team(owner)
     member = TeamMember.objects.create(
         team=team,
         user=employee,
@@ -40,7 +51,7 @@ def add_employee(owner, email, *, profile=None, accesses=()):
 
 class TeamPermissionTests(APITestCase):
     def setUp(self):
-        self.owner = make_user("owner@example.com")
+        self.owner = make_owner("owner@example.com")
 
     def test_owner_has_every_team_permission(self):
         missing = [key for key in TEAM_SCOPED_PERMISSIONS if not user_has_permission(self.owner, key)]

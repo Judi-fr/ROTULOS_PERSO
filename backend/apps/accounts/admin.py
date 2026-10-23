@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.models import Group
 
-from .models import EmailVerification, SupportMessage, Team, TeamInvitation, TeamMember, TeamProfile
+from .models import EmailVerification, SupportMessage, Team, TeamInvitation, TeamJoinRequest, TeamMember, TeamProfile
 
 
 def _ensure_groups():
@@ -37,8 +37,9 @@ class SupportMessageAdmin(admin.ModelAdmin):
 
 @admin.register(Team)
 class TeamAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "owner", "created_at")
+    list_display = ("id", "name", "owner", "data_user", "closed_at", "created_at")
     search_fields = ("name", "owner__email")
+    readonly_fields = ("data_user",)
 
 
 @admin.register(TeamMember)
@@ -59,3 +60,10 @@ class TeamInvitationAdmin(admin.ModelAdmin):
     list_display = ("email", "team", "status", "expires_at", "created_at")
     list_filter = ("status",)
     search_fields = ("email", "team__owner__email")
+
+
+@admin.register(TeamJoinRequest)
+class TeamJoinRequestAdmin(admin.ModelAdmin):
+    list_display = ("user", "team", "status", "created_at", "decided_at")
+    list_filter = ("status",)
+    search_fields = ("user__email", "team__name", "team__owner__email")

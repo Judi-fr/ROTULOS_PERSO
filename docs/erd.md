@@ -76,8 +76,15 @@ erDiagram
     Team {
         bigauto id PK
         auto owner_id FK
+        auto data_user_id FK
         char name
+        char join_code UK
+        boolean join_code_enabled
         datetime created_at
+        datetime closed_at
+        auto closed_by_id FK
+        text close_reason
+        json closed_state
     }
     TeamInvitation {
         bigauto id PK
@@ -92,6 +99,15 @@ erDiagram
         datetime expires_at
         datetime created_at
     }
+    TeamJoinRequest {
+        bigauto id PK
+        bigauto team_id FK
+        auto user_id FK
+        char status
+        datetime created_at
+        auto decided_by_id FK
+        datetime decided_at
+    }
     TeamMember {
         bigauto id PK
         bigauto team_id FK
@@ -101,6 +117,7 @@ erDiagram
         json accesses
         boolean all_stores
         datetime joined_at
+        datetime last_used_at
     }
     TeamProfile {
         bigauto id PK
@@ -119,6 +136,7 @@ erDiagram
         char target_id
         char target_repr
         json changes
+        integer team_id
         genericipaddress ip_address
         char user_agent
         datetime created_at
@@ -639,6 +657,7 @@ erDiagram
     StoreConnection ||--o{ ShippingRate : "connection"
     StoreConnection ||--o{ StoreLabelRequest : "connection"
     Team ||--o{ TeamInvitation : "team"
+    Team ||--o{ TeamJoinRequest : "team"
     Team ||--o{ TeamMember : "team"
     Team ||--o{ TeamProfile : "team"
     TeamInvitation }o--o{ StoreConnection : "stores"
@@ -654,7 +673,10 @@ erDiagram
     User |o--o{ LayoutVariable : "created_by"
     User |o--o{ StoreConnection : "owner"
     User |o--o{ SupportMessage : "handled_by"
+    User |o--o{ Team : "closed_by"
+    User |o--o{ Team : "owner"
     User |o--o{ TeamInvitation : "invited_by"
+    User |o--o{ TeamJoinRequest : "decided_by"
     User ||--o{ Address : "user"
     User ||--o{ CarrierAccount : "owner"
     User ||--o{ Document : "user"
@@ -670,6 +692,8 @@ erDiagram
     User ||--o{ PrintJob : "owner"
     User ||--o{ Printer : "owner"
     User ||--o{ SupportMessage : "user"
+    User ||--o{ TeamJoinRequest : "user"
+    User ||--o{ TeamMember : "user"
     User ||--o{ UploadedLabelFile : "uploaded_by"
     User ||--o{ WebhookEndpoint : "owner"
     User ||--o| AccountSettings : "user"
@@ -677,7 +701,6 @@ erDiagram
     User ||--o| LoginLockout : "user"
     User ||--o| PasswordChangeRequirement : "user"
     User ||--o| PersonalProfile : "user"
-    User ||--o| Team : "owner"
-    User ||--o| TeamMember : "user"
+    User ||--o| Team : "data_user"
     WebhookEndpoint ||--o{ WebhookDelivery : "endpoint"
 ```

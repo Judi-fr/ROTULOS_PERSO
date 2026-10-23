@@ -17,6 +17,7 @@ from django.core.validators import URLValidator
 from django.db.models import Q
 from django.utils import timezone
 
+from apps.accounts.teams import business_display_name
 from apps.common.spreadsheet import csv_bytes, xlsx_bytes
 
 from .models import Order
@@ -91,7 +92,7 @@ def export_row(order):
         (store.name or store.external_store_id) if store else "Cargado a mano",
         order.get_status_display(),
         created,
-        address.recipient_name or order.user.get_full_name() or order.user.email,
+        address.recipient_name or business_display_name(order.user),
         address.street,
         address.number,
         address.city,
