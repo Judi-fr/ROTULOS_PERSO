@@ -5,7 +5,7 @@ from rest_framework.test import APITestCase
 
 from apps.accounts import teams
 from apps.accounts.tests.test_team_permissions import add_employee, bearer, make_user
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 ALL = set(teams.ACCESSES)
 
@@ -31,7 +31,7 @@ GATES = [
 class TeamGateTests(APITestCase):
     def setUp(self):
         self.owner = make_user("owner@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(self.owner)
 
     def call(self, user, method, url, body):
         return getattr(self.client, method)(url, body, format="json", **bearer(user))

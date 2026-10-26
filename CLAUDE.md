@@ -494,10 +494,12 @@ a store between businesses was considered as a stage 2 and dropped (2026-10-23, 
   `accounts/0033-0035`: open businesses with NO data and no other member were deleted (those people see the start
   screen); the rest got a data user and their `OWNED_DATA` + `MerchantNotice` rows moved to it; closed ones use their
   former archive user as data user and `owner` = the old `former_owner` (field removed). `0034` doesn't undo
-  (reverse is a no-op). Tests: `test_multi_team.py`, `test_multi_team_migration.py`. **Pending, the user asked to
-  be reminded**: ~older tests give their user a business whose data user is the person itself
-  (`apps/accounts/tests/team_helpers.give_solo_team`, one line per setUp) — a shape production never has; they
-  want them rewritten for real (grep `give_solo_team`).
+  (reverse is a no-op). Tests: `test_multi_team.py`, `test_multi_team_migration.py`. **Tests build the real
+  shape** (2026-10-26, replacing the old "solo" shortcut where the data user was the person itself):
+  `team_helpers.new_business(person)` creates the business and returns its data user; a test creates it BEFORE
+  the data and hangs stores/orders/templates/accounts from that data user, while the person still calls the API
+  and is the audit actor. A store's OAuth `state` carries the data user as `u` and the person who asked as `a`
+  (`oauth_state_actor`), so the callback audits the person, not the internal user.
 - **The 12 accesses** (`teams.ACCESSES`, the merchant's words): ver pedidos, imprimir rótulos, despachar,
   cancelar, cargar e importar, plantillas, tiendas, transportistas y tarifas, impresoras, datos del comercio,
   equipo, exportar. Owner = all; employee = their profile's (a profile change applies to everyone on it) or

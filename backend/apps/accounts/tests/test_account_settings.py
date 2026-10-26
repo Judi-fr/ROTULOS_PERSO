@@ -24,7 +24,7 @@ from apps.orders.manifest import render_manifest_pdf
 from apps.orders.models import Address, Order
 
 from ..models import AccountSettings, cuit_is_valid
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 User = get_user_model()
 URL = "/api/v1/auth/me/account/"
@@ -45,8 +45,8 @@ class AccountSettingsTestCase(APITestCase):
         self.addCleanup(media_override.disable)
         self.user = User.objects.create_user(username="cuenta@example.com", email="cuenta@example.com", password="Clave123!")
         self.user.groups.add(Group.objects.get_or_create(name="subscriber")[0])
+        self.biz = new_business(self.user)
         self.headers = {"HTTP_AUTHORIZATION": f"Bearer {RefreshToken.for_user(self.user).access_token}"}
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def patch(self, data):
         return self.client.patch(URL, data, format="json", **self.headers)
@@ -73,7 +73,7 @@ class AccountSettingsApiTests(AccountSettingsTestCase):
     def test_default_template_must_be_usable(self):
         foreign = LabelTemplate.objects.create(name="Ajena", width_cm=10, height_cm=15, design={})
         self.assertIn("default_template", self.patch({"default_template": foreign.pk}).data)
-        own = LabelTemplate.objects.create(name="Mía", owner=self.user, width_cm=10, height_cm=15, design={})
+        own = LabelTemplate.objects.create(name="Mía", owner=self.biz, width_cm=10, height_cm=15, design={})
         self.assertEqual(self.patch({"default_template": own.pk}).data["default_template"], own.pk)
 
     def test_default_carrier_is_an_api_code_or_a_catalog_name(self):
@@ -88,25 +88,24 @@ class AccountSettingsApiTests(AccountSettingsTestCase):
         data_url = "data:image/png;base64," + base64.b64encode(png_bytes()).decode()
         response = self.patch({"logo": data_url})
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertTrue(AccountSettings.objects.get(user=self.user).logo)
+        self.assertTrue(AccountSettings.objects.get(user=self.biz).logo)
 
 
 class AccountSettingsUsageTests(AccountSettingsTestCase):
     def setUp(self):
         super().setUp()
         self.account = AccountSettings.objects.create(
-            user=self.user,
+            user=self.biz,
             legal_name="Mi Tienda SRL",
             tax_id="30-53625919-4",
             sender_name="Depósito Central",
             sender_address="Av. Siempre Viva 742, CABA",
             sender_phone="11 5555-0000",
         )
-        self.address = Address.objects.create(user=self.user, recipient_name="María", street="Corrientes", number="1000", city="CABA")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.address = Address.objects.create(user=self.biz, recipient_name="María", street="Corrientes", number="1000", city="CABA")
 
     def test_manual_order_uses_account_sender(self):
-        order = Order.objects.create(user=self.user, address=self.address)
+        order = Order.objects.create(user=self.biz, address=self.address)
         context = build_label_context(order=order)
         self.assertEqual(context["remitente"], "Depósito Central")
         self.assertEqual(context["remitente_domicilio"], "Av. Siempre Viva 742, CABA")
@@ -114,9 +113,9 @@ class AccountSettingsUsageTests(AccountSettingsTestCase):
 
     def test_store_data_wins_and_account_fills_the_gaps(self):
         store = StoreConnection.objects.create(
-            owner=self.user, platform=StoreConnection.Platform.TIENDANUBE, external_store_id="9", name="Tienda X", sender_phone="11 4444-1111"
+            owner=self.biz, platform=StoreConnection.Platform.TIENDANUBE, external_store_id="9", name="Tienda X", sender_phone="11 4444-1111"
         )
-        order = Order.objects.create(user=self.user, address=self.address, store_connection=store, external_id="1")
+        order = Order.objects.create(user=self.biz, address=self.address, store_connection=store, external_id="1")
         context = build_label_context(order=order)
         self.assertEqual(context["remitente"], "Depósito Central")
         self.assertEqual(context["remitente_telefono"], "11 4444-1111")
@@ -126,21 +125,21 @@ class AccountSettingsUsageTests(AccountSettingsTestCase):
 
     def test_logo_falls_back_to_the_account(self):
         self.account.logo.save("logo.png", ContentFile(png_bytes()), save=True)
-        order = Order.objects.create(user=self.user, address=self.address)
+        order = Order.objects.create(user=self.biz, address=self.address)
         template = LabelTemplate.objects.filter(is_public=True).first()
         *_, logo_file, _ = _render_params_for_item(order, template)
         self.assertEqual(logo_file.name, self.account.logo.name)
 
     def test_batch_falls_back_to_the_account_template(self):
-        own = LabelTemplate.objects.create(name="Mía", owner=self.user, width_cm=10, height_cm=10, design={})
+        own = LabelTemplate.objects.create(name="Mía", owner=self.biz, width_cm=10, height_cm=10, design={})
         self.account.default_template = own
         self.account.save()
-        order = Order.objects.create(user=self.user, address=self.address)
-        self.assertEqual(LabelBatchView()._resolve_template(self.user, None, [order]), own)
+        order = Order.objects.create(user=self.biz, address=self.address)
+        self.assertEqual(LabelBatchView()._resolve_template(self.biz, None, [order]), own)
 
     def test_manifest_shows_legal_name_and_cuit(self):
-        order = Order.objects.create(user=self.user, address=self.address)
-        pdf = render_manifest_pdf([order], self.user, carrier="OCA")
+        order = Order.objects.create(user=self.biz, address=self.address)
+        pdf = render_manifest_pdf([order], self.biz, carrier="OCA")
         text = "".join(page.extract_text() for page in PdfReader(BytesIO(pdf)).pages)
         self.assertIn("Mi Tienda SRL · CUIT 30-53625919-4", text)
         self.assertIn("Depósito Central", text)

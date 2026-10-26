@@ -17,7 +17,7 @@ from apps.integrations.models import StoreConnection, StoreLabelRequest
 from apps.monitoring import notices
 from apps.monitoring.models import MerchantNotice
 from apps.printing.models import Printer, PrintJob
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 URL = "/api/v1/notices/"
 
@@ -32,8 +32,9 @@ def store(owner, tag, **extra):
 class NoticeTests(APITestCase):
     def setUp(self):
         self.owner = make_user("owner@example.com")
+        self.owner_biz = new_business(self.owner)
         self.other = make_user("otro@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.other_biz = new_business(self.other)
 
     def keys(self, user=None):
         response = self.client.get(URL, **bearer(user or self.owner))
@@ -41,11 +42,11 @@ class NoticeTests(APITestCase):
         return {row["kind"] for row in response.data}
 
     def test_each_problem_becomes_a_notice_with_a_link(self):
-        broken = store(self.owner, "1", status=StoreConnection.Status.ERROR, last_error="401 token inválido")
-        CarrierAccount.objects.create(owner=self.owner, carrier="andreani", is_active=False, last_error="Credenciales rechazadas")
-        Document.objects.create(user=self.owner, name="Lote", status=Document.Status.FAILED, error_message="Plantilla rota", store_ids=[])
-        printer = Printer.objects.create(owner=self.owner, name="Zebra", format="pdf")
-        PrintJob.objects.create(owner=self.owner, printer=printer, status=PrintJob.Status.ERROR, error_message="Sin papel")
+        broken = store(self.owner_biz, "1", status=StoreConnection.Status.ERROR, last_error="401 token inválido")
+        CarrierAccount.objects.create(owner=self.owner_biz, carrier="andreani", is_active=False, last_error="Credenciales rechazadas")
+        Document.objects.create(user=self.owner_biz, name="Lote", status=Document.Status.FAILED, error_message="Plantilla rota", store_ids=[])
+        printer = Printer.objects.create(owner=self.owner_biz, name="Zebra", format="pdf")
+        PrintJob.objects.create(owner=self.owner_biz, printer=printer, status=PrintJob.Status.ERROR, error_message="Sin papel")
         StoreLabelRequest.objects.create(connection=broken, external_label_id="L1", status=StoreLabelRequest.Status.FAILED, error_message="x")
         notices.sync_all()
         rows = {row["kind"]: row for row in self.client.get(URL, **bearer(self.owner)).data}
@@ -55,7 +56,7 @@ class NoticeTests(APITestCase):
         self.assertEqual(rows["carrier_auth"]["url"], "transportista.html?carrier=andreani")
 
     def test_a_notice_closes_when_the_problem_is_gone(self):
-        broken = store(self.owner, "1", status=StoreConnection.Status.ERROR)
+        broken = store(self.owner_biz, "1", status=StoreConnection.Status.ERROR)
         notices.sync_all()
         self.assertEqual(self.keys(), {"store_error"})
         StoreConnection.objects.filter(pk=broken.pk).update(status=StoreConnection.Status.ACTIVE)
@@ -64,14 +65,14 @@ class NoticeTests(APITestCase):
         self.assertIsNotNone(MerchantNotice.objects.get().resolved_at)
 
     def test_old_failures_are_not_notices(self):
-        document = Document.objects.create(user=self.owner, name="Viejo", status=Document.Status.FAILED, store_ids=[])
+        document = Document.objects.create(user=self.owner_biz, name="Viejo", status=Document.Status.FAILED, store_ids=[])
         Document.objects.filter(pk=document.pk).update(updated_at=timezone.now() - timedelta(days=4))
         notices.sync_all()
         self.assertEqual(self.keys(), set())
 
     def test_owner_gets_one_mail_per_pass_with_the_new_ones_only(self):
-        store(self.owner, "1", status=StoreConnection.Status.ERROR)
-        CarrierAccount.objects.create(owner=self.owner, carrier="oca", is_active=False, last_error="Clave")
+        store(self.owner_biz, "1", status=StoreConnection.Status.ERROR)
+        CarrierAccount.objects.create(owner=self.owner_biz, carrier="oca", is_active=False, last_error="Clave")
         notices.sync_all()
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, ["owner@example.com"])
@@ -81,7 +82,7 @@ class NoticeTests(APITestCase):
         self.assertEqual(len(mail.outbox), 1)  # nada nuevo, nada de mail
 
     def test_a_failed_mail_is_retried_later(self):
-        store(self.owner, "1", status=StoreConnection.Status.ERROR)
+        store(self.owner_biz, "1", status=StoreConnection.Status.ERROR)
         with mock.patch("apps.monitoring.notices.send_mail", side_effect=OSError("SMTP")):
             notices.sync_all()
         self.assertIsNone(MerchantNotice.objects.get().mailed_at)
@@ -92,14 +93,14 @@ class NoticeTests(APITestCase):
         self.assertEqual(len(mail.outbox), 1)
 
     def test_nothing_crosses_businesses(self):
-        store(self.other, "x", status=StoreConnection.Status.ERROR)
+        store(self.other_biz, "x", status=StoreConnection.Status.ERROR)
         notices.sync_all()
         self.assertEqual(self.keys(), set())
 
     def test_employees_see_only_their_areas_and_stores(self):
-        t1 = store(self.owner, "1", status=StoreConnection.Status.ERROR)
-        store(self.owner, "2", status=StoreConnection.Status.ERROR)
-        CarrierAccount.objects.create(owner=self.owner, carrier="andreani", is_active=False, last_error="x")
+        t1 = store(self.owner_biz, "1", status=StoreConnection.Status.ERROR)
+        store(self.owner_biz, "2", status=StoreConnection.Status.ERROR)
+        CarrierAccount.objects.create(owner=self.owner_biz, carrier="andreani", is_active=False, last_error="x")
         deposito, _ = add_employee(self.owner, "dep@example.com", profile="Depósito")
         self.assertEqual(self.keys(deposito), set())  # ni tiendas ni transportistas
         manager, member = add_employee(self.owner, "m@example.com", profile="Todo")
@@ -111,7 +112,7 @@ class NoticeTests(APITestCase):
         self.assertEqual(sorted(row["title"] for row in rows if row["kind"] == "store_error"), [f"La tienda {t1.name} tiene un error de conexión"])
 
     def test_dismissed_notice_stays_hidden_while_the_problem_lasts(self):
-        store(self.owner, "1", status=StoreConnection.Status.ERROR)
+        store(self.owner_biz, "1", status=StoreConnection.Status.ERROR)
         notices.sync_all()
         notice = MerchantNotice.objects.get()
         self.assertEqual(self.client.post(f"{URL}{notice.id}/dismiss/", **bearer(self.owner)).status_code, 204)
@@ -119,7 +120,7 @@ class NoticeTests(APITestCase):
         self.assertEqual(self.keys(), set())
 
     def test_cannot_dismiss_another_business_notice(self):
-        store(self.other, "x", status=StoreConnection.Status.ERROR)
+        store(self.other_biz, "x", status=StoreConnection.Status.ERROR)
         notices.sync_all()
         notice = MerchantNotice.objects.get()
         self.assertEqual(self.client.post(f"{URL}{notice.id}/dismiss/", **bearer(self.owner)).status_code, 404)
@@ -129,6 +130,6 @@ class NoticeTests(APITestCase):
 
         from django.core.management import call_command
 
-        store(self.owner, "1", status=StoreConnection.Status.ERROR)
+        store(self.owner_biz, "1", status=StoreConnection.Status.ERROR)
         call_command("run_monitor", "--once", stdout=StringIO())
         self.assertTrue(MerchantNotice.objects.filter(resolved_at=None).exists())

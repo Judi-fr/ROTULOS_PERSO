@@ -18,7 +18,7 @@ from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from rest_framework import status
 from rest_framework.test import APITestCase
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 User = get_user_model()
 
@@ -33,7 +33,6 @@ class AuthTestCase(APITestCase):
     def setUp(self):
         cache.clear()
         super().setUp()
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
 
 class RegisterTests(AuthTestCase):
@@ -78,7 +77,7 @@ class LoginTests(AuthTestCase):
             email="login@example.com",
             password=STRONG_PASSWORD,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(self.user)
 
     def test_login_normaliza_email(self):
         # Mayúsculas y espacios deben resolver a la misma cuenta.
@@ -153,7 +152,7 @@ class LoginLockoutTests(AuthTestCase):
             email="lockout@example.com",
             password=STRONG_PASSWORD,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(self.user)
 
     def _login(self, password):
         return self.client.post(
@@ -224,13 +223,13 @@ class RefreshRotationTests(AuthTestCase):
             email="rot@example.com",
             password=STRONG_PASSWORD,
         )
+        new_business(self.user)
         login = self.client.post(
             "/api/v1/auth/login/",
             {"email": "rot@example.com", "password": STRONG_PASSWORD},
             format="json",
         )
         self.refresh = login.data["refresh"]
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_refresh_rota_y_reuso_del_viejo_da_401(self):
         # Primer uso: válido, devuelve access + refresh NUEVO.
@@ -256,6 +255,7 @@ class LogoutTests(AuthTestCase):
             email="out@example.com",
             password=STRONG_PASSWORD,
         )
+        new_business(self.user)
         login = self.client.post(
             "/api/v1/auth/login/",
             {"email": "out@example.com", "password": STRONG_PASSWORD},
@@ -263,7 +263,6 @@ class LogoutTests(AuthTestCase):
         )
         self.access = login.data["access"]
         self.refresh = login.data["refresh"]
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_logout_revoca_refresh(self):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.access}")
@@ -301,7 +300,7 @@ class ProfileTests(AuthTestCase):
             first_name="Ana",
             last_name="Pérez",
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(self.user)
 
     def test_anonimo_recibe_401(self):
         resp = self.client.get(self.URL)
@@ -426,7 +425,7 @@ class ChangePasswordTests(AuthTestCase):
             email="cambio@example.com",
             password=STRONG_PASSWORD,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(self.user)
 
     def _payload(self, **overrides):
         payload = {
@@ -695,23 +694,25 @@ class RolePermissionSystemTests(AuthTestCase):
             email="perm_staff@example.com",
             password=STRONG_PASSWORD,
         )
+        new_business(self.staff_user)
         self.analyst_user = User.objects.create_user(
             username="perm_analyst@example.com",
             email="perm_analyst@example.com",
             password=STRONG_PASSWORD,
         )
+        new_business(self.analyst_user)
         self.subscriber_user = User.objects.create_user(
             username="perm_subscriber@example.com",
             email="perm_subscriber@example.com",
             password=STRONG_PASSWORD,
         )
+        new_business(self.subscriber_user)
 
         # Asignar los Groups (roles) a cada usuario.
         self.admin_user.groups.add(Group.objects.get(name=self.ADMIN))
         self.staff_user.groups.add(Group.objects.get(name=self.STAFF))
         self.analyst_user.groups.add(Group.objects.get(name=self.ANALYST))
         self.subscriber_user.groups.add(Group.objects.get(name=self.SUBSCRIBER))
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     # --- Datos sembrados -----------------------------------------------------
 
@@ -1162,7 +1163,6 @@ class CustomRolePermissionTests(AuthTestCase):
             is_staff=True,
         )
         self.admin_user.groups.add(Group.objects.get(name="admin"))
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _create_custom_role(self, name, permission_keys):
         """Crea el rol vía API (como el frontend) y le asigna permisos."""
@@ -1375,7 +1375,7 @@ class UserAdminCrudTests(AuthTestCase):
             email="user@example.com",
             password=STRONG_PASSWORD,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(self.normal)
 
     # --- Permisos -----------------------------------------------------------
 
@@ -1606,7 +1606,7 @@ class UserUnlockActionTests(AuthTestCase):
             email="locked_user@example.com",
             password=STRONG_PASSWORD,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(self.normal)
 
     def _lock_normal_user(self):
         from django.utils import timezone
@@ -1685,10 +1685,11 @@ class UserBulkActionsTests(AuthTestCase):
         self.user_a = User.objects.create_user(
             username="bulk_a@example.com", email="bulk_a@example.com", password=STRONG_PASSWORD,
         )
+        new_business(self.user_a)
         self.user_b = User.objects.create_user(
             username="bulk_b@example.com", email="bulk_b@example.com", password=STRONG_PASSWORD,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(self.user_b)
 
     def test_bulk_deactivate_desactiva_multiples_usuarios(self):
         self.client.force_authenticate(user=self.admin)
@@ -1832,6 +1833,7 @@ class UserAdminAdvancedFilterTests(AuthTestCase):
             email="never_login@example.com",
             password=STRONG_PASSWORD,
         )
+        new_business(self.never_logged_in)
 
         # Se registró hace 100 días, no loguea hace 50 (inactivo).
         self.inactive_user = User.objects.create_user(
@@ -1839,6 +1841,7 @@ class UserAdminAdvancedFilterTests(AuthTestCase):
             email="inactivo@example.com",
             password=STRONG_PASSWORD,
         )
+        new_business(self.inactive_user)
         User.objects.filter(pk=self.inactive_user.pk).update(
             date_joined=now - timezone.timedelta(days=100),
             last_login=now - timezone.timedelta(days=50),
@@ -1851,6 +1854,7 @@ class UserAdminAdvancedFilterTests(AuthTestCase):
             email="activo_reciente@example.com",
             password=STRONG_PASSWORD,
         )
+        new_business(self.active_recent_user)
         User.objects.filter(pk=self.active_recent_user.pk).update(
             date_joined=now - timezone.timedelta(days=60),
             last_login=now - timezone.timedelta(days=1),
@@ -1862,6 +1866,7 @@ class UserAdminAdvancedFilterTests(AuthTestCase):
             username="google_user@example.com",
             email="google_user@example.com",
         )
+        new_business(self.google_user)
         self.google_user.set_unusable_password()
         self.google_user.save(update_fields=["password"])
 
@@ -1871,6 +1876,7 @@ class UserAdminAdvancedFilterTests(AuthTestCase):
             email="locked_user_f@example.com",
             password=STRONG_PASSWORD,
         )
+        new_business(self.locked_user)
         lockout = LoginLockout.objects.create(
             user=self.locked_user,
             failed_attempts=3,
@@ -1883,6 +1889,7 @@ class UserAdminAdvancedFilterTests(AuthTestCase):
             email="casi_bloqueado@example.com",
             password=STRONG_PASSWORD,
         )
+        new_business(self.almost_locked_user)
         LoginLockout.objects.create(user=self.almost_locked_user, failed_attempts=2)
 
         # Un solo intento fallido (bucket "1-2").
@@ -1891,10 +1898,10 @@ class UserAdminAdvancedFilterTests(AuthTestCase):
             email="un_fallo@example.com",
             password=STRONG_PASSWORD,
         )
+        new_business(self.one_failed_user)
         LoginLockout.objects.create(user=self.one_failed_user, failed_attempts=1)
 
         self.client.force_authenticate(user=self.admin)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _ids(self, resp):
         return {u["id"] for u in resp.data["results"]}
@@ -2070,7 +2077,6 @@ class RoleCrudTests(AuthTestCase):
             password=STRONG_PASSWORD,
             is_staff=True,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         self.admin_user.groups.add(Group.objects.get(name=self.ADMIN))
 
         self.merchant_user = User.objects.create_user(
@@ -2078,9 +2084,9 @@ class RoleCrudTests(AuthTestCase):
             email="crud_merchant@example.com",
             password=STRONG_PASSWORD,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         self.merchant_user.groups.add(Group.objects.get(name=self.SUBSCRIBER))
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+
+        new_business(self.merchant_user)
 
     # --- Creación -----------------------------------------------------------
 
@@ -2182,8 +2188,8 @@ class RoleCrudTests(AuthTestCase):
         for name in ("designer", "operator"):
             group, _ = self.Group.objects.get_or_create(name=name)
             user = User.objects.create_user(username=f"viejo_{name}@example.com", email=f"viejo_{name}@example.com")
-            give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
             user.groups.add(group)
+            new_business(user)
             self.assertEqual(get_effective_role(user), self.SUBSCRIBER)
             self.assertTrue(user_has_permission(user, "orders.import"))
             self.client.force_authenticate(user=self.admin_user)
@@ -2421,6 +2427,7 @@ class DashboardTests(AuthTestCase):
             email="subscriber@example.com",
             password=STRONG_PASSWORD,
         )
+        new_business(self.subscriber)
         admin_group, _ = Group.objects.get_or_create(name="admin")
         self.admin = User.objects.create_user(
             username="admin@example.com",
@@ -2429,7 +2436,6 @@ class DashboardTests(AuthTestCase):
             is_staff=True,
         )
         self.admin.groups.add(admin_group)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_subscriber_no_recibe_item_users(self):
         self.client.force_authenticate(user=self.subscriber)
@@ -2511,7 +2517,7 @@ class SupportMessageTests(AuthTestCase):
             email="support_user@example.com",
             password=STRONG_PASSWORD,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(self.user)
 
     def test_usuario_autenticado_crea_mensaje(self):
         from ..models import SupportMessage
@@ -2580,7 +2586,6 @@ class ForcedPasswordChangeTests(AuthTestCase):
             password=STRONG_PASSWORD,
             is_staff=True,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     # --- Activación automática (crear sin password) -------------------------
 
@@ -2742,18 +2747,23 @@ class UserAdminOrdersIntegrationTests(AuthTestCase):
         self.buyer = User.objects.create_user(
             username="buyer@example.com", email="buyer@example.com", password=STRONG_PASSWORD,
         )
+        new_business(self.buyer)
         self.no_orders_user = User.objects.create_user(
             username="no_orders@example.com", email="no_orders@example.com", password=STRONG_PASSWORD,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(self.no_orders_user)
 
     def _crear_pedido(self, user, **overrides):
+        """Un pedido del comercio de ``user`` (cuelga de su usuario de datos)."""
         from apps.orders.models import Address, Order
 
+        from ..teams import data_owner
+
+        business = data_owner(user)
         address = Address.objects.create(
-            user=user, street="Calle Falsa", number="123", city="Springfield",
+            user=business, street="Calle Falsa", number="123", city="Springfield",
         )
-        return Order.objects.create(user=user, address=address, **overrides)
+        return Order.objects.create(user=business, address=address, **overrides)
 
     def test_usuario_sin_pedidos_devuelve_cero_y_null(self):
         self.client.force_authenticate(user=self.admin)
@@ -2833,16 +2843,18 @@ class UserExportCsvTests(AuthTestCase):
             username="csv_a@example.com", email="csv_a@example.com",
             password=STRONG_PASSWORD, first_name="Ana", last_name="Csv",
         )
+        new_business(self.user_a)
         self.user_b = User.objects.create_user(
             username="csv_b@example.com", email="csv_b@example.com", password=STRONG_PASSWORD,
         )
+        new_business(self.user_b)
         # Cuenta "Google": password unusable, mismo heurístico que el resto del proyecto.
         self.google_user = User.objects.create_user(
             username="csv_google@example.com", email="csv_google@example.com",
         )
+        new_business(self.google_user)
         self.google_user.set_unusable_password()
         self.google_user.save(update_fields=["password"])
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _parse_csv(self, response):
         import csv
@@ -2936,13 +2948,15 @@ class UserMetricsTests(AuthTestCase):
             password=STRONG_PASSWORD,
         )
         self.staff.groups.add(staff_group)
+        new_business(self.staff)
 
         self.google_user = User.objects.create_user(
             username="google_metrics@example.com", email="google_metrics@example.com",
         )
+
+        new_business(self.google_user)
         self.google_user.set_unusable_password()
         self.google_user.save(update_fields=["password"])
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_requiere_permisos_admin(self):
         self.client.force_authenticate(user=self.staff)
@@ -3063,11 +3077,11 @@ class EmailVerificationConfirmTests(AuthTestCase):
             email="confirm@example.com",
             password=STRONG_PASSWORD,
         )
+        new_business(self.user)
         from ..models import EmailVerification
 
         self.verification, _ = EmailVerification.objects.get_or_create(user=self.user)
         self.verification.refresh_token()
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_token_valido_verifica_la_cuenta(self):
         resp = self.client.post(self.URL, {"token": self.verification.token}, format="json")
@@ -3112,7 +3126,7 @@ class EmailVerificationResendTests(AuthTestCase):
             email="resend@example.com",
             password=STRONG_PASSWORD,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(self.user)
 
     def test_requiere_autenticacion(self):
         resp = self.client.post(self.URL, {}, format="json")
@@ -3237,7 +3251,8 @@ class AuditTrailTests(AuthTestCase):
             password=STRONG_PASSWORD,
         )
         self.target_user.groups.add(Group.objects.get(name="subscriber"))
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+
+        new_business(self.target_user)
 
     def _login(self, email, password):
         return self.client.post(
@@ -3362,12 +3377,16 @@ class SupportInboxTests(AuthTestCase):
         )
         self.user_a.groups.add(Group.objects.get(name="subscriber"))
 
+        new_business(self.user_a)
+
         self.user_b = User.objects.create_user(
             username="support_user_b@example.com",
             email="support_user_b@example.com",
             password=STRONG_PASSWORD,
         )
         self.user_b.groups.add(Group.objects.get(name="subscriber"))
+
+        new_business(self.user_b)
 
         from ..models import SupportMessage
 
@@ -3377,7 +3396,6 @@ class SupportInboxTests(AuthTestCase):
         self.message_b = SupportMessage.objects.create(
             user=self.user_b, subject="Ayuda B", message="Mensaje de B"
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_no_admin_recibe_403_en_bandeja_admin(self):
         self.client.force_authenticate(user=self.user_a)
@@ -3447,7 +3465,8 @@ class DashboardAdminMenuTests(AuthTestCase):
             password=STRONG_PASSWORD,
         )
         self.subscriber_user.groups.add(Group.objects.get(name="subscriber"))
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+
+        new_business(self.subscriber_user)
 
     def test_admin_ve_audit_y_support_inbox(self):
         self.client.force_authenticate(user=self.admin_user)
@@ -3476,7 +3495,7 @@ class PasswordResetRequestTests(AuthTestCase):
             email="olvidadizo@example.com",
             password=STRONG_PASSWORD,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(self.user)
 
     def test_cuenta_existente_recibe_el_correo(self):
         resp = self.client.post(self.URL, {"email": self.user.email}, format="json")
@@ -3538,9 +3557,9 @@ class PasswordResetConfirmTests(AuthTestCase):
             email="confirmar@example.com",
             password=STRONG_PASSWORD,
         )
+        new_business(self.user)
         self.uid = urlsafe_base64_encode(force_bytes(self.user.pk))
         self.token = default_token_generator.make_token(self.user)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _post(self, **overrides):
         payload = {"uid": self.uid, "token": self.token, "new_password": self.NUEVA}

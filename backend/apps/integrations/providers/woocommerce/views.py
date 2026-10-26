@@ -23,7 +23,7 @@ from apps.accounts.teams import data_owner
 from ... import store_print
 from ...models import StoreConnection
 from ...serializers import StoreConnectionSerializer
-from ...stores import connect_with_credentials, read_oauth_state_site
+from ...stores import connect_with_credentials, oauth_state_actor, read_oauth_state_site
 from ...views import (
     STORE_CONNECT_PERMISSION,
     _print_document,
@@ -73,7 +73,7 @@ class WooCommerceKeysView(APIView):
             return Response({"detail": "Las claves tienen que ser de lectura y escritura."}, status=status.HTTP_400_BAD_REQUEST)
 
         result = connect_with_credentials(_woocommerce(), user, site, key, secret)
-        _record_store_connect(request, user, result.connection)
+        _record_store_connect(request, user, result.connection, actor=oauth_state_actor(str(data.get("user_id") or "")))
         return Response({"received": True})
 
 

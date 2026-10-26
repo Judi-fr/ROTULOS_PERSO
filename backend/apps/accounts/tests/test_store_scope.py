@@ -3,12 +3,13 @@ cargados a mano; nada de otra tienda, ni pidiéndolo por id."""
 
 from rest_framework.test import APITestCase
 
+from apps.accounts import teams
 from apps.documents.models import Document
 from apps.integrations.models import ShippingRate, StoreConnection
 from apps.labels.models import LabelTemplate
 from apps.orders.models import Address, Order
 
-from .test_team_permissions import add_employee, bearer, make_user
+from .test_team_permissions import add_employee, bearer, make_owner
 
 DESIGN = {"destinatario": {"left": 6, "top": 38}}
 
@@ -21,14 +22,15 @@ def store(owner, tag):
 
 class StoreScopeTests(APITestCase):
     def setUp(self):
-        self.owner = make_user("owner@example.com")
-        self.t1 = store(self.owner, "1")
-        self.t2 = store(self.owner, "2")
-        address = Address.objects.create(user=self.owner, recipient_name="Ana", street="Calle", number="1", city="CABA")
-        self.o1 = Order.objects.create(user=self.owner, address=address, store_connection=self.t1, external_id="1")
-        self.o2 = Order.objects.create(user=self.owner, address=address, store_connection=self.t2, external_id="2")
-        self.manual = Order.objects.create(user=self.owner, address=address)
-        LabelTemplate.objects.create(owner=self.owner, name="P", width_cm=10, height_cm=15, design=DESIGN, is_public=True)
+        self.owner = make_owner("owner@example.com")
+        self.biz = teams.data_owner(self.owner)
+        self.t1 = store(self.biz, "1")
+        self.t2 = store(self.biz, "2")
+        address = Address.objects.create(user=self.biz, recipient_name="Ana", street="Calle", number="1", city="CABA")
+        self.o1 = Order.objects.create(user=self.biz, address=address, store_connection=self.t1, external_id="1")
+        self.o2 = Order.objects.create(user=self.biz, address=address, store_connection=self.t2, external_id="2")
+        self.manual = Order.objects.create(user=self.biz, address=address)
+        LabelTemplate.objects.create(owner=self.biz, name="P", width_cm=10, height_cm=15, design=DESIGN, is_public=True)
         self.limited, member = add_employee(self.owner, "limitado@example.com", profile="Todo")
         member.all_stores = False
         member.save()
@@ -66,15 +68,15 @@ class StoreScopeTests(APITestCase):
         self.assertEqual(Document.objects.get().store_ids, [self.t1.id])
 
     def test_documents_with_foreign_orders_are_hidden(self):
-        own = Document.objects.create(user=self.owner, name="T1", status=Document.Status.READY, store_ids=[self.t1.id])
-        foreign = Document.objects.create(user=self.owner, name="T2", status=Document.Status.READY, store_ids=[self.t2.id, self.t1.id])
-        manual = Document.objects.create(user=self.owner, name="Manual", status=Document.Status.READY, store_ids=[])
+        own = Document.objects.create(user=self.biz, name="T1", status=Document.Status.READY, store_ids=[self.t1.id])
+        foreign = Document.objects.create(user=self.biz, name="T2", status=Document.Status.READY, store_ids=[self.t2.id, self.t1.id])
+        manual = Document.objects.create(user=self.biz, name="Manual", status=Document.Status.READY, store_ids=[])
         self.assertEqual(self.ids("/api/v1/documents/"), {own.id, manual.id})
         response = self.client.get(f"/api/v1/documents/{foreign.id}/download/", **bearer(self.limited))
         self.assertEqual(response.status_code, 404)
 
     def test_new_store_is_hidden_until_enabled(self):
-        t3 = store(self.owner, "3")
+        t3 = store(self.biz, "3")
         self.assertNotIn(t3.id, self.ids("/api/v1/integrations/stores/"))
         self.assertIn(t3.id, self.ids("/api/v1/integrations/stores/", self.everything))
 
@@ -91,10 +93,10 @@ class StoreScopeTests(APITestCase):
     def test_saved_labels_follow_the_order_store(self):
         from apps.labels.models import Label
 
-        template = LabelTemplate.objects.get(name="P", owner=self.owner)
+        template = LabelTemplate.objects.get(name="P", owner=self.biz)
         size = {"width_cm": 10, "height_cm": 15}
-        own = Label.objects.create(user=self.owner, template=template, name="T1", order=self.o1, **size)
-        Label.objects.create(user=self.owner, template=template, name="T2", order=self.o2, **size)
-        loose = Label.objects.create(user=self.owner, template=template, name="Suelto", **size)
+        own = Label.objects.create(user=self.biz, template=template, name="T1", order=self.o1, **size)
+        Label.objects.create(user=self.biz, template=template, name="T2", order=self.o2, **size)
+        loose = Label.objects.create(user=self.biz, template=template, name="Suelto", **size)
         self.assertEqual(self.ids("/api/v1/labels/labels/"), {own.id, loose.id})
         self.assertEqual(len(self.ids("/api/v1/labels/labels/", self.everything)), 3)

@@ -13,7 +13,7 @@ from apps.labels.models import LabelTemplate
 from apps.orders.models import Address, Order
 
 from .test_team_permissions import add_employee, bearer, make_user
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 DESIGN = {"destinatario": {"left": 10, "top": 10}}
 
@@ -26,7 +26,7 @@ def take_away(group_name, key):
 class SeededTests(APITestCase):
     def test_whoever_had_the_old_permission_has_the_new_one(self):
         merchant = make_user("m@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(merchant)
         for key in ("orders.tracking_import", "orders.manifest", "labels.template_edit", "labels.template_delete"):
             with self.subTest(key=key):
                 self.assertTrue(user_has_permission(merchant, key))
@@ -47,9 +47,9 @@ class SeededTests(APITestCase):
 class OrderPermissionTests(APITestCase):
     def setUp(self):
         self.merchant = make_user("m@example.com")
-        address = Address.objects.create(user=self.merchant, street="Calle", number="1", city="CABA")
-        self.order = Order.objects.create(user=self.merchant, address=address)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.merchant_biz = new_business(self.merchant)
+        address = Address.objects.create(user=self.merchant_biz, street="Calle", number="1", city="CABA")
+        self.order = Order.objects.create(user=self.merchant_biz, address=address)
 
     def post(self, url, body, **extra):
         return self.client.post(url, body, **extra, **bearer(self.merchant))
@@ -85,6 +85,7 @@ class OrderPermissionTests(APITestCase):
 class DeleteBatchesAccessTests(APITestCase):
     def test_printing_no_longer_includes_deleting_batches(self):
         owner = make_user("o@example.com")
+        new_business(owner)
         printer, _ = add_employee(owner, "p@example.com", accesses=["orders.view", "labels.print"])
         self.assertTrue(user_has_permission(printer, "labels.batch"))
         self.assertFalse(user_has_permission(printer, "documents.delete"))
@@ -93,7 +94,7 @@ class DeleteBatchesAccessTests(APITestCase):
 
     def test_new_depot_profile_prints_but_does_not_delete(self):
         owner = make_user("o@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(owner)
         self.assertNotIn("documents.delete", teams.team_for(owner).profiles.get(name="Depósito").accesses)
         self.assertIn("documents.delete", teams.team_for(owner).profiles.get(name="Todo").accesses)
 
@@ -103,10 +104,10 @@ class TemplatePermissionTests(APITestCase):
 
     def setUp(self):
         self.merchant = make_user("m@example.com")
+        self.merchant_biz = new_business(self.merchant)
         self.template = LabelTemplate.objects.create(
-            owner=self.merchant, name="Mía", width_cm=10, height_cm=15, design=DESIGN
+            owner=self.merchant_biz, name="Mía", width_cm=10, height_cm=15, design=DESIGN
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def call(self, method, url, body=None):
         return getattr(self.client, method)(url, body, format="json", **bearer(self.merchant))
@@ -149,7 +150,7 @@ class AdminPermissionTests(APITestCase):
             GroupRolePermission.objects.create(group=group, permission=permission)
         self.admin = make_user("staff@example.com", group="soporte")
         self.target = make_user("u@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(self.target)
 
     def get(self, url):
         return self.client.get(url, **bearer(self.admin))

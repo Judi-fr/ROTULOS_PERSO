@@ -21,7 +21,7 @@ from apps.integrations.providers.shopify.provider import split_street
 from apps.integrations.stores import PUSH_FULFILLMENT_EVENT, enqueue_initial_import
 from .test_shopify_connection import SECRET, SHOP, SHOPIFY_SETTINGS, WEBHOOKS_URL, ShopifyTestMixin
 from apps.integrations.tests.helpers import auth_headers_for, make_user
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 
 def shopify_order(legacy_id, **overrides):
@@ -56,7 +56,6 @@ def shopify_order(legacy_id, **overrides):
 class ShopifyNormalizeOrderTests(TestCase):
     def setUp(self):
         self.provider = get_provider("shopify")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_traduce_lo_que_necesita_el_rotulo(self):
         normalized = self.provider.normalize_order(shopify_order(5550001))
@@ -120,8 +119,8 @@ class ShopifyOrderWebhookTests(ShopifyTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.owner = make_user("comercio@example.com")
-        self.connection = self._connection(owner=self.owner)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.owner_biz = new_business(self.owner)
+        self.connection = self._connection(owner=self.owner_biz)
 
     def _post(self, topic, payload):
         body = json.dumps(payload).encode("utf-8")
@@ -146,7 +145,7 @@ class ShopifyOrderWebhookTests(ShopifyTestMixin, APITestCase):
 
         self.assertEqual(response.status_code, 200)
         order = Order.objects.get(store_connection=self.connection, external_id="777")
-        self.assertEqual(order.user, self.owner)
+        self.assertEqual(order.user, self.owner_biz)
         self.assertEqual(order.external_number, "1777")
         self.assertEqual(order.address.recipient_name, "María Gómez")
         self.assertEqual(order.source, Order.Source.STORE)
@@ -185,10 +184,9 @@ class ShopifyOrderWebhookTests(ShopifyTestMixin, APITestCase):
 class ShopifyInitialImportTests(ShopifyTestMixin, TestCase):
     def setUp(self):
         super().setUp()
-        self.connection = self._connection(owner=make_user("comercio@example.com"))
+        self.connection = self._connection(owner=new_business(make_user("comercio@example.com")))
         for legacy_id in (1, 2, 3):
             self.fake.orders[f"gid://shopify/Order/{legacy_id}"] = shopify_order(legacy_id)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _order_list_calls(self):
         return [call for call in self.fake.graphql_calls() if "query Orders(" in call["json"]["query"]]
@@ -243,10 +241,10 @@ class ShopifyPushFulfillmentTests(ShopifyTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.owner = make_user("comercio@example.com")
-        self.connection = self._connection(owner=self.owner)
+        self.owner_biz = new_business(self.owner)
+        self.connection = self._connection(owner=self.owner_biz)
         order, _ = upsert_store_order(self.connection, get_provider("shopify").normalize_order(shopify_order(777)))
         self.order = Order.objects.get(pk=order.pk)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _ship(self, **data):
         data.setdefault("status", "dispatched")
@@ -367,10 +365,10 @@ class ShopifyDeliveryEventTests(ShopifyTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.owner = make_user("comercio@example.com")
-        self.connection = self._connection(owner=self.owner)
+        self.owner_biz = new_business(self.owner)
+        self.connection = self._connection(owner=self.owner_biz)
         order, _ = upsert_store_order(self.connection, get_provider("shopify").normalize_order(shopify_order(777)))
         self.order = Order.objects.get(pk=order.pk)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _ship(self, status, **data):
         response = self.client.post(

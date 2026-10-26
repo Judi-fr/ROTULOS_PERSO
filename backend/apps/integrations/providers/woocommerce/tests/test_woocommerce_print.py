@@ -24,7 +24,7 @@ from apps.integrations.providers import get_provider
 from apps.integrations.stores import enqueue_store_setup
 from apps.integrations.tests.helpers import auth_headers_for, make_user
 from .test_woocommerce import BASE_URL, WOO_SETTINGS, WooTestMixin, woo_order
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 PRINT_LINK_URL = "/api/v1/integrations/woocommerce/print-link/"
 RATES_URL = "/api/v1/integrations/woocommerce/rates/"
@@ -34,8 +34,9 @@ RATES_URL = "/api/v1/integrations/woocommerce/rates/"
 class PluginConfigTests(WooTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
-        self.connection = self._connection(owner=make_user("comercio@example.com"))
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.owner = make_user("comercio@example.com")
+        self.owner_biz = new_business(self.owner)
+        self.connection = self._connection(owner=self.owner_biz)
 
     def test_al_conectar_se_configura_el_plugin(self):
         self.woo.plugin_settings = {}
@@ -60,7 +61,7 @@ class PluginConfigTests(WooTestMixin, APITestCase):
         self.woo.plugin_settings = {}
         url = f"/api/v1/integrations/stores/{self.connection.pk}/check-print-plugin/"
 
-        response = self.client.post(url, **auth_headers_for(self.connection.owner))
+        response = self.client.post(url, **auth_headers_for(self.owner))
 
         self.assertEqual(response.status_code, 200, response.data)
         self.assertIs(response.data["print_plugin_linked"], True)
@@ -68,14 +69,14 @@ class PluginConfigTests(WooTestMixin, APITestCase):
 
     def test_verificar_plugin_sin_instalar_avisa_que_no_esta(self):
         url = f"/api/v1/integrations/stores/{self.connection.pk}/check-print-plugin/"
-        response = self.client.post(url, **auth_headers_for(self.connection.owner))
+        response = self.client.post(url, **auth_headers_for(self.owner))
         self.assertEqual(response.status_code, 200, response.data)
         self.assertIs(response.data["print_plugin_linked"], False)
 
     def test_verificar_plugin_de_tienda_ajena_no_se_puede(self):
         url = f"/api/v1/integrations/stores/{self.connection.pk}/check-print-plugin/"
         other = make_user("otro@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(other)
         response = self.client.post(url, **auth_headers_for(other))
         self.assertEqual(response.status_code, 404)
 
@@ -93,10 +94,10 @@ class WooCommercePrintTests(WooTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.owner = make_user("comercio@example.com")
-        self.connection = self._connection(owner=self.owner)
+        self.owner_biz = new_business(self.owner)
+        self.connection = self._connection(owner=self.owner_biz)
         self.secret = get_provider("woocommerce").ensure_webhook_secret(self.connection)
         self.woo.orders = {101: woo_order(101), 102: woo_order(102)}
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _link(self, ids, *, secret=None, store=None, ts=None):
         body = json.dumps(
@@ -124,7 +125,7 @@ class WooCommercePrintTests(WooTestMixin, APITestCase):
         self.assertEqual(document["Content-Type"], "application/pdf")
         self.assertTrue(document.content.startswith(b"%PDF"))
         self.assertEqual(document["Cache-Control"], "no-store")
-        self.assertTrue(AuditLog.objects.filter(action="label.batch", actor=self.owner).exists())
+        self.assertTrue(AuditLog.objects.filter(action="label.batch", actor=self.owner_biz).exists())
 
     def test_pedido_borrado_en_la_tienda_se_saltea(self):
         response = self._link([101, 999])
@@ -137,7 +138,7 @@ class WooCommercePrintTests(WooTestMixin, APITestCase):
         self.assertEqual(response.status_code, 401)
 
     def test_no_se_puede_imprimir_pedidos_de_otra_tienda_con_su_numero(self):
-        other = self._connection(external_store_id="otra.com.ar", store_url="https://otra.com.ar", owner=self.owner)
+        other = self._connection(external_store_id="otra.com.ar", store_url="https://otra.com.ar", owner=self.owner_biz)
         response = self._link([101], store=other.pk)
         self.assertEqual(response.status_code, 401)
 
@@ -164,7 +165,7 @@ class WooCommercePrintTests(WooTestMixin, APITestCase):
 class PluginDownloadTests(APITestCase):
     def test_el_zip_trae_la_carpeta_del_plugin(self):
         merchant = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(merchant)
         response = self.client.get("/api/v1/integrations/woocommerce/print-plugin/", **auth_headers_for(merchant))
 
         self.assertEqual(response.status_code, 200)
@@ -187,7 +188,9 @@ class WooCommerceRatesTests(WooTestMixin, APITestCase):
 
     def setUp(self):
         super().setUp()
-        self.connection = self._connection(owner=make_user("comercio@example.com"))
+        self.owner = make_user("comercio@example.com")
+        self.owner_biz = new_business(self.owner)
+        self.connection = self._connection(owner=self.owner_biz)
         self.secret = get_provider("woocommerce").ensure_webhook_secret(self.connection)
         for code, name, weight, price in (
             ("standard", "Envío estándar", Decimal("5"), Decimal("4500")),
@@ -205,7 +208,6 @@ class WooCommerceRatesTests(WooTestMixin, APITestCase):
                 delivery_days_min=3,
                 delivery_days_max=5,
             )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _quote(self, *, secret=None, ts=None, **fields):
         body = {"store": str(self.connection.pk), "ts": int(ts if ts is not None else time.time())}

@@ -31,7 +31,7 @@ from apps.integrations.stores import (
     make_oauth_state,
 )
 from apps.integrations.tests.helpers import auth_headers_for, fake_response, make_user
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 SITE = "https://mitienda.com.ar"
 EXTERNAL_ID = "mitienda.com.ar"
@@ -169,7 +169,6 @@ class WooTestMixin:
             patcher = patch(f"apps.integrations.providers.woocommerce.provider.requests.{target}", side_effect=side_effect)
             patcher.start()
             self.addCleanup(patcher.stop)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _connection(self, **overrides):
         values = {
@@ -191,7 +190,6 @@ class WooTestMixin:
 class SiteUrlTests(TestCase):
     def setUp(self):
         self.provider = get_provider("woocommerce")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_acepta_lo_que_pegaria_un_comerciante(self):
         cases = {
@@ -212,7 +210,6 @@ class SiteUrlTests(TestCase):
 class NormalizeOrderTests(TestCase):
     def setUp(self):
         self.provider = get_provider("woocommerce")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_traduce_lo_que_necesita_el_rotulo(self):
         normalized = self.provider.normalize_order(woo_order(55))
@@ -254,7 +251,7 @@ class AutomaticConnectTests(WooTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
 
     def test_la_url_lleva_a_autorizar_en_el_sitio_de_la_tienda(self):
         response = self.client.get(
@@ -270,10 +267,10 @@ class AutomaticConnectTests(WooTestMixin, APITestCase):
         self.assertEqual(query["callback_url"], f"{BASE_URL}/api/v1/integrations/woocommerce/keys/")
         self.assertEqual(query["return_url"], f"{BASE_URL}/api/v1/integrations/woocommerce/return/")
         state = signing.loads(query["user_id"], salt=STATE_SALT)
-        self.assertEqual((state["u"], state["p"], state["s"]), (self.user.pk, "woocommerce", SITE))
+        self.assertEqual((state["u"], state["a"], state["p"], state["s"]), (self.biz.pk, self.user.pk, "woocommerce", SITE))
 
     def test_las_claves_que_postea_woocommerce_conectan_la_tienda(self):
-        state = make_oauth_state(self.user, "woocommerce", SITE)
+        state = make_oauth_state(self.biz, "woocommerce", SITE, actor=self.user)
 
         response = self.client.post(
             "/api/v1/integrations/woocommerce/keys/",
@@ -283,7 +280,7 @@ class AutomaticConnectTests(WooTestMixin, APITestCase):
 
         self.assertEqual(response.status_code, 200, response.data)
         connection = StoreConnection.objects.get(platform="woocommerce", external_store_id=EXTERNAL_ID)
-        self.assertEqual(connection.owner, self.user)
+        self.assertEqual(connection.owner, self.biz)
         self.assertEqual(connection.store_url, SITE)
         self.assertEqual(json.loads(connection.access_token), {"key": "ck_bueno", "secret": "cs_bueno"})
         # No le habla a la tienda mientras ella espera la respuesta.
@@ -304,7 +301,7 @@ class AutomaticConnectTests(WooTestMixin, APITestCase):
     def test_rechazar_en_woocommerce_vuelve_con_el_aviso(self):
         returned = self.client.get(
             "/api/v1/integrations/woocommerce/return/",
-            {"success": "0", "user_id": make_oauth_state(self.user, "woocommerce", SITE)},
+            {"success": "0", "user_id": make_oauth_state(self.biz, "woocommerce", SITE, actor=self.user)},
         )
         self.assertEqual(self._redirect_params(returned), {"store_error": "authorization_cancelled"})
 
@@ -316,7 +313,7 @@ class ManualConnectTests(WooTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
 
     def _connect(self, **data):
         payload = {"site_url": "mitienda.com.ar", "consumer_key": "ck_bueno", "consumer_secret": "cs_bueno"}
@@ -328,7 +325,7 @@ class ManualConnectTests(WooTestMixin, APITestCase):
 
         self.assertEqual(response.status_code, 201, response.data)
         connection = StoreConnection.objects.get(pk=response.data["id"])
-        self.assertEqual((connection.owner, connection.store_url), (self.user, SITE))
+        self.assertEqual((connection.owner, connection.store_url), (self.biz, SITE))
         self.assertTrue(IntegrationEvent.objects.filter(connection=connection, event_type="internal/store_setup").exists())
 
     def test_claves_rechazadas_por_la_tienda(self):
@@ -364,8 +361,8 @@ class SetupAndWebhookTests(WooTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.owner = make_user("comercio@example.com")
-        self.connection = self._connection(owner=self.owner)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.owner_biz = new_business(self.owner)
+        self.connection = self._connection(owner=self.owner_biz)
 
     def _delivery_url(self):
         return f"{BASE_URL}{WEBHOOKS_URL}?store={self.connection.pk}"
@@ -436,7 +433,7 @@ class SetupAndWebhookTests(WooTestMixin, APITestCase):
 
         self.assertEqual(response.status_code, 200)
         order = Order.objects.get(store_connection=self.connection, external_id="77")
-        self.assertEqual(order.user, self.owner)
+        self.assertEqual(order.user, self.owner_biz)
         event = IntegrationEvent.objects.get(event_type="order.created")
         self.assertNotIn("billing", event.payload)
 
@@ -463,13 +460,13 @@ class PushFulfillmentTests(WooTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.owner = make_user("comercio@example.com")
-        self.connection = self._connection(owner=self.owner)
+        self.owner_biz = new_business(self.owner)
+        self.connection = self._connection(owner=self.owner_biz)
         self.woo.orders = {90: woo_order(90)}
         from apps.orders.ingestion import upsert_store_order
 
         order, _ = upsert_store_order(self.connection, get_provider("woocommerce").normalize_order(woo_order(90)))
         self.order = Order.objects.get(pk=order.pk)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _ship(self, **data):
         data.setdefault("status", "dispatched")
@@ -502,8 +499,7 @@ class PushFulfillmentTests(WooTestMixin, APITestCase):
 class ReconciliationTests(WooTestMixin, TestCase):
     def setUp(self):
         super().setUp()
-        self.connection = self._connection(owner=make_user("comercio@example.com"))
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.connection = self._connection(owner=new_business(make_user("comercio@example.com")))
 
     def test_se_encola_una_vez_por_intervalo(self):
         now = timezone.now()
@@ -513,7 +509,7 @@ class ReconciliationTests(WooTestMixin, TestCase):
         self.assertEqual(enqueue_due_reconciliations(now + timedelta(minutes=31)), 1)
 
     def test_tiendas_de_otras_plataformas_o_sin_duenio_no_se_repasan(self):
-        StoreConnection.objects.create(platform="tiendanube", external_store_id="1", access_token="t", owner=make_user("tn@example.com"))
+        StoreConnection.objects.create(platform="tiendanube", external_store_id="1", access_token="t", owner=new_business(make_user("tn@example.com")))
         self._connection(external_store_id="otra.com", owner=None)
         self.assertEqual(enqueue_due_reconciliations(), 1)
 

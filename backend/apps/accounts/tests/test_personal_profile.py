@@ -16,7 +16,7 @@ from apps.accounts.personal_profiles import AVATAR_SIZE_PX
 from apps.audit.services import record
 
 from .test_team_permissions import add_employee, bearer, make_user
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 ME = "/api/v1/auth/me/"
 
@@ -39,9 +39,9 @@ class PersonalProfileTestCase(APITestCase):
         media_override.enable()
         self.addCleanup(media_override.disable)
         self.user = make_user("ana@example.com")
+        new_business(self.user)
         self.user.first_name, self.user.last_name = "Ana", "Pérez"
         self.user.save()
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def patch(self, data, user=None, fmt="json"):
         return self.client.patch(ME, data, format=fmt, **bearer(user or self.user))

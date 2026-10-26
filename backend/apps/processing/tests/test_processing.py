@@ -27,7 +27,7 @@ from apps.labels.models import ElementLayout, LayoutVariable
 from ..agent import build_proposal
 from ..schema import build_schema, build_system_prompt
 from ..models import LabelImportStatus, LabelImport
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 User = get_user_model()
 
@@ -196,6 +196,7 @@ class ConversionDeLaPropuestaTests(APITestCase):
         self.usuario = User.objects.create_user(
             username="ana", email="ana@test.com", password="x"
         )
+        new_business(self.usuario)
         self.documento = UploadedLabelFile.objects.create(
             file="rotulos/r.png",
             original_filename="r.png",
@@ -203,7 +204,6 @@ class ConversionDeLaPropuestaTests(APITestCase):
             size_bytes=100,
             uploaded_by=self.usuario,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_los_porcentajes_se_convierten_a_milimetros(self):
         propuesta = build_proposal(respuesta_del_modelo(), self.documento)
@@ -301,9 +301,11 @@ class ImportacionAPITests(APITestCase):
         self.usuario = User.objects.create_user(
             username="ana", email="ana@test.com", password="x"
         )
+        new_business(self.usuario)
         self.otro = User.objects.create_user(
             username="beto", email="beto@test.com", password="x"
         )
+        new_business(self.otro)
         self.documento = UploadedLabelFile.objects.create(
             file="rotulos/r.png",
             original_filename="r.png",
@@ -311,7 +313,6 @@ class ImportacionAPITests(APITestCase):
             size_bytes=100,
             uploaded_by=self.usuario,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_requiere_autenticacion(self):
         respuesta = self.client.post(self.url, {"uploaded_file": self.documento.pk})

@@ -22,7 +22,7 @@ from apps.integrations.providers.woocommerce import rates as woocommerce_rates
 from apps.integrations.shipping_rates import has_checkout_prices
 from apps.integrations.tests.helpers import auth_headers_for, make_user
 from apps.orders.models import Order
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 API = "/api/v1/carriers/checkout"
 
@@ -49,10 +49,10 @@ class Base(AndreaniTestMixin, OcaTestMixin, CorreoTestMixin, APITestCase):
         cache.clear()
         self.addCleanup(cache.clear)
         self.user = make_user("comercio@example.com")
+        self.biz = new_business(self.user)
         self.store = StoreConnection.objects.create(
-            owner=self.user, platform="tiendanube", external_store_id="555", name="Mi tienda", access_token="t"
+            owner=self.biz, platform="tiendanube", external_store_id="555", name="Mi tienda", access_token="t"
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def enable(self, code, contract, **values):
         checkout_for(code).save_config(self.store, {"enabled": True, "contract": contract, **values})
@@ -60,8 +60,8 @@ class Base(AndreaniTestMixin, OcaTestMixin, CorreoTestMixin, APITestCase):
 
 class CheckoutTests(Base):
     def test_oca_y_correo_en_el_checkout_de_tiendanube(self):
-        self.make_oca_account(self.user)
-        self.make_correo_account(self.user)
+        self.make_oca_account(self.biz)
+        self.make_correo_account(self.biz)
         self.enable("oca", "64665", surcharge_percent="10")
         self.enable("correo_argentino", "CP-D", free_shipping_from="1000")
 
@@ -82,7 +82,7 @@ class CheckoutTests(Base):
     def test_woocommerce_tambien_y_queda_en_cache(self):
         self.store.platform = "woocommerce"
         self.store.save()
-        self.make_oca_account(self.user)
+        self.make_oca_account(self.biz)
         self.enable("oca", "64665")
         for _ in range(2):
             rates = woocommerce_rates.quote(self.store, {"postcode": "5000", "country": "AR", "weight_kg": "1.2"})
@@ -90,14 +90,14 @@ class CheckoutTests(Base):
         self.assertEqual(len(self.oca.calls_to("Tarifar_Envio_Corporativo")), 1)
 
     def test_una_falla_no_rompe_el_checkout_y_tambien_se_guarda(self):
-        self.make_oca_account(self.user, sender_document="")
+        self.make_oca_account(self.biz, sender_document="")
         self.enable("oca", "64665")
         # Sin CUIT no se cotiza: la opción no aparece y no se le pregunta a OCA.
         self.assertEqual(tiendanube_rates.quote(self.store, cart())["rates"], [])
         self.assertFalse(self.oca.calls_to("Tarifar_Envio_Corporativo"))
 
     def test_api_lista_activa_y_prueba(self):
-        self.make_oca_account(self.user)
+        self.make_oca_account(self.biz)
         response = self.client.get(f"{API}/", **auth_headers_for(self.user))
         self.assertEqual(response.status_code, 200, response.content)
         carriers = {item["code"]: item for item in response.json()["carriers"]}
@@ -128,7 +128,7 @@ class CheckoutTests(Base):
         self.assertEqual((test.json()["cost"], test.json()["price"]), ("591.00", "691.00"))
 
     def test_correo_sin_micorreo_no_se_puede_activar(self):
-        self.make_correo_account(self.user, with_micorreo=False)
+        self.make_correo_account(self.biz, with_micorreo=False)
         response = self.client.put(
             f"{API}/", {"store": self.store.pk, "carrier": "correo_argentino", "enabled": True, "contract": "CP-D"}, format="json", **auth_headers_for(self.user)
         )
@@ -137,7 +137,7 @@ class CheckoutTests(Base):
 
     def test_tienda_ajena_o_transportista_inexistente(self):
         other = make_user("otro@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(other)
         response = self.client.put(f"{API}/", {"store": self.store.pk, "carrier": "oca"}, format="json", **auth_headers_for(other))
         self.assertEqual(response.status_code, 400)
         response = self.client.put(f"{API}/", {"store": self.store.pk, "carrier": "dhl"}, format="json", **auth_headers_for(self.user))
@@ -147,7 +147,7 @@ class CheckoutTests(Base):
 @override_settings(ANDREANI_API_BASE_QA="https://apisqa.andreani.com")
 class StoreDispatchTests(Base):
     def order(self, number="5001"):
-        order = make_order(self.user)
+        order = make_order(self.biz)
         Order.objects.filter(pk=order.pk).update(store_connection=self.store, external_number=number, external_id=number)
         order.refresh_from_db()
         return order
@@ -157,23 +157,23 @@ class StoreDispatchTests(Base):
             carrier_for(self.store)
 
     def test_el_unico_conectado_despacha_a_domicilio(self):
-        self.make_oca_account(self.user)
+        self.make_oca_account(self.biz)
         shipments, failed = dispatch(self.store, [self.order()])
         self.assertEqual(failed, [])
         self.assertEqual(shipments[0].carrier, "oca")
         self.assertEqual(shipments[0].contract, "64665")
 
     def test_con_varios_usa_el_que_ofrece_el_checkout_o_pide_elegir(self):
-        self.make_oca_account(self.user)
-        self.make_correo_account(self.user)
+        self.make_oca_account(self.biz)
+        self.make_correo_account(self.biz)
         with self.assertRaisesMessage(DispatchError, "elegí con cuál"):
             carrier_for(self.store)
         self.enable("correo_argentino", "CP-D")
         self.assertEqual(carrier_for(self.store)[0].code, "correo_argentino")
 
     def test_lo_elegido_en_la_tienda_gana(self):
-        self.make_oca_account(self.user)
-        self.make_account(self.user)
+        self.make_oca_account(self.biz)
+        self.make_account(self.biz)
         response = self.client.patch(
             f"/api/v1/integrations/stores/{self.store.pk}/settings/", {"dispatch_carrier": "oca"}, format="json", **auth_headers_for(self.user)
         )
@@ -187,14 +187,14 @@ class StoreDispatchTests(Base):
         self.assertEqual(bad.status_code, 400)
 
     def test_elegido_sin_cuenta_lista_no_cae_en_otro(self):
-        self.make_oca_account(self.user)
+        self.make_oca_account(self.biz)
         self.store.preferences = {"dispatch_carrier": "correo_argentino"}
         self.store.save()
         with self.assertRaisesMessage(DispatchError, "Conectá tu cuenta de Correo Argentino"):
             carrier_for(self.store)
 
     def test_un_pedido_con_envio_abierto_se_imprime_el_que_tiene(self):
-        self.make_oca_account(self.user)
+        self.make_oca_account(self.biz)
         order = self.order()
         first, _failed = dispatch(self.store, [order])
         again, _failed = dispatch(self.store, [order])

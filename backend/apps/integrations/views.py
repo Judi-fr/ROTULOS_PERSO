@@ -37,7 +37,7 @@ from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
 from apps.orders.ingestion import TARGET_FIELDS, apply_mapping, create_order_from_data, validate_mapped_row
 from apps.orders.models import Order
-from apps.accounts.teams import data_owner, store_scope_q
+from apps.accounts.teams import audit_team_id, data_owner, store_scope_q
 
 from .authentication import ApiKeyAuthentication
 from .models import (
@@ -72,6 +72,7 @@ from .stores import (
     make_claim_token,
     make_oauth_state,
     make_share_token,
+    oauth_state_actor,
     oauth_state_is_shared,
     read_oauth_state,
     read_share_token,
@@ -667,7 +668,8 @@ class StoreInstallUrlView(APIView):
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         try:
             url = provider.build_authorize_url(
-                make_oauth_state(data_owner(request.user), provider.platform, shop_domain), shop_domain=shop_domain
+                make_oauth_state(data_owner(request.user), provider.platform, shop_domain, actor=request.user),
+                shop_domain=shop_domain,
             )
         except ProviderError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
@@ -780,13 +782,14 @@ class StoreOAuthCallbackView(APIView):
         connection = result.connection
         record(
             request,
-            actor=user,
+            actor=oauth_state_actor(state) or user,
             category="integrations",
             action="store.connect",
             target=connection,
             target_type="storeconnection",
             target_repr=str(connection),
             changes={"status": {"from": None, "to": connection.status}},
+            team_id=audit_team_id(user),
         )
 
         if result.needs_claim:
@@ -893,14 +896,17 @@ def _print_document(request, token, platform):
     return response
 
 
-def _record_store_connect(request, user, connection):
+def _record_store_connect(request, user, connection, actor=None):
+    """``user`` es el dueño de la tienda (el usuario de datos del comercio);
+    ``actor``, la persona que la conectó cuando no es quien hace el pedido."""
     record(
         request,
-        actor=user,
+        actor=actor or user,
         category="integrations",
         action="store.connect",
         target=connection,
         target_type="storeconnection",
         target_repr=str(connection),
         changes={"status": {"from": None, "to": connection.status}},
+        team_id=audit_team_id(user),
     )

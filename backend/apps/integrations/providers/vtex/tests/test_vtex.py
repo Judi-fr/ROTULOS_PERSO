@@ -24,13 +24,12 @@ from apps.orders.ingestion import upsert_store_order
 from apps.orders.models import Order
 
 from .fake_vtex import ACCOUNT, BASE_URL, KEYS, VTEX_SETTINGS, WEBHOOKS_URL, VtexTestMixin, invoice, vtex_order
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 
 class AccountNameTests(TestCase):
     def setUp(self):
         self.provider = get_provider("vtex")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_acepta_lo_que_pegaria_un_comerciante(self):
         for value in (
@@ -51,7 +50,6 @@ class AccountNameTests(TestCase):
 class NormalizeOrderTests(TestCase):
     def setUp(self):
         self.provider = get_provider("vtex")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_traduce_lo_que_necesita_el_rotulo(self):
         normalized = self.provider.normalize_order(vtex_order("1172452900788-01"))
@@ -104,7 +102,7 @@ class ManualConnectTests(VtexTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(self.user)
 
     def _connect(self, **data):
         payload = {"account": "https://micuenta.myvtex.com/admin", "app_key": KEYS[0], "app_token": KEYS[1]}
@@ -158,8 +156,8 @@ class SetupAndHookTests(VtexTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.owner = make_user("comercio@example.com")
-        self.connection = self._connection(owner=self.owner)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.owner_biz = new_business(self.owner)
+        self.connection = self._connection(owner=self.owner_biz)
 
     def _delivery_url(self):
         return f"{BASE_URL}{WEBHOOKS_URL}?store={self.connection.pk}"
@@ -245,7 +243,7 @@ class SetupAndHookTests(VtexTestMixin, APITestCase):
 
         self.assertEqual(response.status_code, 200)
         order = Order.objects.get(store_connection=self.connection, external_id="777-01")
-        self.assertEqual(order.user, self.owner)
+        self.assertEqual(order.user, self.owner_biz)
         self.assertEqual(IntegrationEvent.objects.get(event_type="order/status_changed").payload["id"], "777-01")
 
     def test_aviso_con_otro_secreto_se_rechaza(self):
@@ -263,8 +261,7 @@ class SetupAndHookTests(VtexTestMixin, APITestCase):
 class FeedReconciliationTests(VtexTestMixin, TestCase):
     def setUp(self):
         super().setUp()
-        self.connection = self._connection(owner=make_user("comercio@example.com"))
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.connection = self._connection(owner=new_business(make_user("comercio@example.com")))
 
     def test_se_encola_con_el_intervalo_de_vtex(self):
         now = timezone.now()
@@ -309,11 +306,11 @@ class PushFulfillmentTests(VtexTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.owner = make_user("comercio@example.com")
-        self.connection = self._connection(owner=self.owner)
+        self.owner_biz = new_business(self.owner)
+        self.connection = self._connection(owner=self.owner_biz)
         self.vtex.orders = {self.ORDER_ID: vtex_order(self.ORDER_ID)}
         order, _ = upsert_store_order(self.connection, get_provider("vtex").normalize_order(vtex_order(self.ORDER_ID)))
         self.order = Order.objects.get(pk=order.pk)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _remote(self):
         return self.vtex.orders[self.ORDER_ID]

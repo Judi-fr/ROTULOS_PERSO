@@ -18,7 +18,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from apps.orders.models import Address, Order
 
 from ..models import IncomingWebhook, IntegrationKey, WebhookDelivery, WebhookEndpoint
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 User = get_user_model()
 
@@ -39,15 +39,16 @@ class IncomingWebhookSignatureTests(APITestCase):
             email="tienda@example.com",
             password="Clave123!",
         )
+        self.owner_biz = new_business(self.owner)
         self.integration_key = IntegrationKey.objects.create(
-            owner=self.owner,
+            owner=self.owner_biz,
             name="Tienda X",
             key_hash=IntegrationKey.hash_key("bp_test-key"),
             prefix="bp_test-ke",
         )
         self.secret = "un-secreto-compartido"
         self.webhook = IncomingWebhook.objects.create(
-            owner=self.owner,
+            owner=self.owner_biz,
             integration_key=self.integration_key,
             name="Tienda X - pedidos",
             slug="tienda-x",
@@ -66,7 +67,6 @@ class IncomingWebhookSignatureTests(APITestCase):
             "id": "TIENDA-0001",
         }
         self.body = json.dumps(self.payload).encode("utf-8")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _post(self, body, signature):
         headers = {}
@@ -95,7 +95,7 @@ class IncomingWebhookSignatureTests(APITestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(Order.objects.count(), 1)
         order = Order.objects.get()
-        self.assertEqual(order.user_id, self.owner.id)
+        self.assertEqual(order.user_id, self.owner_biz.id)
         self.assertEqual(order.external_id, "TIENDA-0001")
         self.assertEqual(order.source, Order.Source.WEBHOOK)
 
@@ -113,13 +113,13 @@ class OutgoingWebhookDispatchTests(APITestCase):
             email="cliente-webhook@example.com",
             password="Clave123!",
         )
+        self.owner_biz = new_business(self.owner)
         self.endpoint = WebhookEndpoint.objects.create(
-            owner=self.owner,
+            owner=self.owner_biz,
             name="ERP del cliente",
             url="https://erp.example.com/webhooks/buspack/",
             secret=WebhookEndpoint.generate_secret(),
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     @staticmethod
     def _ok_response(mock_post):
@@ -132,9 +132,9 @@ class OutgoingWebhookDispatchTests(APITestCase):
         self._ok_response(mock_post)
 
         address = Address.objects.create(
-            user=self.owner, street="Av. Siempre Viva", number="742", city="CABA"
+            user=self.owner_biz, street="Av. Siempre Viva", number="742", city="CABA"
         )
-        Order.objects.create(user=self.owner, address=address, description="Paquete")
+        Order.objects.create(user=self.owner_biz, address=address, description="Paquete")
 
         self.assertEqual(mock_post.call_count, 1)
         self.assertEqual(WebhookDelivery.objects.count(), 1)

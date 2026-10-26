@@ -90,15 +90,14 @@ def _new_data_user():
     return user
 
 
-def create_team(owner, name="", data_user=None) -> Team:
+def create_team(owner, name="") -> Team:
     """Comercio nuevo con ``owner`` como dueño, su usuario de datos y los
-    perfiles sugeridos. ``data_user`` solo lo pasan los tests (comercio cuyo
-    usuario de datos es la misma persona)."""
+    perfiles sugeridos."""
     with transaction.atomic():
         team = Team.objects.create(
             owner=owner,
             name=(name or "").strip()[:150],
-            data_user=data_user or _new_data_user(),
+            data_user=_new_data_user(),
             join_code=new_join_code(),
         )
         TeamMember.objects.create(team=team, user=owner, role=TeamMember.Role.OWNER, last_used_at=timezone.now())

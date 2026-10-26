@@ -24,7 +24,7 @@ from apps.integrations.providers.shopify.provider import query_string_hmac
 from apps.integrations.stores import IMPORT_ORDERS_EVENT, STATE_SALT, enqueue_store_setup, make_oauth_state
 from apps.integrations.tokens import access_token_for
 from apps.integrations.tests.helpers import auth_headers_for, fake_response, make_user
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 SECRET = "secreto-shopify"
 SHOP = "mitienda.myshopify.com"
@@ -180,7 +180,6 @@ class ShopifyTestMixin:
         patcher = patch("apps.integrations.providers.shopify.provider.requests.post", side_effect=self.fake)
         patcher.start()
         self.addCleanup(patcher.stop)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _redirect_params(self, response):
         self.assertEqual(response.status_code, 302)
@@ -203,7 +202,6 @@ class ShopifyTestMixin:
 class ShopDomainTests(TestCase):
     def setUp(self):
         self.provider = get_provider("shopify")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_acepta_lo_que_escribiria_un_comerciante(self):
         for value in ("mitienda", "MiTienda.myshopify.com", "https://mitienda.myshopify.com/admin", " mitienda "):
@@ -220,7 +218,7 @@ class ShopifyInstallUrlTests(ShopifyTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
 
     def test_url_de_la_tienda_con_state_atado_a_usuario_y_tienda(self):
         response = self.client.get(INSTALL_URL, {"shop": "mitienda"}, **auth_headers_for(self.user))
@@ -233,7 +231,7 @@ class ShopifyInstallUrlTests(ShopifyTestMixin, APITestCase):
         self.assertEqual(query["scope"], "read_orders")
         self.assertEqual(query["redirect_uri"], f"{BASE_URL}{CALLBACK_URL}")
         state = signing.loads(query["state"], salt=STATE_SALT)
-        self.assertEqual((state["u"], state["p"], state["s"]), (self.user.pk, "shopify", SHOP))
+        self.assertEqual((state["u"], state["a"], state["p"], state["s"]), (self.biz.pk, self.user.pk, "shopify", SHOP))
 
     def test_sin_dominio_valido_devuelve_400(self):
         response = self.client.get(INSTALL_URL, {"shop": "mitienda.com"}, **auth_headers_for(self.user))
@@ -250,7 +248,7 @@ class ShopifyCallbackTests(ShopifyTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
 
     def _callback(self, state=None, shop=SHOP, **extra):
         params = {"code": "codigo-1", "shop": shop, "timestamp": "1790000000", "host": "YWRtaW4"}
@@ -261,12 +259,12 @@ class ShopifyCallbackTests(ShopifyTestMixin, APITestCase):
 
     def test_conecta_la_tienda_con_token_que_vence(self):
         before = timezone.now()
-        response = self._callback(state=make_oauth_state(self.user, "shopify", SHOP))
+        response = self._callback(state=make_oauth_state(self.biz, "shopify", SHOP, actor=self.user))
 
         params = self._redirect_params(response)
         connection = StoreConnection.objects.get(platform="shopify", external_store_id=SHOP)
         self.assertEqual(params, {"store_connected": str(connection.pk)})
-        self.assertEqual(connection.owner, self.user)
+        self.assertEqual(connection.owner, self.biz)
         self.assertEqual(connection.access_token, "tok-1")
         self.assertEqual(connection.refresh_token, "shprt-1")
         self.assertGreaterEqual(connection.token_expires_at, before + timedelta(seconds=3590))
@@ -281,7 +279,7 @@ class ShopifyCallbackTests(ShopifyTestMixin, APITestCase):
         self.assertEqual(self.fake.graphql_calls()[0]["headers"]["X-Shopify-Access-Token"], "tok-1")
 
     def test_callback_con_firma_alterada_no_conecta(self):
-        params = signed({"code": "c", "shop": SHOP, "state": make_oauth_state(self.user, "shopify", SHOP)})
+        params = signed({"code": "c", "shop": SHOP, "state": make_oauth_state(self.biz, "shopify", SHOP, actor=self.user)})
         params["code"] = "otro-codigo"
         response = self.client.get(CALLBACK_URL, params)
 
@@ -294,11 +292,11 @@ class ShopifyCallbackTests(ShopifyTestMixin, APITestCase):
         self.assertFalse(StoreConnection.objects.exists())
 
     def test_state_de_otra_tienda_no_sirve(self):
-        response = self._callback(state=make_oauth_state(self.user, "shopify", "otra.myshopify.com"))
+        response = self._callback(state=make_oauth_state(self.biz, "shopify", "otra.myshopify.com", actor=self.user))
         self.assertEqual(self._redirect_params(response), {"store_error": "invalid_state"})
 
     def test_state_de_otra_plataforma_no_sirve(self):
-        response = self._callback(state=make_oauth_state(self.user, "tiendanube"))
+        response = self._callback(state=make_oauth_state(self.biz, "tiendanube", actor=self.user))
         self.assertEqual(self._redirect_params(response), {"store_error": "invalid_state"})
 
     def test_dominio_invalido_aunque_venga_firmado(self):
@@ -313,7 +311,7 @@ class ShopifyCallbackTests(ShopifyTestMixin, APITestCase):
         self.assertIsNone(StoreConnection.objects.get(external_store_id=SHOP).owner)
 
     def test_al_configurar_registra_pedidos_y_desinstalacion_e_importa(self):
-        self._callback(state=make_oauth_state(self.user, "shopify", SHOP))
+        self._callback(state=make_oauth_state(self.biz, "shopify", SHOP, actor=self.user))
 
         process_due_events()
 
@@ -340,13 +338,13 @@ class ShopifyLaunchTests(ShopifyTestMixin, APITestCase):
         self.assertEqual((state["u"], state["s"]), (None, SHOP))
 
     def test_tienda_ya_conectada_va_directo_a_nuestra_web(self):
-        self._connection(owner=make_user("comercio@example.com"))
+        self._connection(owner=new_business(make_user("comercio@example.com")))
         response = self.client.get(LAUNCH_URL, signed({"shop": SHOP, "timestamp": "1790000000"}))
         self.assertEqual(response["Location"], f"{FRONTEND}/tiendas.html")
 
     @override_settings(SHOPIFY_SCOPES="read_orders,write_fulfillments")
     def test_tienda_instalada_sin_un_scope_nuevo_vuelve_a_aprobar(self):
-        self._connection(owner=make_user("comercio@example.com"), scopes="read_orders")
+        self._connection(owner=new_business(make_user("comercio@example.com")), scopes="read_orders")
         response = self.client.get(LAUNCH_URL, signed({"shop": SHOP, "timestamp": "1790000000"}))
         url = urlparse(response["Location"])
         self.assertEqual(url.netloc, SHOP)
@@ -355,14 +353,14 @@ class ShopifyLaunchTests(ShopifyTestMixin, APITestCase):
     @override_settings(SHOPIFY_SCOPES="read_orders,write_fulfillments")
     def test_con_todos_los_scopes_no_vuelve_a_pedirlos(self):
         # Shopify a veces devuelve solo el write_: cubre al read_.
-        self._connection(owner=make_user("comercio@example.com"), scopes="write_orders,write_fulfillments")
+        self._connection(owner=new_business(make_user("comercio@example.com")), scopes="write_orders,write_fulfillments")
         response = self.client.get(LAUNCH_URL, signed({"shop": SHOP, "timestamp": "1790000000"}))
         self.assertEqual(response["Location"], f"{FRONTEND}/tiendas.html")
 
     @override_settings(SHOPIFY_SCOPES="read_orders,write_fulfillments")
     def test_conectada_con_la_app_propia_no_se_re_aprueba(self):
         self._connection(
-            owner=make_user("comercio@example.com"),
+            owner=new_business(make_user("comercio@example.com")),
             scopes="read_orders",
             preferences={"own_app_client_id": "cliente-propio"},
         )
@@ -389,7 +387,6 @@ class ShopifyTokenRefreshTests(ShopifyTestMixin, TestCase):
     def setUp(self):
         super().setUp()
         self.provider = get_provider("shopify")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_token_vigente_no_se_renueva(self):
         connection = self._connection()
@@ -470,7 +467,7 @@ class ShopifyWebhookTests(ShopifyTestMixin, APITestCase):
         )
 
     def test_desinstalar_desconecta_y_descarta_los_tokens(self):
-        connection = self._connection(owner=make_user("comercio@example.com"))
+        connection = self._connection(owner=new_business(make_user("comercio@example.com")))
 
         response = self._post("app/uninstalled", {"id": 1, "domain": SHOP})
         process_due_events()

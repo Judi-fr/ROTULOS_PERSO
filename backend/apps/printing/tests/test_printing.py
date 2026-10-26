@@ -21,7 +21,7 @@ from apps.orders.models import Address, Order
 
 from ..models import PrintAgent, Printer, PrintJob
 from ..services import STALE_ERROR
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 User = get_user_model()
 ZPL = b"^XA^FO50,50^A0N,40,40^FDHola^FS^XZ"
@@ -42,10 +42,11 @@ class PrintingTestCase(APITestCase):
         subscriber, _ = Group.objects.get_or_create(name="subscriber")
         self.user = User.objects.create_user(username="deposito@example.com", email="deposito@example.com", password="Clave123!")
         self.user.groups.add(subscriber)
+        self.biz = new_business(self.user)
         self.other = User.objects.create_user(username="otro@example.com", email="otro@example.com", password="Clave123!")
         self.other.groups.add(subscriber)
+        self.other_biz = new_business(self.other)
         self.headers = bearer(self.user)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def create_agent(self, user=None, name="PC del depósito"):
         response = self.client.post("/api/v1/printing/agents/", {"name": name}, format="json", **bearer(user or self.user))
@@ -59,7 +60,7 @@ class PrintingTestCase(APITestCase):
         return Printer.objects.get(pk=response.data["id"])
 
     def make_document(self, user=None, content=ZPL, ext="zpl", status=Document.Status.READY):
-        document = Document.objects.create(user=user or self.user, name="Rótulos", status=status, item_count=2)
+        document = Document.objects.create(user=user or self.biz, name="Rótulos", status=status, item_count=2)
         document.file.save(f"rotulos.{ext}", ContentFile(content), save=True)
         return document
 
@@ -146,7 +147,6 @@ class JobFlowTests(PrintingTestCase):
         super().setUp()
         self.agent, self.token = self.create_agent()
         self.printer = self.create_printer(self.agent)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def queue(self, document=None):
         document = document or self.make_document()
@@ -230,7 +230,7 @@ class JobFlowTests(PrintingTestCase):
         self.assertIn("ZPL", self.queue(pdf).data["detail"])
         processing = self.make_document(status=Document.Status.PROCESSING)
         self.assertIn("listo", self.queue(processing).data["detail"])
-        foreign = self.make_document(user=self.other)
+        foreign = self.make_document(user=self.other_biz)
         self.assertEqual(self.queue(foreign).status_code, 404)
 
 
@@ -238,8 +238,8 @@ class BatchToPrinterTests(PrintingTestCase):
     def test_batch_with_printer_generates_in_its_format_and_queues(self):
         agent, _ = self.create_agent()
         printer = self.create_printer(agent, dpmm=12)
-        address = Address.objects.create(user=self.user, recipient_name="María Gómez", street="Corrientes", number="1000", city="CABA", postal_code="1043")
-        order = Order.objects.create(user=self.user, address=address)
+        address = Address.objects.create(user=self.biz, recipient_name="María Gómez", street="Corrientes", number="1000", city="CABA", postal_code="1043")
+        order = Order.objects.create(user=self.biz, address=address)
         template = LabelTemplate.objects.filter(is_public=True, is_active=True).order_by("id").first()
 
         response = self.client.post(

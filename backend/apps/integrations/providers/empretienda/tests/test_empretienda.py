@@ -16,7 +16,7 @@ from apps.integrations.providers import get_provider
 from apps.integrations.providers.empretienda import spreadsheet
 from apps.integrations.tests.helpers import auth_headers_for, make_user
 from apps.orders.models import Order
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 HEADERS = [
     "Número de orden", "Fecha", "Nombre", "Apellido", "Email", "Teléfono", "DNI", "Dirección", "Número",
@@ -94,7 +94,7 @@ class ConnectTests(APITestCase):
 
     def setUp(self):
         self.user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
 
     def test_agrega_la_tienda_sin_credenciales(self):
         response = self.client.post(
@@ -110,7 +110,7 @@ class ConnectTests(APITestCase):
     def test_la_misma_tienda_en_otra_cuenta_no(self):
         self.client.post(self.URL, {"store_url": "mitienda.empretienda.com.ar"}, format="json", **auth_headers_for(self.user))
         other = make_user("otro@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(other)
         response = self.client.post(self.URL, {"store_url": "mitienda.empretienda.com.ar"}, format="json", **auth_headers_for(other))
         self.assertEqual(response.status_code, 409)
 
@@ -126,10 +126,10 @@ class ImportTests(APITestCase):
 
     def setUp(self):
         self.user = make_user("comercio@example.com")
+        self.biz = new_business(self.user)
         self.store = StoreConnection.objects.create(
-            platform="empretienda", external_store_id="mitienda.empretienda.com.ar", store_url="https://mitienda.empretienda.com.ar", owner=self.user
+            platform="empretienda", external_store_id="mitienda.empretienda.com.ar", store_url="https://mitienda.empretienda.com.ar", owner=self.biz
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _post(self, url, upload, **extra):
         data = {"store": self.store.pk, "file": upload}
@@ -206,8 +206,9 @@ class ImportTests(APITestCase):
 
     def test_tienda_ajena_o_de_otra_plataforma(self):
         other = make_user("otro@example.com")
-        foreign = StoreConnection.objects.create(platform="empretienda", external_store_id="otra.com.ar", owner=other)
-        woo = StoreConnection.objects.create(platform="woocommerce", external_store_id="woo.com.ar", owner=self.user)
+        other_biz = new_business(other)
+        foreign = StoreConnection.objects.create(platform="empretienda", external_store_id="otra.com.ar", owner=other_biz)
+        woo = StoreConnection.objects.create(platform="woocommerce", external_store_id="woo.com.ar", owner=self.biz)
         for store in (foreign, woo):
             response = self.client.post(
                 self.PREVIEW, {"store": store.pk, "file": csv_file([row("1")])}, format="multipart", **auth_headers_for(self.user)

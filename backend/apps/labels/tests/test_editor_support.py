@@ -13,7 +13,7 @@ from ..label_rendering import apply_design_rules, render_label_pdf
 from ..models import Label, LabelSequence
 from ..zpl import render_label_zpl
 from .test_labels import VALID_DESIGN, auth_headers_for
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 User = get_user_model()
 
@@ -26,10 +26,9 @@ class LabelSequenceApiTests(APITestCase):
         self.user = User.objects.create_user(
             username="numeracion@example.com", email="numeracion@example.com", password="Clave123!"
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         self.user.groups.add(group)
+        self.biz = new_business(self.user)
         self.headers = auth_headers_for(self.user)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_sin_configurar_devuelve_los_valores_por_defecto(self):
         resp = self.client.get(self.URL, **self.headers)
@@ -44,8 +43,8 @@ class LabelSequenceApiTests(APITestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data["example"], "ENV-0120")
         # El mismo contador que consume el render.
-        self.assertEqual(LabelSequence.next_value(self.user), "ENV-0120")
-        self.assertEqual(LabelSequence.next_value(self.user), "ENV-0121")
+        self.assertEqual(LabelSequence.next_value(self.biz), "ENV-0120")
+        self.assertEqual(LabelSequence.next_value(self.biz), "ENV-0121")
         self.assertEqual(self.client.get(self.URL, **self.headers).data["next"], 122)
         self.assertTrue(
             AuditLog.objects.filter(action="label.update", target_type="label_sequence").exists()
@@ -65,8 +64,8 @@ class LabelSequenceApiTests(APITestCase):
 
     def test_cada_usuario_tiene_su_numeracion(self):
         other = User.objects.create_user(username="otro@example.com", email="otro@example.com", password="Clave123!")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         other.groups.add(Group.objects.get(name="subscriber"))
+        new_business(other)
         self.client.put(self.URL, {"prefix": "A-", "padding": 2, "next": 50}, format="json", **self.headers)
         self.assertEqual(self.client.get(self.URL, **auth_headers_for(other)).data["next"], 1)
 
@@ -81,8 +80,8 @@ class LockedDesignTests(APITestCase):
             username="bloqueo@example.com", email="bloqueo@example.com", password="Clave123!"
         )
         self.user.groups.add(group)
+        self.biz = new_business(self.user)
         self.headers = auth_headers_for(self.user)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _create(self, design):
         return self.client.post(

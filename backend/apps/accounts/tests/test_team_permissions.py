@@ -32,13 +32,10 @@ def make_owner(email, group="subscriber", name=""):
 
 def add_employee(owner, email, *, profile=None, accesses=()):
     """Suma un empleado (que no está en ningún otro comercio) al comercio
-    actual de ``owner`` (si ``owner`` todavía no tiene comercio, el
-    transitorio "solo" de ``team_helpers``)."""
-    from .team_helpers import give_solo_team
-
+    actual de ``owner`` (si ``owner`` todavía no tiene comercio, se le crea)."""
     employee = make_user(email)
     member = teams.membership(owner)
-    team = member.team if member is not None else give_solo_team(owner)
+    team = member.team if member is not None else teams.create_team(owner)
     member = TeamMember.objects.create(
         team=team,
         user=employee,

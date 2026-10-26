@@ -18,7 +18,7 @@ from apps.integrations.providers import get_provider
 from apps.integrations.tokens import access_token_for
 from .test_shopify_connection import SECRET, SHOP, SHOPIFY_SETTINGS, WEBHOOKS_URL, ShopifyTestMixin
 from apps.integrations.tests.helpers import auth_headers_for, make_user
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 MANUAL_URL = "/api/v1/integrations/shopify/connect-manual/"
 OWN_ID = "id-de-la-app-propia"
@@ -30,7 +30,7 @@ class ShopifyManualConnectTests(ShopifyTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
 
     def _connect(self, **overrides):
         body = {"shop": "mitienda", "client_id": OWN_ID, "client_secret": OWN_SECRET}
@@ -42,7 +42,7 @@ class ShopifyManualConnectTests(ShopifyTestMixin, APITestCase):
 
         self.assertEqual(response.status_code, 201, response.data)
         connection = StoreConnection.objects.get(platform="shopify", external_store_id=SHOP)
-        self.assertEqual(connection.owner, self.user)
+        self.assertEqual(connection.owner, self.biz)
         self.assertEqual(connection.access_token, "propio-1")
         self.assertEqual(connection.webhook_secret, OWN_SECRET)
         self.assertEqual(connection.preferences["own_app_client_id"], OWN_ID)
@@ -125,7 +125,7 @@ class ShopifyOwnAppWebhookTests(ShopifyTestMixin, APITestCase):
         )
 
     def _own_app_store(self):
-        connection = self._connection(owner=make_user("comercio@example.com"), preferences={"own_app_client_id": OWN_ID})
+        connection = self._connection(owner=new_business(make_user("comercio@example.com")), preferences={"own_app_client_id": OWN_ID})
         connection.webhook_secret = OWN_SECRET
         connection.save()
         return connection
@@ -150,7 +150,7 @@ class ShopifyOwnAppWebhookTests(ShopifyTestMixin, APITestCase):
         self.assertFalse(IntegrationEvent.objects.exists())
 
     def test_tienda_conectada_con_nuestra_app_no_acepta_otro_secreto(self):
-        connection = self._connection(owner=make_user("comercio@example.com"))
+        connection = self._connection(owner=new_business(make_user("comercio@example.com")))
         connection.webhook_secret = OWN_SECRET  # sin app propia, no cuenta
         connection.save()
         self.assertEqual(self._post("app/uninstalled", {"id": 1}, secret=OWN_SECRET).status_code, 401)

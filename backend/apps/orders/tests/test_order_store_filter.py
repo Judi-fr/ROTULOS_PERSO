@@ -12,7 +12,7 @@ from apps.integrations.models import StoreConnection
 
 from ..models import Address, Order
 from .test_orders import auth_headers_for
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 User = get_user_model()
 
@@ -22,27 +22,28 @@ class OrderStoreFilterTests(APITestCase):
         subscriber, _ = Group.objects.get_or_create(name="subscriber")
         self.user = User.objects.create_user(username="vendedor1", email="vendedor1@example.com", password="Clave123!")
         self.user.groups.add(subscriber)
+        self.biz = new_business(self.user)
         self.other = User.objects.create_user(username="vendedor2", email="vendedor2@example.com", password="Clave123!")
         self.other.groups.add(subscriber)
+        self.other_biz = new_business(self.other)
 
         self.store_a = StoreConnection.objects.create(
-            owner=self.user, platform=StoreConnection.Platform.TIENDANUBE, external_store_id="111", name="Tienda A"
+            owner=self.biz, platform=StoreConnection.Platform.TIENDANUBE, external_store_id="111", name="Tienda A"
         )
         self.store_b = StoreConnection.objects.create(
-            owner=self.user, platform=StoreConnection.Platform.TIENDANUBE, external_store_id="222", name="Tienda B"
+            owner=self.biz, platform=StoreConnection.Platform.TIENDANUBE, external_store_id="222", name="Tienda B"
         )
         self.foreign_store = StoreConnection.objects.create(
-            owner=self.other, platform=StoreConnection.Platform.TIENDANUBE, external_store_id="333", name="Ajena"
+            owner=self.other_biz, platform=StoreConnection.Platform.TIENDANUBE, external_store_id="333", name="Ajena"
         )
 
-        address = Address.objects.create(user=self.user, street="Calle", number="1", city="CABA")
-        self.order_a = Order.objects.create(user=self.user, address=address, store_connection=self.store_a, external_id="a1")
-        self.order_b = Order.objects.create(user=self.user, address=address, store_connection=self.store_b, external_id="b1")
-        self.manual = Order.objects.create(user=self.user, address=address)
+        address = Address.objects.create(user=self.biz, street="Calle", number="1", city="CABA")
+        self.order_a = Order.objects.create(user=self.biz, address=address, store_connection=self.store_a, external_id="a1")
+        self.order_b = Order.objects.create(user=self.biz, address=address, store_connection=self.store_b, external_id="b1")
+        self.manual = Order.objects.create(user=self.biz, address=address)
 
-        other_address = Address.objects.create(user=self.other, street="Otra", number="2", city="CABA")
-        Order.objects.create(user=self.other, address=other_address, store_connection=self.foreign_store, external_id="x1")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        other_address = Address.objects.create(user=self.other_biz, street="Otra", number="2", city="CABA")
+        Order.objects.create(user=self.other_biz, address=other_address, store_connection=self.foreign_store, external_id="x1")
 
     def _list_ids(self, query=""):
         response = self.client.get(f"/api/v1/orders/{query}", **auth_headers_for(self.user))
@@ -82,12 +83,12 @@ class OrderStatusFilterTests(APITestCase):
             username="vendedor9@example.com", email="vendedor9@example.com", password="Clave123!"
         )
         self.user.groups.add(subscriber)
-        address = Address.objects.create(user=self.user, street="Calle", number="1", city="CABA")
-        self.created = Order.objects.create(user=self.user, address=address)
-        self.dispatched = Order.objects.create(user=self.user, address=address)
+        self.biz = new_business(self.user)
+        address = Address.objects.create(user=self.biz, street="Calle", number="1", city="CABA")
+        self.created = Order.objects.create(user=self.biz, address=address)
+        self.dispatched = Order.objects.create(user=self.biz, address=address)
         self.dispatched.status = Order.Status.DISPATCHED
         self.dispatched.save(update_fields=["status"])
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _ids(self, query):
         response = self.client.get(f"/api/v1/orders/{query}", **auth_headers_for(self.user))
@@ -123,9 +124,10 @@ class OrderDateFilterTests(APITestCase):
             username="fechas@example.com", email="fechas@example.com", password="Clave123!"
         )
         self.user.groups.add(subscriber)
+        self.biz = new_business(self.user)
         self.client.force_authenticate(user=self.user)
         self.address = Address.objects.create(
-            user=self.user,
+            user=self.biz,
             recipient_name="Juan",
             street="Av. Siempre Viva",
             number="742",
@@ -135,14 +137,13 @@ class OrderDateFilterTests(APITestCase):
         )
         self.orders = {}
         for day in (10, 15, 20):
-            order = Order.objects.create(user=self.user, address=self.address)
+            order = Order.objects.create(user=self.biz, address=self.address)
             # created_at es auto_now_add: se reescribe con update() para no
             # depender de cuándo corre el test.
             Order.objects.filter(pk=order.pk).update(
                 created_at=timezone.make_aware(datetime(2026, 9, day, 12, 0))
             )
             self.orders[day] = order
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def ids(self, response):
         results = response.data["results"] if "results" in response.data else response.data

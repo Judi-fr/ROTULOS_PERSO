@@ -98,14 +98,18 @@ class ConnectResult:
     owner_conflict: bool
 
 
-def make_oauth_state(user, platform, shop_domain="", shared=False):
+def make_oauth_state(user, platform, shop_domain="", shared=False, actor=None):
     """``state`` firmado para la URL de autorización. ``user`` puede ser
     ``None``: una instalación que arrancó desde el admin de la tienda
     (Shopify) todavía no sabe de quién es y termina en el reclamo. En las
     plataformas con dominio por tienda el state queda atado a ESA tienda.
     ``shared``: la autorización la abrió otra persona con un link para
-    compartir (ver ``make_share_token``)."""
+    compartir (ver ``make_share_token``). ``actor``: la persona que pidió la
+    autorización (``user`` es el usuario de datos de su comercio, que no es
+    una persona): queda como autora en la auditoría del callback."""
     data = {"u": user.pk if user is not None else None, "p": platform}
+    if actor is not None:
+        data["a"] = actor.pk
     if shop_domain:
         data["s"] = shop_domain
     if shared:
@@ -123,6 +127,19 @@ def oauth_state_is_shared(state):
     except signing.BadSignature:
         return False
     return isinstance(data, dict) and bool(data.get("x"))
+
+
+def oauth_state_actor(state):
+    """La persona que pidió la autorización, si el ``state`` la trae y sigue
+    activa; si no, ``None``. No valida el ``state``: eso es ``read_oauth_state``."""
+    try:
+        data = signing.loads(state or "", salt=STATE_SALT)
+    except signing.BadSignature:
+        return None
+    actor_id = data.get("a") if isinstance(data, dict) else None
+    if actor_id is None:
+        return None
+    return get_user_model().objects.filter(pk=actor_id, is_active=True).first()
 
 
 def make_share_token(user, platform):

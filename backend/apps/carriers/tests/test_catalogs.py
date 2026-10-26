@@ -10,7 +10,7 @@ from apps.audit.models import AuditLog
 from apps.carriers.models import ManualCarrier
 from apps.labels.models import LabelSize
 from apps.orders.models import Address, Order
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 User = get_user_model()
 
@@ -23,9 +23,10 @@ class CatalogTests(APITestCase):
     def setUp(self):
         self.admin = User.objects.create_user(username="admin@example.com", email="admin@example.com", password="Clave123!", is_staff=True)
         self.admin.groups.add(Group.objects.get_or_create(name="admin")[0])
+        new_business(self.admin)
         self.merchant = User.objects.create_user(username="tienda@example.com", email="tienda@example.com", password="Clave123!")
         self.merchant.groups.add(Group.objects.get_or_create(name="subscriber")[0])
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.merchant_biz = new_business(self.merchant)
 
     def test_admin_manages_manual_carriers_and_merchants_only_read(self):
         url = "/api/v1/carriers/manual-carriers/"
@@ -54,8 +55,8 @@ class CatalogTests(APITestCase):
 
     def test_shipping_with_a_catalog_carrier_fills_the_tracking_url(self):
         ManualCarrier.objects.create(name="Via Cargo", tracking_url_template="https://viacargo.example/seguimiento?n={tracking}")
-        address = Address.objects.create(user=self.merchant, street="Corrientes", number="1", city="CABA")
-        order = Order.objects.create(user=self.merchant, address=address)
+        address = Address.objects.create(user=self.merchant_biz, street="Corrientes", number="1", city="CABA")
+        order = Order.objects.create(user=self.merchant_biz, address=address)
         response = self.client.post(
             f"/api/v1/orders/{order.pk}/ship/",
             {"status": "dispatched", "carrier": "via cargo", "tracking_number": "AB 123"},

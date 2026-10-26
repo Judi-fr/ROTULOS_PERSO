@@ -26,7 +26,7 @@ from apps.integrations.tests.helpers import auth_headers_for, make_user
 from apps.orders.models import Order
 
 from .fake_magento import MAGENTO_SETTINGS, MagentoTestMixin, magento_order
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 BASE_URL = "https://rotulos.example.com"
 MODULE_SETTINGS = {**MAGENTO_SETTINGS, "INTEGRATIONS_PUBLIC_BASE_URL": BASE_URL}
@@ -44,7 +44,6 @@ class FreshThrottleMixin:
         cache.clear()
         self.addCleanup(cache.clear)
         super().setUp()
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
 
 def signed(client, url, data, secret, query=""):
@@ -59,8 +58,9 @@ def signed(client, url, data, secret, query=""):
 class ModuleConfigTests(FreshThrottleMixin, MagentoTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
-        self.connection = self._connection(owner=make_user("comercio@example.com"))
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.owner = make_user("comercio@example.com")
+        self.owner_biz = new_business(self.owner)
+        self.connection = self._connection(owner=self.owner_biz)
 
     def test_al_conectar_se_le_escribe_la_configuracion_al_modulo(self):
         self.magento.module_installed = True
@@ -94,7 +94,7 @@ class ModuleConfigTests(FreshThrottleMixin, MagentoTestMixin, APITestCase):
     def test_sin_el_permiso_del_modulo_no_queda_vinculado(self):
         self.magento.module_installed, self.magento.module_allowed = True, False
         url = f"/api/v1/integrations/stores/{self.connection.pk}/check-print-plugin/"
-        response = self.client.post(url, **auth_headers_for(self.connection.owner))
+        response = self.client.post(url, **auth_headers_for(self.owner))
         self.assertEqual(response.status_code, 200, response.data)
         self.assertIs(response.data["print_plugin_linked"], False)
         self.connection.refresh_from_db()
@@ -104,7 +104,7 @@ class ModuleConfigTests(FreshThrottleMixin, MagentoTestMixin, APITestCase):
     def test_verificar_modulo_lo_vincula_en_el_momento(self):
         self.magento.module_installed = True
         url = f"/api/v1/integrations/stores/{self.connection.pk}/check-print-plugin/"
-        response = self.client.post(url, **auth_headers_for(self.connection.owner))
+        response = self.client.post(url, **auth_headers_for(self.owner))
         self.assertEqual(response.status_code, 200, response.data)
         self.assertIs(response.data["print_plugin_linked"], True)
 
@@ -120,9 +120,10 @@ class ModuleConfigTests(FreshThrottleMixin, MagentoTestMixin, APITestCase):
 class ModuleOrderEventTests(FreshThrottleMixin, MagentoTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
-        self.connection = self._connection(owner=make_user("comercio@example.com"))
+        self.owner = make_user("comercio@example.com")
+        self.owner_biz = new_business(self.owner)
+        self.connection = self._connection(owner=self.owner_biz)
         self.secret = get_provider("magento").ensure_webhook_secret(self.connection)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def notify(self, data, secret=None, store=None):
         return signed(self.client, WEBHOOKS_URL, data, secret or self.secret, f"?store={store or self.connection.pk}")
@@ -157,10 +158,10 @@ class ModulePrintTests(FreshThrottleMixin, MagentoTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.owner = make_user("comercio@example.com")
-        self.connection = self._connection(owner=self.owner)
+        self.owner_biz = new_business(self.owner)
+        self.connection = self._connection(owner=self.owner_biz)
         self.secret = get_provider("magento").ensure_webhook_secret(self.connection)
         self.magento.orders = {11: magento_order(11), 12: magento_order(12)}
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def link(self, ids, secret=None, ts=None, **extra):
         data = {"store": str(self.connection.pk), "ids": ids, "ts": int(ts if ts is not None else time.time()), **extra}
@@ -175,7 +176,7 @@ class ModulePrintTests(FreshThrottleMixin, MagentoTestMixin, APITestCase):
         document = self.client.get(response.data["url"].replace(BASE_URL, ""))
         self.assertEqual(document.status_code, 200)
         self.assertTrue(document.content.startswith(b"%PDF"))
-        self.assertTrue(AuditLog.objects.filter(action="label.batch", actor=self.owner).exists())
+        self.assertTrue(AuditLog.objects.filter(action="label.batch", actor=self.owner_biz).exists())
 
     def test_planilla_de_retiro(self):
         response = self.link(["11"], action="manifest")
@@ -196,7 +197,9 @@ class ModulePrintTests(FreshThrottleMixin, MagentoTestMixin, APITestCase):
 class ModuleRatesTests(FreshThrottleMixin, MagentoTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
-        self.connection = self._connection(owner=make_user("comercio@example.com"))
+        self.owner = make_user("comercio@example.com")
+        self.owner_biz = new_business(self.owner)
+        self.connection = self._connection(owner=self.owner_biz)
         self.secret = get_provider("magento").ensure_webhook_secret(self.connection)
         ShippingRate.objects.create(
             connection=self.connection,
@@ -209,7 +212,6 @@ class ModuleRatesTests(FreshThrottleMixin, MagentoTestMixin, APITestCase):
             delivery_days_min=3,
             delivery_days_max=5,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def quote(self, secret=None, **cart):
         data = {"store": str(self.connection.pk), "ts": int(time.time()), "postcode": "1426", "country": "AR", "weight_kg": 2, "currency": "ARS"}
@@ -235,7 +237,7 @@ class ModuleRatesTests(FreshThrottleMixin, MagentoTestMixin, APITestCase):
 class ModuleDownloadTests(FreshThrottleMixin, APITestCase):
     def test_el_zip_trae_el_modulo_en_app_code(self):
         merchant = make_user("c@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(merchant)
         response = self.client.get("/api/v1/integrations/magento/module/", **auth_headers_for(merchant))
         self.assertEqual(response.status_code, 200)
         self.assertIn("rotulos-envio-magento.zip", response["Content-Disposition"])

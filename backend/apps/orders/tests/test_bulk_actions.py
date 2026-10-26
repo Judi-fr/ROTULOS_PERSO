@@ -19,7 +19,7 @@ from apps.integrations.models import StoreConnection
 from ..bulk import detect_columns, normalize_order_key
 from ..models import Address, Order
 from .test_orders import auth_headers_for
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 User = get_user_model()
 
@@ -29,11 +29,13 @@ class BulkTestBase(APITestCase):
         subscriber, _ = Group.objects.get_or_create(name="subscriber")
         self.user = User.objects.create_user(username="vendedor1", email="vendedor1@example.com", password="Clave123!")
         self.user.groups.add(subscriber)
+        self.biz = new_business(self.user)
         self.other = User.objects.create_user(username="vendedor2", email="vendedor2@example.com", password="Clave123!")
         self.other.groups.add(subscriber)
+        self.other_biz = new_business(self.other)
 
         self.store_a = StoreConnection.objects.create(
-            owner=self.user,
+            owner=self.biz,
             platform=StoreConnection.Platform.TIENDANUBE,
             external_store_id="111",
             name="Tienda A",
@@ -41,11 +43,11 @@ class BulkTestBase(APITestCase):
             sender_address="Av. Corrientes 1234, CABA",
         )
         self.store_b = StoreConnection.objects.create(
-            owner=self.user, platform=StoreConnection.Platform.TIENDANUBE, external_store_id="222", name="Tienda B"
+            owner=self.biz, platform=StoreConnection.Platform.TIENDANUBE, external_store_id="222", name="Tienda B"
         )
 
         self.address = Address.objects.create(
-            user=self.user,
+            user=self.biz,
             recipient_name="María Pérez",
             street="Calle Falsa",
             number="123",
@@ -55,7 +57,7 @@ class BulkTestBase(APITestCase):
             origin=Address.Origin.SHIPMENT,
         )
         self.order_a = Order.objects.create(
-            user=self.user,
+            user=self.biz,
             address=self.address,
             store_connection=self.store_a,
             external_id="a1",
@@ -65,13 +67,12 @@ class BulkTestBase(APITestCase):
             items=[{"name": "Remera", "quantity": 2}],
         )
         self.order_b = Order.objects.create(
-            user=self.user, address=self.address, store_connection=self.store_b, external_id="b1", external_number="2001"
+            user=self.biz, address=self.address, store_connection=self.store_b, external_id="b1", external_number="2001"
         )
-        self.manual = Order.objects.create(user=self.user, address=self.address)
+        self.manual = Order.objects.create(user=self.biz, address=self.address)
 
-        other_address = Address.objects.create(user=self.other, street="Otra", number="2", city="CABA")
-        self.foreign = Order.objects.create(user=self.other, address=other_address, external_number="1001")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        other_address = Address.objects.create(user=self.other_biz, street="Otra", number="2", city="CABA")
+        self.foreign = Order.objects.create(user=self.other_biz, address=other_address, external_number="1001")
 
     def post(self, url, payload, user=None, **kwargs):
         return self.client.post(url, payload, format=kwargs.pop("format", "json"), **auth_headers_for(user or self.user), **kwargs)
@@ -209,7 +210,7 @@ class DispatchManifestTests(BulkTestBase):
 
     def test_muchos_pedidos_ocupan_varias_paginas(self):
         orders = [
-            Order.objects.create(user=self.user, address=self.address, external_id=f"m{i}") for i in range(80)
+            Order.objects.create(user=self.biz, address=self.address, external_id=f"m{i}") for i in range(80)
         ]
         response = self.post(self.URL, {"order_ids": [order.pk for order in orders]})
         self.assertEqual(response.status_code, 200)

@@ -30,7 +30,7 @@ from ..zpl import (
     render_label_zpl,
     render_labels_zpl,
 )
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 
 User = get_user_model()
@@ -401,26 +401,25 @@ class RenderEndpointZplTests(APITestCase):
         self.user = User.objects.create_user(
             username="zebra@example.com", email="zebra@example.com", password="Clave123!"
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         self.user.groups.add(subscriber)
+        self.biz = new_business(self.user)
         self.template = LabelTemplate.objects.create(
             name="Para térmica",
-            owner=self.user,
+            owner=self.biz,
             width_cm=10,
             height_cm=15,
             design={"destinatario": {"left": 10, "top": 20, "text": "{{destinatario}}"}},
         )
         self.address = Address.objects.create(
-            user=self.user,
+            user=self.biz,
             origin=Address.Origin.SHIPMENT,
             recipient_name="María Gutiérrez",
             street="Cabildo",
             number="4781",
             city="CABA",
         )
-        self.order = Order.objects.create(user=self.user, address=self.address)
+        self.order = Order.objects.create(user=self.biz, address=self.address)
         self.client.force_authenticate(user=self.user)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _post(self, **extra):
         payload = {"template_id": self.template.pk, "order_id": self.order.pk}
@@ -472,8 +471,8 @@ class RenderEndpointZplTests(APITestCase):
         otro = User.objects.create_user(
             username="ajeno@example.com", email="ajeno@example.com", password="Clave123!"
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         otro.groups.add(Group.objects.get(name="subscriber"))
+        new_business(otro)
         self.client.force_authenticate(user=otro)
         self.assertEqual(self._post(format="zpl").status_code, 404)
 
@@ -497,9 +496,10 @@ class BatchZplTests(APITestCase):
             username="lotezpl@example.com", email="lotezpl@example.com", password="Clave123!"
         )
         self.user.groups.add(subscriber)
+        self.biz = new_business(self.user)
         self.template = LabelTemplate.objects.create(
             name="Plantilla térmica",
-            owner=self.user,
+            owner=self.biz,
             width_cm=10,
             height_cm=15,
             design={"destinatario": {"left": 10, "top": 20, "text": "{{destinatario}}"}},
@@ -507,16 +507,15 @@ class BatchZplTests(APITestCase):
         self.orders = []
         for numero in range(3):
             address = Address.objects.create(
-                user=self.user,
+                user=self.biz,
                 origin=Address.Origin.SHIPMENT,
                 recipient_name=f"Cliente {numero}",
                 street="Cabildo",
                 number=str(1000 + numero),
                 city="CABA",
             )
-            self.orders.append(Order.objects.create(user=self.user, address=address))
+            self.orders.append(Order.objects.create(user=self.biz, address=address))
         self.client.force_authenticate(user=self.user)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _post(self, **extra):
         payload = {
@@ -598,16 +597,16 @@ class BatchZplDensidadDeLaTiendaTests(APITestCase):
             username="densidad@example.com", email="densidad@example.com", password="Clave123!"
         )
         self.user.groups.add(subscriber)
+        self.biz = new_business(self.user)
         self.template = LabelTemplate.objects.create(
-            name="Térmica", owner=self.user, width_cm=10, height_cm=15,
+            name="Térmica", owner=self.biz, width_cm=10, height_cm=15,
             design={"destinatario": {"left": 10, "top": 20, "text": "{{destinatario}}"}},
         )
         self.client.force_authenticate(user=self.user)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _tienda(self, external_id, dpmm=None):
         return self.StoreConnection.objects.create(
-            owner=self.user,
+            owner=self.biz,
             platform=self.StoreConnection.Platform.TIENDANUBE,
             external_store_id=external_id,
             name=f"Tienda {external_id}",
@@ -616,11 +615,11 @@ class BatchZplDensidadDeLaTiendaTests(APITestCase):
 
     def _pedido(self, store=None, sufijo="1"):
         address = Address.objects.create(
-            user=self.user, origin=Address.Origin.SHIPMENT,
+            user=self.biz, origin=Address.Origin.SHIPMENT,
             recipient_name=f"Cliente {sufijo}", street="Cabildo", number=sufijo, city="CABA",
         )
         return Order.objects.create(
-            user=self.user, address=address, store_connection=store,
+            user=self.biz, address=address, store_connection=store,
             external_id=f"e{sufijo}" if store else None,
         )
 

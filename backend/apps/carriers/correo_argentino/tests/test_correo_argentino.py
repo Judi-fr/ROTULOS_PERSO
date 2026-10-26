@@ -13,7 +13,7 @@ from apps.integrations.tests.helpers import auth_headers_for, make_user
 from apps.orders.models import Address, Order
 
 from .fake_correo import AGREEMENT, API_KEY, CUSTOMER_ID, MICORREO_PASSWORD, MICORREO_USER, CorreoTestMixin
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 API = "/api/v1/carriers"
 
@@ -48,7 +48,7 @@ class AccountTests(CorreoTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
 
     def test_cuenta_nueva_arranca_con_el_clasico_y_las_claves_no_vuelven(self):
         empty = self.client.get(f"{API}/accounts/correo_argentino/", **auth_headers_for(self.user))
@@ -89,7 +89,7 @@ class AccountTests(CorreoTestMixin, APITestCase):
         self.assertIn("MiCorreo también", test.json()["detail"])
 
     def test_sin_provincia_de_origen_no_esta_lista(self):
-        account = self.make_correo_account(self.user, origin_state="", origin_postal_code="1842")
+        account = self.make_correo_account(self.biz, origin_state="", origin_postal_code="1842")
         response = self.client.get(f"{API}/accounts/correo_argentino/", **auth_headers_for(self.user))
         self.assertFalse(response.json()["ready"])
         self.assertIn("la provincia de origen", response.json()["missing"])
@@ -100,9 +100,9 @@ class ShipmentTests(CorreoTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        self.account = self.make_correo_account(self.user)
-        self.order = make_order(self.user)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
+        self.account = self.make_correo_account(self.biz)
+        self.order = make_order(self.biz)
 
     def create(self, contract="CP-D", **extra):
         payload = {"carrier": "correo_argentino", "order_ids": [self.order.pk], "contract": contract, **extra}
@@ -124,7 +124,7 @@ class ShipmentTests(CorreoTestMixin, APITestCase):
 
     def test_sin_micorreo_no_cotiza_pero_despacha(self):
         CarrierAccount.objects.all().delete()
-        self.account = self.make_correo_account(self.user, with_micorreo=False)
+        self.account = self.make_correo_account(self.biz, with_micorreo=False)
         quote = self.client.post(
             f"{API}/shipments/quote/",
             {"carrier": "correo_argentino", "order_ids": [self.order.pk], "contract": "CP-D"},
@@ -155,7 +155,7 @@ class ShipmentTests(CorreoTestMixin, APITestCase):
         self.assertIn(shipment.tracking_number, self.order.tracking_url)
 
     def test_a_domicilio_sin_provincia_reconocible_no_sale(self):
-        other = make_order(self.user, number="3002", state="", postal_code="5000")
+        other = make_order(self.biz, number="3002", state="", postal_code="5000")
         response = self.client.post(
             f"{API}/shipments/", {"carrier": "correo_argentino", "order_ids": [other.pk], "contract": "CP-D"}, format="json", **auth_headers_for(self.user)
         )

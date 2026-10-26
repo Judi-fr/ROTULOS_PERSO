@@ -17,7 +17,7 @@ from apps.integrations.shipping_rates import has_checkout_prices
 from apps.integrations.tests.helpers import auth_headers_for, make_user
 
 from .fake_andreani import AndreaniTestMixin
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 API = "/api/v1/carriers/andreani"
 
@@ -32,11 +32,11 @@ class CheckoutTestCase(AndreaniTestMixin, APITestCase):
         cache.clear()
         self.addCleanup(cache.clear)
         self.user = make_user("comercio@example.com")
-        self.account = self.make_account(self.user)
+        self.biz = new_business(self.user)
+        self.account = self.make_account(self.biz)
         self.store = StoreConnection.objects.create(
-            owner=self.user, platform="tiendanube", external_store_id="555", name="Mi tienda", access_token="t"
+            owner=self.biz, platform="tiendanube", external_store_id="555", name="Mi tienda", access_token="t"
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def enable(self, store=None, **values):
         data = {"enabled": True, "contract": "400006709", "name": "Andreani a domicilio"}
@@ -116,7 +116,7 @@ class CheckoutQuoteTests(CheckoutTestCase):
 
     def test_woocommerce_tambien(self):
         woo = StoreConnection.objects.create(
-            owner=self.user, platform="woocommerce", external_store_id="https://tienda.example.com", name="Woo", access_token="{}"
+            owner=self.biz, platform="woocommerce", external_store_id="https://tienda.example.com", name="Woo", access_token="{}"
         )
         self.enable(store=woo)
         body = woocommerce_rates.quote(woo, {"postcode": "5000", "country": "AR", "weight_kg": "2"})
@@ -141,7 +141,7 @@ class CheckoutCallbackTests(CheckoutTestCase):
 
 class CheckoutSettingsTests(CheckoutTestCase):
     def test_lista_solo_las_tiendas_que_preguntan_el_precio(self):
-        StoreConnection.objects.create(owner=self.user, platform="vtex", external_store_id="micuenta", access_token="{}")
+        StoreConnection.objects.create(owner=self.biz, platform="vtex", external_store_id="micuenta", access_token="{}")
         StoreConnection.objects.create(owner=make_user("otro@example.com"), platform="tiendanube", external_store_id="9", access_token="t")
         response = self.client.get(f"{API}/checkout/", **auth_headers_for(self.user))
         self.assertEqual([item["store"] for item in response.data["results"]], [self.store.pk])
@@ -175,7 +175,7 @@ class CheckoutSettingsTests(CheckoutTestCase):
 
     def test_la_tienda_de_otro_no_se_toca(self):
         other = make_user("otro@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(other)
         response = self.client.put(
             f"{API}/checkout/", {"store": self.store.pk, "enabled": False}, format="json", **auth_headers_for(other)
         )
@@ -221,7 +221,7 @@ class SurchargeAndFreeShippingTests(CheckoutTestCase):
 
     def test_woocommerce_con_el_total_del_plugin_y_sin_el(self):
         woo = StoreConnection.objects.create(
-            owner=self.user, platform="woocommerce", external_store_id="https://tienda.example.com", name="Woo", access_token="{}"
+            owner=self.biz, platform="woocommerce", external_store_id="https://tienda.example.com", name="Woo", access_token="{}"
         )
         self.enable(store=woo, free_shipping_from="5000")
         new_plugin = woocommerce_rates.quote(woo, {"postcode": "5000", "country": "AR", "weight_kg": "1", "cart_total": "5000"})

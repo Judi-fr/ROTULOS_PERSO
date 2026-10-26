@@ -19,7 +19,7 @@ from apps.integrations.providers import get_provider
 from apps.integrations.stores import STATE_SALT, make_claim_token, make_oauth_state
 from apps.integrations.tests.helpers import auth_headers_for, fake_response, make_user
 from apps.integrations.tests.test_store_integration_base import tiendanube_order
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 User = get_user_model()
 
@@ -43,7 +43,7 @@ TEST_SETTINGS = {
 class TiendanubeInstallUrlTests(APITestCase):
     def setUp(self):
         self.user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
 
     def test_requiere_estar_logueado(self):
         response = self.client.get(INSTALL_URL)
@@ -56,7 +56,8 @@ class TiendanubeInstallUrlTests(APITestCase):
         url = response.data["authorize_url"]
         self.assertTrue(url.startswith("https://www.tiendanube.com/apps/9999/authorize?"))
         state = parse_qs(urlparse(url).query)["state"][0]
-        self.assertEqual(signing.loads(state, salt=STATE_SALT)["u"], self.user.pk)
+        data = signing.loads(state, salt=STATE_SALT)
+        self.assertEqual((data["u"], data["a"]), (self.biz.pk, self.user.pk))
 
     @override_settings(TIENDANUBE_APP_ID="")
     def test_sin_app_configurada_devuelve_503(self):
@@ -68,7 +69,9 @@ class TiendanubeInstallUrlTests(APITestCase):
 class TiendanubeCallbackTests(APITestCase):
     def setUp(self):
         self.user = make_user("comercio@example.com")
+        self.biz = new_business(self.user)
         self.other = make_user("otro@example.com")
+        self.other_biz = new_business(self.other)
 
         post_patcher = patch("apps.integrations.providers.tiendanube.provider.requests.post")
         request_patcher = patch("apps.integrations.providers.tiendanube.provider.requests.request")
@@ -88,7 +91,6 @@ class TiendanubeCallbackTests(APITestCase):
                 "domains": [],
             },
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     @staticmethod
     def _token_response(token):
@@ -107,12 +109,12 @@ class TiendanubeCallbackTests(APITestCase):
         return {key: values[0] for key, values in parse_qs(urlparse(location).query).items()}
 
     def test_desde_nuestra_web_la_tienda_queda_vinculada_al_usuario(self):
-        response = self._callback(code="abc", state=make_oauth_state(self.user, "tiendanube"))
+        response = self._callback(code="abc", state=make_oauth_state(self.biz, "tiendanube", actor=self.user))
 
         params = self._redirect_params(response)
         connection = StoreConnection.objects.get()
         self.assertEqual(params, {"store_connected": str(connection.pk)})
-        self.assertEqual(connection.owner, self.user)
+        self.assertEqual(connection.owner, self.biz)
         self.assertEqual(connection.external_store_id, "555")
         self.assertEqual(connection.status, StoreConnection.Status.ACTIVE)
         self.assertEqual(connection.access_token, "tok-1")
@@ -127,7 +129,7 @@ class TiendanubeCallbackTests(APITestCase):
         self.assertEqual(sent["grant_type"], "authorization_code")
 
     def test_la_api_se_llama_con_user_agent_y_token_de_la_tienda(self):
-        self._callback(code="abc", state=make_oauth_state(self.user, "tiendanube"))
+        self._callback(code="abc", state=make_oauth_state(self.biz, "tiendanube", actor=self.user))
 
         args, kwargs = self.mock_request.call_args
         self.assertEqual(args, ("GET", "https://api.tiendanube.com/2025-03/555/store"))
@@ -135,7 +137,7 @@ class TiendanubeCallbackTests(APITestCase):
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer tok-1")
 
     def test_el_token_no_viaja_en_la_redireccion(self):
-        response = self._callback(code="abc", state=make_oauth_state(self.user, "tiendanube"))
+        response = self._callback(code="abc", state=make_oauth_state(self.biz, "tiendanube", actor=self.user))
         self.assertNotIn("tok-1", response["Location"])
 
     def test_desde_la_tienda_de_apps_queda_pendiente_y_se_reclama_al_loguearse(self):
@@ -150,7 +152,7 @@ class TiendanubeCallbackTests(APITestCase):
         )
         self.assertEqual(response.status_code, 200, response.data)
         connection.refresh_from_db()
-        self.assertEqual(connection.owner, self.user)
+        self.assertEqual(connection.owner, self.biz)
         self.assertTrue(AuditLog.objects.filter(action="store.claim", actor=self.user).exists())
 
         # Reintentar el mismo reclamo es inofensivo.
@@ -169,7 +171,7 @@ class TiendanubeCallbackTests(APITestCase):
             f"{STORES_URL}claim/", {"token": params["store_claim"]}, format="json", **auth_headers_for(self.other)
         )
         self.assertEqual(response.status_code, 409)
-        self.assertEqual(StoreConnection.objects.get().owner, self.user)
+        self.assertEqual(StoreConnection.objects.get().owner, self.biz)
 
     def test_reclamo_con_token_alterado_o_vencido_se_rechaza(self):
         self._callback(code="abc")
@@ -191,21 +193,21 @@ class TiendanubeCallbackTests(APITestCase):
         self.assertIsNone(connection.owner)
 
     def test_reinstalar_actualiza_el_token_sin_duplicar_la_tienda(self):
-        state = make_oauth_state(self.user, "tiendanube")
+        state = make_oauth_state(self.biz, "tiendanube", actor=self.user)
         self._callback(code="abc", state=state)
         self.mock_post.return_value = self._token_response("tok-2")
         self._callback(code="def", state=state)
 
         connection = StoreConnection.objects.get()
         self.assertEqual(connection.access_token, "tok-2")
-        self.assertEqual(connection.owner, self.user)
+        self.assertEqual(connection.owner, self.biz)
 
     def test_reinstalar_desde_otra_cuenta_no_le_pasa_la_tienda(self):
-        self._callback(code="abc", state=make_oauth_state(self.user, "tiendanube"))
-        params = self._redirect_params(self._callback(code="def", state=make_oauth_state(self.other, "tiendanube")))
+        self._callback(code="abc", state=make_oauth_state(self.biz, "tiendanube", actor=self.user))
+        params = self._redirect_params(self._callback(code="def", state=make_oauth_state(self.other_biz, "tiendanube", actor=self.other)))
 
         self.assertEqual(params, {"store_error": "owned_by_other_account"})
-        self.assertEqual(StoreConnection.objects.get().owner, self.user)
+        self.assertEqual(StoreConnection.objects.get().owner, self.biz)
 
     def test_state_alterado_no_conecta_nada(self):
         params = self._redirect_params(self._callback(code="abc", state="state-inventado"))
@@ -218,14 +220,14 @@ class TiendanubeCallbackTests(APITestCase):
         self.mock_post.return_value = fake_response(
             200, {"error": "invalid_grant", "error_description": "The authorization code has expired"}
         )
-        params = self._redirect_params(self._callback(code="viejo", state=make_oauth_state(self.user, "tiendanube")))
+        params = self._redirect_params(self._callback(code="viejo", state=make_oauth_state(self.biz, "tiendanube", actor=self.user)))
 
         self.assertEqual(params, {"store_error": "authorization_rejected"})
         self.assertFalse(StoreConnection.objects.exists())
 
     def test_tiendanube_no_responde(self):
         self.mock_post.side_effect = requests.ConnectionError("sin red")
-        params = self._redirect_params(self._callback(code="abc", state=make_oauth_state(self.user, "tiendanube")))
+        params = self._redirect_params(self._callback(code="abc", state=make_oauth_state(self.biz, "tiendanube", actor=self.user)))
 
         self.assertEqual(params, {"store_error": "provider_unavailable"})
         self.assertFalse(StoreConnection.objects.exists())
@@ -239,7 +241,7 @@ class TiendanubeCallbackTests(APITestCase):
 
     def test_si_no_se_pueden_leer_los_datos_de_la_tienda_igual_queda_conectada(self):
         self.mock_request.return_value = fake_response(500)
-        params = self._redirect_params(self._callback(code="abc", state=make_oauth_state(self.user, "tiendanube")))
+        params = self._redirect_params(self._callback(code="abc", state=make_oauth_state(self.biz, "tiendanube", actor=self.user)))
 
         connection = StoreConnection.objects.get()
         self.assertEqual(params, {"store_connected": str(connection.pk)})
@@ -250,14 +252,15 @@ class TiendanubeCallbackTests(APITestCase):
 class StoreConnectionApiTests(APITestCase):
     def setUp(self):
         self.user = make_user("comercio@example.com")
+        self.biz = new_business(self.user)
         self.other = make_user("otro@example.com")
+        self.other_biz = new_business(self.other)
         self.mine = StoreConnection.objects.create(
-            owner=self.user, platform="tiendanube", external_store_id="111", name="Mía", access_token="tok-mio"
+            owner=self.biz, platform="tiendanube", external_store_id="111", name="Mía", access_token="tok-mio"
         )
         self.theirs = StoreConnection.objects.create(
-            owner=self.other, platform="tiendanube", external_store_id="222", name="Ajena", access_token="tok-ajeno"
+            owner=self.other_biz, platform="tiendanube", external_store_id="222", name="Ajena", access_token="tok-ajeno"
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_lista_solo_las_tiendas_propias_y_sin_token(self):
         response = self.client.get(STORES_URL, **auth_headers_for(self.user))

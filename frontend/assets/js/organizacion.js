@@ -111,7 +111,23 @@
     }
   }
 
-  async function init() {
+  // Sin el acceso "Datos del comercio" (account.manage) se ven pero no se
+  // cambian: el backend igual rechazaría el guardado.
+  function makeReadOnly() {
+    const form = document.getElementById("accountForm");
+    form.querySelectorAll("input, select, textarea, button").forEach((el) => {
+      el.disabled = true;
+    });
+    form.querySelector(".account-actions").hidden = true;
+    document.getElementById("logoInput").hidden = true;
+    document.getElementById("logoRemove").hidden = true;
+    const note = document.createElement("p");
+    note.className = "account-section-help";
+    note.textContent = "Solo los podés ver: cambiarlos necesita el acceso «Datos del comercio».";
+    form.before(note);
+  }
+
+  async function init(canEdit) {
     window.AppTopbar.render();
     document.getElementById("accountForm").addEventListener("submit", save);
     document.getElementById("logoInput").addEventListener("change", async (event) => {
@@ -135,6 +151,7 @@
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(getErrorMessage(data, "No se pudieron leer los datos de la cuenta."));
       fillForm(data);
+      if (!canEdit) makeReadOnly();
     } catch (err) {
       if (err.isSessionExpired) return;
       showMessage(err.message);
@@ -165,6 +182,6 @@
   } else {
     const team = window.Auth.getCurrentUser().team;
     document.getElementById("comercio").textContent = `Datos del comercio «${team.display_name || team.name}»`;
-    init();
+    init(sessionHasPermission("account.manage"));
   }
 })();

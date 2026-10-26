@@ -25,13 +25,13 @@ from rest_framework.test import APITestCase
 
 from apps.documents.models import UploadedLabelFile
 
+from apps.accounts.tests.team_helpers import new_business
 from ..models import ElementLayout, LayoutElement, LayoutVariable, mm_to_px
 from ..element_layout_render import render_element_layout_pdf, render_element_layout_png, resolve
 from ..element_layout_render.pdf import _y
 from ..element_layout_render.primitives import Canvas, Image as ImagePrimitive, Line, Rectangle, Text
 from ..element_layout_render import fonts
 from ..element_layout_render.resolution import text_width_mm, shipment_qr_payload
-from apps.accounts.tests.team_helpers import give_solo_teams
 
 User = get_user_model()
 
@@ -49,6 +49,7 @@ class BaseRenderTests(APITestCase):
         self.usuario = User.objects.create_user(
             username="ana", email="ana@test.com", password="x"
         )
+        new_business(self.usuario)  # el render pide comercio; los diseños son de la persona
         self.plantilla = ElementLayout.objects.create(
             name="Prueba",
             width_mm=Decimal("100"),
@@ -59,7 +60,6 @@ class BaseRenderTests(APITestCase):
         self.destinatario = LayoutVariable.objects.get(code="destinatario")
         self.qr = LayoutVariable.objects.get(code="qr")
         self.logo = LayoutVariable.objects.get(code="logo_empresa")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def elemento(self, tipo, **kwargs):
         campos = dict(
@@ -257,7 +257,6 @@ class QrDelEnvioTests(BaseRenderTests):
             "domicilio": "Belgrano 1847",
             "numero_pedido": "2888",
         }
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_el_payload_es_json_compacto_y_ordenado(self):
         """Ordenado para que el mismo envío dé siempre el mismo código."""
@@ -451,7 +450,6 @@ class CoordenadasPdfTests(BaseRenderTests):
     def setUp(self):
         super().setUp()
         self.lienzo = Canvas(width_mm=100, height_mm=150, dpi=300)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_el_borde_superior_del_modelo_es_el_tope_del_pdf(self):
         from reportlab.lib.units import mm
@@ -484,7 +482,6 @@ class ImagenesTests(BaseRenderTests):
             size_bytes=len(PNG_MINIMO),
             uploaded_by=self.usuario,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_un_documento_propio_se_incrusta(self):
         lienzo = resolve(
@@ -529,7 +526,6 @@ class BackendsTests(BaseRenderTests):
                       order=20)
         self.elemento("linea", y_mm=Decimal("28"), height_mm=Decimal("0.3"), order=5)
         self.datos = {"destinatario": "Ana"}
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_el_pdf_sale_con_su_cabecera(self):
         contenido, _ = render_element_layout_pdf(self.plantilla, self.datos)
@@ -573,7 +569,6 @@ class RenderizarAPITests(BaseRenderTests):
         super().setUp()
         self.elemento("variable", variable=self.destinatario)
         self.url = reverse("element-layout-render", args=[self.plantilla.pk])
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_requiere_autenticacion(self):
         respuesta = self.client.post(self.url, {}, format="json")

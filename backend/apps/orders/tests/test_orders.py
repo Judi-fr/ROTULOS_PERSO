@@ -10,7 +10,7 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from ..models import Address, Order
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 User = get_user_model()
 
@@ -34,20 +34,22 @@ class OrdersSelfServiceTests(APITestCase):
         )
         self.other_user.groups.add(subscriber_group)
 
+        self.biz = new_business(self.user)
+        self.other_biz = new_business(self.other_user)
+
         self.address = Address.objects.create(
-            user=self.user,
+            user=self.biz,
             label="Casa",
             street="Av. Siempre Viva",
             number="742",
             city="Springfield",
             is_default=True,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     # --- Direcciones -------------------------------------------------
 
     def test_list_addresses_returns_only_own(self):
-        Address.objects.create(user=self.other_user, street="Otra calle", city="Otra ciudad")
+        Address.objects.create(user=self.other_biz, street="Otra calle", city="Otra ciudad")
 
         response = self.client.get("/api/v1/addresses/", **auth_headers_for(self.user))
 
@@ -64,11 +66,11 @@ class OrdersSelfServiceTests(APITestCase):
 
         self.assertEqual(response.status_code, 201, response.data)
         address = Address.objects.get(pk=response.data["id"])
-        self.assertEqual(address.user, self.user)
+        self.assertEqual(address.user, self.biz)
 
     def test_setting_new_default_address_unsets_previous(self):
         second = Address.objects.create(
-            user=self.user, street="Nueva default", city="CABA", is_default=False
+            user=self.biz, street="Nueva default", city="CABA", is_default=False
         )
 
         response = self.client.patch(
@@ -84,7 +86,7 @@ class OrdersSelfServiceTests(APITestCase):
         self.assertTrue(second.is_default)
 
     def test_cannot_delete_address_with_orders(self):
-        Order.objects.create(user=self.user, address=self.address)
+        Order.objects.create(user=self.biz, address=self.address)
 
         response = self.client.delete(
             f"/api/v1/addresses/{self.address.pk}/", **auth_headers_for(self.user)
@@ -95,7 +97,7 @@ class OrdersSelfServiceTests(APITestCase):
 
     def test_cannot_use_another_users_address(self):
         foreign_address = Address.objects.create(
-            user=self.other_user, street="Ajena", city="Otra ciudad"
+            user=self.other_biz, street="Ajena", city="Otra ciudad"
         )
 
         response = self.client.post(
@@ -123,11 +125,11 @@ class OrdersSelfServiceTests(APITestCase):
         self.assertEqual(order.status_events.first().status, Order.Status.CREATED)
 
     def test_list_orders_returns_only_own(self):
-        Order.objects.create(user=self.user, address=self.address)
+        Order.objects.create(user=self.biz, address=self.address)
         other_address = Address.objects.create(
-            user=self.other_user, street="Otra calle", city="Otra ciudad"
+            user=self.other_biz, street="Otra calle", city="Otra ciudad"
         )
-        Order.objects.create(user=self.other_user, address=other_address)
+        Order.objects.create(user=self.other_biz, address=other_address)
 
         response = self.client.get("/api/v1/orders/", **auth_headers_for(self.user))
 
@@ -136,7 +138,7 @@ class OrdersSelfServiceTests(APITestCase):
         self.assertEqual(len(results), 1)
 
     def test_cancel_own_order(self):
-        order = Order.objects.create(user=self.user, address=self.address)
+        order = Order.objects.create(user=self.biz, address=self.address)
 
         response = self.client.post(
             f"/api/v1/orders/{order.pk}/cancel/", **auth_headers_for(self.user)
@@ -152,7 +154,7 @@ class OrdersSelfServiceTests(APITestCase):
 
     def test_cannot_cancel_dispatched_order(self):
         order = Order.objects.create(
-            user=self.user, address=self.address, status=Order.Status.DISPATCHED
+            user=self.biz, address=self.address, status=Order.Status.DISPATCHED
         )
 
         response = self.client.post(
@@ -165,9 +167,9 @@ class OrdersSelfServiceTests(APITestCase):
 
     def test_cannot_access_another_users_order(self):
         other_address = Address.objects.create(
-            user=self.other_user, street="Otra calle", city="Otra ciudad"
+            user=self.other_biz, street="Otra calle", city="Otra ciudad"
         )
-        foreign_order = Order.objects.create(user=self.other_user, address=other_address)
+        foreign_order = Order.objects.create(user=self.other_biz, address=other_address)
 
         response = self.client.get(
             f"/api/v1/orders/{foreign_order.pk}/", **auth_headers_for(self.user)
@@ -196,18 +198,20 @@ class AdminOrdersTests(APITestCase):
         )
         self.admin_user.groups.add(admin_group)
 
+        new_business(self.admin_user)
+
         self.user = User.objects.create_user(
             username="cliente_orders@example.com",
             email="cliente_orders@example.com",
             password="Clave123!",
         )
         self.user.groups.add(subscriber_group)
+        self.biz = new_business(self.user)
 
         self.address = Address.objects.create(
-            user=self.user, street="Calle 1", city="CABA", is_default=True
+            user=self.biz, street="Calle 1", city="CABA", is_default=True
         )
-        self.order = Order.objects.create(user=self.user, address=self.address)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.order = Order.objects.create(user=self.biz, address=self.address)
 
     def test_no_admin_recibe_403(self):
         response = self.client.get("/api/v1/admin/orders/", **auth_headers_for(self.user))
@@ -297,7 +301,7 @@ class OrderImportTests(APITestCase):
             password="Clave123!",
         )
         self.user.groups.add(merchant_group)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
 
     def _upload_csv(self, csv_text):
         from django.core.files.uploadedfile import SimpleUploadedFile
@@ -332,7 +336,7 @@ class OrderImportTests(APITestCase):
         first_result = self._confirm(first_import_id)
         self.assertEqual(first_result["imported_count"], 1)
         self.assertEqual(first_result["skipped_count"], 0)
-        self.assertEqual(Order.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(Order.objects.filter(user=self.biz).count(), 1)
 
         # Mismo archivo, misma sesión de importación (mismo external_id):
         # la segunda vez no debe crear un pedido nuevo, tiene que saltearlo.
@@ -340,7 +344,7 @@ class OrderImportTests(APITestCase):
         second_result = self._confirm(second_import_id)
         self.assertEqual(second_result["imported_count"], 0)
         self.assertEqual(second_result["skipped_count"], 1)
-        self.assertEqual(Order.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(Order.objects.filter(user=self.biz).count(), 1)
 
     def test_fila_invalida_no_aborta_el_resto_y_reporta_su_numero(self):
         csv_text = (
@@ -360,4 +364,4 @@ class OrderImportTests(APITestCase):
         self.assertEqual(result["error_count"], 1)
         self.assertEqual(len(result["errors"]), 1)
         self.assertEqual(result["errors"][0]["fila"], 3)
-        self.assertEqual(Order.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(Order.objects.filter(user=self.biz).count(), 1)

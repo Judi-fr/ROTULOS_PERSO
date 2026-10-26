@@ -9,7 +9,7 @@ from apps.audit.models import AuditLog
 
 from ..models import Address, Order
 from .test_orders import auth_headers_for
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 User = get_user_model()
 
@@ -21,11 +21,12 @@ class OrderShipTests(APITestCase):
         subscriber, _ = Group.objects.get_or_create(name="subscriber")
         self.user = User.objects.create_user(username="cliente1", email="cliente1@example.com", password="Clave123!")
         self.user.groups.add(subscriber)
+        self.biz = new_business(self.user)
         self.other = User.objects.create_user(username="cliente2", email="cliente2@example.com", password="Clave123!")
         self.other.groups.add(subscriber)
-        self.address = Address.objects.create(user=self.user, street="Av. Siempre Viva", number="742", city="CABA")
-        self.order = Order.objects.create(user=self.user, address=self.address)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.other_biz = new_business(self.other)
+        self.address = Address.objects.create(user=self.biz, street="Av. Siempre Viva", number="742", city="CABA")
+        self.order = Order.objects.create(user=self.biz, address=self.address)
 
     def _ship(self, payload, user=None, order=None):
         order = order or self.order

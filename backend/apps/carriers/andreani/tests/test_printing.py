@@ -15,7 +15,7 @@ from apps.labels.models import LabelTemplate
 
 from .fake_andreani import AndreaniTestMixin
 from .test_andreani import API, make_order
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 
 def andreani_label(number, **_kwargs):
@@ -33,16 +33,15 @@ class PrintTests(AndreaniTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
-        self.account = self.make_account(self.user)
+        self.biz = new_business(self.user)
+        self.account = self.make_account(self.biz)
         self.shipments = [
-            service.create_shipment(None, self.account, make_order(self.user, recipient_name=name), "400006709")
+            service.create_shipment(None, self.account, make_order(self.biz, recipient_name=name), "400006709")
             for name in ("María Gómez", "Juan Pérez")
         ]
         patcher = patch("apps.carriers.andreani.client.AndreaniClient.label", autospec=True, side_effect=lambda client, number, **kw: andreani_label(number))
         patcher.start()
         self.addCleanup(patcher.stop)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _print(self, ids, user=None):
         return self.client.post(
@@ -81,7 +80,7 @@ class PrintTests(AndreaniTestMixin, APITestCase):
 
         self.assertEqual(self._print([self.shipments[0].pk]).status_code, 400)
         other = make_user("otro@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(other)
         self.assertEqual(self._print([self.shipments[1].pk], user=other).status_code, 400)
 
     def test_una_etiqueta_ilegible_de_andreani_avisa_en_vez_de_imprimir_a_medias(self):

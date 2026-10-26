@@ -28,13 +28,14 @@ def csv_file(rows):
 
 class ReviewFixesTests(APITestCase):
     def setUp(self):
-        self.owner = make_user("owner@example.com")
-        self.t1 = store(self.owner, "1")
-        self.t2 = store(self.owner, "2")
-        address = Address.objects.create(user=self.owner, recipient_name="Compradora T2", street="Calle", number="1", city="CABA")
-        self.o1 = Order.objects.create(user=self.owner, address=address, store_connection=self.t1, external_id="1", external_number="1001")
-        self.o2 = Order.objects.create(user=self.owner, address=address, store_connection=self.t2, external_id="2", external_number="2002")
-        self.template = LabelTemplate.objects.create(owner=self.owner, name="Privada", width_cm=10, height_cm=15, design=DESIGN)
+        self.owner = make_owner("owner@example.com")
+        self.biz = teams.data_owner(self.owner)
+        self.t1 = store(self.biz, "1")
+        self.t2 = store(self.biz, "2")
+        address = Address.objects.create(user=self.biz, recipient_name="Compradora T2", street="Calle", number="1", city="CABA")
+        self.o1 = Order.objects.create(user=self.biz, address=address, store_connection=self.t1, external_id="1", external_number="1001")
+        self.o2 = Order.objects.create(user=self.biz, address=address, store_connection=self.t2, external_id="2", external_number="2002")
+        self.template = LabelTemplate.objects.create(owner=self.biz, name="Privada", width_cm=10, height_cm=15, design=DESIGN)
         self.limited, member = add_employee(self.owner, "limitado@example.com", profile="Todo")
         member.all_stores = False
         member.save()
@@ -80,7 +81,7 @@ class ReviewFixesTests(APITestCase):
         self.assertEqual(response.status_code, 201, response.data)
 
     def test_legacy_document_is_hidden_from_limited_employee(self):
-        legacy = Document.objects.create(user=self.owner, name="Viejo", status=Document.Status.READY, store_ids=None)
+        legacy = Document.objects.create(user=self.biz, name="Viejo", status=Document.Status.READY, store_ids=None)
         ids = {item["id"] for item in self.client.get("/api/v1/documents/", **bearer(self.limited)).data["results"]}
         self.assertNotIn(legacy.id, ids)
         ids = {item["id"] for item in self.client.get("/api/v1/documents/", **bearer(self.owner)).data["results"]}

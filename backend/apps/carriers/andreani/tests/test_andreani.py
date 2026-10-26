@@ -19,7 +19,7 @@ from apps.labels.label_rendering import build_label_context
 from apps.orders.models import Address, Order
 
 from .fake_andreani import PASSWORD, USER, AndreaniTestMixin, event
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 API = "/api/v1/carriers/andreani"
 
@@ -45,7 +45,7 @@ class AccountTests(AndreaniTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
 
     def test_cargar_la_cuenta_sin_devolver_la_contraseña(self):
         response = self.client.put(
@@ -71,7 +71,7 @@ class AccountTests(AndreaniTestMixin, APITestCase):
         self.assertTrue(response.data["has_password"])
         self.assertEqual(response.data["missing"], [])
         self.assertEqual(len(response.data["contracts"]), 1)
-        account = CarrierAccount.objects.get(owner=self.user)
+        account = CarrierAccount.objects.get(owner=self.biz)
         self.assertEqual(account.password, PASSWORD)
         self.assertNotIn(PASSWORD, account.password_encrypted)
 
@@ -102,11 +102,11 @@ class PayloadTests(AndreaniTestMixin, TestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        self.account = self.make_account(self.user)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
+        self.account = self.make_account(self.biz)
 
     def test_domicilio(self):
-        payload = service.build_order_payload(self.account, make_order(self.user), "400006709", package_count=2)
+        payload = service.build_order_payload(self.account, make_order(self.biz), "400006709", package_count=2)
 
         self.assertEqual(payload["contrato"], "400006709")
         self.assertEqual(payload["idPedido"], "1001")
@@ -121,7 +121,7 @@ class PayloadTests(AndreaniTestMixin, TestCase):
         self.assertEqual(payload["bultos"][0]["referencias"], [{"meta": "idCliente", "contenido": "1001"}])
 
     def test_sucursal_o_punto_hop(self):
-        payload = service.build_order_payload(self.account, make_order(self.user), "400006710", branch_id="4327")
+        payload = service.build_order_payload(self.account, make_order(self.biz), "400006710", branch_id="4327")
         self.assertEqual(payload["destino"], {"sucursal": {"id": "4327"}})
 
 
@@ -129,10 +129,9 @@ class ShipmentTests(AndreaniTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
-        self.account = self.make_account(self.user)
-        self.order = make_order(self.user)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
+        self.account = self.make_account(self.biz)
+        self.order = make_order(self.biz)
 
     def _create(self, **data):
         payload = {"order_ids": [self.order.pk], "contract": "400006709"}
@@ -173,8 +172,8 @@ class ShipmentTests(AndreaniTestMixin, APITestCase):
         self.assertEqual(self.andreani.orders[-1]["destino"], {"sucursal": {"id": "4327"}})
 
     def test_un_pedido_que_falla_no_frena_a_los_demas(self):
-        broken = make_order(self.user, street="", postal_code="")
-        foreign = make_order(make_user("otro@example.com"))
+        broken = make_order(self.biz, street="", postal_code="")
+        foreign = make_order(new_business(make_user("otro@example.com")))
         response = self._create(order_ids=[broken.pk, self.order.pk, foreign.pk])
 
         self.assertEqual((response.data["created"], response.data["failed"]), (1, 2))
@@ -205,7 +204,7 @@ class ShipmentTests(AndreaniTestMixin, APITestCase):
         zpl = self.client.get(f"{API}/shipments/{shipment.pk}/label/", {"file_type": "zpl"}, **auth_headers_for(self.user))
         self.assertTrue(zpl.content.startswith(b"^XA"))
 
-        other = make_order(self.user)
+        other = make_order(self.biz)
         self.client.post(f"{API}/shipments/", {"order_ids": [other.pk], "contract": "400006709"}, format="json", **auth_headers_for(self.user))
         ids = list(CarrierShipment.objects.values_list("pk", flat=True))
         bundle = self.client.post(f"{API}/shipments/labels/", {"shipment_ids": ids}, format="json", **auth_headers_for(self.user))
@@ -217,7 +216,7 @@ class ShipmentTests(AndreaniTestMixin, APITestCase):
         self._create()
         shipment = CarrierShipment.objects.get(order=self.order)
         other = make_user("otro@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(other)
         response = self.client.get(f"{API}/shipments/{shipment.pk}/label/", **auth_headers_for(other))
         self.assertEqual(response.status_code, 404)
 
@@ -237,7 +236,7 @@ class ShipmentTests(AndreaniTestMixin, APITestCase):
     def test_token_vencido_se_renueva_solo(self):
         self._create()
         self.andreani.valid_token = "otro-token"  # Andreani lo invalidó antes de tiempo.
-        other = make_order(self.user)
+        other = make_order(self.biz)
         response = self.client.post(f"{API}/shipments/", {"order_ids": [other.pk], "contract": "400006709"}, format="json", **auth_headers_for(self.user))
         self.assertEqual(response.data["created"], 1, response.data)
         self.assertEqual(self.andreani.logins, 2)
@@ -247,9 +246,9 @@ class QuoteTests(AndreaniTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        self.account = self.make_account(self.user)
-        self.order = make_order(self.user)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
+        self.account = self.make_account(self.biz)
+        self.order = make_order(self.biz)
 
     def _quote(self, **data):
         payload = {"order_ids": [self.order.pk], "contract": "400006709"}
@@ -281,7 +280,7 @@ class QuoteTests(AndreaniTestMixin, APITestCase):
         self.assertEqual((params["bultos[0][kilos]"], params["bultos[1][kilos]"]), ("1.25", "1.25"))
 
     def test_sin_codigo_de_cliente_no_cotiza_y_un_pedido_ajeno_tampoco(self):
-        foreign = make_order(make_user("otro@example.com"))
+        foreign = make_order(new_business(make_user("otro@example.com")))
         self.account.client_code = ""
         self.account.save()
         response = self._quote(order_ids=[self.order.pk, foreign.pk])
@@ -298,7 +297,7 @@ class QuoteTests(AndreaniTestMixin, APITestCase):
         )
         self.assertEqual(created.data["results"][0]["quoted_price"], "3025.00", created.data)
 
-        other = make_order(self.user)
+        other = make_order(self.biz)
         self.account.client_code = ""
         self.account.save()
         again = self.client.post(
@@ -311,8 +310,8 @@ class QuoteTests(AndreaniTestMixin, APITestCase):
 class BranchTests(AndreaniTestMixin, APITestCase):
     def test_sucursales_y_puntos_hop_por_codigo_postal(self):
         user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
-        self.make_account(user)
+        user_biz = new_business(user)
+        self.make_account(user_biz)
         response = self.client.get(f"{API}/branches/", {"cp": "C1414ABC"}, **auth_headers_for(user))
 
         self.assertEqual(response.status_code, 200, response.data)
@@ -327,11 +326,11 @@ class TrackingTests(AndreaniTestMixin, TestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        self.account = self.make_account(self.user)
-        self.order = make_order(self.user)
+        self.biz = new_business(self.user)
+        self.account = self.make_account(self.biz)
+        self.order = make_order(self.biz)
         self.shipment = service.create_shipment(None, self.account, self.order, "400006709")
         self.number = self.shipment.tracking_number
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _sync(self):
         changed = service.sync_shipment(CarrierShipment.objects.get(pk=self.shipment.pk))

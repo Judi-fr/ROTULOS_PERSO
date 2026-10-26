@@ -13,7 +13,7 @@ from apps.integrations.stores import PUSH_SHIPPING_RATES_EVENT
 from apps.integrations.tests.helpers import auth_headers_for, make_user
 
 from .fake_vtex import VTEX_SETTINGS, VtexTestMixin
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 
 def rate(pk, postal_from, postal_to, up_to_kg, price, code="standard", **extra):
@@ -75,11 +75,11 @@ class PublishRatesTests(VtexTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.owner = make_user("comercio@example.com")
-        self.connection = self._connection(owner=self.owner)
+        self.owner_biz = new_business(self.owner)
+        self.connection = self._connection(owner=self.owner_biz)
         self.cheap = ShippingRate.objects.create(
             connection=self.connection, postal_code_from="1000", postal_code_to="1999", weight_up_to_kg=Decimal("5"), price=Decimal("2000")
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _publish(self, enabled=True, store=None):
         return self.client.post(
@@ -146,7 +146,7 @@ class PublishRatesTests(VtexTestMixin, APITestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_plataforma_que_cotiza_en_el_momento_no_publica(self):
-        other = StoreConnection.objects.create(platform="woocommerce", external_store_id="mitienda.com.ar", owner=self.owner)
+        other = StoreConnection.objects.create(platform="woocommerce", external_store_id="mitienda.com.ar", owner=self.owner_biz)
         self.assertEqual(self._publish(store=other.pk).status_code, 400)
 
     def test_sin_permiso_de_logistica_queda_el_error_a_la_vista(self):

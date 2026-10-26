@@ -21,7 +21,7 @@ from apps.printing.models import Printer, PrintJob
 from apps.printing.services import create_agent
 
 from ..batch_jobs import run_pending_batches
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 User = get_user_model()
 
@@ -36,10 +36,10 @@ class BatchJobTests(APITestCase):
         self.addCleanup(media_override.disable)
         self.user = User.objects.create_user(username="lote@example.com", email="lote@example.com", password="Clave123!")
         self.user.groups.add(Group.objects.get_or_create(name="subscriber")[0])
+        self.biz = new_business(self.user)
         self.headers = {"HTTP_AUTHORIZATION": f"Bearer {RefreshToken.for_user(self.user).access_token}"}
-        address = Address.objects.create(user=self.user, recipient_name="María", street="Corrientes", number="1", city="CABA")
-        self.orders = [Order.objects.create(user=self.user, address=address) for _ in range(3)]
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        address = Address.objects.create(user=self.biz, recipient_name="María", street="Corrientes", number="1", city="CABA")
+        self.orders = [Order.objects.create(user=self.biz, address=address) for _ in range(3)]
 
     def batch(self, orders=None, **extra):
         ids = [order.pk for order in (orders or self.orders)]
@@ -77,7 +77,7 @@ class BatchJobTests(APITestCase):
 
     def test_large_batch_to_a_printer_queues_the_print_job_when_ready(self):
         agent, _ = create_agent(self.user, "PC")
-        printer = Printer.objects.create(owner=self.user, agent=agent, name="Zebra", format="zpl", dpmm=8, host="10.0.0.5")
+        printer = Printer.objects.create(owner=self.biz, agent=agent, name="Zebra", format="zpl", dpmm=8, host="10.0.0.5")
         response = self.batch(printer_id=printer.pk)
         self.assertTrue(response.data["queued"])
         self.assertIsNone(response.data["print_job"])

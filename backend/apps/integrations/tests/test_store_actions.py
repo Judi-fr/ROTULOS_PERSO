@@ -27,7 +27,7 @@ from apps.integrations.providers import get_provider
 from apps.integrations.providers.woocommerce.tests.test_woocommerce import BASE_URL, WOO_SETTINGS, WooTestMixin, woo_order
 from apps.integrations.tests.helpers import make_user
 from apps.orders.models import Order
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 PRINT_LINK_URL = "/api/v1/integrations/woocommerce/print-link/"
 
@@ -59,7 +59,8 @@ class StoreActionTests(WooTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.owner = make_user("comercio@example.com")
-        self.connection = self._connection(owner=self.owner)
+        self.owner_biz = new_business(self.owner)
+        self.connection = self._connection(owner=self.owner_biz)
         self.secret = get_provider("woocommerce").ensure_webhook_secret(self.connection)
         self.woo.orders = {101: woo_order(101), 102: woo_order(102)}
         self.andreani = FakeAndreaniClient()
@@ -71,7 +72,6 @@ class StoreActionTests(WooTestMixin, APITestCase):
             patcher = patch(target, **kwargs)
             patcher.start()
             self.addCleanup(patcher.stop)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _link(self, ids, action=None):
         data = {"store": str(self.connection.pk), "ids": ids, "ts": int(time.time())}
@@ -108,7 +108,7 @@ class StoreActionTests(WooTestMixin, APITestCase):
         self.assertFalse(Order.objects.exclude(status=Order.Status.CREATED).exists())
 
     def test_despachar_crea_los_envios_y_baja_rotulo_y_etiqueta(self):
-        AndreaniTestMixin.make_account(self, self.owner)
+        AndreaniTestMixin.make_account(self, self.owner_biz)
 
         response = self._link([102, 101], "dispatch")
 
@@ -128,7 +128,7 @@ class StoreActionTests(WooTestMixin, APITestCase):
     def test_despachar_usa_el_contrato_del_checkout_y_no_repite_envios(self):
         AndreaniTestMixin.make_account(
             self,
-            self.owner,
+            self.owner_biz,
             contracts=[{"code": "111", "label": "Domicilio A", "kind": "home"}, {"code": "222", "label": "Domicilio B", "kind": "home"}],
         )
         self.connection.preferences = {"andreani_checkout": {"enabled": True, "contract": "222"}}
@@ -151,7 +151,7 @@ class StoreActionTests(WooTestMixin, APITestCase):
         self.assertFalse(CarrierShipment.objects.exists())
 
     def test_despachar_tiene_un_tope_por_tanda(self):
-        AndreaniTestMixin.make_account(self, self.owner)
+        AndreaniTestMixin.make_account(self, self.owner_biz)
         ids = list(range(1, store_print.MAX_ORDERS_PER_DISPATCH + 2))
         self.woo.orders = {order_id: woo_order(order_id) for order_id in ids}
 
@@ -176,7 +176,9 @@ class TiendanubeStoreActionTests(APITestCase):
         from apps.integrations.tests.test_store_integration_base import tiendanube_order
 
         self.owner = make_user("comercio@example.com")
-        StoreConnection.objects.create(platform="tiendanube", external_store_id="989346", owner=self.owner, access_token="tok")
+
+        self.owner_biz = new_business(self.owner)
+        StoreConnection.objects.create(platform="tiendanube", external_store_id="989346", owner=self.owner_biz, access_token="tok")
         remote = {"501": tiendanube_order(id=501, number=1501)}
         patcher = patch(
             "apps.integrations.providers.tiendanube.provider.TiendanubeProvider.get_order",
@@ -184,7 +186,6 @@ class TiendanubeStoreActionTests(APITestCase):
         )
         patcher.start()
         self.addCleanup(patcher.stop)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_planilla_desde_el_link_de_tiendanube(self):
         from apps.integrations.tests.helpers import auth_headers_for

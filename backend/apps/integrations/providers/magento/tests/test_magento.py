@@ -23,13 +23,12 @@ from apps.orders.ingestion import upsert_store_order
 from apps.orders.models import Order
 
 from .fake_magento import CREDS, EXTERNAL_ID, MAGENTO_SETTINGS, SITE, MagentoTestMixin, _encode, magento_order
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 
 class SiteUrlTests(TestCase):
     def setUp(self):
         self.provider = get_provider("magento")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_acepta_lo_que_pegaria_un_comerciante(self):
         cases = {
@@ -78,7 +77,6 @@ class OAuthSignatureTests(TestCase):
 class NormalizeOrderTests(TestCase):
     def setUp(self):
         self.provider = get_provider("magento")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_traduce_lo_que_necesita_el_rotulo(self):
         normalized = self.provider.normalize_order(magento_order(55))
@@ -116,7 +114,7 @@ class ManualConnectTests(MagentoTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(self.user)
 
     def _connect(self, **data):
         payload = dict(CREDS, site_url="mitienda.com.ar")
@@ -171,8 +169,7 @@ class ManualConnectTests(MagentoTestMixin, APITestCase):
 class ImportAndReconcileTests(MagentoTestMixin, TestCase):
     def setUp(self):
         super().setUp()
-        self.connection = self._connection(owner=make_user("comercio@example.com"))
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.connection = self._connection(owner=new_business(make_user("comercio@example.com")))
 
     def test_configurar_importa_todas_las_paginas_aunque_magento_repita_la_ultima(self):
         self.magento.orders = {i: magento_order(i, created_at=f"2026-10-0{i} 10:00:00") for i in (1, 2, 3)}
@@ -211,11 +208,11 @@ class PushFulfillmentTests(MagentoTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.owner = make_user("comercio@example.com")
-        self.connection = self._connection(owner=self.owner)
+        self.owner_biz = new_business(self.owner)
+        self.connection = self._connection(owner=self.owner_biz)
         self.magento.orders = {90: magento_order(90)}
         order, _ = upsert_store_order(self.connection, get_provider("magento").normalize_order(magento_order(90)))
         self.order = Order.objects.get(pk=order.pk)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _ship(self, **data):
         data.setdefault("status", "dispatched")

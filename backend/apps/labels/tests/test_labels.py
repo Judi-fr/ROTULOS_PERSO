@@ -13,7 +13,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from apps.orders.models import Address, Order
 
 from ..models import Label, LabelSequence, LabelTemplate
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 User = get_user_model()
 
@@ -52,6 +52,10 @@ class LabelsSelfServiceTests(APITestCase):
         )
         self.user.groups.add(subscriber_group)
 
+        new_business(self.user)
+
+        self.biz = new_business(self.user)
+
         self.other_user = User.objects.create_user(
             username="disenador2@example.com",
             email="disenador2@example.com",
@@ -59,16 +63,19 @@ class LabelsSelfServiceTests(APITestCase):
         )
         self.other_user.groups.add(subscriber_group)
 
+        self.other_user_biz = new_business(self.other_user)
+
+        self.other_user_biz = new_business(self.other_user)
+
         self.address = Address.objects.create(
-            user=self.user, street="Av. Siempre Viva", number="742", city="CABA", is_default=True
+            user=self.biz, street="Av. Siempre Viva", number="742", city="CABA", is_default=True
         )
-        self.order = Order.objects.create(user=self.user, address=self.address)
+        self.order = Order.objects.create(user=self.biz, address=self.address)
 
         self.other_address = Address.objects.create(
-            user=self.other_user, street="Otra calle", city="Rosario", is_default=True
+            user=self.other_user_biz, street="Otra calle", city="Rosario", is_default=True
         )
-        self.other_order = Order.objects.create(user=self.other_user, address=self.other_address)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.other_order = Order.objects.create(user=self.other_user_biz, address=self.other_address)
 
     def _create_label(self, user=None, **overrides):
         payload = {
@@ -89,7 +96,7 @@ class LabelsSelfServiceTests(APITestCase):
         response = self._create_label()
         self.assertEqual(response.status_code, 201, response.data)
         label = Label.objects.get(pk=response.data["id"])
-        self.assertEqual(label.user, self.user)
+        self.assertEqual(label.user, self.biz)
         self.assertEqual(label.design["remitente"]["text"], "Remitente: Juan Pérez")
 
     def test_create_label_invalid_design_returns_400(self):
@@ -228,13 +235,20 @@ class LabelTemplatesTests(APITestCase):
         )
         self.admin_user.groups.add(admin_group)
 
+        new_business(self.admin_user)
+
+        new_business(self.admin_user)
+
         self.user = User.objects.create_user(
             username="disenador3@example.com",
             email="disenador3@example.com",
             password="Clave123!",
         )
         self.user.groups.add(subscriber_group)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+
+        new_business(self.user)
+
+        self.biz = new_business(self.user)
 
     def test_non_admin_can_create_own_private_template_but_not_a_public_one(self):
         # labels.template_create (self-service, los cuatro roles) alcanza
@@ -249,7 +263,7 @@ class LabelTemplatesTests(APITestCase):
         )
         self.assertEqual(response.status_code, 201, response.data)
         self.assertFalse(response.data["is_public"])
-        self.assertEqual(response.data["owner"], self.user.pk)
+        self.assertEqual(response.data["owner"], self.biz.pk)
 
         response = self.client.post(
             "/api/v1/labels/templates/",
@@ -314,6 +328,10 @@ class AdminLabelsTests(APITestCase):
         )
         self.admin_user.groups.add(admin_group)
 
+        new_business(self.admin_user)
+
+        new_business(self.admin_user)
+
         self.user = User.objects.create_user(
             username="disenador4@example.com",
             email="disenador4@example.com",
@@ -321,15 +339,18 @@ class AdminLabelsTests(APITestCase):
         )
         self.user.groups.add(subscriber_group)
 
+        new_business(self.user)
+
+        self.biz = new_business(self.user)
+
         self.label = Label.objects.create(
-            user=self.user,
+            user=self.biz,
             name="Encomienda X",
             client="Cliente X",
             width_cm=10,
             height_cm=15,
             design=VALID_DESIGN,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_non_admin_receives_403_on_admin_listing(self):
         response = self.client.get("/api/v1/labels/admin/", **auth_headers_for(self.user))
@@ -421,6 +442,10 @@ class LabelBatchForeignOrderTests(APITestCase):
         )
         self.user.groups.add(subscriber_group)
 
+        new_business(self.user)
+
+        self.biz = new_business(self.user)
+
         self.other_user = User.objects.create_user(
             username="loteotro@example.com",
             email="loteotro@example.com",
@@ -428,25 +453,28 @@ class LabelBatchForeignOrderTests(APITestCase):
         )
         self.other_user.groups.add(subscriber_group)
 
+        self.other_user_biz = new_business(self.other_user)
+
+        self.other_user_biz = new_business(self.other_user)
+
         other_address = Address.objects.create(
-            user=self.other_user,
+            user=self.other_user_biz,
             street="Calle Ajena",
             number="999",
             city="Córdoba",
             state="Córdoba",
             postal_code="5000",
         )
-        self.foreign_order = Order.objects.create(user=self.other_user, address=other_address)
+        self.foreign_order = Order.objects.create(user=self.other_user_biz, address=other_address)
 
         self.template = LabelTemplate.objects.create(
             name="Plantilla lote",
-            owner=self.user,
+            owner=self.biz,
             is_public=True,
             width_cm=10,
             height_cm=15,
             design=VALID_DESIGN,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_batch_with_foreign_order_id_returns_400_and_creates_no_document(self):
         response = self.client.post(
@@ -495,25 +523,25 @@ class LabelSequenceTests(APITestCase):
             password="Clave123!",
         )
         self.user.groups.add(subscriber_group)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
 
     def test_next_value_is_consecutive(self):
-        first = LabelSequence.next_value(self.user, key="envios")
-        second = LabelSequence.next_value(self.user, key="envios")
-        third = LabelSequence.next_value(self.user, key="envios")
+        first = LabelSequence.next_value(self.biz, key="envios")
+        second = LabelSequence.next_value(self.biz, key="envios")
+        third = LabelSequence.next_value(self.biz, key="envios")
         self.assertEqual([first, second, third], ["000001", "000002", "000003"])
 
     def test_next_value_applies_prefix_and_padding(self):
-        LabelSequence.objects.create(owner=self.user, key="cortos", prefix="BP-", padding=3)
-        self.assertEqual(LabelSequence.next_value(self.user, key="cortos"), "BP-001")
-        self.assertEqual(LabelSequence.next_value(self.user, key="cortos"), "BP-002")
+        LabelSequence.objects.create(owner=self.biz, key="cortos", prefix="BP-", padding=3)
+        self.assertEqual(LabelSequence.next_value(self.biz, key="cortos"), "BP-001")
+        self.assertEqual(LabelSequence.next_value(self.biz, key="cortos"), "BP-002")
 
     def test_preview_does_not_consume_sequence(self):
         from ..label_rendering import build_computed_context
 
-        seq = LabelSequence.objects.create(owner=self.user, key="default", current=5)
+        seq = LabelSequence.objects.create(owner=self.biz, key="default", current=5)
 
-        computed = build_computed_context(owner=self.user, is_preview=True)
+        computed = build_computed_context(owner=self.biz, is_preview=True)
         value = computed("secuencia")
 
         self.assertEqual(value, "000001")  # valor de MUESTRA, no current+1
@@ -645,23 +673,23 @@ class LabelBatchComputedContextTests(APITestCase):
             password="Clave123!",
         )
         self.user.groups.add(subscriber_group)
+        self.biz = new_business(self.user)
 
         self.orders = []
         for i in range(3):
             address = Address.objects.create(
-                user=self.user, street=f"Calle {i}", number=str(i), city="CABA", is_default=(i == 0)
+                user=self.biz, street=f"Calle {i}", number=str(i), city="CABA", is_default=(i == 0)
             )
-            self.orders.append(Order.objects.create(user=self.user, address=address))
+            self.orders.append(Order.objects.create(user=self.biz, address=address))
 
         self.template = LabelTemplate.objects.create(
             name="Plantilla lote bultos",
-            owner=self.user,
+            owner=self.biz,
             is_public=True,
             width_cm=10,
             height_cm=15,
             design=VALID_DESIGN,
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_batch_of_three_resolves_bulto_de_bultos_per_item(self):
         from unittest.mock import patch
@@ -679,7 +707,7 @@ class LabelBatchComputedContextTests(APITestCase):
 
         with patch.object(batch_views, "draw_label_page", side_effect=spy_draw):
             file_bytes, item_count, skipped = batch_views._render_combined_pdf(
-                self.orders, self.template, owner=self.user
+                self.orders, self.template, owner=self.biz
             )
 
         self.assertEqual(item_count, 3)

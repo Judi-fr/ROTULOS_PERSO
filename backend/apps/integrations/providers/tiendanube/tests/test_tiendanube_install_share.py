@@ -14,7 +14,7 @@ from apps.integrations.models import StoreConnection
 from apps.integrations.stores import STATE_SALT, make_oauth_state, make_share_token
 from apps.integrations.tests.helpers import auth_headers_for, fake_response, make_user
 from .test_tiendanube_oauth import CALLBACK_URL, FRONTEND, TEST_SETTINGS
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 SHARE_LINK_URL = "/api/v1/integrations/tiendanube/install-share-link/"
 PUBLIC_BASE = "https://rotulos.example.com"
@@ -29,7 +29,7 @@ def share_open_url(token):
 class InstallShareLinkTests(APITestCase):
     def setUp(self):
         self.user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
 
     def test_requiere_estar_logueado(self):
         response = self.client.post(SHARE_LINK_URL)
@@ -49,7 +49,7 @@ class InstallShareLinkTests(APITestCase):
         location = opened["Location"]
         self.assertTrue(location.startswith("https://www.tiendanube.com/apps/9999/authorize?"))
         state = signing.loads(parse_qs(urlparse(location).query)["state"][0], salt=STATE_SALT)
-        self.assertEqual(state["u"], self.user.pk)
+        self.assertEqual(state["u"], self.biz.pk)
         self.assertEqual(state["x"], 1)
 
     @override_settings(INTEGRATIONS_PUBLIC_BASE_URL="")
@@ -70,18 +70,18 @@ class InstallShareLinkTests(APITestCase):
 
     @override_settings(INTEGRATIONS_INSTALL_SHARE_MAX_AGE_SECONDS=-1)
     def test_link_vencido_va_a_la_pagina_publica_con_error(self):
-        response = self.client.get(share_open_url(make_share_token(self.user, "tiendanube")))
+        response = self.client.get(share_open_url(make_share_token(self.biz, "tiendanube")))
         self.assertEqual(response["Location"], f"{SHARED_PAGE}?store_error=share_link_invalid")
 
     def test_link_de_usuario_desactivado_no_sirve(self):
-        token = make_share_token(self.user, "tiendanube")
+        token = make_share_token(self.biz, "tiendanube")
         self.user.is_active = False
         self.user.save(update_fields=["is_active"])
         response = self.client.get(share_open_url(token))
         self.assertEqual(response["Location"], f"{SHARED_PAGE}?store_error=share_link_invalid")
 
     def test_link_de_otra_plataforma_no_sirve(self):
-        response = self.client.get(share_open_url(make_share_token(self.user, "shopify")))
+        response = self.client.get(share_open_url(make_share_token(self.biz, "shopify")))
         self.assertEqual(response["Location"], f"{SHARED_PAGE}?store_error=share_link_invalid")
 
 
@@ -89,7 +89,7 @@ class InstallShareLinkTests(APITestCase):
 class SharedInstallCallbackTests(APITestCase):
     def setUp(self):
         self.user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
 
     def _callback(self, state, **extra):
         token_response = fake_response(json_data={"access_token": "tok", "user_id": 777, "scope": "read_orders"})
@@ -100,19 +100,19 @@ class SharedInstallCallbackTests(APITestCase):
             return self.client.get(CALLBACK_URL, {"code": "abc", "state": state, **extra})
 
     def test_instalacion_compartida_queda_en_la_cuenta_del_link_y_vuelve_a_la_pagina_publica(self):
-        response = self._callback(make_oauth_state(self.user, "tiendanube", shared=True))
+        response = self._callback(make_oauth_state(self.biz, "tiendanube", shared=True))
 
         self.assertEqual(response.status_code, 302)
         connection = StoreConnection.objects.get(platform="tiendanube", external_store_id="777")
-        self.assertEqual(connection.owner, self.user)
+        self.assertEqual(connection.owner, self.biz)
         self.assertEqual(response["Location"], f"{SHARED_PAGE}?store_connected={connection.pk}")
 
     def test_instalacion_normal_sigue_volviendo_a_la_pagina_del_comerciante(self):
-        response = self._callback(make_oauth_state(self.user, "tiendanube"))
+        response = self._callback(make_oauth_state(self.biz, "tiendanube", actor=self.user))
         connection = StoreConnection.objects.get(platform="tiendanube", external_store_id="777")
         self.assertEqual(response["Location"], f"{FRONTEND}/integraciones.html?store_connected={connection.pk}")
 
     def test_cancelada_desde_un_link_compartido_vuelve_a_la_pagina_publica(self):
-        state = make_oauth_state(self.user, "tiendanube", shared=True)
+        state = make_oauth_state(self.biz, "tiendanube", shared=True)
         response = self.client.get(CALLBACK_URL, {"error": "access_denied", "state": state})
         self.assertEqual(response["Location"], f"{SHARED_PAGE}?store_error=authorization_cancelled")

@@ -79,6 +79,12 @@
   display: none;
 }
 
+/* Lo mismo con "Quitar el logo": el `display: inline-flex` de .btn le ganaba
+   a `hidden` y el botón se veía sin logo cargado. */
+.account-logo .btn[hidden] {
+  display: none;
+}
+
 /* Baja del comercio (baja_comercio.js): al final, en rojo, solo el dueño. */
 .close-team-card {
   margin-top: 36px;

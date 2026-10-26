@@ -31,7 +31,7 @@ from apps.integrations.stores import (
 from apps.integrations.tests.test_store_integration_base import tiendanube_order
 from apps.integrations.tests.helpers import fake_response, make_user
 from .test_tiendanube_oauth import TEST_SETTINGS
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 WEBHOOKS_URL = "/api/v1/integrations/tiendanube/webhooks/"
 PUBLIC_BASE_URL = "https://rotulos.example.com"
@@ -68,9 +68,9 @@ class FakeTiendanubeApi:
 class TiendanubeTestCase(APITestCase):
     def setUp(self):
         self.owner = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.owner_biz = new_business(self.owner)
         self.connection = StoreConnection.objects.create(
-            owner=self.owner,
+            owner=self.owner_biz,
             platform="tiendanube",
             external_store_id="555",
             name="Tienda de prueba",
@@ -150,7 +150,7 @@ class TiendanubeOrderSyncTests(TiendanubeTestCase):
         self.assertEqual(event.status, IntegrationEvent.Status.DONE, event.last_error)
         order = Order.objects.get()
         self.assertEqual(order.store_connection, self.connection)
-        self.assertEqual(order.user, self.owner)
+        self.assertEqual(order.user, self.owner_biz)
         self.assertEqual(order.external_number, "1001")
         self.connection.refresh_from_db()
         self.assertIsNotNone(self.connection.last_synced_at)
@@ -212,7 +212,7 @@ class TiendanubeOrderSyncTests(TiendanubeTestCase):
         self.api.set("GET", "orders/871254203", 200, tiendanube_order())
         unclaimed = StoreConnection.objects.create(platform="tiendanube", external_store_id="777", access_token="t")
         revoked = StoreConnection.objects.create(
-            owner=self.owner, platform="tiendanube", external_store_id="888", status=StoreConnection.Status.REVOKED
+            owner=self.owner_biz, platform="tiendanube", external_store_id="888", status=StoreConnection.Status.REVOKED
         )
         events = [self._event("order/paid", connection=unclaimed), self._event("order/paid", connection=revoked)]
 
@@ -301,7 +301,7 @@ class TiendanubeStoreSetupTests(TiendanubeTestCase):
             def get_store_info(self, connection):
                 return StoreInfo(name="Otra tienda")
 
-        result = connect_store(FakeProvider(), "codigo", user=self.owner)
+        result = connect_store(FakeProvider(), "codigo", user=self.owner_biz)
 
         self.assertTrue(
             IntegrationEvent.objects.filter(connection=result.connection, event_type=STORE_SETUP_EVENT).exists()

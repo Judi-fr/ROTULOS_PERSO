@@ -11,7 +11,7 @@ from apps.labels.label_rendering import build_label_context
 from apps.labels.models import LabelTemplate
 from apps.orders.models import Address, Order
 from apps.orders.tests.test_orders import auth_headers_for
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 User = get_user_model()
 
@@ -23,17 +23,18 @@ class StoreSenderTests(APITestCase):
             username="vendedor@example.com", email="vendedor@example.com", password="Clave123!"
         )
         self.user.groups.add(subscriber)
+        self.biz = new_business(self.user)
         self.other = User.objects.create_user(
             username="ajeno@example.com", email="ajeno@example.com", password="Clave123!"
         )
         self.other.groups.add(subscriber)
+        self.other_biz = new_business(self.other)
         self.store = StoreConnection.objects.create(
-            owner=self.user,
+            owner=self.biz,
             platform=StoreConnection.Platform.TIENDANUBE,
             external_store_id="111",
             name="Tienda A",
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _patch(self, payload, user=None, store=None):
         store = store or self.store
@@ -89,14 +90,15 @@ class StoreSenderLabelContextTests(APITestCase):
         self.user = User.objects.create_user(
             username="vendedor2@example.com", email="vendedor2@example.com", password="Clave123!"
         )
+        self.biz = new_business(self.user)
         self.store = StoreConnection.objects.create(
-            owner=self.user,
+            owner=self.biz,
             platform=StoreConnection.Platform.TIENDANUBE,
             external_store_id="222",
             name="Tienda B",
         )
         self.address = Address.objects.create(
-            user=self.user,
+            user=self.biz,
             origin=Address.Origin.SHIPMENT,
             recipient_name="María Gómez",
             street="Corrientes",
@@ -104,9 +106,8 @@ class StoreSenderLabelContextTests(APITestCase):
             city="CABA",
         )
         self.order = Order.objects.create(
-            user=self.user, address=self.address, store_connection=self.store, external_id="o1"
+            user=self.biz, address=self.address, store_connection=self.store, external_id="o1"
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_sin_remitente_configurado_usa_el_nombre_de_la_tienda(self):
         context = build_label_context(order=self.order)
@@ -130,7 +131,7 @@ class StoreSenderLabelContextTests(APITestCase):
         self.assertEqual(context["destinatario"], "María Gómez")
 
     def test_un_pedido_sin_tienda_no_trae_remitente_de_tienda(self):
-        own_order = Order.objects.create(user=self.user, address=self.address)
+        own_order = Order.objects.create(user=self.biz, address=self.address)
 
         context = build_label_context(order=own_order)
 
@@ -148,22 +149,23 @@ class StoreLogoAndTemplateTests(APITestCase):
             username="vendedor4@example.com", email="vendedor4@example.com", password="Clave123!"
         )
         self.user.groups.add(subscriber)
+        self.biz = new_business(self.user)
         self.other = User.objects.create_user(
             username="ajeno2@example.com", email="ajeno2@example.com", password="Clave123!"
         )
+        self.other_biz = new_business(self.other)
         self.store = StoreConnection.objects.create(
-            owner=self.user,
+            owner=self.biz,
             platform=StoreConnection.Platform.TIENDANUBE,
             external_store_id="444",
             name="Tienda D",
         )
         self.own_template = LabelTemplate.objects.create(
-            owner=self.user, name="Mi plantilla", width_cm=10, height_cm=15, design={}
+            owner=self.biz, name="Mi plantilla", width_cm=10, height_cm=15, design={}
         )
         self.foreign_template = LabelTemplate.objects.create(
-            owner=self.other, name="Ajena", width_cm=10, height_cm=15, design={}
+            owner=self.other_biz, name="Ajena", width_cm=10, height_cm=15, design={}
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _patch(self, payload, fmt="json"):
         return self.client.patch(
@@ -226,15 +228,14 @@ class StorePrinterDensityTests(APITestCase):
         self.user = User.objects.create_user(
             username="impresora@example.com", email="impresora@example.com", password="Clave123!"
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         self.user.groups.add(subscriber)
+        self.biz = new_business(self.user)
         self.store = StoreConnection.objects.create(
-            owner=self.user,
+            owner=self.biz,
             platform=StoreConnection.Platform.TIENDANUBE,
             external_store_id="777",
             name="Tienda con térmica",
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def _patch(self, payload):
         return self.client.patch(
@@ -288,8 +289,8 @@ class StorePrinterDensityTests(APITestCase):
         otro = User.objects.create_user(
             username="ajeno3@example.com", email="ajeno3@example.com", password="Clave123!"
         )
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
         otro.groups.add(Group.objects.get(name="subscriber"))
+        new_business(otro)
         response = self.client.patch(
             f"/api/v1/integrations/stores/{self.store.pk}/settings/",
             {"label_printer_dpmm": 12},

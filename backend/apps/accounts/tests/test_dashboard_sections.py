@@ -10,7 +10,7 @@ from apps.integrations.models import StoreConnection
 from apps.labels.models import LabelTemplate
 
 from .test_team_permissions import add_employee, bearer, make_user
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 URL = "/api/v1/auth/users/me/dashboard/"
 
@@ -22,7 +22,7 @@ def sections(client, user):
 class DashboardSectionTests(APITestCase):
     def setUp(self):
         self.owner = make_user("owner@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.owner_biz = new_business(self.owner)
 
     def test_owner_gets_six_sections_with_their_links(self):
         data = sections(self.client, self.owner)
@@ -72,7 +72,7 @@ class DashboardSectionTests(APITestCase):
 class OnboardingTests(APITestCase):
     def setUp(self):
         self.owner = make_user("owner@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.owner_biz = new_business(self.owner)
 
     def steps(self, user=None):
         onboarding = self.client.get(URL, **bearer(user or self.owner)).data["onboarding"]
@@ -82,10 +82,10 @@ class OnboardingTests(APITestCase):
         self.assertEqual(self.steps(), {"store": False, "account": False, "template": False, "carrier": False})
 
     def test_steps_complete_as_the_business_sets_up(self):
-        StoreConnection.objects.create(owner=self.owner, platform="tiendanube", external_store_id="1", status="active")
-        AccountSettings.objects.create(user=self.owner, sender_name="Mi tienda")
-        LabelTemplate.objects.create(owner=self.owner, name="Mía", width_cm=10, height_cm=15, design={})
-        CarrierAccount.objects.create(owner=self.owner, carrier="oca", is_active=True)
+        StoreConnection.objects.create(owner=self.owner_biz, platform="tiendanube", external_store_id="1", status="active")
+        AccountSettings.objects.create(user=self.owner_biz, sender_name="Mi tienda")
+        LabelTemplate.objects.create(owner=self.owner_biz, name="Mía", width_cm=10, height_cm=15, design={})
+        CarrierAccount.objects.create(owner=self.owner_biz, carrier="oca", is_active=True)
         self.assertEqual(self.steps(), {"store": True, "account": True, "template": True, "carrier": True})
 
     def test_employees_do_not_get_the_setup_guide(self):

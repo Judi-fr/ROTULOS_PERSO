@@ -15,7 +15,7 @@ from apps.integrations.tests.helpers import auth_headers_for, make_user
 from apps.orders.models import Address, Order
 
 from .fake_oca import PASSWORD, USER, OcaTestMixin
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 API = "/api/v1/carriers"
 
@@ -53,7 +53,7 @@ class AccountTests(OcaTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
 
     def test_cargar_la_cuenta_y_probar_trae_las_operativas(self):
         response = self.client.put(
@@ -105,9 +105,9 @@ class ShipmentTests(OcaTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        self.account = self.make_oca_account(self.user)
-        self.order = make_order(self.user)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
+        self.account = self.make_oca_account(self.biz)
+        self.order = make_order(self.biz)
 
     def create(self, contract="64665", **extra):
         payload = {"carrier": "oca", "order_ids": [self.order.pk], "contract": contract, **extra}
@@ -130,7 +130,7 @@ class ShipmentTests(OcaTestMixin, APITestCase):
         self.assertEqual(call["PesoTotal"], "2.500")
 
     def test_cada_pedido_cotiza_con_sus_propios_bultos(self):
-        other = make_order(self.user, number="2002")
+        other = make_order(self.biz, number="2002")
         response = self.client.post(
             f"{API}/shipments/quote/",
             {
@@ -251,7 +251,7 @@ class ShipmentTests(OcaTestMixin, APITestCase):
         self.assertTrue(provider.tracking_url("123").endswith("123"))
 
     def test_un_pedido_ajeno_no_se_despacha(self):
-        other = make_order(make_user("otro@example.com"), number="9999")
+        other = make_order(new_business(make_user("otro@example.com")), number="9999")
         response = self.client.post(
             f"{API}/shipments/", {"carrier": "oca", "order_ids": [other.pk], "contract": "64665"}, format="json", **auth_headers_for(self.user)
         )

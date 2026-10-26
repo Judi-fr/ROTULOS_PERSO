@@ -7,6 +7,8 @@ import base64
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlparse
 
+from django.test import override_settings
+
 from apps.carriers.models import CarrierAccount
 
 HOST = "https://apitest.correoargentino.com.ar"
@@ -105,6 +107,14 @@ class CorreoTestMixin:
     def setUp(self):
         super().setUp()
         self.correo = FakeCorreo()
+        # El simulado atiende las URL de QA reales: un .env local que apunte a
+        # fake_correo_server (http://127.0.0.1:8098) no debe cambiar los tests.
+        qa_bases = override_settings(
+            CORREO_ARGENTINO_PAQAR_BASE_QA=f"{HOST}/paqar/v1",
+            CORREO_ARGENTINO_MICORREO_BASE_QA=f"{HOST}/micorreo/v1",
+        )
+        qa_bases.enable()
+        self.addCleanup(qa_bases.disable)
         for target in ("request", "post"):
             patcher = patch(f"apps.carriers.correo_argentino.client.requests.{target}", side_effect=getattr(self.correo, target))
             patcher.start()

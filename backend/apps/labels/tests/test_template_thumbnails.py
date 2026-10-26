@@ -17,7 +17,7 @@ from rest_framework.test import APITestCase
 from ..models import LabelTemplate
 from ..thumbnails import THUMBNAIL_WIDTH_PX
 from .test_labels import TINY_PNG_DATA_URL, VALID_DESIGN, auth_headers_for
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 User = get_user_model()
 
@@ -34,8 +34,11 @@ class TemplateThumbnailTests(APITestCase):
             username="miniaturas@example.com", email="miniaturas@example.com", password="Clave123!"
         )
         self.user.groups.add(Group.objects.get_or_create(name="subscriber")[0])
+
+        new_business(self.user)
+
+        self.biz = new_business(self.user)
         self.headers = auth_headers_for(self.user)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def create_template(self, **overrides):
         payload = {"name": "Mi plantilla", "width_cm": "10", "height_cm": "15", "design": VALID_DESIGN}
@@ -77,7 +80,7 @@ class TemplateThumbnailTests(APITestCase):
         self.assertEqual(self.thumbnail_of(response.data["id"]).size, (1, 1))
 
     def test_duplicate_of_a_template_without_thumbnail_gets_one(self):
-        original = LabelTemplate.objects.create(name="Vieja", owner=self.user, width_cm=10, height_cm=15, design=VALID_DESIGN)
+        original = LabelTemplate.objects.create(name="Vieja", owner=self.biz, width_cm=10, height_cm=15, design=VALID_DESIGN)
         response = self.client.post(f"/api/v1/labels/templates/{original.pk}/duplicate/", **self.headers)
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(self.thumbnail_of(response.data["id"]).width, THUMBNAIL_WIDTH_PX)
@@ -91,8 +94,8 @@ class TemplateThumbnailTests(APITestCase):
         self.assertFalse(LabelTemplate.objects.get(pk=response.data["id"]).preview)
 
     def test_command_fills_only_missing_thumbnails(self):
-        missing = LabelTemplate.objects.create(name="Sin", owner=self.user, width_cm=10, height_cm=15, design=VALID_DESIGN)
-        LabelTemplate.objects.create(name="Archivada", owner=self.user, width_cm=10, height_cm=15, design=VALID_DESIGN, is_active=False)
+        missing = LabelTemplate.objects.create(name="Sin", owner=self.biz, width_cm=10, height_cm=15, design=VALID_DESIGN)
+        LabelTemplate.objects.create(name="Archivada", owner=self.biz, width_cm=10, height_cm=15, design=VALID_DESIGN, is_active=False)
         # Las activas sin miniatura: la nueva y la del sistema que siembra la migración.
         expected = LabelTemplate.objects.filter(is_active=True, preview__in=["", None]).count()
         out = StringIO()

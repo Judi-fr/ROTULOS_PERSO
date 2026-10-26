@@ -19,7 +19,7 @@ from apps.carriers.oca.tests.fake_oca import OcaTestMixin
 from apps.carriers.tracking import sync_due_shipments
 from apps.integrations.tests.helpers import auth_headers_for, make_user
 from apps.orders.models import Order
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 API = "/api/v1/carriers"
 
@@ -40,16 +40,15 @@ class CommonApiTests(AndreaniTestMixin, OcaTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
-        self.andreani_account = self.make_account(self.user)
-        self.oca_account = self.make_oca_account(self.user)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        self.biz = new_business(self.user)
+        self.andreani_account = self.make_account(self.biz)
+        self.oca_account = self.make_oca_account(self.biz)
 
     def post(self, path, payload, user=None):
         return self.client.post(f"{API}{path}", payload, format="json", **auth_headers_for(user or self.user))
 
     def test_andreani_por_las_rutas_comunes(self):
-        order = make_order(self.user)
+        order = make_order(self.biz)
         quote = self.post("/shipments/quote/", {"carrier": "andreani", "order_ids": [order.pk], "contract": "400006709"})
         self.assertEqual(quote.status_code, 200, quote.content)
         self.assertTrue(quote.json()["results"][0]["ok"])
@@ -61,24 +60,24 @@ class CommonApiTests(AndreaniTestMixin, OcaTestMixin, APITestCase):
         self.assertTrue(result["can_cancel"])
 
     def test_sin_transportista_o_sin_cuenta(self):
-        order = make_order(self.user)
+        order = make_order(self.biz)
         self.assertEqual(self.post("/shipments/", {"order_ids": [order.pk]}).status_code, 400)
         other = make_user("otro@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
+        new_business(other)
         response = self.post("/shipments/", {"carrier": "oca", "order_ids": [order.pk], "contract": "64665"}, user=other)
         self.assertEqual(response.status_code, 400)
         self.assertIn("OCA", response.json()["detail"])
         self.assertEqual(self.client.get(f"{API}/accounts/inexistente/", **auth_headers_for(self.user)).status_code, 404)
 
     def test_un_pedido_con_envio_abierto_no_se_despacha_con_otro_transportista(self):
-        order = make_order(self.user)
+        order = make_order(self.biz)
         self.post("/shipments/", {"carrier": "andreani", "order_ids": [order.pk], "contract": "400006709"})
         again = self.post("/shipments/", {"carrier": "oca", "order_ids": [order.pk], "contract": "64665"})
         self.assertFalse(again.json()["results"][0]["ok"])
         self.assertIn("Andreani", again.json()["results"][0]["detail"])
 
     def test_la_lista_trae_los_envios_de_todos(self):
-        first, second = make_order(self.user), make_order(self.user, recipient_name="Juan Pérez")
+        first, second = make_order(self.biz), make_order(self.biz, recipient_name="Juan Pérez")
         self.post("/shipments/", {"carrier": "andreani", "order_ids": [first.pk], "contract": "400006709"})
         self.post("/shipments/", {"carrier": "oca", "order_ids": [second.pk], "contract": "64665"})
         listing = self.client.get(f"{API}/shipments/", **auth_headers_for(self.user)).json()["results"]
@@ -87,7 +86,7 @@ class CommonApiTests(AndreaniTestMixin, OcaTestMixin, APITestCase):
         self.assertEqual([item["carrier"] for item in only], ["oca"])
 
     def test_un_pdf_con_envios_de_distintos_transportistas(self):
-        first, second = make_order(self.user), make_order(self.user, recipient_name="Juan Pérez")
+        first, second = make_order(self.biz), make_order(self.biz, recipient_name="Juan Pérez")
         self.post("/shipments/", {"carrier": "andreani", "order_ids": [first.pk], "contract": "400006709"})
         self.post("/shipments/", {"carrier": "oca", "order_ids": [second.pk], "contract": "64665"})
         ids = list(CarrierShipment.objects.order_by("pk").values_list("pk", flat=True))
@@ -102,7 +101,7 @@ class CommonApiTests(AndreaniTestMixin, OcaTestMixin, APITestCase):
         self.assertIn("OCA", texts[-1])
 
     def test_el_worker_sigue_a_todos_los_transportistas(self):
-        first, second = make_order(self.user), make_order(self.user, recipient_name="Juan Pérez")
+        first, second = make_order(self.biz), make_order(self.biz, recipient_name="Juan Pérez")
         self.post("/shipments/", {"carrier": "andreani", "order_ids": [first.pk], "contract": "400006709"})
         self.post("/shipments/", {"carrier": "oca", "order_ids": [second.pk], "contract": "64665"})
         oca_shipment = CarrierShipment.objects.get(carrier="oca")
@@ -114,7 +113,7 @@ class CommonApiTests(AndreaniTestMixin, OcaTestMixin, APITestCase):
         self.assertEqual(second.status, Order.Status.DISPATCHED)
 
     def test_credenciales_rechazadas_en_el_seguimiento_desactivan_esa_cuenta(self):
-        order = make_order(self.user)
+        order = make_order(self.biz)
         self.post("/shipments/", {"carrier": "oca", "order_ids": [order.pk], "contract": "64665"})
         from apps.carriers.oca.client import OcaAuthError
 
@@ -131,9 +130,9 @@ class AndreaniPushTests(AndreaniTestMixin, APITestCase):
     def setUp(self):
         super().setUp()
         self.user = make_user("comercio@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
-        self.account = self.make_account(self.user)
-        self.order = make_order(self.user)
+        self.biz = new_business(self.user)
+        self.account = self.make_account(self.biz)
+        self.order = make_order(self.biz)
         created = self.client.post(
             f"{API}/shipments/", {"carrier": "andreani", "order_ids": [self.order.pk], "contract": "400006709"}, format="json", **auth_headers_for(self.user)
         )
@@ -141,7 +140,6 @@ class AndreaniPushTests(AndreaniTestMixin, APITestCase):
         generated = self.client.post(f"{API}/accounts/andreani/push/", **auth_headers_for(self.user))
         self.assertEqual(generated.status_code, 201, generated.content)
         self.credentials = generated.json()
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def push(self, payload, username=None, password=None, url=None):
         raw = f"{username or self.credentials['username']}:{password or self.credentials['password']}".encode()
@@ -191,10 +189,10 @@ class AndreaniPushTests(AndreaniTestMixin, APITestCase):
     def test_credenciales_malas_y_envio_ajeno(self):
         self.assertEqual(self.push(self.novedad("Admision", "2026-10-15T09:00:00-03:00"), password="otra").status_code, 401)
         other_user = make_user("otro@example.com")
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
-        other_account = self.make_account(other_user)
+        other_user_biz = new_business(other_user)
+        other_account = self.make_account(other_user_biz)
         foreign = CarrierShipment.objects.create(
-            account=other_account, order=make_order(other_user), carrier="andreani", contract="1", tracking_number="999"
+            account=other_account, order=make_order(other_user_biz), carrier="andreani", contract="1", tracking_number="999"
         )
         response = self.push(self.novedad("EnvioEntregado", "2026-10-16T12:30:00-03:00", NumeroDeEnvio=foreign.tracking_number))
         self.assertEqual(response.status_code, 200)

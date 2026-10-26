@@ -8,7 +8,7 @@ from django.contrib.auth.models import Group
 from rest_framework.test import APITestCase
 
 from ..models import LabelTemplate
-from apps.accounts.tests.team_helpers import give_solo_teams
+from apps.accounts.tests.team_helpers import new_business
 
 User = get_user_model()
 
@@ -31,8 +31,8 @@ def make_user(email="disenador@example.com"):
 class PreviewLabelTests(APITestCase):
     def setUp(self):
         self.user = make_user()
+        self.biz = new_business(self.user)
         self.client.force_authenticate(user=self.user)
-        give_solo_teams()  # comercio "solo" (team_helpers, transitorio)
 
     def test_devuelve_un_pdf_sin_guardar_nada(self):
         # La migración siembra la plantilla del sistema, así que se mide que
