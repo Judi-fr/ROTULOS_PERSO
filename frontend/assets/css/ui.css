@@ -37,6 +37,21 @@
    que no tienen una regla propia salían en Arial. */
 button, input, select, textarea { font-family: inherit; }
 
+/* Links de texto en el naranja de la app (los del navegador salían azul
+   subrayado en diálogos y avisos). Los que tienen clase propia ganan igual. */
+a { color: #c2410c; text-underline-offset: 2px; }
+a:hover { color: #9a3412; }
+
+/* Selector de archivo: el del navegador ("Seleccionar archivo · Sin archivos
+   seleccionados") desentonaba con el resto; el botón queda como .btn-outline. */
+input[type="file"] { max-width: 100%; font-size: 13.5px; color: #64748b; }
+input[type="file"]::file-selector-button {
+  margin-right: 10px; padding: 8px 14px; border: 1px solid #e2e8f0; border-radius: 9px;
+  background: #fff; color: #0f172a; font: inherit; font-weight: 600; cursor: pointer;
+  transition: background 0.18s, border-color 0.18s;
+}
+input[type="file"]::file-selector-button:hover { background: #fff7ed; border-color: #fdba74; }
+
 /* --- Diálogos --- */
 .app-dialog { border: 0; border-radius: 16px; padding: 0; width: min(440px, calc(100vw - 32px));
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28); font-family: "Karla", system-ui, sans-serif; color: #0f172a; }
@@ -191,6 +206,8 @@ header.app-topbar .topbar-home {
 }
 header.app-topbar .topbar-home:hover { background: #f1f4f8; }
 header.app-topbar .topbar-home svg { color: #f97316; }
+header.app-topbar .topbar-home img { display: block; border-radius: 7px; }
+header.app-topbar .topbar-home span { font-size: 15px; letter-spacing: -0.01em; }
 header.app-topbar .team-switcher { height: 38px; padding-top: 0; padding-bottom: 0; }
 
 header.app-topbar .topbar-actions {

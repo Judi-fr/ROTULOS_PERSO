@@ -505,7 +505,8 @@
 }
 
 .new-order-dialog {
-  width: min(480px, calc(100vw - 32px));
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
 }
 
 .new-order-form {
@@ -526,9 +527,32 @@
   color: var(--text-muted);
 }
 
-.new-order-fields[hidden],
-.new-order-empty[hidden] {
+.new-order-fields [hidden] {
   display: none;
+}
+
+/* La dirección nueva, cargada sin salir del diálogo. */
+.new-order-address {
+  margin: 0 0 12px;
+  padding: 14px 16px 2px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 12px;
+  background: #fafbfd;
+}
+
+.new-order-address legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.new-order-address legend span {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.new-order-address .field-row {
+  gap: 12px;
 }
 
 .new-order-fields .field {
@@ -545,21 +569,6 @@
   font-size: 12.5px;
   font-weight: 600;
   color: var(--blue);
-}
-
-.new-order-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 14px 16px;
-  border-radius: 10px;
-  background: #f8fafc;
-  font-size: 14px;
-}
-
-.new-order-empty p {
-  margin: 0;
 }
 
 .new-order-form .form-actions {

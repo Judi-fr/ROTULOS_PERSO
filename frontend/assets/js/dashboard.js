@@ -69,7 +69,7 @@ function buildSectionCard(section, { wide = false } = {}) {
   });
 
   const open = document.createElement("a");
-  open.className = "section-btn section-btn-primary section-card-open";
+  open.className = "section-btn section-btn-soft section-card-open";
   open.href = section.url;
   open.innerHTML = `<span></span> <i class="mdi mdi-arrow-right" aria-hidden="true"></i>`;
   open.querySelector("span").textContent = `Abrir ${section.label}`;

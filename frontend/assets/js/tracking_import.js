@@ -43,25 +43,8 @@ function el(id) {
 }
 
 async function loadStoreFilter() {
-  try {
-    const response = await apiFetch(`${API_BASE}/integrations/stores/`);
-    if (!response.ok) return;
-    const stores = extractResults(await response.json());
-    if (stores.length < 2) return; // con una sola tienda no hay qué desempatar
-    stores.forEach((store) => {
-      const option = document.createElement("option");
-      option.value = store.id;
-      option.textContent = store.name || `Tienda ${store.external_store_id}`;
-      el("storeFilter").appendChild(option);
-    });
-    const manual = document.createElement("option");
-    manual.value = "manual";
-    manual.textContent = "Pedidos cargados a mano";
-    el("storeFilter").appendChild(manual);
-    el("storeFilterField").style.display = "";
-  } catch (err) {
-    if (!err.isSessionExpired) console.error("Error al cargar tiendas:", err);
-  }
+  // Con una sola tienda no hay qué desempatar.
+  await fillStoreFilter(el("storeFilter"), el("storeFilterField"), { minStores: 2 });
 }
 
 function currentMapping() {

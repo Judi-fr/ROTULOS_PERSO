@@ -61,15 +61,6 @@ function translateRole(role) {
 // getErrorMessage vive en assets/js/utils.js (cargado antes que este
 // script en todas las páginas que usan admin_common.js).
 
-function formatDateTime(value) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("es-AR", {
-    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
-  });
-}
-
 // Pager simple (Anterior/Siguiente + "Página X de Y"), reusado por
 // auditoria.js, pedidos_admin.js y soporte_admin.js para que se vea
 // consistente sin duplicar el paginador numerado completo de usuarios.js

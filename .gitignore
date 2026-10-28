@@ -33,3 +33,6 @@ htmlcov/
 backend/apps/printing/agent/dist/
 backend/apps/printing/agent/build/
 backend/apps/printing/agent/*.spec
+
+# Bocetos y registros de trabajo de las skills (brainstorming, ejecución de planes)
+.superpowers/

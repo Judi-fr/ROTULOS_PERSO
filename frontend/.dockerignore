@@ -10,7 +10,9 @@ Dockerfile
 .dockerignore
 *.md
 
-# Herramientas de chequeo del pipeline (tools/check_frontend.mjs).
-tools/
+# Herramientas de chequeo del pipeline (tools/check_frontend.mjs). Entra solo
+# version_assets.sh, que el Dockerfile corre y después borra.
+tools/*
+!tools/version_assets.sh
 # El pipeline de CI no se sirve.
 azure-pipelines.yml

@@ -23,21 +23,6 @@ function query(page) {
   return params.toString();
 }
 
-function renderPager(data, page) {
-  const pager = document.getElementById("pager");
-  pager.innerHTML = "";
-  const add = (text, target) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn btn-outline btn-small";
-    btn.textContent = text;
-    btn.addEventListener("click", () => load(target));
-    pager.appendChild(btn);
-  };
-  if (data.previous) add("Anterior", page - 1);
-  if (data.next) add("Siguiente", page + 1);
-}
-
 // Quién lo hizo: su foto y su nombre para mostrar (row.actor, el perfil
 // personal de un miembro actual); de alguien que ya no está, solo el email.
 function actorCell(row) {
@@ -75,7 +60,7 @@ async function load(page = 1) {
       );
       body.appendChild(tr);
     });
-    renderPager(data, page);
+    renderPrevNextPager(document.getElementById("pager"), data, page, load);
   } catch (err) {
     if (err.isSessionExpired) return;
     showMessage(err.message);

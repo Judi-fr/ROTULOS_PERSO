@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="assets/css/ui.css" />
 
     <link
-      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      href="https://fonts.googleapis.com/css?family=Karla:400,500,600,700&display=swap"
       rel="stylesheet"
     />
 
@@ -85,18 +85,20 @@
           <form method="dialog" class="new-order-form" id="newOrderFormDialog">
             <header class="new-order-head">
               <h2 id="newOrderTitle">Nuevo pedido</h2>
-              <p>Para un envío que no entró por una tienda. Sale con una de tus direcciones guardadas.</p>
+              <p>Para un envío que no entró por una tienda: a quién va y adónde.</p>
             </header>
-            <div id="noAddressMsg" class="new-order-empty" hidden>
-              <p>Todavía no tenés direcciones guardadas.</p>
-              <a class="btn btn-primary btn-small" href="direcciones.html?nueva=1">Agregar una dirección</a>
-            </div>
             <div id="newOrderForm" class="new-order-fields">
-              <div class="field">
-                <label for="orderAddressSelect">Dirección de envío</label>
+              <div class="field" id="orderAddressPick">
+                <label for="orderAddressSelect">Enviar a</label>
                 <select id="orderAddressSelect"></select>
                 <a class="field-help-link" href="direcciones.html">Administrar direcciones</a>
               </div>
+              <!-- Dirección nueva sin salir del diálogo (renderAddressFields, utils.js);
+                   queda guardada en Mis direcciones para el próximo pedido. -->
+              <fieldset id="newAddressBox" class="new-order-address" hidden>
+                <legend>Dirección nueva <span>· queda guardada en Mis direcciones</span></legend>
+                <div id="newAddressFields"></div>
+              </fieldset>
               <div class="field">
                 <label for="orderDescription">Descripción (opcional)</label>
                 <input type="text" id="orderDescription" placeholder="Ej. Caja mediana con rótulos" />

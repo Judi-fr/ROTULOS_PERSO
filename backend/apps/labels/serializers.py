@@ -28,6 +28,8 @@ from apps.accounts.teams import contact_email as owner_contact_email
 from apps.orders.models import Order
 from apps.accounts.teams import data_owner, order_scope_q
 
+from .design_shapes import shape_targets, validate_palette, validate_shapes
+from .text_style import validate_text_typography
 from .styles import validate_style
 from .models import ElementLayout, Label, LabelTemplate, LabelTemplateVersion, LayoutElement, LayoutVariable
 
@@ -83,7 +85,7 @@ MAX_DESIGN_LINES = 20
 
 # Decoración del diseño: no son campos posicionados, así que una regla no
 # puede apuntarles.
-DECORATION_KEYS = {"texts", "lines", "border"}
+DECORATION_KEYS = {"texts", "lines", "border", "shapes", "palette"}
 
 # Claves que solo usa el editor y el render ignora: ``locked`` es la lista de
 # campos bloqueados (no se arrastran por accidente). Una regla tampoco puede
@@ -91,7 +93,7 @@ DECORATION_KEYS = {"texts", "lines", "border"}
 EDITOR_ONLY_KEYS = {"locked"}
 
 
-def _validate_text_style(label, entry):
+def _validate_text_style(label, entry, palette=None):
     text = entry.get("text")
     if text is not None and not isinstance(text, str):
         raise serializers.ValidationError(f"'{label}.text' debe ser un texto.")
@@ -116,6 +118,8 @@ def _validate_text_style(label, entry):
         raise serializers.ValidationError(
             f"'{label}.align' debe ser uno de: {', '.join(sorted(VALID_TEXT_ALIGNS))}."
         )
+    # Tipografía y color (fase 2 del editor, text_style.py).
+    validate_text_typography(entry, label, palette)
 
 
 def _validate_position(label, entry):
@@ -123,7 +127,7 @@ def _validate_position(label, entry):
         _validate_number_range(entry.get(coord), f"{label}.{coord}", 0, 100)
 
 
-def _validate_extra_texts(value):
+def _validate_extra_texts(value, palette=None):
     if not isinstance(value, list):
         raise serializers.ValidationError("'texts' debe ser una lista.")
     if len(value) > MAX_EXTRA_TEXTS:
@@ -135,7 +139,7 @@ def _validate_extra_texts(value):
         _validate_position(label, entry)
         if not isinstance(entry.get("text"), str):
             raise serializers.ValidationError(f"'{label}.text' es obligatorio y debe ser un texto.")
-        _validate_text_style(label, entry)
+        _validate_text_style(label, entry, palette)
 
 
 def _validate_lines(value):
@@ -327,7 +331,8 @@ def validate_design(value):
         raise serializers.ValidationError(
             f"'rules' admite como máximo {MAX_DESIGN_RULES} reglas."
         )
-    known_targets = set(value.keys()) - {"rules"} - DECORATION_KEYS - EDITOR_ONLY_KEYS
+    known_targets = (set(value.keys()) - {"rules"} - DECORATION_KEYS - EDITOR_ONLY_KEYS) | shape_targets(value)
+    palette = value.get("palette")
 
     for key, entry in value.items():
         if key == "rules":
@@ -336,13 +341,20 @@ def validate_design(value):
             _validate_locked(entry)
             continue
         if key == "texts":
-            _validate_extra_texts(entry)
+            _validate_extra_texts(entry, palette if isinstance(palette, dict) else None)
             continue
         if key == "lines":
             _validate_lines(entry)
             continue
         if key == "border":
             _validate_border(entry)
+            continue
+        # Formas y paleta (fase 1 del editor): ver design_shapes.py.
+        if key == "palette":
+            validate_palette(entry)
+            continue
+        if key == "shapes":
+            validate_shapes(entry, palette if isinstance(palette, dict) else None)
             continue
         if key not in KNOWN_DESIGN_FIELDS:
             raise serializers.ValidationError(f"'{key}' no es un campo de rótulo reconocido.")
@@ -360,7 +372,7 @@ def validate_design(value):
                 )
 
         if key in TEXT_DESIGN_FIELDS:
-            _validate_text_style(key, entry)
+            _validate_text_style(key, entry, palette if isinstance(palette, dict) else None)
         elif key == "qr":
             _validate_qr_entry(key, entry)
         elif key == "barcode":

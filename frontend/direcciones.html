@@ -7,7 +7,7 @@
     <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
     <link rel="stylesheet" href="assets/css/ui.css" />
     <link
-      href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap"
+      href="https://fonts.googleapis.com/css?family=Karla:400,500,600,700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="assets/css/base.css" />
@@ -39,40 +39,8 @@
             </div>
 
             <form id="addressForm" style="display:none;">
-              <div class="field-row">
-                <div class="field">
-                  <label for="addrLabel">Nombre (ej. Casa, Trabajo)</label>
-                  <input type="text" id="addrLabel" placeholder="Casa" />
-                </div>
-                <div class="field">
-                  <label for="addrStreet">Calle</label>
-                  <input type="text" id="addrStreet" placeholder="Av. Siempre Viva" />
-                </div>
-              </div>
-              <div class="field-row">
-                <div class="field">
-                  <label for="addrNumber">Número</label>
-                  <input type="text" id="addrNumber" placeholder="742" />
-                </div>
-                <div class="field">
-                  <label for="addrCity">Ciudad</label>
-                  <input type="text" id="addrCity" placeholder="CABA" />
-                </div>
-              </div>
-              <div class="field-row">
-                <div class="field">
-                  <label for="addrState">Provincia</label>
-                  <input type="text" id="addrState" placeholder="Buenos Aires" />
-                </div>
-                <div class="field">
-                  <label for="addrPostalCode">Código postal</label>
-                  <input type="text" id="addrPostalCode" placeholder="1000" />
-                </div>
-              </div>
-              <div class="field">
-                <label for="addrReference">Referencia (opcional)</label>
-                <input type="text" id="addrReference" placeholder="Timbre azul, portón negro..." />
-              </div>
+              <!-- Los campos los arma renderAddressFields (utils.js), los mismos del diálogo "Nuevo pedido". -->
+              <div id="addressFields"></div>
               <div class="field-checkbox">
                 <input type="checkbox" id="addrIsDefault" />
                 <label for="addrIsDefault" style="margin:0;">Marcar como predeterminada</label>

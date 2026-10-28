@@ -57,16 +57,16 @@ const gridEl = document.getElementById("rotulosGrid");
 
 function renderEmptyState() {
   if (searchTerm) {
-    gridEl.innerHTML =
-      '<div class="empty-state-block"><p>No hay rótulos que coincidan con tu búsqueda.</p></div>';
+    gridEl.innerHTML = appEmptyState({ icon: "doc", title: "No hay rótulos que coincidan con tu búsqueda" });
     return;
   }
-  gridEl.innerHTML = `
-    <div class="empty-state-block">
-      <p>Todavía no creaste ningún rótulo.</p>
-      <a class="btn btn-primary" href="${EDITOR_URL}">Crear mi primer rótulo</a>
-    </div>
-  `;
+  gridEl.innerHTML = appEmptyState({
+    icon: "doc",
+    title: "Todavía no creaste ningún rótulo",
+    text: "Un rótulo guardado es un diseño con sus datos ya cargados, listo para volver a imprimirlo.",
+    actionLabel: "Crear mi primer rótulo",
+    actionHref: EDITOR_URL,
+  });
 }
 
 function buildCard(rotulo) {

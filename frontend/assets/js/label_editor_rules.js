@@ -120,7 +120,9 @@
     thenLabel.textContent = "→";
 
     const actionSelect = select("rule-action", ACTIONS, then.action);
-    const targetSelect = select("rule-target", TARGETS, then.target);
+    // Las formas del diseño (label_editor_shapes.js) también son blancos.
+    const targets = [...TARGETS, ...(window.LabelEditorShapes?.ruleTargets() || [])];
+    const targetSelect = select("rule-target", targets, then.target);
     const textInput = input("rule-text", "text", then.value, "texto nuevo (admite {{datos}})");
     textInput.hidden = then.action !== "set_text";
     const leftInput = input("rule-num", "number", then.left, "izq. %");

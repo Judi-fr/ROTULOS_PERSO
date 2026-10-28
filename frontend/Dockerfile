@@ -13,6 +13,10 @@ COPY . /usr/share/nginx/html
 # nginx:alpine ya trae un usuario sin privilegios; el puerto es 8080 y no 80
 # para poder correr sin root.
 COPY docker-entrypoint.sh /docker-entrypoint.d/99-config-js.sh
+# Cada CSS/JS con ?v=<hash>: un archivo que cambió no sale de la caché vieja
+# del navegador (ver tools/version_assets.sh).
+RUN sh /usr/share/nginx/html/tools/version_assets.sh /usr/share/nginx/html \
+    && rm -rf /usr/share/nginx/html/tools
 RUN chmod +x /docker-entrypoint.d/99-config-js.sh \
     && rm -f /usr/share/nginx/html/Dockerfile /usr/share/nginx/html/nginx.conf \
              /usr/share/nginx/html/docker-entrypoint.sh

@@ -13,11 +13,6 @@ const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 let agents = [];
 let printers = [];
 
-function formatDateTime(iso) {
-  if (!iso) return "Nunca";
-  return new Date(iso).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
-}
-
 async function readJson(response, fallback) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(getErrorMessage(data, fallback));
@@ -40,7 +35,7 @@ function renderAgents() {
       row.innerHTML = `
         <td><strong>${escapeHtml(agent.name)}</strong><span class="print-detail">Token rpa_${escapeHtml(agent.token_prefix)}_…</span></td>
         <td>${status}${agent.last_version ? `<span class="print-detail">${escapeHtml(agent.last_version)}</span>` : ""}</td>
-        <td>${escapeHtml(formatDateTime(agent.last_seen_at))}</td>
+        <td>${escapeHtml(formatDateTime(agent.last_seen_at, "Nunca"))}</td>
         <td><div class="print-actions"></div></td>`;
       const revoke = document.createElement("button");
       revoke.type = "button";

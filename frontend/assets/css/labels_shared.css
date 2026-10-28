@@ -18,17 +18,6 @@
 
 /* CARDS (mismo shell que perfil.html/pedidos.html) */
 
-.empty-state-block {
-  text-align: center;
-  padding: 48px 16px;
-  color: var(--text-muted);
-}
-
-.empty-state-block p {
-  margin: 0 0 16px;
-  font-size: 14.5px;
-}
-
 /* --- Barra de búsqueda + nuevo rótulo ------------------------------------ */
 
 .rotulos-toolbar {

@@ -42,9 +42,13 @@ body.access-page {
   overflow: hidden;
 }
 
+/* humanlog-lockup.png mide 366 px: más ancho se vería borroso. */
 .access-aside img {
   width: 100%;
-  max-width: 560px;
+  max-width: 366px;
+  padding: 28px;
+  background: #fff;
+  box-sizing: content-box;
   margin: auto 0;
   border-radius: 20px;
   box-shadow: 0 30px 60px -36px rgba(120, 53, 15, 0.45);
@@ -85,11 +89,27 @@ body.access-page {
   }
 }
 
-.access-logo {
-  display: block;
-  height: 40px;
-  width: auto;
+/* Marca: "Human Log" (logo de la empresa) · "Rótulos" (el producto). */
+.access-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 28px;
+}
+
+.access-brand img {
+  display: block;
+  height: 58px;
+  width: auto;
+}
+
+.access-brand span {
+  padding-left: 12px;
+  border-left: 1px solid #e2e8f0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.01em;
 }
 
 .access-card h1 {

@@ -31,10 +31,13 @@
   color: var(--text-muted);
 }
 
+.address-item-info .address-item-alias { margin-top: 2px; font-size: 12.5px; }
+.address-item-info .address-item-warning { color: #b45309; font-weight: 600; }
+
 .address-item-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   flex-shrink: 0;
 }
 

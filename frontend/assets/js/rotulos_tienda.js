@@ -122,12 +122,14 @@ function buildItem(labelRequest) {
 
 function renderEmptyState() {
   if (storeFilter || statusFilter) {
-    listEl.innerHTML =
-      '<p class="empty-state">No hay rótulos que coincidan con el filtro.</p>';
+    listEl.innerHTML = appEmptyState({ icon: "store", title: "No hay rótulos que coincidan con el filtro" });
     return;
   }
-  listEl.innerHTML =
-    '<p class="empty-state">Todavía no pediste ningún rótulo desde el panel de tu tienda.</p>';
+  listEl.innerHTML = appEmptyState({
+    icon: "store",
+    title: "Todavía no pediste ningún rótulo desde el panel de tu tienda",
+    text: "Cuando tildes pedidos en tu tienda y pidas sus rótulos, el pedido aparece acá con su estado.",
+  });
 }
 
 function renderList(items) {

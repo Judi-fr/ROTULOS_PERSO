@@ -9,26 +9,7 @@ const API_BASE = window.APP_CONFIG.API_BASE;
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
 async function loadStoreFilter() {
-  try {
-    const response = await apiFetch(`${API_BASE}/integrations/stores/`);
-    if (!response.ok) return;
-    const stores = extractResults(await response.json());
-    if (!stores.length) return;
-    const select = document.getElementById("storeFilter");
-    stores.forEach((store) => {
-      const option = document.createElement("option");
-      option.value = store.id;
-      option.textContent = store.name || `Tienda ${store.external_store_id}`;
-      select.appendChild(option);
-    });
-    const manual = document.createElement("option");
-    manual.value = "manual";
-    manual.textContent = "Pedidos cargados a mano";
-    select.appendChild(manual);
-    document.getElementById("storeFilterField").style.display = "";
-  } catch (err) {
-    if (!err.isSessionExpired) console.error("Error al cargar tiendas:", err);
-  }
+  await fillStoreFilter(document.getElementById("storeFilter"), document.getElementById("storeFilterField"));
 }
 
 async function exportOrders() {

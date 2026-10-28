@@ -444,7 +444,7 @@ def _send_verification_email(user, token):
     verification_url = f"{settings.EMAIL_VERIFICATION_URL}?token={token}"
     try:
         send_mail(
-            subject="Confirmá tu email — ROTULOS",
+            subject="Confirmá tu email — Human Log · Rótulos",
             message=(
                 f"Hola,\n\n"
                 f"Gracias por registrarte. Para confirmar tu cuenta, entrá en "
@@ -667,7 +667,7 @@ class PasswordResetRequestView(APIView):
 
         try:
             send_mail(
-                subject="Restablecé tu contraseña — ROTULOS",
+                subject="Restablecé tu contraseña — Human Log · Rótulos",
                 message=(
                     f"Hola,\n\n"
                     f"Recibimos un pedido para restablecer la contraseña de tu "

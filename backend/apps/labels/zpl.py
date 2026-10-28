@@ -35,6 +35,19 @@ from __future__ import annotations
 
 import logging
 
+from .design_shapes import resolve_color, thermal_text_is_white
+from .text_style import (
+    apply_case,
+    fit_with_ellipsis,
+    pdf_font_name,
+    resolve_text_style,
+    text_width,
+    ttf_path,
+    wrap_lines,
+    zpl_native_ok,
+    zpl_text_graphic,
+    zpl_text_image,
+)
 from .label_rendering import (
     BORDER_INSET_CM,
     DECORATION_KEYS,
@@ -156,7 +169,7 @@ def escape_field_data(text):
     )
 
 
-def _text_commands(entry, context, computed, width_cm, height_cm, default_font_pt, dpmm):
+def _text_commands(entry, context, computed, width_cm, height_cm, default_font_pt, dpmm, palette=None):
     """Los comandos de un campo de texto, o ``[]`` si no hay nada que
     imprimir. Mismas reglas que ``label_rendering._draw_text_entry``,
     incluidas la etiqueta fija (``prefix``), el texto invertido (``invert``:
@@ -169,7 +182,11 @@ def _text_commands(entry, context, computed, width_cm, height_cm, default_font_p
     if not text:
         return []
 
-    prefix = (entry.get("prefix") or "").strip()
+    # Tipografía (fase 2, text_style.py): la sans simple sigue con la fuente
+    # de la impresora; lo demás va como gráfico (ver más abajo).
+    style = resolve_text_style(entry, default_font_pt)
+    text = apply_case(text, style)
+    prefix = apply_case((entry.get("prefix") or "").strip(), style)
     prefix = f"{prefix} " if prefix else ""
     content = prefix + text
     rotate = entry.get("rotate") if entry.get("rotate") in TEXT_ROTATIONS else 0
@@ -206,6 +223,13 @@ def _text_commands(entry, context, computed, width_cm, height_cm, default_font_p
     else:
         align = ALIGN_TO_ZPL.get(entry.get("align", "left"), "L")
     invert = bool(entry.get("invert"))
+    # Un color claro sale en blanco (^FR) donde pisa negro, como el invertido.
+    color = resolve_color(entry.get("color"), palette)
+    reverse = invert or bool(color and thermal_text_is_white(color))
+    max_lines = 1 if rotate else style["max_lines"]
+    leading_dots = round(font_dots * style["line_height"])
+    extra_dots = leading_dots * (max_lines - 1)
+    block = f"{max_lines},{leading_dots - font_dots}" if max_lines > 1 else "1,0"
 
     def campo(offset, payload, reverse=False):
         # ^A0<o>: fuente 0 (la escalable que traen todas), alto en dots y
@@ -217,17 +241,22 @@ def _text_commands(entry, context, computed, width_cm, height_cm, default_font_p
         return [
             f"^FO{x_dots + offset},{y_dots + offset}",
             f"^A0{orientation},{font_dots},0",
-            f"^FB{box_width_dots},1,0,{align},0",
+            f"^FB{box_width_dots},{block},{align},0",
             *(["^FR"] if reverse else []),
             "^FH\\",
             f"^FD{payload}^FS",
         ]
 
     commands = _text_band_commands(
-        entry, content, font_pt, font_dots, rotate, x_dots, y_dots, box_width_dots, width_cm, height_cm, dpmm
+        entry, content, font_pt, font_dots, rotate, x_dots, y_dots, box_width_dots, width_cm, height_cm, dpmm,
+        extra_dots=extra_dots,
     )
-    commands += campo(0, escape_field_data(content), reverse=invert)
-    if entry.get("bold") and not invert:
+    if not rotate and not zpl_native_ok(style):
+        return commands + _graphic_text_commands(
+            style, text, prefix, entry, x_dots, y_dots, box_width_dots, font_pt, align, max_lines, reverse, dpmm
+        )
+    commands += campo(0, escape_field_data(content), reverse=reverse)
+    if entry.get("bold") and not reverse:
         # ZPL no trae una variante negrita de la fuente 0, así que se
         # imprime el mismo texto corrido un dot: el solapamiento engrosa el
         # trazo. Es el recurso habitual en ZPL, y sin esto `bold` se
@@ -245,7 +274,8 @@ def _text_commands(entry, context, computed, width_cm, height_cm, default_font_p
 
 
 def _text_band_commands(
-    entry, content, font_pt, font_dots, rotate, x_dots, y_dots, box_width_dots, width_cm, height_cm, dpmm
+    entry, content, font_pt, font_dots, rotate, x_dots, y_dots, box_width_dots, width_cm, height_cm, dpmm,
+    extra_dots=0,
 ):
     """La franja negra de ``invert`` y el recuadro de ``frame``, con la misma
     forma que en el PDF: la caja entera horizontal; vertical, el largo del
@@ -256,7 +286,7 @@ def _text_band_commands(
     from reportlab.pdfbase.pdfmetrics import stringWidth
 
     pad = max(1, round(font_dots * TEXT_BAND_PAD_RATIO))
-    across = round(font_dots * (1 + TEXT_BAND_DESCENT_RATIO))
+    across = round(font_dots * (1 + TEXT_BAND_DESCENT_RATIO)) + extra_dots
     if rotate:
         bold = "Helvetica-Bold" if entry.get("bold") else "Helvetica"
         length = points_to_dots(stringWidth(content, bold, font_pt), dpmm)
@@ -279,6 +309,33 @@ def _text_band_commands(
         thickness = max(1, round(TEXT_FRAME_DOTS_AT_8 * dpmm / 8))
         commands.append(f"^FO{bx},{by}^GB{bw},{bh},{thickness}^FS")
     return commands
+
+
+def _graphic_text_commands(style, text, prefix, entry, x_dots, y_dots, box_width_dots, font_pt, align, max_lines,
+                           reverse, dpmm):
+    """El texto dibujado con su .ttf (``text_style.zpl_text_image``), con el
+    mismo corte en renglones que el PDF (medido en puntos)."""
+    dots_per_pt = dpmm * MM_PER_INCH / POINTS_PER_INCH
+    spacing = style["letter_spacing"]
+    prefix_font = pdf_font_name(style["family"], bool(entry.get("prefix_bold")) or style["bold"], style["italic"])
+    box_pt = box_width_dots / dots_per_pt - text_width(prefix, prefix_font, font_pt, spacing)
+    if max_lines > 1:
+        lines = wrap_lines(text, style["font_name"], font_pt, box_pt, max_lines, spacing)
+    else:
+        lines = [fit_with_ellipsis(text, style["font_name"], font_pt, box_pt, spacing)]
+    lines = [line for line in lines if line]
+    if not lines:
+        return []
+    prefix_spec = None
+    if prefix:
+        prefix_spec = (prefix, ttf_path(style["family"], bool(entry.get("prefix_bold")) or style["bold"],
+                                        style["italic"]))
+    image = zpl_text_image(
+        lines, ttf_path(style["family"], style["bold"], style["italic"]), font_pt * dots_per_pt, box_width_dots,
+        {"L": "left", "C": "center", "R": "right"}[align], style["line_height"], spacing * dots_per_pt,
+        prefix=prefix_spec,
+    )
+    return zpl_text_graphic(x_dots, y_dots, image, reverse)
 
 
 def _bold_offset(font_dots):
@@ -637,6 +694,10 @@ def render_label_zpl(
     ]
 
     commands += _decoration_commands(effective_design, width_cm, height_cm, dpmm)
+    # Formas y cajas (design_shapes.py): capa de fondo, como en el PDF.
+    from .shapes_zpl import shape_commands
+
+    commands += shape_commands(effective_design, context, computed, width_cm, height_cm, default_font_pt, dpmm)
 
     logo_entry = effective_design.get("logo")
     if logo_entry and logo_file:
@@ -661,7 +722,8 @@ def render_label_zpl(
 
     for entry in text_entries:
         commands += _text_commands(
-            entry, context, computed, width_cm, height_cm, default_font_pt, dpmm
+            entry, context, computed, width_cm, height_cm, default_font_pt, dpmm,
+            palette=effective_design.get("palette"),
         )
 
     commands.append("^XZ")

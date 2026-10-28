@@ -50,11 +50,6 @@ const PROP_LABELS = {
   shrink_to_fit: "achicar para que entre",
 };
 
-function formatDateTime(iso) {
-  if (!iso) return "-";
-  return new Date(iso).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
-}
-
 function sameValue(a, b) {
   return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }

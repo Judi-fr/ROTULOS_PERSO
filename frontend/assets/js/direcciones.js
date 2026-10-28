@@ -11,20 +11,8 @@ const ADDRESSES_URL = `${API_BASE}/addresses/`;
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
 let addresses = [];
-
-function showFieldMessage(id, text, ok) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.textContent = text;
-  el.style.color = ok ? "#16a34a" : "#dc2626";
-  el.style.display = "block";
-}
-
-function addressSummary(address) {
-  const parts = [address.street, address.number].filter(Boolean).join(" ");
-  const cityLine = [address.city, address.state].filter(Boolean).join(", ");
-  return [parts, cityLine].filter(Boolean).join(" — ");
-}
+// La que se está editando (null = una nueva).
+let editingId = null;
 
 function renderAddressList() {
   const container = document.getElementById("addressList");
@@ -41,11 +29,14 @@ function renderAddressList() {
     item.className = "address-item";
     item.innerHTML = `
       <div class="address-item-info">
-        <strong>${escapeHtml(address.label || "Dirección")}${address.is_default ? '<span class="badge-default">Predeterminada</span>' : ""}</strong>
+        <strong>${escapeHtml(address.recipient_name || address.label || "Sin nombre de quien recibe")}${address.is_default ? '<span class="badge-default">Predeterminada</span>' : ""}</strong>
+        ${address.recipient_name && address.label ? `<p class="address-item-alias">${escapeHtml(address.label)}</p>` : ""}
         <p>${escapeHtml(addressSummary(address))}</p>
+        ${address.recipient_name ? "" : '<p class="address-item-warning">Falta el nombre de quien recibe: editala antes de usarla en un pedido.</p>'}
         ${address.reference ? `<p>${escapeHtml(address.reference)}</p>` : ""}
       </div>
       <div class="address-item-actions">
+        <button type="button" class="btn btn-outline btn-small" data-edit-address="${escapeHtml(address.id)}">Editar</button>
         ${address.is_default ? "" : `<button type="button" class="btn btn-outline btn-small" data-set-default="${escapeHtml(address.id)}">Usar como predeterminada</button>`}
         <button type="button" class="btn-danger-text" data-delete-address="${escapeHtml(address.id)}">Eliminar</button>
       </div>
@@ -55,34 +46,37 @@ function renderAddressList() {
 }
 
 function resetAddressForm() {
-  ["addrLabel", "addrStreet", "addrNumber", "addrCity", "addrState", "addrPostalCode", "addrReference"].forEach(
-    (id) => {
-      const el = document.getElementById(id);
-      if (el) el.value = "";
-    }
-  );
+  editingId = null;
+  fillAddressFields("addr", null);
+  document.getElementById("saveAddressBtn").textContent = "Guardar dirección";
   const checkbox = document.getElementById("addrIsDefault");
   if (checkbox) checkbox.checked = false;
   const msg = document.getElementById("addressMsg");
   if (msg) msg.style.display = "none";
 }
 
-async function saveNewAddress() {
-  const payload = {
-    label: document.getElementById("addrLabel").value.trim(),
-    street: document.getElementById("addrStreet").value.trim(),
-    number: document.getElementById("addrNumber").value.trim(),
-    city: document.getElementById("addrCity").value.trim(),
-    state: document.getElementById("addrState").value.trim(),
-    postal_code: document.getElementById("addrPostalCode").value.trim(),
-    reference: document.getElementById("addrReference").value.trim(),
-    is_default: document.getElementById("addrIsDefault").checked,
-  };
+function openAddressForm(address) {
+  resetAddressForm();
+  if (address) {
+    editingId = address.id;
+    fillAddressFields("addr", address);
+    document.getElementById("addrIsDefault").checked = Boolean(address.is_default);
+    document.getElementById("saveAddressBtn").textContent = "Guardar cambios";
+  }
+  const form = document.getElementById("addressForm");
+  form.style.display = "block";
+  form.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  document.getElementById("addrRecipient")?.focus();
+}
 
-  if (!payload.street || !payload.city) {
-    showFieldMessage("addressMsg", "Completá al menos la calle y la ciudad.", false);
+async function saveAddress() {
+  const payload = { ...readAddressFields("addr"), is_default: document.getElementById("addrIsDefault").checked };
+  const missing = missingAddressFields(payload);
+  if (missing) {
+    showFieldMessage("addressMsg", missing, false);
     return;
   }
+  const editing = editingId;
 
   const button = document.getElementById("saveAddressBtn");
   const originalText = button.textContent;
@@ -90,8 +84,8 @@ async function saveNewAddress() {
   button.textContent = "Guardando...";
 
   try {
-    const response = await apiFetch(ADDRESSES_URL, {
-      method: "POST",
+    const response = await apiFetch(editing ? `${ADDRESSES_URL}${editing}/` : ADDRESSES_URL, {
+      method: editing ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
@@ -102,7 +96,7 @@ async function saveNewAddress() {
     resetAddressForm();
     document.getElementById("addressForm").style.display = "none";
     await loadAddresses();
-    showMessage("Dirección guardada correctamente.", "success");
+    showMessage(editing ? "Cambios guardados." : "Dirección guardada.", "success");
   } catch (err) {
     if (err.isSessionExpired) return;
     showFieldMessage("addressMsg", err.message || "No se pudo guardar la dirección.", false);
@@ -167,20 +161,23 @@ document.addEventListener("click", (e) => {
     setDefaultAddress(setDefaultBtn.dataset.setDefault);
     return;
   }
+  const editBtn = e.target.closest("[data-edit-address]");
+  if (editBtn) {
+    openAddressForm(addresses.find((address) => String(address.id) === editBtn.dataset.editAddress));
+    return;
+  }
   const deleteBtn = e.target.closest("[data-delete-address]");
   if (deleteBtn) deleteAddress(deleteBtn.dataset.deleteAddress);
 });
 
-document.getElementById("toggleAddressFormBtn")?.addEventListener("click", () => {
-  const form = document.getElementById("addressForm");
-  form.style.display = form.style.display === "none" ? "block" : "none";
-  if (form.style.display === "block") document.getElementById("addrLabel")?.focus();
-});
+renderAddressFields(document.getElementById("addressFields"), "addr");
+
+document.getElementById("toggleAddressFormBtn")?.addEventListener("click", () => openAddressForm(null));
 document.getElementById("cancelAddressFormBtn")?.addEventListener("click", () => {
   resetAddressForm();
   document.getElementById("addressForm").style.display = "none";
 });
-document.getElementById("saveAddressBtn")?.addEventListener("click", saveNewAddress);
+document.getElementById("saveAddressBtn")?.addEventListener("click", saveAddress);
 
 async function init() {
   try {
@@ -191,7 +188,7 @@ async function init() {
   }
   // Llegando desde "Agregar una dirección" del nuevo pedido, el formulario ya abierto.
   if (new URLSearchParams(location.search).has("nueva")) {
-    document.getElementById("addressForm").style.display = "block";
+    openAddressForm(null);
   }
   await loadAddresses();
 }

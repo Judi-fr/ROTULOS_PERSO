@@ -45,12 +45,9 @@
     font-weight:700;
     font-size:17px;
   }
-  .brand-icon{
-    width:34px;height:34px;
-    background:linear-gradient(135deg,#111111,#f97316);
-    border-radius:9px;
-    display:flex;align-items:center;justify-content:center;
-  }
+  .brand-mark{ display:block; border-radius:8px; flex-shrink:0; }
+  .brand-text{ display:flex; flex-direction:column; line-height:1.15; }
+  .brand-text small{ font-size:12px; font-weight:400; opacity:.65; }
   .nav{
     display:flex;
     flex-direction:column;

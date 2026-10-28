@@ -56,6 +56,8 @@ stages:
                   --exclude=Dockerfile --exclude=nginx.conf --exclude=docker-entrypoint.sh \
                   --exclude=.dockerignore --exclude=azure-pipelines.yml --exclude='*.md' \
                   -cf - . | tar -C $(Build.ArtifactStagingDirectory)/web -xf -
+              # Igual que la imagen: cada CSS/JS con ?v=<hash> (ver el script).
+              sh frontend/tools/version_assets.sh $(Build.ArtifactStagingDirectory)/web
               du -sh $(Build.ArtifactStagingDirectory)/web
             displayName: Juntar los estáticos
 

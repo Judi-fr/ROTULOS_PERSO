@@ -42,6 +42,16 @@ from reportlab.pdfgen import canvas as pdf_canvas
 
 from apps.accounts.teams import business_display_name
 
+from .design_shapes import parse_hex, resolve_color, shape_rule_target
+from .text_style import (
+    apply_case,
+    draw_text_line,
+    fit_with_ellipsis,
+    pdf_font_name,
+    resolve_text_style,
+    text_width,
+    wrap_lines,
+)
 from .models import LabelSequence
 
 logger = logging.getLogger(__name__)
@@ -620,6 +630,20 @@ def apply_design_rules(design, context, computed):
     if not isinstance(rules, list):
         return effective
 
+    # Las formas (design_shapes.py) son blancos de regla como "shape:<id>":
+    # se copian (con su texto) y se indexan así mientras se evalúan las reglas.
+    shape_keys = []
+    if isinstance(effective.get("shapes"), list):
+        for shape in effective["shapes"]:
+            if not isinstance(shape, dict) or not isinstance(shape.get("id"), str):
+                continue
+            copy = dict(shape)
+            if isinstance(copy.get("text"), dict):
+                copy["text"] = dict(copy["text"])
+            key = shape_rule_target(copy["id"])
+            effective[key] = copy
+            shape_keys.append(key)
+
     hidden = set()
     for rule in rules[:MAX_DESIGN_RULES]:
         if not isinstance(rule, dict):
@@ -644,7 +668,10 @@ def apply_design_rules(design, context, computed):
         elif action == "show":
             hidden.discard(target)
         elif action == "set_text" and isinstance(entry, dict):
-            entry["text"] = then.get("value", "")
+            if target in shape_keys:
+                entry["text"] = {**(entry.get("text") or {}), "value": then.get("value", "")}
+            else:
+                entry["text"] = then.get("value", "")
         elif action == "move" and isinstance(entry, dict):
             left, top = then.get("left"), then.get("top")
             if isinstance(left, (int, float)) and not isinstance(left, bool) and 0 <= left <= 100:
@@ -654,6 +681,8 @@ def apply_design_rules(design, context, computed):
 
     for key in hidden:
         effective.pop(key, None)
+    if shape_keys:
+        effective["shapes"] = [effective.pop(key) for key in shape_keys if key in effective]
     return effective
 
 
@@ -865,6 +894,10 @@ def draw_label_page(
     pdf.setFont(FONT_NAME, font_size)
 
     _draw_decorations(pdf, effective_design, width_cm, height_cm)
+    # Formas y cajas (design_shapes.py): capa de fondo, debajo de lo demás.
+    from .shapes_pdf import draw_shapes
+
+    draw_shapes(pdf, effective_design, context, computed, width_cm, height_cm, font_size)
 
     logo_entry = effective_design.get("logo")
     if logo_entry and logo_file:
@@ -890,7 +923,8 @@ def draw_label_page(
         text_entries.extend(entry for entry in extra_texts if isinstance(entry, dict))
 
     for entry in text_entries:
-        _draw_text_entry(pdf, entry, context, computed, width_cm, height_cm, font_size)
+        _draw_text_entry(pdf, entry, context, computed, width_cm, height_cm, font_size,
+                         palette=effective_design.get("palette"))
 
 
 def _draw_decorations(pdf, design, width_cm, height_cm):
@@ -920,7 +954,7 @@ def _draw_decorations(pdf, design, width_cm, height_cm):
     pdf.restoreState()
 
 
-def _draw_text_entry(pdf, entry, context, computed, width_cm, height_cm, default_font_size):
+def _draw_text_entry(pdf, entry, context, computed, width_cm, height_cm, default_font_size, palette=None):
     """Un texto del diseño: marcadores resueltos, fuente/tamaño propios
     (``bold``/``font_size``), caja de ancho ``width`` (% del rótulo, por
     defecto hasta el borde derecho) con alineación ``align`` y recorte con
@@ -943,12 +977,20 @@ def _draw_text_entry(pdf, entry, context, computed, width_cm, height_cm, default
         return
 
     width_pt, height_pt = width_cm * CM_TO_POINTS, height_cm * CM_TO_POINTS
-    font_name = BOLD_FONT_NAME if entry.get("bold") else FONT_NAME
-    prefix_font = BOLD_FONT_NAME if entry.get("prefix_bold") else font_name
-    prefix = (entry.get("prefix") or "").strip()
+    # Tipografía (fase 2, text_style.py): sans sin itálica es la Helvetica de
+    # siempre, así que un diseño viejo dibuja exactamente lo mismo.
+    style = resolve_text_style(entry, default_font_size)
+    font_name = style["font_name"]
+    prefix_font = pdf_font_name(style["family"], bool(entry.get("prefix_bold")) or style["bold"], style["italic"])
+    spacing = style["letter_spacing"]
+    text = apply_case(text, style)
+    prefix = apply_case((entry.get("prefix") or "").strip(), style)
     prefix = f"{prefix} " if prefix else ""
-    font_size = float(entry.get("font_size") or default_font_size)
+    font_size = style["size"]
     rotate = entry.get("rotate") if entry.get("rotate") in TEXT_ROTATIONS else 0
+    # Varios renglones solo horizontal; vertical sigue siendo uno.
+    max_lines = 1 if rotate else style["max_lines"]
+    leading = font_size * style["line_height"]
     x_pt, y_top_pt = percent_to_canvas_xy(entry.get("left", 0), entry.get("top", 0), width_cm, height_cm)
 
     # Largo disponible a lo largo del texto: horizontal, hasta el borde
@@ -963,18 +1005,26 @@ def _draw_text_entry(pdf, entry, context, computed, width_cm, height_cm, default
             box_pt = min(box_pt, float(entry["width"]) / 100 * width_pt)
 
     def content_width(size):
-        return stringWidth(prefix, prefix_font, size) + stringWidth(text, font_name, size)
+        return text_width(prefix, prefix_font, size, spacing) + text_width(text, font_name, size, spacing)
 
-    if entry.get("shrink_to_fit"):
+    if entry.get("shrink_to_fit") and max_lines == 1:
         # Una dirección cortada con "…" pierde el número de calle: primero se
         # achica la letra y solo si ni así entra se recorta.
         while font_size > MIN_SHRINK_FONT_SIZE and content_width(font_size) > box_pt:
             font_size = max(MIN_SHRINK_FONT_SIZE, font_size - 0.5)
-    prefix_width = stringWidth(prefix, prefix_font, font_size)
-    text = _truncate_to_width(text, font_name, font_size, box_pt - prefix_width)
-    if not text:
+    prefix_width = text_width(prefix, prefix_font, font_size, spacing)
+    if max_lines > 1:
+        lines = wrap_lines(text, font_name, font_size, box_pt - prefix_width, max_lines, spacing)
+    elif spacing:
+        lines = [fit_with_ellipsis(text, font_name, font_size, box_pt - prefix_width, spacing)]
+    else:
+        lines = [_truncate_to_width(text, font_name, font_size, box_pt - prefix_width)]
+    lines = [line for line in lines if line]
+    if not lines:
         return
-    content_pt = prefix_width + stringWidth(text, font_name, font_size)
+    text = lines[0]
+    content_pt = prefix_width + text_width(text, font_name, font_size, spacing)
+    extra_pt = leading * (len(lines) - 1)
 
     pdf.saveState()
     # (ox, oy) = comienzo de la línea, sobre la línea base; a lo largo del
@@ -1006,7 +1056,7 @@ def _draw_text_entry(pdf, entry, context, computed, width_cm, height_cm, default
     if entry.get("invert") or entry.get("frame"):
         pad = font_size * TEXT_BAND_PAD_RATIO
         bottom = -font_size * TEXT_BAND_DESCENT_RATIO
-        rect = (ox + band[0] - pad, oy + bottom, band[1] - band[0] + 2 * pad, font_size - bottom)
+        rect = (ox + band[0] - pad, oy + bottom - extra_pt, band[1] - band[0] + 2 * pad, font_size - bottom + extra_pt)
         if not rotate:
             # Dentro del rótulo: si no, el lado del recuadro que cae afuera se
             # pierde al cortar (la caja por defecto llega al borde derecho).
@@ -1023,11 +1073,23 @@ def _draw_text_entry(pdf, entry, context, computed, width_cm, height_cm, default
             pdf.setStrokeColorRGB(0, 0, 0)
             pdf.rect(*rect, stroke=1, fill=0)
 
+    color = resolve_color(entry.get("color"), palette)
+    if color and not entry.get("invert"):
+        pdf.setFillColorRGB(*(channel / 255 for channel in parse_hex(color)))
     if prefix:
-        pdf.setFont(prefix_font, font_size)
-        pdf.drawString(ox + start, oy, prefix)
-    pdf.setFont(font_name, font_size)
-    pdf.drawString(ox + start + prefix_width, oy, text)
+        draw_text_line(pdf, ox + start, oy, prefix, prefix_font, font_size, spacing)
+    draw_text_line(pdf, ox + start + prefix_width, oy, text, font_name, font_size, spacing)
+    # Los renglones siguientes, con la misma sangría que el primero (después
+    # de la etiqueta) y su propia alineación.
+    align = entry.get("align", "left")
+    for index, line in enumerate(lines[1:], start=1):
+        line_start = 0.0
+        line_width = prefix_width + text_width(line, font_name, font_size, spacing)
+        if align == "right":
+            line_start = box_pt - line_width
+        elif align == "center":
+            line_start = (box_pt - line_width) / 2
+        draw_text_line(pdf, ox + line_start + prefix_width, oy - index * leading, line, font_name, font_size, spacing)
     pdf.restoreState()
 
 

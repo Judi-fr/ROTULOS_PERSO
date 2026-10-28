@@ -18,21 +18,6 @@ function query(page) {
   return params.toString();
 }
 
-function renderPager(data, page) {
-  const pager = document.getElementById("pager");
-  pager.innerHTML = "";
-  const add = (text, target) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn btn-outline btn-small";
-    btn.textContent = text;
-    btn.addEventListener("click", () => load(target));
-    pager.appendChild(btn);
-  };
-  if (data.previous) add("Anterior", page - 1);
-  if (data.next) add("Siguiente", page + 1);
-}
-
 function formatDateTimeShort(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
@@ -56,7 +41,7 @@ async function load(page = 1) {
       });
       body.appendChild(tr);
     });
-    renderPager(data, page);
+    renderPrevNextPager(document.getElementById("pager"), data, page, load);
   } catch (err) {
     if (err.isSessionExpired) return;
     showMessage(err.message);

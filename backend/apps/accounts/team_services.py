@@ -179,7 +179,7 @@ def _mail_invitation(invitation):
     send_mail(
         f"Te invitaron al comercio {team_name}",
         (
-            f"{who} te invitó a trabajar en el comercio «{team_name}» en Rótulos.\n\n"
+            f"{who} te invitó a trabajar en el comercio «{team_name}» en Human Log · Rótulos.\n\n"
             "Para aceptar, entrá con tu cuenta (o creala con este mismo mail) y abrí:\n"
             f"{settings.TEAM_INVITATION_URL}\n\n"
             f"La invitación vence el {timezone.localtime(invitation.expires_at):%d/%m/%Y}.\n"

@@ -50,14 +50,6 @@ const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 // formatDate queda propia acá abajo: esta página no muestra la hora, solo
 // la fecha (a diferencia de la versión de utils.js).
 
-function showFieldMessage(id, text, ok) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.textContent = text;
-  el.style.color = ok ? "#16a34a" : "#dc2626";
-  el.style.display = "block";
-}
-
 function formatDate(iso) {
   if (!iso) return "-";
   try {
@@ -77,34 +69,27 @@ const getCurrentUser = () => window.Auth.getCurrentUser();
 // DIRECCIONES
 // ---------------------------------------------------------------------------
 
-function addressSummary(address) {
-  const parts = [address.street, address.number].filter(Boolean).join(" ");
-  const cityLine = [address.city, address.state].filter(Boolean).join(", ");
-  return [parts, cityLine].filter(Boolean).join(" — ");
-}
+const NEW_ADDRESS = "__new__";
 
+// "Enviar a": las direcciones guardadas y, al final, una nueva que se carga
+// ahí mismo. Sin ninguna guardada, el formulario de la nueva directamente.
 function renderAddressSelect() {
   const select = document.getElementById("orderAddressSelect");
-  const noAddressMsg = document.getElementById("noAddressMsg");
-  const newOrderForm = document.getElementById("newOrderForm");
   if (!select) return;
+  const options = addresses.map((address) => {
+    const who = address.recipient_name || address.label || "Sin nombre de quien recibe";
+    return `<option value="${escapeHtml(address.id)}">${escapeHtml(who)} — ${escapeHtml(addressSummary(address))}</option>`;
+  });
+  options.push(`<option value="${NEW_ADDRESS}">+ Una dirección nueva…</option>`);
+  select.innerHTML = options.join("");
+  document.getElementById("orderAddressPick").hidden = addresses.length === 0;
+  if (addresses.length === 0) select.value = NEW_ADDRESS;
+  syncNewAddressBox();
+}
 
-  const none = addresses.length === 0;
-  if (noAddressMsg) noAddressMsg.hidden = !none;
-  if (newOrderForm) newOrderForm.hidden = none;
-  const createBtn = document.getElementById("createOrderBtn");
-  if (createBtn) createBtn.hidden = none;
-  if (none) {
-    select.innerHTML = "";
-    return;
-  }
-
-  select.innerHTML = addresses
-    .map(
-      (address) =>
-        `<option value="${escapeHtml(address.id)}">${escapeHtml(address.label || "Dirección")} — ${escapeHtml(addressSummary(address))}</option>`
-    )
-    .join("");
+function syncNewAddressBox() {
+  const isNew = document.getElementById("orderAddressSelect").value === NEW_ADDRESS;
+  document.getElementById("newAddressBox").hidden = !isNew;
 }
 
 async function loadAddresses() {
@@ -134,13 +119,21 @@ function renderOrderList(orders) {
   if (!container) return;
 
   if (orders.length === 0) {
-    let empty = {
-      icon: "box",
-      title: "Todavía no hay pedidos",
-      text: "Conectá tu tienda y los pedidos entran solos, o cargá uno a mano más abajo en «Nuevo pedido».",
-      actionLabel: "Conectar una tienda",
-      actionHref: "tiendas.html",
-    };
+    // Con una tienda ya conectada no tiene sentido pedir que conecte una.
+    const hasStores = storesSignature !== "" && storesSignature !== "[]";
+    let empty = hasStores
+      ? {
+          icon: "box",
+          title: "Todavía no hay pedidos",
+          text: "Los de tus tiendas aparecen acá apenas entran. Para un envío por fuera, usá «+ Nuevo pedido», arriba.",
+        }
+      : {
+          icon: "box",
+          title: "Todavía no hay pedidos",
+          text: "Conectá tu tienda y los pedidos entran solos, o cargá uno a mano con «+ Nuevo pedido», arriba.",
+          actionLabel: "Conectar una tienda",
+          actionHref: "tiendas.html",
+        };
     if (selectedStore === "manual") empty = { icon: "box", title: "No hay pedidos cargados a mano" };
     else if (selectedStore) empty = { icon: "box", title: "No hay pedidos de esta tienda" };
     container.innerHTML = appEmptyState(empty);
@@ -244,7 +237,7 @@ function orderItem(order) {
     <div class="order-item-header">
       <div class="order-item-main">
         <div class="order-item-title"><span class="order-number">#${escapeHtml(number)}</span>${order.description ? `<span class="order-desc" title="${escapeHtml(order.description)}">${escapeHtml(order.description)}</span>` : ""}</div>
-        <p class="order-item-address">${order.address ? escapeHtml(addressSummary(order.address)) : "Sin dirección"} · ${escapeHtml(formatDate(order.created_at))}</p>
+        <p class="order-item-address">${order.address ? escapeHtml([order.address.recipient_name, addressSummary(order.address)].filter(Boolean).join(" · ")) : "Sin dirección"} · ${escapeHtml(formatDate(order.created_at))}</p>
       </div>
       <span class="status-badge ${escapeHtml(statusKey)}"><span class="dot"></span>${escapeHtml(statusLabel)}</span>
     </div>
@@ -378,21 +371,41 @@ document.addEventListener("visibilitychange", async () => {
   if (await loadStoreFilter()) loadOrders();
 });
 
-async function createOrder() {
-  const addressId = document.getElementById("orderAddressSelect").value;
-  const description = document.getElementById("orderDescription").value.trim();
-
-  if (!addressId) {
-    showFieldMessage("orderFormMsg", "Elegí una dirección de envío.", false);
-    return;
+// Crea la dirección nueva (si la eligió) y devuelve su id, o el de la
+// guardada. Una guardada sin nombre de quien recibe no sirve: el rótulo
+// saldría dirigido al propio comercio.
+async function orderAddressId() {
+  const selected = document.getElementById("orderAddressSelect").value;
+  if (selected !== NEW_ADDRESS) {
+    const address = addresses.find((item) => String(item.id) === selected);
+    if (address && !address.recipient_name) {
+      throw new Error("Esa dirección no tiene el nombre de quien recibe: agregalo en Mis direcciones (Editar) o cargá una nueva.");
+    }
+    return selected;
   }
+  const payload = readAddressFields("newAddr");
+  const missing = missingAddressFields(payload);
+  if (missing) throw new Error(missing);
+  const response = await apiFetch(ADDRESSES_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(getErrorMessage(data, "No se pudo guardar la dirección."));
+  fillAddressFields("newAddr", null);
+  return data.id;
+}
 
+async function createOrder() {
+  const description = document.getElementById("orderDescription").value.trim();
   const button = document.getElementById("createOrderBtn");
   const originalText = button.textContent;
   button.disabled = true;
   button.textContent = "Creando...";
 
   try {
+    const addressId = await orderAddressId();
     const response = await apiFetch(ORDERS_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -454,11 +467,19 @@ async function openNewOrder() {
   dialog.showModal();
   await loadAddresses();
   if (addresses.length) document.getElementById("orderAddressSelect")?.focus();
+  else document.getElementById("newAddrRecipient")?.focus();
 }
 
 document.getElementById("openNewOrderBtn")?.addEventListener("click", openNewOrder);
 document.getElementById("closeNewOrderBtn")?.addEventListener("click", () => document.getElementById("newOrderDialog")?.close());
 document.getElementById("createOrderBtn")?.addEventListener("click", createOrder);
+document.getElementById("orderAddressSelect")?.addEventListener("change", () => {
+  syncNewAddressBox();
+  if (document.getElementById("orderAddressSelect").value === NEW_ADDRESS) {
+    document.getElementById("newAddrRecipient")?.focus();
+  }
+});
+renderAddressFields(document.getElementById("newAddressFields"), "newAddr");
 document.getElementById("ordersPrevBtn")?.addEventListener("click", () => {
   if (ordersPage > 1) {
     ordersPage -= 1;

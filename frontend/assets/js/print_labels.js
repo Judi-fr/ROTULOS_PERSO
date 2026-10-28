@@ -11,7 +11,6 @@
 const API_BASE = window.APP_CONFIG.API_BASE;
 const ME_URL = `${API_BASE}/auth/me/`;
 const ORDERS_URL = `${API_BASE}/orders/`;
-const STORES_URL = `${API_BASE}/integrations/stores/`;
 const TEMPLATES_URL = `${API_BASE}/labels/templates/`;
 const BATCH_URL = `${API_BASE}/labels/batch/`;
 
@@ -43,13 +42,6 @@ function updateSelectionCount() {
   const count = selectedIds.size;
   document.getElementById("selectionCount").textContent =
     count === 1 ? "1 seleccionado" : `${count} seleccionados`;
-}
-
-function addressSummary(address) {
-  if (!address) return "";
-  const street = [address.street, address.number].filter(Boolean).join(" ");
-  const city = [address.city, address.state].filter(Boolean).join(", ");
-  return [street, city].filter(Boolean).join(" — ");
 }
 
 // Todo lo que viene de una tienda es texto de terceros: se escapa siempre.
@@ -129,28 +121,7 @@ async function loadOrders() {
 }
 
 async function loadStoreFilter() {
-  const field = document.getElementById("storeFilterField");
-  const select = document.getElementById("storeFilter");
-  try {
-    const response = await apiFetch(STORES_URL);
-    if (!response.ok) return;
-    const stores = extractResults(await response.json());
-    if (!stores.length) return;
-    stores.forEach((store) => {
-      const option = document.createElement("option");
-      option.value = store.id;
-      option.textContent = store.name || `Tienda ${store.external_store_id}`;
-      select.appendChild(option);
-    });
-    const manual = document.createElement("option");
-    manual.value = "manual";
-    manual.textContent = "Pedidos cargados a mano";
-    select.appendChild(manual);
-    field.style.display = "";
-  } catch (err) {
-    if (err.isSessionExpired) return;
-    console.error("Error al cargar tiendas:", err);
-  }
+  await fillStoreFilter(document.getElementById("storeFilter"), document.getElementById("storeFilterField"));
 }
 
 async function loadTemplates() {

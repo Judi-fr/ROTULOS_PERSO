@@ -75,8 +75,7 @@ function showMessage(text, type = "error") {
 // frontend a propósito: pedidos.js necesita solo la fecha (sin hora) y
 // tiendas.js usa un formato corto de Intl distinto — moverlas acá les
 // cambiaría lo que ve el usuario, así que quedaron como funciones propias
-// de esas páginas. admin_common.js expone su propia formatDateTime (con
-// guarda NaN en vez de try/catch) para las páginas de administración.
+// de esas páginas.
 function formatDate(iso) {
   if (!iso) return "-";
   try {
@@ -98,6 +97,127 @@ function extractResults(data) {
   if (Array.isArray(data)) return data;
   if (data && Array.isArray(data.results)) return data.results;
   return [];
+}
+
+// Fecha y hora como dd/mm/aaaa, hh:mm (es-AR). ``empty`` es lo que se
+// muestra sin fecha ("Nunca" para un agente que no se conectó).
+function formatDateTime(value, empty = "-") {
+  if (!value) return empty;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return empty;
+  return date.toLocaleString("es-AR", {
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
+
+// "Calle 123 — Ciudad, Provincia" de una dirección de la API.
+function addressSummary(address) {
+  if (!address) return "";
+  const street = [address.street, address.number].filter(Boolean).join(" ");
+  const city = [address.city, address.state].filter(Boolean).join(", ");
+  return [street, city].filter(Boolean).join(" — ");
+}
+
+// Campos de una dirección de envío, iguales en Mis direcciones y en el
+// diálogo "Nuevo pedido" (que la puede crear sin salir). Cada input tiene id
+// ``<prefix><Campo>``. El nombre de quien recibe es obligatorio: sin él el
+// rótulo salía dirigido al propio comercio.
+const ADDRESS_FIELDS = [
+  ["Recipient", "recipient_name", "Nombre de quien recibe", "Mariela Quiroga", true],
+  ["Label", "label", "Para reconocerla (opcional)", "Clienta de Mar del Plata", false],
+  ["Street", "street", "Calle", "Bolívar", true],
+  ["Number", "number", "Número", "1187", false],
+  ["City", "city", "Ciudad", "Mar del Plata", true],
+  ["PostalCode", "postal_code", "Código postal", "7600", true],
+  ["State", "state", "Provincia", "Buenos Aires", false],
+  ["Reference", "reference", "Referencia (opcional)", "Timbre azul, portón negro", false],
+];
+
+function renderAddressFields(container, prefix) {
+  const field = ([suffix, , label, placeholder, required]) => `
+    <div class="field">
+      <label for="${prefix}${suffix}">${escapeHtml(label)}</label>
+      <input type="text" id="${prefix}${suffix}" placeholder="${escapeHtml(placeholder)}"${required ? " required" : ""} />
+    </div>`;
+  const rows = [];
+  // De a dos por fila (son ocho).
+  for (let i = 0; i < ADDRESS_FIELDS.length; i += 2) {
+    rows.push(`<div class="field-row">${field(ADDRESS_FIELDS[i])}${field(ADDRESS_FIELDS[i + 1])}</div>`);
+  }
+  container.innerHTML = rows.join("");
+}
+
+function readAddressFields(prefix) {
+  const payload = {};
+  ADDRESS_FIELDS.forEach(([suffix, key]) => {
+    payload[key] = (document.getElementById(prefix + suffix)?.value || "").trim();
+  });
+  return payload;
+}
+
+function fillAddressFields(prefix, address) {
+  ADDRESS_FIELDS.forEach(([suffix, key]) => {
+    const input = document.getElementById(prefix + suffix);
+    if (input) input.value = (address && address[key]) || "";
+  });
+}
+
+// Qué falta para que la dirección sirva en un rótulo ("" si nada).
+function missingAddressFields(payload) {
+  const missing = ADDRESS_FIELDS.filter(([, key, , , required]) => required && !payload[key]).map(
+    ([, , label]) => label.toLowerCase()
+  );
+  return missing.length ? `Completá: ${missing.join(", ")}.` : "";
+}
+
+// Mensaje debajo de un formulario (id del elemento), verde si ``ok``.
+function showFieldMessage(id, text, ok) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = ok ? "#16a34a" : "#dc2626";
+  el.style.display = "block";
+}
+
+// Llena un <select> de filtro con las tiendas del comercio más "Pedidos
+// cargados a mano", y muestra su campo (``field``, oculto en el HTML). Con
+// menos de ``minStores`` tiendas no se muestra: no hay nada que elegir.
+async function fillStoreFilter(select, field, { minStores = 1 } = {}) {
+  try {
+    const response = await window.Auth.apiFetch(`${window.APP_CONFIG.API_BASE}/integrations/stores/`);
+    if (!response.ok) return;
+    const stores = extractResults(await response.json());
+    if (stores.length < minStores) return;
+    stores.forEach((store) => {
+      const option = document.createElement("option");
+      option.value = store.id;
+      option.textContent = store.name || `Tienda ${store.external_store_id}`;
+      select.appendChild(option);
+    });
+    const manual = document.createElement("option");
+    manual.value = "manual";
+    manual.textContent = "Pedidos cargados a mano";
+    select.appendChild(manual);
+    field.style.display = "";
+  } catch (err) {
+    if (!err.isSessionExpired) console.error("Error al cargar tiendas:", err);
+  }
+}
+
+// Botones Anterior/Siguiente de una lista paginada por la API (``data.previous``
+// / ``data.next``) dentro de ``container``; ``goTo(página)`` carga otra.
+function renderPrevNextPager(container, data, page, goTo) {
+  container.innerHTML = "";
+  const add = (text, target) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-outline btn-small";
+    btn.textContent = text;
+    btn.addEventListener("click", () => goTo(target));
+    container.appendChild(btn);
+  };
+  if (data.previous) add("Anterior", page - 1);
+  if (data.next) add("Siguiente", page + 1);
 }
 
 // Descarga un archivo que devolvió la API (export, PDF) sin abrir otra
@@ -203,13 +323,6 @@ function createOrderPicker(root, options = {}) {
     const count = selected.size;
     el("count").textContent = count === 1 ? "1 seleccionado" : `${count} seleccionados`;
     if (options.onSelectionChange) options.onSelectionChange(count);
-  }
-
-  function addressSummary(address) {
-    if (!address) return "";
-    const street = [address.street, address.number].filter(Boolean).join(" ");
-    const city = [address.city, address.state].filter(Boolean).join(", ");
-    return [street, city].filter(Boolean).join(" — ");
   }
 
   // Todo lo que viene de una tienda es texto de terceros: se escapa siempre.

@@ -23,6 +23,7 @@
     <script src="assets/js/label_editor_markers.js"></script>
     <script src="assets/js/label_editor_rules.js"></script>
     <script src="assets/js/label_editor_snap.js"></script>
+    <script src="assets/js/label_editor_shapes.js"></script>
     <script src="assets/js/label_editor_sizes.js"></script>
 
     <!-- Estilos comunes del frontend (header/topbar, botones, avatar). Va
@@ -440,6 +441,184 @@
         inset: 0;
         pointer-events: none;
         z-index: 1;
+      }
+      /* Capas como en el PDF: recuadro y líneas (decoration-layer, z 1) <
+         formas (shape-layer, z 1, va después) < campos (z 2) < textos fijos
+         (z 3). label_editor_shapes.js dibuja la capa de formas. */
+      .decoration-text-layer {
+        z-index: 3;
+      }
+      .label > .field {
+        z-index: 2;
+      }
+      .shape-layer {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+      }
+      .shape-el {
+        position: absolute;
+        pointer-events: auto;
+        cursor: grab;
+      }
+      .shape-svg {
+        position: absolute;
+        left: 0;
+        top: 0;
+        overflow: visible;
+      }
+      /* Una caja sin relleno ni borde no se imprime, pero en el editor hay
+         que poder verla para agarrarla. */
+      .shape-el.shape-invisible {
+        outline: 1px dashed rgba(100, 116, 139, 0.55);
+      }
+      .shape-line-h::after,
+      .shape-line-v::after {
+        content: "";
+        position: absolute;
+        inset: -5px;
+      }
+      .shape-text {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        line-height: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        font-family: Helvetica, Arial, sans-serif;
+        pointer-events: none;
+      }
+      .shape-text span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .shape-el.selected {
+        outline: 1.5px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .shape-el.locked {
+        cursor: default;
+      }
+      .shape-resize {
+        position: absolute;
+        right: -6px;
+        bottom: -6px;
+        width: 11px;
+        height: 11px;
+        border: 2px solid #fff;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.35);
+        cursor: nwse-resize;
+        z-index: 5;
+      }
+      .shape-line-h .shape-resize {
+        top: -5px;
+        bottom: auto;
+        cursor: ew-resize;
+      }
+      .shape-line-v .shape-resize {
+        left: -5px;
+        right: auto;
+        cursor: ns-resize;
+      }
+
+      /* Panel de la forma y de "Formas y colores". */
+      .shape-props .shape-wide,
+      .shape-props .shape-section,
+      .shape-props .shape-text-fields,
+      .shape-props .code-config-label {
+        grid-column: 1 / -1;
+      }
+      .shape-geometry {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+      }
+      .shape-geometry label[hidden] {
+        display: none;
+      }
+      .shape-text-fields {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px 12px;
+        padding: 12px;
+        border-radius: var(--radius-md);
+        background: var(--bg, #f5f7fb);
+      }
+      .shape-text-fields[hidden],
+      .shape-section[hidden] {
+        display: none;
+      }
+      .shape-color-label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .shape-swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .shape-swatch {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: 1px solid var(--border-strong);
+        border-radius: 50%;
+        font-size: 10px;
+        font-weight: 700;
+        color: #fff;
+        cursor: pointer;
+        transition: transform 0.15s, box-shadow 0.15s;
+      }
+      .shape-swatch:active {
+        transform: scale(0.94);
+      }
+      .shape-swatch.active {
+        box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--accent);
+      }
+      .shape-swatch-none {
+        background: linear-gradient(135deg, #fff 45%, #dc2626 45% 55%, #fff 55%);
+      }
+      /* El fondo lo pone label_editor_shapes.js con el color de la paleta. */
+      .shape-swatch-palette {
+        text-shadow: 0 0 2px rgba(0, 0, 0, 0.7);
+      }
+      .shape-swatch-custom {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: 1px dashed var(--border-strong);
+        border-radius: 50%;
+        background: none;
+        cursor: pointer;
+      }
+      .shape-actions {
+        display: flex;
+        gap: 8px;
+      }
+      .shape-actions .btn {
+        flex: 1;
+      }
+      .shape-add {
+        margin-bottom: 12px;
+      }
+      .palette-group input[type="color"] {
+        width: 100%;
+        height: 34px;
+        padding: 2px;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-sm);
+        background: var(--surface, #fff);
+      }
+      .thermal-note {
+        margin: 10px 0 0;
+        font-size: 12px;
+        color: #b45309;
       }
       .deco-border {
         position: absolute;
@@ -1093,6 +1272,8 @@
             <!-- Bloqueo del elemento elegido en el lienzo (cualquiera: texto,
                  logo, QR o código). Bloqueado no se arrastra ni se mueve con las
                  flechas; el texto se sigue pudiendo editar. -->
+            <!-- Forma elegida: lo arma label_editor_shapes.js al elegir una. -->
+            <div class="tool-group shape-props" id="shapePropsGroup" hidden></div>
             <div class="tool-group" id="lockGroup" hidden>
               <span class="code-config-label"
                 >Elemento: <strong id="lockGroupTitle"></strong></span
@@ -1179,6 +1360,32 @@
                 + Texto fijo
               </button>
             </div>
+          </section>
+
+          <section class="panel">
+            <h2 class="panel-title">Formas y colores</h2>
+            <!-- Fondos, celdas, recuadros y líneas (label_editor_shapes.js):
+                 se dibujan igual en el PDF y en la térmica. -->
+            <div class="tool-group shape-add">
+              <button type="button" class="btn btn-outline" data-add-shape="rect">+ Rectángulo</button>
+              <button type="button" class="btn btn-outline" data-add-shape="ellipse">+ Círculo</button>
+              <button type="button" class="btn btn-outline" data-add-shape="box">+ Caja con texto</button>
+              <button type="button" class="btn btn-outline" data-add-shape="lineH">+ Línea horizontal</button>
+              <button type="button" class="btn btn-outline" data-add-shape="lineV">+ Línea vertical</button>
+            </div>
+            <div class="tool-group palette-group">
+              <label title="Las formas que usan «P» toman este color">
+                Color principal
+                <input type="color" id="palettePrimary" value="#1e3a8a" />
+              </label>
+              <label title="Las formas que usan «A» toman este color">
+                Color de acento
+                <input type="color" id="paletteAccent" value="#a3e635" />
+              </label>
+            </div>
+            <p class="hint thermal-note" id="thermalColorNote" hidden>
+              En impresora térmica los colores salen en negro o en gris (trama).
+            </p>
           </section>
 
           <section class="panel">
@@ -1414,6 +1621,9 @@
         barcodeField.style.height = bcH * perCm + "px";
 
         renderDecorations(perCm, widthCm, heightCm, fontPt);
+        // Formas y cajas (label_editor_shapes.js): encima del recuadro y las
+        // líneas, debajo de los campos, como en el PDF.
+        window.LabelEditorShapes.render(perCm, widthCm, heightCm, fontPt);
       }
 
       // Decoraciones del diseño: recuadro, líneas y textos fijos. El backend
@@ -1476,6 +1686,12 @@
           layer.appendChild(el);
         });
 
+        // Los textos fijos van en su propia capa, encima de las formas: el
+        // PDF los dibuja con los demás textos, después de las formas.
+        document.getElementById("decorationTextLayer")?.remove();
+        const textLayer = document.createElement("div");
+        textLayer.id = "decorationTextLayer";
+        textLayer.className = "decoration-layer decoration-text-layer";
         (decorations.texts || []).forEach((item, index) => {
           const el = document.createElement("div");
           el.className = "deco-text";
@@ -1491,10 +1707,11 @@
           }
           el.classList.toggle("locked", Boolean(item.locked));
           attachDecoPointer(el, "text", index);
-          layer.appendChild(el);
+          textLayer.appendChild(el);
         });
 
         label.appendChild(layer);
+        label.appendChild(textLayer);
       }
 
       // --- Seleccionar y arrastrar decoraciones --------------------------
@@ -1564,6 +1781,16 @@
       label.addEventListener("pointerdown", () => {
         selectDeco(null);
         selectField(null);
+        if (window.LabelEditorShapes.selectedId()) window.LabelEditorShapes.select(null);
+      });
+
+      window.LabelEditorShapes.init({
+        label,
+        rerender: () => applyRenderMetrics(),
+        clearOthers: () => {
+          selectField(null);
+          window.selectDeco?.(null);
+        },
       });
 
       function updateLabelSize() {
@@ -1620,6 +1847,7 @@
 
       function selectField(key) {
         selectedFieldKey = key;
+        if (key && window.LabelEditorShapes.selectedId()) window.LabelEditorShapes.select(null);
         document.querySelectorAll(".field").forEach((el) => {
           el.classList.toggle("selected-el", el.dataset.field === key);
         });
@@ -1895,6 +2123,24 @@
         }
       });
 
+      // Llegando desde "+ Nueva plantilla" (Mis plantillas) se está armando
+      // una plantilla, no un rótulo: el título y el botón principal lo dicen,
+      // y el botón guarda la plantilla (el mismo camino que "Guardar como
+      // plantilla"); "Guardar rótulo" queda escondido.
+      if (params.get("nueva") === "plantilla") {
+        document.querySelector(".editor-heading h1").textContent = "Nueva plantilla";
+        document.title = "Nueva plantilla · Human Log Rótulos";
+        const labelSaveBtn = document.getElementById("saveBtn");
+        const templateSaveBtn = document.createElement("button");
+        templateSaveBtn.id = "saveNewTemplateBtn";
+        templateSaveBtn.className = "primary";
+        templateSaveBtn.textContent = "Guardar plantilla";
+        templateSaveBtn.addEventListener("click", () => saveAsTemplateBtn.click());
+        labelSaveBtn.after(templateSaveBtn);
+        labelSaveBtn.style.display = "none";
+        saveAsTemplateBtn.style.display = "none";
+      }
+
       // --- Guardar el diseño como versión nueva de la plantilla abierta ----
       const saveTemplateVersionBtn = document.getElementById("saveTemplateVersionBtn");
       let editableTemplate = null; // la plantilla de ?template=<id>, si se puede editar
@@ -2134,6 +2380,7 @@
         // Una decoración y un campo no se eligen a la vez (las flechas
         // moverían los dos).
         if (type) selectField(null);
+        if (type && window.LabelEditorShapes.selectedId()) window.LabelEditorShapes.select(null);
         refreshDecoPanel();
         applyRenderMetrics();
       }
@@ -2433,6 +2680,7 @@
         };
         // Reglas y bloqueos: el editor no los mostraba y al guardar se
         // perdían (collectFields no los devolvía).
+        window.LabelEditorShapes.load(fields);
         window.LabelEditorRules.load(fields.rules);
         lockedFields.clear();
         (Array.isArray(fields.locked) ? fields.locked : []).forEach((key) => lockedFields.add(key));
@@ -2655,6 +2903,7 @@
         if (decorations.texts) fields.texts = decorations.texts;
         // Reglas y bloqueos: sin la clave cuando no hay ninguno, igual que
         // las decoraciones.
+        Object.assign(fields, window.LabelEditorShapes.collect());
         const rules = window.LabelEditorRules.collect();
         if (rules.length) fields.rules = rules;
         if (lockedFields.size) fields.locked = [...lockedFields];

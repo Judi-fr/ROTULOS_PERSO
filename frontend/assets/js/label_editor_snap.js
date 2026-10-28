@@ -56,6 +56,13 @@
     label.querySelectorAll(".deco-line").forEach((el) => {
       ys.push(box(el, labelRect).top);
     });
+    // Formas (label_editor_shapes.js): todos sus bordes y su centro.
+    label.querySelectorAll(".shape-el").forEach((el) => {
+      if (el === moving) return;
+      const b = box(el, labelRect);
+      xs.push(b.left, b.left + b.width / 2, b.left + b.width);
+      ys.push(b.top, b.top + b.height / 2, b.top + b.height);
+    });
     label.querySelectorAll(".deco-text").forEach((el) => {
       const b = box(el, labelRect);
       xs.push(b.left);

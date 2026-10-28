@@ -15,14 +15,6 @@ const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
 // showMessage y getErrorMessage salen de assets/js/utils.js.
 
-function showFieldMessage(id, text, ok) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.textContent = text;
-  el.style.color = ok ? "#16a34a" : "#dc2626";
-  el.style.display = "block";
-}
-
 const ROLE_LABELS = {
   admin: "Administrador",
   subscriber: "Comerciante",

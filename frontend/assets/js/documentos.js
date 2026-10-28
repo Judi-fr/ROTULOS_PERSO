@@ -126,7 +126,7 @@ function buildItem(doc) {
   info.className = "document-item-info";
   info.innerHTML = `
     <p class="document-item-title">${escapeHtml(doc.name)}</p>
-    <p class="document-item-meta">${escapeHtml(doc.kind_label || doc.kind)} · ${doc.item_count} rótulo(s) · ${formatSize(doc.size_bytes)}</p>
+    <p class="document-item-meta">${escapeHtml(doc.kind_label || doc.kind)} · ${doc.item_count} ${doc.item_count === 1 ? "rótulo" : "rótulos"} · ${formatSize(doc.size_bytes)}</p>
     <p class="document-item-meta">Creado: ${formatDate(doc.created_at)}</p>
     ${doc.status === "failed" && doc.error_message ? `<p class="document-item-error">${escapeHtml(doc.error_message)}</p>` : ""}
     ${doc.status === "ready" && doc.error_message ? `<p class="document-item-meta">${escapeHtml(doc.error_message)}</p>` : ""}

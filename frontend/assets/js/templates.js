@@ -109,16 +109,16 @@ const gridEl = document.getElementById("templatesGrid");
 
 function renderEmptyState() {
   if (searchTerm) {
-    gridEl.innerHTML =
-      '<div class="empty-state-block"><p>No hay plantillas que coincidan con tu búsqueda.</p></div>';
+    gridEl.innerHTML = appEmptyState({ icon: "doc", title: "No hay plantillas que coincidan con tu búsqueda" });
     return;
   }
-  gridEl.innerHTML = `
-    <div class="empty-state-block">
-      <p>Todavía no creaste ninguna plantilla propia.</p>
-      <a class="btn btn-primary" href="${EDITOR_URL}">Diseñar mi primera plantilla</a>
-    </div>
-  `;
+  gridEl.innerHTML = appEmptyState({
+    icon: "doc",
+    title: "Todavía no creaste ninguna plantilla propia",
+    text: "Una plantilla define dónde va cada dato del rótulo; tus pedidos se imprimen con ella.",
+    actionLabel: "Diseñar mi primera plantilla",
+    actionHref: EDITOR_URL,
+  });
 }
 
 function buildCard(template) {

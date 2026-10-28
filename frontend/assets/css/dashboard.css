@@ -267,6 +267,20 @@
   border-color: #ea580c;
 }
 
+/* "Abrir <sección>": con seis tarjetas, seis botones naranjas llenos se
+   anulaban entre sí y nada se destacaba. Suave, para que el naranja lleno
+   quede para la acción principal de cada pantalla. */
+.section-btn-soft {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
+}
+
+.section-btn-soft:hover {
+  background: #ffedd5;
+  border-color: #fdba74;
+}
+
 .section-btn:focus-visible,
 .notice a:focus-visible,
 .notice button:focus-visible,

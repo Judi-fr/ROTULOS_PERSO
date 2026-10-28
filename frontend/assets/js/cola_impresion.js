@@ -15,11 +15,6 @@ const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 let currentPage = 1;
 let refreshTimer = null;
 
-function formatDateTime(iso) {
-  if (!iso) return "-";
-  return new Date(iso).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
-}
-
 function jobRow(job) {
   const row = document.createElement("tr");
   const labels = job.label_count === 1 ? "1 rótulo" : `${job.label_count} rótulos`;
@@ -99,21 +94,13 @@ async function loadJobs() {
       body.innerHTML = `<tr><td colspan="5">${appEmptyState({ icon: "printer", title: "No hay trabajos para mostrar", actionLabel: "Imprimir rótulos", actionHref: "imprimir_rotulos.html" })}</td></tr>`;
     }
     jobs.forEach((job) => body.appendChild(jobRow(job)));
-    renderPager(data);
+    renderPrevNextPager(document.getElementById("jobsPager"), data, currentPage, goToPage);
     await loadAgentsSummary();
     scheduleRefresh(jobs.some((job) => job.status === "pending" || job.status === "printing"));
   } catch (err) {
     if (err.isSessionExpired) return;
     body.innerHTML = `<tr><td colspan="5" class="empty-state">${escapeHtml(err.message)}</td></tr>`;
   }
-}
-
-function renderPager(data) {
-  const pager = document.getElementById("jobsPager");
-  pager.innerHTML = "";
-  if (!data.previous && !data.next) return;
-  if (data.previous) pager.appendChild(actionButton("Anterior", "btn-outline", () => goToPage(currentPage - 1)));
-  if (data.next) pager.appendChild(actionButton("Siguiente", "btn-outline", () => goToPage(currentPage + 1)));
 }
 
 function goToPage(page) {

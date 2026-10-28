@@ -178,6 +178,11 @@ not exposed at all, unlike the dev compose.
   `127.0.0.1:8000` for dev, which on a server would make the merchant's browser call *their own*
   machine. `.dockerignore` leaves out `assets/apis/` — 502 MB of the 504 the folder weighs, and nginx
   does not run PHP anyway — so the image is ~50 MB.
+- **Asset versioning (2026-10-28)**: nginx caches `assets/` for 1 h, so after a deploy a browser kept the
+  old CSS/JS. The Dockerfile (and the CI static artifact) runs `frontend/tools/version_assets.sh`, which
+  rewrites every own CSS/JS reference in the `.html` to `?v=<md5 of its content>` (manual `?v=` included;
+  `config.js` excluded), and nginx serves `.html` with `no-cache`. Nothing to stamp by hand; the repo
+  files are never rewritten. Local dev (no nginx) can still show a stale file: hard reload.
 - Media (`MEDIA_ROOT`) is a real volume: the generated batch PDFs and store logos live on disk, so a
   platform with an ephemeral filesystem would lose them on every redeploy.
 - The images use fully-qualified names (`docker.io/library/...`) so Podman resolves them too. Note the
@@ -710,6 +715,28 @@ change in `label_rendering.py`, change them in the editor too.** `renderDecorati
   starts at the box start (left / 90°). Editor: `text-inverted`/`text-framed`/`text-rot-*` classes and the
   prefix as a `::before` (so `collectFields`, which reads `textContent`, never saves it into `text`). Tests:
   `apps/labels/tests/test_text_options.py`.
+- **Shapes, boxes, color and layers (2026-10-28, phase 1 of
+  `docs/superpowers/specs/2026-10-28-editor-rotulos-galeria-design.md`; plan
+  `docs/superpowers/plans/2026-10-28-editor-fase1-formas-color.md`).** Two optional `design` keys: `palette`
+  (`{primary, accent}`, `#rrggbb`) and `shapes` (max 60): `{id, kind: rect|ellipse|line, left, top, width, height`
+  (% of the label; a line is horizontal with `height` 0 or vertical with `width` 0), `fill`, `stroke` (hex,
+  `"primary"`, `"accent"` or null), `stroke_width` (pt, default 0.6), `stroke_style` (solid|dashed 4/3 pt|dotted 1/2
+  pt), `radius` (mm, rect), `z`, `locked`, `text` (a box with content = a cell: `{value` with `{{markers}}`,
+  `font_size, bold, align, valign, color, padding` mm default 1, `hide_if_empty}`)`}`. Validation in
+  `design_shapes.py` (also `resolve_color`, `thermal_tone`); drawing in `shapes_pdf.py` (called by `draw_label_page`
+  right after the decorations) and `shapes_zpl.py` (same place in `render_label_zpl`), in `z` order. **Shapes are the
+  background layer**: over the border/lines, under logo, codes and texts (the editor mirrors it: decoration layer <
+  shape layer < `.field` z2 < fixed texts in their own layer z3). Rules target a shape as `"shape:<id>"`
+  (`apply_design_rules` copies and indexes them). **Thermal**: luminance < 96 → black, > 245 → nothing, in between a
+  Bayer 4×4 screen (245, not 200, so a light OCA-style header gray still prints); strokes/lines print black unless
+  white; light text (≥ 160) goes with `^FR`. Black fills use `^GB` (5th param = corner rounding) / `^GE`; gray fills
+  and dashed strokes on rounded/ellipse shapes are rasterized with Pillow to `^GF` with ZPL ASCII compression
+  (`compress_rows`), so a full-label gray at 300 dpi stays small. A design without `shapes`/`palette` prints
+  byte-identical (pinned by `test_existing_standard_template_unchanged` in `test_shapes_pdf.py`/`test_shapes_zpl.py`,
+  hashes taken before the change). Editor: `assets/js/label_editor_shapes.js` (`window.LabelEditorShapes`): panel
+  "Formas y colores" (add rect/circle/box/lines, the two palette colors, thermal-color notice) and "Forma
+  seleccionada" (position/size in %, fill/stroke swatches with P/A palette refs, stroke width/style, corners, text,
+  front/back, lock, delete); drag, resize handle, arrows, Delete; the snap module uses shape edges.
 - The **field properties panel** (`fieldPropsGroup`) edits those per-field styles: click a text field on
   the canvas and set `font_size`, `bold`, `align`, `width`, `hide_if_empty`, `shrink_to_fit`. It follows
   the same select-then-configure pattern as the QR/barcode panel beside it. An empty or unchecked control
@@ -729,9 +756,9 @@ change in `label_rendering.py`, change them in the editor too.** `renderDecorati
 - **Locking**: `design.locked` is a list of field names (lines and fixed texts carry `locked: true` instead). A
   locked element is still selected (to unlock it or edit its text) but not dragged nor moved with the arrows
   (0.5 %, Shift 5 %; Alt+arrows while typing in a text). Editor-only: the PDF and the ZPL ignore it, and a rule
-  can't target it (`serializers.EDITOR_ONLY_KEYS`). **There is no per-element layer order on purpose**: the PDF
-  draws decorations, logo, codes and then texts, so text is always on top, and a thermal printer doesn't depend
-  on order.
+  can't target it (`serializers.EDITOR_ONLY_KEYS`). **Layer order exists only among shapes** (their `z`, see
+  "Shapes, boxes, color and layers" below): the PDF draws decorations, shapes, logo, codes and then texts, so text is
+  always on top of any shape.
 - `GET/PUT /labels/sequence/` (`LabelSequenceView`, `labels.edit`): `{prefix, padding, next}` of the user's
   `LabelSequence` key `default`, the only one the render uses; `next` is stored as `current = next - 1`, so it's
   the same counter `next_value` increments. Audited as `label.update`.
@@ -1633,7 +1660,12 @@ with an active/inactive bar plus Activos/Inactivos/Bloqueados as buttons that se
 and the email moved under the name (no Email column; email order stays in "Ordenar por").
 
 - `assets/js/utils.js` — shared helpers loaded as a classic script (global functions, not an ES module):
-  `escapeHtml`, `getErrorMessage`, `showMessage`, `formatDate`, `extractResults`. `showMessage`
+  `escapeHtml`, `getErrorMessage`, `showMessage`, `formatDate`, `extractResults`, and since 2026-10-28
+  `formatDateTime(value, empty="-")` (dd/mm/aaaa, hh:mm; admin_common no longer has its own),
+  `addressSummary`, `showFieldMessage`, `fillStoreFilter(select, field, {minStores})` and
+  `renderPrevNextPager(container, data, page, goTo)` — copies of them used to live in 3-5 pages each.
+  `hasPermission` (dashboard/templates) and the page `formatDate`s were left on purpose: they behave
+  differently. Karla is loaded with 400,500,600,700 (the CSS uses all four). `showMessage`
   scrolls the page to `#pageMessage` when it is out of view: the notice sits at the top, and an
   action taken further down used to end with no visible result at all.
 - **Every action says how it ended.** A write that succeeds shows a green `page-message success`
@@ -1818,6 +1850,22 @@ and the email moved under the name (no Email column; email order stays in "Orden
 - **Addresses are not a menu entry.** They have their own page, `direcciones.html` (full CRUD), reached from the
   new-order dialog ("Administrar direcciones") and the dashboard's function search; until 2026-10-26 they were a
   section of `pedidos.html`.
+- **Manual orders need who receives (2026-10-28).** The address form had no `recipient_name`, so
+  `build_label_context` fell back to the business name and a manual order's label read "Enviar a: <own business>".
+  The form is now shared — `renderAddressFields`/`readAddressFields`/`fillAddressFields`/`missingAddressFields` in
+  `utils.js` (recipient, street, city and postal code required) — and used by `direcciones.html` (which can now
+  also edit) and by the "Nuevo pedido" dialog, whose "Enviar a" select ends in "+ Una dirección nueva…" to create
+  it without leaving (saved to Mis direcciones). A saved address without a recipient is refused there. The API
+  still accepts an address without one (existing tests post that), so the rule lives in the screen.
+- **Brand: "Human Log · Rótulos"** (company · product, decided 2026-10-28). Access pages show the cropped Human Log
+  logo (`humanlog-logo.png` / `humanlog-lockup.png`, cut from `LogoLogin.png`; `HLLogoFinal.jpg`, the globe one, is
+  no longer used) + "Rótulos"; the shared topbar's home link is the app mark (`favicon.svg`) + "Rótulos" and
+  `topbar.js` appends " · Human Log Rótulos" to the tab title; the admin sidebar says "Rótulos / Administración";
+  mail subjects and the default sender say "Human Log · Rótulos". The logo is green, the app accent orange: not
+  unified on purpose (left for a design decision).
+- `editor_rotulos.html?nueva=plantilla` (the "+ Nueva plantilla" button) titles the page "Nueva plantilla" and its
+  main button saves a template ("Guardar plantilla", same path as "Guardar como plantilla"); plain
+  `editor_rotulos.html` still saves a `Label`.
 
 ## Reglas
 

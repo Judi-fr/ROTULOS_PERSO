@@ -461,7 +461,7 @@ class LabelBatchView(APIView):
 
         document = Document.objects.create(
             user=data_owner(request.user),
-            name=f"Rótulos {timezone.localdate().strftime('%d/%m')} ({len(items)} envíos)",
+            name=f"Rótulos {timezone.localdate().strftime('%d/%m')} ({len(items)} {'envío' if len(items) == 1 else 'envíos'})",
             kind=Document.Kind.LABELS_BATCH,
             status=Document.Status.PROCESSING,
             store_ids=sorted({order.store_connection_id for order in batch_orders if order.store_connection_id}),

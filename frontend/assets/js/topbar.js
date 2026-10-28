@@ -76,8 +76,10 @@
     const home = document.createElement("a");
     home.className = "topbar-home";
     home.href = "dashboard.html";
-    home.title = "Volver al panel";
-    home.innerHTML = `${icon("home")}<span>Panel</span>`;
+    // La marca del producto (Human Log · Rótulos) es también el camino al panel.
+    home.title = "Human Log · Rótulos — volver al panel";
+    home.setAttribute("aria-label", "Rótulos: volver al panel");
+    home.innerHTML = `<img src="assets/images/favicon.svg" alt="" width="26" height="26"><span>Rótulos</span>`;
     left.appendChild(home);
     const teamBox = document.createElement("div");
     teamBox.className = "topbar-team";
@@ -201,5 +203,7 @@
   }
 
   window.AppTopbar = { render };
+  // La marca en la pestaña: "Mis pedidos · Human Log Rótulos".
+  if (!document.title.includes("Human Log")) document.title = `${document.title} · Human Log Rótulos`;
   render();
 })();

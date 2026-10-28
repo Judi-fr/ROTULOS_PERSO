@@ -261,7 +261,7 @@ EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
 
 # Remitente de los correos transaccionales (reset de contraseña, etc.).
 DEFAULT_FROM_EMAIL = env(
-    "DEFAULT_FROM_EMAIL", default="ROTULOS <no-reply@rotulos.local>"
+    "DEFAULT_FROM_EMAIL", default="Human Log · Rótulos <no-reply@rotulos.local>"
 )
 
 # Base del frontend (SPA) para armar links que van en los correos, p. ej. el
