@@ -3,7 +3,7 @@
    integraciones.css, labels_shared.css, pedidos.css y perfil.css: acá se
    escriben una sola vez. Se carga ANTES del .css propio de cada página, que
    sigue mandando sobre lo suyo.
-   Los colores (:root) siguen en cada archivo: no todos usan la misma paleta. */
+   Los colores (:root) están una sola vez, en ui.css. */
 
 * {
   box-sizing: border-box;

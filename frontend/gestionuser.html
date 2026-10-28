@@ -19,11 +19,11 @@
     />
 
     <link rel="stylesheet" href="assets/css/gestionuser.css" />
+    <link rel="stylesheet" href="assets/css/gestionuser_page.css" />
     <!-- Enlace al archivo CSS -->
     <!-- SheetJS: genera el .xlsx de "Export" en el navegador, sin backend -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   </head>
-  <body>
+  <body class="users-page">
     <div class="layout">
       <!-- SIDEBAR: renderizado por assets/js/admin_sidebar.js -->
       <div id="adminSidebar" data-active="users"></div>
@@ -33,23 +33,9 @@
         <div class="topbar">
           <div>
             <h1>Usuarios</h1>
-            <p>Administrá los usuarios del sitio y sus accesos.</p>
+            <p>Quién entra a la plataforma, con qué rol y si su cuenta está activa.</p>
           </div>
           <div class="topbar-actions">
-            <div class="search-box">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input type="text" placeholder="Buscar usuarios..." data-user-search />
-            </div>
             <button class="btn btn-primary" id="openCreatePanel">
               <svg
                 viewBox="0 0 24 24"
@@ -64,119 +50,39 @@
               </svg>
               Crear usuario
             </button>
-            <button class="btn btn-outline" id="logoutAdminBtn" type="button">Cerrar sesión</button>
+            <button class="btn btn-quiet" id="logoutAdminBtn" type="button">Cerrar sesión</button>
           </div>
         </div>
 
-        <!-- STAT CARDS -->
-        <div class="stats">
-          <div class="stat-card">
-            <div class="stat-top">
-              <span class="stat-icon blue">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                </svg>
-              </span>
-              <div>
-                <div class="stat-label">Total de usuarios</div>
-                <div class="stat-value" id="totalUsersCount">—</div>
-              </div>
+        <!-- RESUMEN: el total con su reparto y tres atajos que filtran la tabla
+             (usuarios.js, renderSummary / summary-filter). Cuenta a todas las
+             personas, no solo a las de la página. -->
+        <section class="users-pulse" aria-label="Resumen de usuarios">
+          <div class="pulse-total">
+            <span class="pulse-label">Usuarios</span>
+            <span class="pulse-value" id="totalUsersCount">—</span>
+            <div class="pulse-bar" role="img" id="usersPulseBar" aria-label="Reparto de usuarios">
+              <span class="pulse-bar-active" id="pulseBarActive"></span>
+              <span class="pulse-bar-inactive" id="pulseBarInactive"></span>
             </div>
-            <div class="stat-sub">Todos los usuarios registrados</div>
+            <span class="pulse-note" id="pulseNote">Personas con cuenta en la plataforma</span>
           </div>
-          <div class="stat-card">
-            <div class="stat-top">
-              <span class="stat-icon green">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                  <polyline points="22 4 12 14.01 9 11.01" />
-                </svg>
-              </span>
-              <div>
-                <div class="stat-label">Usuarios activos</div>
-                <div class="stat-value" id="activeUsersCount">—</div>
-              </div>
-            </div>
-            <div class="stat-sub">Activos actualmente</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-top">
-              <span class="stat-icon amber">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                  <circle cx="8.5" cy="7" r="4" />
-                  <circle cx="19" cy="14" r="3" />
-                  <line x1="19" y1="13" x2="19" y2="14.5" />
-                  <line x1="19" y1="15.7" x2="19" y2="15.71" />
-                </svg>
-              </span>
-              <div>
-                <div class="stat-label">Usuarios inactivos</div>
-                <div class="stat-value" id="inactiveUsersCount">—</div>
-              </div>
-            </div>
-            <div class="stat-sub">No activos</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-top">
-              <span class="stat-icon purple">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                  <circle cx="8.5" cy="7" r="4" />
-                  <path d="M20 8v6" />
-                  <path d="M17 11h6" />
-                </svg>
-              </span>
-              <div>
-                <div class="stat-label">Usuarios bloqueados</div>
-                <div class="stat-value" id="lockedUsersCount">—</div>
-              </div>
-            </div>
-            <div class="stat-sub">Bloqueados actualmente</div>
-          </div>
-        </div>
-
-        <!-- BULK ACTIONS: aparece solo cuando hay usuarios seleccionados. -->
-        <div class="bulk-actions-bar" id="bulkActionsBar" style="display:none;">
-          <span id="bulkActionsCount">0 seleccionados</span>
-          <button type="button" class="btn btn-outline" id="bulkActivateBtn">Activar</button>
-          <button type="button" class="btn btn-outline" id="bulkDeactivateBtn">Desactivar</button>
-          <select id="bulkRoleSelect">
-            <option value="">Cambiar rol a...</option>
-          </select>
-          <button type="button" class="btn btn-primary" id="bulkSetRoleBtn">Aplicar rol</button>
-        </div>
+          <button type="button" class="pulse-stat" data-summary-filter="active" aria-pressed="false">
+            <span class="pulse-label"><span class="pulse-dot active"></span>Activos</span>
+            <span class="pulse-value" id="activeUsersCount">—</span>
+            <span class="pulse-hint">Ver solo activos</span>
+          </button>
+          <button type="button" class="pulse-stat" data-summary-filter="inactive" aria-pressed="false">
+            <span class="pulse-label"><span class="pulse-dot inactive"></span>Inactivos</span>
+            <span class="pulse-value" id="inactiveUsersCount">—</span>
+            <span class="pulse-hint">Ver solo inactivos</span>
+          </button>
+          <button type="button" class="pulse-stat pulse-stat-locked" data-summary-filter="locked" aria-pressed="false">
+            <span class="pulse-label"><span class="pulse-dot locked"></span>Bloqueados</span>
+            <span class="pulse-value" id="lockedUsersCount">—</span>
+            <span class="pulse-hint">Por intentos fallidos</span>
+          </button>
+        </section>
 
         <!-- TABLE -->
         <div class="table-card">
@@ -215,6 +121,7 @@
                     />
                   </svg>
                   Filtros
+                  <span class="filter-count" id="userFilterCount" hidden></span>
                 </button>
                 <div class="filter-panel filter-panel-wide" id="userFilterPanel" style="display:none;">
                   <div class="filter-panel-head">Filtrar usuarios</div>
@@ -306,10 +213,14 @@
                         <label for="userOrderingField">Ordenar por</label>
                         <select id="userOrderingField">
                           <option value="id">Sin ordenar</option>
-                          <option value="first_name">Nombre</option>
+                          <option value="name">Nombre</option>
                           <option value="email">Email</option>
+                          <option value="role">Rol</option>
+                          <option value="status">Estado</option>
                           <option value="date_joined">Fecha de registro</option>
                           <option value="last_login">Último ingreso</option>
+                          <option value="orders_count">Cantidad de pedidos</option>
+                          <option value="last_order_at">Último pedido</option>
                         </select>
                       </div>
                       <div>
@@ -329,35 +240,40 @@
                   </div>
                 </div>
               </div>
-              <button class="btn btn-outline" id="exportUsersBtn" title="Exportar los usuarios seleccionados a Excel">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
-                Exportar
-              </button>
-              <button class="btn btn-outline" id="exportUsersCsvBtn" title="Exportar a CSV (generado en el servidor): los seleccionados, o la lista filtrada actual si no hay selección">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                </svg>
-                Exportar CSV
-              </button>
+              <!-- EXPORTAR: un solo botón; el panel pregunta qué (los tildados o la
+                   lista filtrada entera) y en qué formato. Lo arma el servidor
+                   (users/export/?file_type=csv|xlsx), usuarios.js. -->
+              <div class="export-control">
+                <button class="btn btn-outline" id="exportUsersBtn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="exportUsersPanel">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Exportar
+                </button>
+                <div class="export-panel" id="exportUsersPanel" role="dialog" aria-label="Exportar usuarios" hidden>
+                  <fieldset class="export-group">
+                    <legend>Qué usuarios</legend>
+                    <label class="export-option">
+                      <input type="radio" name="exportScope" value="filtered" checked />
+                      <span><strong>Toda la lista</strong><small id="exportFilteredHint">Con la búsqueda y los filtros de ahora</small></span>
+                    </label>
+                    <label class="export-option">
+                      <input type="radio" name="exportScope" value="selected" />
+                      <span><strong>Solo los seleccionados</strong><small id="exportSelectedHint">Tildá usuarios en la tabla</small></span>
+                    </label>
+                  </fieldset>
+                  <fieldset class="export-group">
+                    <legend>Formato</legend>
+                    <div class="export-formats">
+                      <label><input type="radio" name="exportFormat" value="xlsx" checked /><span>Excel</span></label>
+                      <label><input type="radio" name="exportFormat" value="csv" /><span>CSV</span></label>
+                    </div>
+                  </fieldset>
+                  <button type="button" class="btn btn-primary export-go" id="exportUsersGo">Descargar</button>
+                </div>
+              </div>
               <button class="icon-btn" title="Actualizar">
                 <svg
                   viewBox="0 0 24 24"
@@ -380,75 +296,22 @@
           <table>
             <thead>
               <tr>
-                <th style="width: 36px"><input type="checkbox" id="selectAllUsers" title="Seleccionar todos" /></th>
-                <th style="width: 21%">
-                  <span class="th-sort"
-                    >Usuario
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <polyline points="7 15 12 20 17 15" />
-                      <polyline points="7 9 12 4 17 9" /></svg
-                  ></span>
+                <th class="check-col"><input type="checkbox" id="selectAllUsers" title="Seleccionar todos" /></th>
+                <th class="user-col">
+                  <button type="button" class="th-sort" data-sort="name" title="Ordenar por usuario">Usuario<svg class="sort-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline class="sort-up" points="7 9 12 4 17 9" /><polyline class="sort-down" points="7 15 12 20 17 15" /></svg></button>
                 </th>
-                <th style="width: 19%">
-                  <span class="th-sort"
-                    >Email
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <polyline points="7 15 12 20 17 15" />
-                      <polyline points="7 9 12 4 17 9" /></svg
-                  ></span>
+                <th class="role-col">
+                  <button type="button" class="th-sort" data-sort="role" title="Ordenar por rol">Rol<svg class="sort-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline class="sort-up" points="7 9 12 4 17 9" /><polyline class="sort-down" points="7 15 12 20 17 15" /></svg></button>
                 </th>
-                <th style="width: 14%">
-                  <span class="th-sort"
-                    >Rol
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <polyline points="7 15 12 20 17 15" />
-                      <polyline points="7 9 12 4 17 9" /></svg
-                  ></span>
+                <th class="status-col">
+                  <button type="button" class="th-sort" data-sort="status" title="Ordenar por estado">Estado<svg class="sort-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline class="sort-up" points="7 9 12 4 17 9" /><polyline class="sort-down" points="7 15 12 20 17 15" /></svg></button>
                 </th>
-                <th style="width: 10%">
-                  <span class="th-sort"
-                    >Estado
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <polyline points="7 15 12 20 17 15" />
-                      <polyline points="7 9 12 4 17 9" /></svg
-                  ></span>
+                <th class="date-col">
+                  <button type="button" class="th-sort" data-sort="date_joined" title="Ordenar por fecha de creación">Creado<svg class="sort-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline class="sort-up" points="7 9 12 4 17 9" /><polyline class="sort-down" points="7 15 12 20 17 15" /></svg></button>
                 </th>
-                <th style="width: 10%">
-                  <span class="th-sort"
-                    >Creado
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <polyline points="7 15 12 20 17 15" />
-                      <polyline points="7 9 12 4 17 9" /></svg
-                  ></span>
-                </th>
-                <th style="width: 8%">Pedidos</th>
-                <th style="width: 12%">Último pedido</th>
-                <th class="actions-col" style="width: 90px">Acciones</th>
+                <th class="num-col"><button type="button" class="th-sort" data-sort="orders_count" title="Ordenar por cantidad de pedidos">Pedidos<svg class="sort-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline class="sort-up" points="7 9 12 4 17 9" /><polyline class="sort-down" points="7 15 12 20 17 15" /></svg></button></th>
+                <th class="date-col"><button type="button" class="th-sort" data-sort="last_order_at" title="Ordenar por último pedido">Último pedido<svg class="sort-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline class="sort-up" points="7 9 12 4 17 9" /><polyline class="sort-down" points="7 15 12 20 17 15" /></svg></button></th>
+                <th class="actions-col"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
             <tbody id="usersBody">
@@ -504,6 +367,33 @@
               </button>
             </div>
           </div>
+        </div>
+
+        <!-- ACCIONES EN BLOQUE: barra flotante abajo, solo con usuarios tildados. -->
+        <div class="bulk-dock" id="bulkActionsBar" role="region" aria-label="Acciones con los usuarios seleccionados" aria-hidden="true" inert>
+          <div class="bulk-dock-count">
+            <span class="bulk-dock-num" id="bulkActionsNum">0</span>
+            <span id="bulkActionsCount">seleccionados</span>
+          </div>
+          <span class="bulk-dock-sep" aria-hidden="true"></span>
+          <button type="button" class="bulk-dock-btn" id="bulkActivateBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
+            Activar
+          </button>
+          <button type="button" class="bulk-dock-btn" id="bulkDeactivateBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><line x1="5.6" y1="5.6" x2="18.4" y2="18.4" /></svg>
+            Desactivar
+          </button>
+          <span class="bulk-dock-sep" aria-hidden="true"></span>
+          <div class="bulk-dock-role">
+            <select id="bulkRoleSelect" aria-label="Rol para los seleccionados">
+              <option value="">Cambiar rol a...</option>
+            </select>
+            <button type="button" class="bulk-dock-apply" id="bulkSetRoleBtn">Aplicar</button>
+          </div>
+          <button type="button" class="bulk-dock-close" id="bulkClearBtn" title="Quitar la selección" aria-label="Quitar la selección">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+          </button>
         </div>
 
       </main>

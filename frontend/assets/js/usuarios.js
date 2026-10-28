@@ -102,7 +102,8 @@ function buildQueryString(baseUrl = API_URL, { includePage = true } = {}) {
 }
 
 async function loadUsers() {
-  tbody.innerHTML = `<tr><td colspan="9" class="table-placeholder"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></td></tr>`;
+  updateFilterIndicators();
+  tbody.innerHTML = `<tr><td colspan="8" class="table-placeholder"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></td></tr>`;
 
   try {
     const response = await apiFetch(buildQueryString());
@@ -130,7 +131,12 @@ async function loadUsers() {
     const pagination = raw.pagination || null;
 
     if (users.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="9" class="table-placeholder">No hay usuarios para mostrar.</td></tr>`;
+      const filtered = activeFilterCount() > 0 || currentSearch;
+      tbody.innerHTML = `<tr><td colspan="8" class="table-placeholder">${appEmptyState(
+        filtered
+          ? { icon: "list", title: "Nadie coincide con la búsqueda", text: "Probá con otra búsqueda o sacá algún filtro." }
+          : { icon: "list", title: "Todavía no hay usuarios", text: "Los que se registren o crees con «Crear usuario» aparecen acá." }
+      )}</td></tr>`;
     } else {
       renderUsers(users);
     }
@@ -143,9 +149,7 @@ async function loadUsers() {
     const message = err.isFilterValidationError
       ? err.message
       : "No se pudieron cargar los usuarios. Intentá de nuevo más tarde.";
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px; color:red;">
-      ${escapeHtml(message)}
-    </td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="table-placeholder table-error">${escapeHtml(message)}</td></tr>`;
   }
 }
 
@@ -163,6 +167,7 @@ function renderUsers(users) {
 
   users.forEach((u, i) => {
     const tr = document.createElement("tr");
+    tr.style.setProperty("--row", Math.min(i, 12));
     const role = u.role_label || "User";
     const roleText = translateRole(role);
     const statusKey = u.status_key || (u.is_active ? "active" : "inactive");
@@ -184,14 +189,16 @@ function renderUsers(users) {
       <td>
         <div class="user-cell">
           <img class="user-avatar" src="https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(u.email || u.id)}" alt="">
-          <span class="user-name" title="${escapeHtml(u.display_name || u.email)}">${escapeHtml(u.display_name || u.email)}</span>
+          <div class="user-ident">
+            <span class="user-name" title="${escapeHtml(u.display_name || u.email)}">${escapeHtml(u.display_name || u.email)}</span>
+            ${u.display_name && u.display_name !== u.email ? `<span class="user-email" title="${escapeHtml(u.email || "")}">${escapeHtml(u.email || "")}</span>` : ""}
+          </div>
         </div>
       </td>
-      <td class="cell-muted" title="${escapeHtml(u.email || "")}">${escapeHtml(u.email)}</td>
       <td><span class="badge ${roleClass[role] || "staff"}">${escapeHtml(roleText)}</span></td>
       <td class="status-cell"><span class="status ${statusKey}"><span class="dot"></span>${escapeHtml(statusText)}</span>${lockedLine}</td>
       <td class="cell-muted">${escapeHtml(u.created_date || "-")}</td>
-      <td class="cell-muted">${u.orders_count ?? 0}</td>
+      <td class="num-col${u.orders_count ? "" : " cell-muted"}">${u.orders_count ?? 0}</td>
       <td class="cell-muted">${formatLastOrderDate(u.last_order_at)}</td>
       <td class="actions-col">
         <div class="row-actions">
@@ -241,9 +248,29 @@ function updateBulkActionsBar() {
   const countEl = document.getElementById("bulkActionsCount");
   if (!bar) return;
   const count = selectedUserIds.size;
-  bar.style.display = count > 0 ? "flex" : "none";
-  if (countEl) countEl.textContent = `${count} seleccionado${count === 1 ? "" : "s"}`;
+  const open = count > 0;
+  bar.classList.toggle("is-open", open);
+  bar.inert = !open;
+  bar.setAttribute("aria-hidden", open ? "false" : "true");
+  const numEl = document.getElementById("bulkActionsNum");
+  if (numEl) numEl.textContent = String(count);
+  if (countEl) countEl.textContent = count === 1 ? "seleccionado" : "seleccionados";
 }
+
+function clearSelection() {
+  selectedUserIds.clear();
+  document.querySelectorAll(".row-checkbox").forEach((cb) => {
+    cb.checked = false;
+    cb.closest("tr")?.classList.remove("row-selected");
+  });
+  updateSelectAllCheckboxState();
+  updateBulkActionsBar();
+}
+
+document.getElementById("bulkClearBtn")?.addEventListener("click", clearSelection);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && selectedUserIds.size > 0 && !document.querySelector("dialog[open]")) clearSelection();
+});
 
 async function runBulkAction(payload) {
   if (selectedUserIds.size === 0) {
@@ -328,88 +355,99 @@ document.addEventListener("change", (e) => {
 });
 
 // ---------------------------------------------------------------------------
-// EXPORTAR A EXCEL: toma los usuarios tildados (selectedUserIds) de la
-// página/filtro actual y arma un .xlsx en el navegador con SheetJS (no pega
-// contra el backend: los datos ya están en lastUsers, cargados por loadUsers).
+// EXPORTAR: un solo botón (antes había dos que no se distinguían: "Exportar"
+// armaba un Excel en el navegador con los tildados y "Exportar CSV" bajaba del
+// servidor). El panel pregunta qué usuarios (toda la lista con los filtros de
+// ahora, o los tildados) y el formato; el archivo lo arma siempre el servidor
+// (users/export/?file_type=csv|xlsx), sin límite de página.
 // ---------------------------------------------------------------------------
 const exportUsersBtn = document.getElementById("exportUsersBtn");
-if (exportUsersBtn) {
-  exportUsersBtn.addEventListener("click", () => {
-    if (selectedUserIds.size === 0) {
-      appAlert("Seleccioná al menos un usuario (tildá su casilla) para exportar.", { tone: "info" });
-      return;
-    }
+const exportUsersPanel = document.getElementById("exportUsersPanel");
+let lastTotalCount = null;
 
-    if (typeof XLSX === "undefined") {
-      appAlert("No se pudo cargar la librería de Excel. Revisá tu conexión e intentá de nuevo.");
-      return;
-    }
-
-    const selectedUsers = lastUsers.filter((u) => selectedUserIds.has(Number(u.id)));
-    const rows = selectedUsers.map((u) => ({
-      ID: u.id,
-      Nombre: u.display_name || "",
-      Email: u.email || "",
-      Rol: translateRole(u.role_label || "User"),
-      Estado: statusLabel[u.status_key] || u.status_label || (u.is_active ? "Activo" : "Inactivo"),
-      "Fecha de creación": u.created_date || "",
-    }));
-
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    worksheet["!cols"] = [
-      { wch: 6 },
-      { wch: 28 },
-      { wch: 32 },
-      { wch: 14 },
-      { wch: 12 },
-      { wch: 16 },
-    ];
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Usuarios");
-
-    const today = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(workbook, `usuarios-${today}.xlsx`);
-  });
+function refreshExportPanel() {
+  const selectedRadio = document.querySelector('input[name="exportScope"][value="selected"]');
+  const filteredRadio = document.querySelector('input[name="exportScope"][value="filtered"]');
+  const count = selectedUserIds.size;
+  if (selectedRadio) {
+    selectedRadio.disabled = count === 0;
+    if (count === 0 && selectedRadio.checked && filteredRadio) filteredRadio.checked = true;
+    // Con usuarios tildados, lo más probable es que quiera esos.
+    if (count > 0 && exportUsersPanel?.hidden) selectedRadio.checked = true;
+  }
+  const selectedHint = document.getElementById("exportSelectedHint");
+  if (selectedHint) {
+    selectedHint.textContent = count ? `${count} usuario${count === 1 ? "" : "s"} tildado${count === 1 ? "" : "s"}` : "Tildá usuarios en la tabla";
+  }
+  const filteredHint = document.getElementById("exportFilteredHint");
+  if (filteredHint) {
+    const filtered = activeFilterCount() > 0 || currentSearch;
+    const people = lastTotalCount == null ? "" : `${lastTotalCount} usuario${lastTotalCount === 1 ? "" : "s"}`;
+    filteredHint.textContent = [people, filtered ? "con la búsqueda y los filtros de ahora" : "sin filtros"].filter(Boolean).join(", ");
+  }
 }
 
-// ---------------------------------------------------------------------------
-// EXPORTAR A CSV: generado en el BACKEND (a diferencia del .xlsx de arriba,
-// que arma el navegador). Si hay selección, exporta solo esos IDs; si no,
-// exporta el resultado de los filtros actualmente activos (sin límite de
-// página: toda la lista filtrada, no solo la página visible).
-// ---------------------------------------------------------------------------
-const exportUsersCsvBtn = document.getElementById("exportUsersCsvBtn");
-if (exportUsersCsvBtn) {
-  exportUsersCsvBtn.addEventListener("click", async () => {
-    let url = buildQueryString(EXPORT_CSV_URL, { includePage: false });
-    if (selectedUserIds.size > 0) {
-      const separator = url.includes("?") ? "&" : "?";
-      url += `${separator}ids=${Array.from(selectedUserIds).join(",")}`;
-    }
-
-    try {
-      const response = await apiFetch(url);
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.detail || `Error HTTP: ${response.status}`);
-      }
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      link.download = `usuarios-${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(objectUrl);
-    } catch (err) {
-      if (err.isSessionExpired) return;
-      console.error("Error al exportar CSV:", err);
-      appAlert(err.message || "No se pudo exportar el CSV.");
-    }
-  });
+function setExportPanelOpen(open) {
+  if (!exportUsersPanel || !exportUsersBtn) return;
+  if (open) refreshExportPanel();
+  exportUsersPanel.hidden = !open;
+  exportUsersBtn.setAttribute("aria-expanded", String(open));
 }
+
+exportUsersBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  setExportPanelOpen(exportUsersPanel.hidden);
+});
+exportUsersPanel?.addEventListener("click", (e) => e.stopPropagation());
+document.addEventListener("click", () => setExportPanelOpen(false));
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && exportUsersPanel && !exportUsersPanel.hidden) {
+    setExportPanelOpen(false);
+    exportUsersBtn.focus();
+  }
+});
+
+document.getElementById("exportUsersGo")?.addEventListener("click", async (e) => {
+  const button = e.currentTarget;
+  const scope = document.querySelector('input[name="exportScope"]:checked')?.value || "filtered";
+  const format = document.querySelector('input[name="exportFormat"]:checked')?.value || "xlsx";
+  if (scope === "selected" && selectedUserIds.size === 0) {
+    appAlert("Tildá al menos un usuario en la tabla.", { tone: "info" });
+    return;
+  }
+
+  const params = new URLSearchParams(buildQueryString("", { includePage: false }).replace(/^\?/, ""));
+  params.set("file_type", format);
+  if (scope === "selected") params.set("ids", Array.from(selectedUserIds).join(","));
+
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = "Preparando…";
+  try {
+    const response = await apiFetch(`${EXPORT_CSV_URL}?${params.toString()}`);
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(getErrorMessage(data, `No se pudo exportar (error ${response.status}).`));
+    }
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = `usuarios-${new Date().toISOString().slice(0, 10)}.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+    setExportPanelOpen(false);
+  } catch (err) {
+    if (err.isSessionExpired) return;
+    console.error("Error al exportar usuarios:", err);
+    appAlert(err.message || "No se pudo exportar.");
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+});
 
 function renderPagination(pagination) {
   const infoEl = document.getElementById("paginationInfo");
@@ -423,6 +461,7 @@ function renderPagination(pagination) {
   }
 
   const { count, from, to, total_pages, page, has_previous, has_next, previous_page, next_page } = pagination;
+  lastTotalCount = count ?? null;
   lastPage = total_pages || 1;
 
   if (infoEl) {
@@ -469,7 +508,71 @@ function renderSummary(summary) {
   if (activeEl) activeEl.textContent = summary.active ?? "—";
   if (inactiveEl) inactiveEl.textContent = summary.inactive ?? "—";
   if (lockedEl) lockedEl.textContent = summary.locked ?? "—";
+
+  // Barra del total: la parte activa y la inactiva, en proporción.
+  const total = Number(summary.total) || 0;
+  const share = (value) => (total ? `${((Number(value) || 0) / total) * 100}%` : "0%");
+  document.getElementById("pulseBarActive")?.style.setProperty("width", share(summary.active));
+  document.getElementById("pulseBarInactive")?.style.setProperty("width", share(summary.inactive));
+  const activePct = total ? Math.round(((Number(summary.active) || 0) / total) * 100) : 0;
+  document.getElementById("usersPulseBar")?.setAttribute("aria-label", `${activePct} % activos`);
+  const note = document.getElementById("pulseNote");
+  if (note) note.textContent = total ? `${activePct} % con la cuenta activa` : "Todavía no hay usuarios";
+  document.querySelector(".pulse-stat-locked")?.classList.toggle("has-locked", Number(summary.locked) > 0);
 }
+
+// Cuántos filtros hay puestos (el orden no cuenta): se muestra en el botón
+// "Filtros", y los atajos del resumen se ven apretados si coinciden.
+function activeFilterCount() {
+  return [
+    currentStatus !== "all",
+    currentRole !== "all",
+    Boolean(currentDateJoinedFrom),
+    Boolean(currentDateJoinedTo),
+    Boolean(currentLastLoginFrom),
+    Boolean(currentLastLoginTo),
+    currentNeverLoggedIn,
+    Boolean(currentInactiveDays),
+    currentLocked !== "all",
+    currentFailedAttempts !== "all",
+    currentAuthMethod !== "all",
+  ].filter(Boolean).length;
+}
+
+function updateFilterIndicators() {
+  const count = activeFilterCount();
+  const badge = document.getElementById("userFilterCount");
+  if (badge) {
+    badge.hidden = count === 0;
+    badge.textContent = String(count);
+  }
+  document.querySelectorAll("[data-summary-filter]").forEach((button) => {
+    const kind = button.dataset.summaryFilter;
+    const pressed = kind === "locked" ? currentLocked === "true" : currentStatus === kind;
+    button.setAttribute("aria-pressed", String(pressed));
+  });
+}
+
+// Atajos del resumen: Activos / Inactivos filtran por estado y Bloqueados por
+// bloqueo; tocar el que ya está puesto lo saca. Usan los mismos selects del
+// panel de filtros, así los dos lugares dicen lo mismo.
+document.querySelectorAll("[data-summary-filter]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const kind = button.dataset.summaryFilter;
+    const on = button.getAttribute("aria-pressed") !== "true";
+    if (kind === "locked") {
+      currentLocked = on ? "true" : "all";
+      const select = document.getElementById("userLockedFilter");
+      if (select) select.value = currentLocked;
+    } else {
+      currentStatus = on ? kind : "all";
+      const select = document.getElementById("userStatusFilter");
+      if (select) select.value = currentStatus;
+    }
+    currentPage = 1;
+    loadUsers();
+  });
+});
 
 function attachDropdownListeners() {
   document.querySelectorAll(".more-btn").forEach((btn) => {
@@ -931,8 +1034,53 @@ bindAdvancedFilter(inactiveDaysFilter, () => (currentInactiveDays = inactiveDays
 bindAdvancedFilter(lockedFilter, () => (currentLocked = lockedFilter.value));
 bindAdvancedFilter(failedAttemptsFilter, () => (currentFailedAttempts = failedAttemptsFilter.value));
 bindAdvancedFilter(authMethodFilter, () => (currentAuthMethod = authMethodFilter.value));
-bindAdvancedFilter(orderingFieldFilter, () => (currentOrderingField = orderingFieldFilter.value));
-bindAdvancedFilter(orderingDirFilter, () => (currentOrderingDir = orderingDirFilter.value));
+bindAdvancedFilter(orderingFieldFilter, () => {
+  currentOrderingField = orderingFieldFilter.value;
+  updateSortHeaders();
+});
+bindAdvancedFilter(orderingDirFilter, () => {
+  currentOrderingDir = orderingDirFilter.value;
+  updateSortHeaders();
+});
+
+// ORDEN POR ENCABEZADO: un clic ordena por esa columna, otro invierte el
+// sentido y el tercero vuelve al orden normal. Las fechas y los pedidos
+// arrancan por lo más reciente / lo más alto, que es lo que se busca. Es el
+// mismo estado que "Ordenar por" de los filtros avanzados (se mantienen iguales).
+const SORT_STARTS_DESC = new Set(["date_joined", "last_order_at", "orders_count", "last_login"]);
+
+function updateSortHeaders() {
+  document.querySelectorAll(".th-sort[data-sort]").forEach((button) => {
+    const active = button.dataset.sort === currentOrderingField;
+    button.dataset.dir = active ? currentOrderingDir : "";
+    button.closest("th")?.setAttribute(
+      "aria-sort",
+      active ? (currentOrderingDir === "desc" ? "descending" : "ascending") : "none"
+    );
+  });
+  if (orderingFieldFilter) orderingFieldFilter.value = currentOrderingField;
+  if (orderingDirFilter) orderingDirFilter.value = currentOrderingDir;
+}
+
+document.querySelectorAll(".th-sort[data-sort]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const field = button.dataset.sort;
+    const firstDir = SORT_STARTS_DESC.has(field) ? "desc" : "asc";
+    if (currentOrderingField !== field) {
+      currentOrderingField = field;
+      currentOrderingDir = firstDir;
+    } else if (currentOrderingDir === firstDir) {
+      currentOrderingDir = firstDir === "asc" ? "desc" : "asc";
+    } else {
+      currentOrderingField = "id";
+      currentOrderingDir = "asc";
+    }
+    updateSortHeaders();
+    currentPage = 1;
+    loadUsers();
+  });
+});
+updateSortHeaders();
 
 if (clearUserFiltersBtn) {
   clearUserFiltersBtn.addEventListener("click", () => {
@@ -959,6 +1107,7 @@ if (clearUserFiltersBtn) {
     if (authMethodFilter) authMethodFilter.value = "all";
     if (orderingFieldFilter) orderingFieldFilter.value = "id";
     if (orderingDirFilter) orderingDirFilter.value = "asc";
+    updateSortHeaders();
 
     currentPage = 1;
     loadUsers();

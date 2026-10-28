@@ -3,6 +3,36 @@
    carga (appSkeleton) y el estado de lista vacía (appEmptyState). Las
    funciones están en assets/js/utils.js. */
 
+:root {
+  /* La paleta de toda la app, en un solo lugar (antes cada CSS repetía su
+     copia, con los mismos valores). --blue es el naranja del acento: el
+     nombre quedó de una paleta vieja. --accent es el mismo color con otro
+     nombre (tiendas, despachar). */
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --border: #e7eaf1;
+  --text-dark: #0f172a;
+  --text-muted: #64748b;
+  --blue: #f97316;
+  --blue-light: #ffedd5;
+  --accent: #f97316;
+  --accent-light: #ffedd5;
+  --green: #16a34a;
+  --green-light: #e9f9ee;
+  --amber: #d97706;
+  --amber-light: #fef6e6;
+  --purple: #7c3aed;
+  --purple-light: #f2ecfe;
+  --red: #dc2626;
+  --red-light: #fdeeee;
+  --slate: #475569;
+  --slate-light: #eef2f7;
+  --sidebar-bg: #0b0b0b;
+  --sidebar-hover: #1f1f1f;
+  --sidebar-active: #f97316;
+  --sidebar-text: #a3a3a3;
+}
+
 /* Los botones y campos no heredan la tipografía de la página: sin esto, los
    que no tienen una regla propia salían en Arial. */
 button, input, select, textarea { font-family: inherit; }
@@ -74,13 +104,6 @@ button, input, select, textarea { font-family: inherit; }
    ui.css se carga antes que el CSS de cada página, así que estos selectores
    son un poco más específicos que los de cada página para poder ganarles. */
 @media (max-width: 640px) {
-  header.topbar { flex-wrap: wrap; gap: 12px; padding: 12px 16px; }
-  header.topbar .topbar-user { min-width: 0; }
-  header.topbar .topbar-user-email { display: none; }
-  header.topbar .topbar-actions { flex-wrap: wrap; width: 100%; gap: 8px; }
-  header.topbar .topbar-team, header.topbar .team-switcher { width: 100%; max-width: none; }
-  header.topbar .topbar-actions .btn { flex: 1 1 auto; text-align: center; justify-content: center;
-    padding: 8px 12px; font-size: 14px; }
   main code, .main code { white-space: normal; overflow-wrap: anywhere; }
   main table { display: block; overflow-x: auto; }
 }
@@ -145,3 +168,115 @@ button[aria-busy="true"] { cursor: progress; opacity: 0.75; }
 .pe-delete { margin-right: auto; }
 .pe-dirty:not([hidden]) + .pe-delete { margin-right: 0; }
 @media (max-width: 820px) { .pe { grid-template-columns: 1fr; } .pe-side { position: static; } }
+
+/* --- Barra superior compartida (topbar.js, header.topbar.app-topbar) ---
+   Panel y comercio a la izquierda, acciones de la página en el medio y el
+   menú de la cuenta a la derecha. Los selectores llevan header + las dos
+   clases para ganarle a la regla .topbar de cada página sin tocarlas. */
+header.topbar.app-topbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 24px;
+  min-height: 60px;
+  position: relative;
+  z-index: 30;
+}
+header.app-topbar .topbar-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+header.app-topbar .topbar-home {
+  display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 12px 0 10px;
+  border-radius: 10px; color: #0f172a; font-size: 14px; font-weight: 700; text-decoration: none;
+  transition: background 0.18s;
+}
+header.app-topbar .topbar-home:hover { background: #f1f4f8; }
+header.app-topbar .topbar-home svg { color: #f97316; }
+header.app-topbar .team-switcher { height: 38px; padding-top: 0; padding-bottom: 0; }
+
+header.app-topbar .topbar-actions {
+  display: flex; align-items: center; gap: 2px;
+  min-width: 0; overflow-x: auto; scrollbar-width: none;
+}
+/* A la derecha con un margen automático y no con justify-content: flex-end,
+   que cuando no entran corta los primeros links a la izquierda sin poder
+   desplazarse hasta ellos (el margen se vuelve 0 y desborda a la derecha). */
+header.app-topbar .topbar-actions > :first-child { margin-left: auto; }
+header.app-topbar .topbar-actions::-webkit-scrollbar { display: none; }
+header.app-topbar .topbar-link {
+  flex-shrink: 0; display: inline-flex; align-items: center; height: 36px; padding: 0 12px;
+  border-radius: 9px; color: #334155; font-size: 14px; font-weight: 600; text-decoration: none;
+  white-space: nowrap; transition: background 0.18s, color 0.18s;
+}
+header.app-topbar .topbar-link:hover { background: #f1f4f8; color: #0f172a; }
+header.app-topbar .topbar-link:active,
+header.app-topbar .topbar-home:active,
+header.app-topbar .topbar-account-btn:active { transform: translateY(1px); }
+header.app-topbar a:focus-visible,
+header.app-topbar button:focus-visible { outline: 2px solid #f97316; outline-offset: 2px; }
+
+header.app-topbar .topbar-account { position: relative; }
+header.app-topbar .topbar-account-btn {
+  display: inline-flex; align-items: center; gap: 8px; height: 42px; max-width: 230px;
+  padding: 0 8px 0 4px; border: 1px solid #e2e8f0; border-radius: 999px; background: #fff;
+  color: #0f172a; font: inherit; cursor: pointer; transition: border-color 0.18s, box-shadow 0.18s;
+}
+header.app-topbar .topbar-account-btn:hover,
+header.app-topbar .topbar-account.is-open .topbar-account-btn {
+  border-color: #cbd5e1; box-shadow: 0 6px 16px -10px rgba(15, 23, 42, 0.35);
+}
+header.app-topbar .avatar { width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; background: #ffedd5; }
+header.app-topbar .topbar-user-name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 700;
+}
+header.app-topbar .topbar-chevron { display: inline-flex; color: #64748b; transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+header.app-topbar .topbar-account.is-open .topbar-chevron { transform: rotate(180deg); }
+
+header.app-topbar .topbar-menu {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 60; width: 248px; padding: 6px;
+  border: 1px solid #e2e8f0; border-radius: 14px; background: #fff;
+  box-shadow: 0 22px 44px -18px rgba(15, 23, 42, 0.35);
+  animation: topbar-menu-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+header.app-topbar .topbar-menu[hidden] { display: none; }
+@keyframes topbar-menu-in { from { opacity: 0; transform: translateY(-4px); } }
+header.app-topbar .topbar-menu-who {
+  display: flex; flex-direction: column; gap: 1px; padding: 10px 10px 12px; margin-bottom: 4px;
+  border-bottom: 1px solid #eef1f6; min-width: 0;
+}
+header.app-topbar .topbar-menu-who strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+header.app-topbar .topbar-menu-who span { font-size: 12.5px; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+header.app-topbar .topbar-menu a,
+header.app-topbar .topbar-menu-logout {
+  display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 10px; border: 0; border-radius: 9px;
+  background: none; color: #0f172a; font: inherit; font-size: 14px; text-align: left; text-decoration: none; cursor: pointer;
+}
+header.app-topbar .topbar-menu a:hover,
+header.app-topbar .topbar-menu-logout:hover { background: #f5f7fb; }
+header.app-topbar .topbar-menu a[aria-current="page"] { font-weight: 700; color: #ea580c; }
+header.app-topbar .topbar-menu-logout { margin-top: 4px; border-top: 1px solid #eef1f6; border-radius: 0 0 9px 9px; color: #b91c1c; }
+header.app-topbar .topbar-menu-logout:hover { background: #fdeeee; }
+
+/* Angosto: arriba panel, comercio y cuenta; las acciones en una segunda fila
+   que se desliza de costado (antes se encimaban). */
+@media (max-width: 960px) {
+  header.topbar.app-topbar { grid-template-columns: minmax(0, 1fr) auto; row-gap: 8px; padding: 10px 16px; }
+  header.app-topbar .topbar-actions {
+    grid-column: 1 / -1; grid-row: 2; justify-content: flex-start;
+    margin: 0 -16px; padding: 0 16px 2px;
+    mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  }
+  header.app-topbar .topbar-actions:empty { display: none; }
+  header.app-topbar .topbar-link { height: 32px; padding: 0 11px; border: 1px solid #e2e8f0; font-size: 13.5px; }
+  header.app-topbar .topbar-actions { gap: 6px; }
+  header.app-topbar .topbar-actions > :first-child { margin-left: 0; }
+}
+@media (max-width: 560px) {
+  header.app-topbar .topbar-home span,
+  header.app-topbar .topbar-user-name { display: none; }
+  header.app-topbar .topbar-account-btn { padding-right: 6px; }
+  header.app-topbar .team-switcher { max-width: none; width: 100%; }
+  header.app-topbar .topbar-team { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  header.app-topbar .topbar-menu { animation: none; }
+}

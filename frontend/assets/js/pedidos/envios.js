@@ -75,36 +75,73 @@ window.OrderShipping = (() => {
       return;
     }
     strip.replaceChildren();
+    // Discreta cuando todo anda (una línea gris con los transportistas listos:
+    // es configuración, no trabajo); un aviso solo cuando hay algo que hacer.
     const ready = readyCarriers();
-    const text = document.createElement("span");
-    text.textContent = ready.length
-      ? `Despachás con ${new Intl.ListFormat("es", { type: "conjunction" }).format(ready.map((carrier) => carrier.name))}: al despachar se crea el envío y el seguimiento se carga solo.`
-      : "Conectá tu cuenta de un transportista para despachar con un clic.";
-    const links = document.createElement("span");
-    links.className = "carrier-strip-links";
-    account.carriers.forEach((carrier) => {
-      const link = document.createElement("a");
-      link.href = accountPage(carrier);
-      const state = carrier.account.ready
-        ? "✓"
-        : !carrier.account.exists
-          ? "conectar"
-          : carrier.account.last_error
-            ? "revisar"
-            : "completar";
-      link.textContent = `${carrier.name} (${state})`;
-      link.title = carrier.account.last_error || (carrier.account.missing || []).join(", ");
-      links.appendChild(link);
+    const broken = account.carriers.filter((carrier) => carrier.account.exists && !carrier.account.ready);
+    const unconnected = account.carriers.filter((carrier) => !carrier.account.exists);
+
+    if (!ready.length || broken.length) {
+      const text = document.createElement("span");
+      const links = document.createElement("span");
+      links.className = "carrier-strip-links";
+      if (broken.length) {
+        const names = new Intl.ListFormat("es", { type: "conjunction" }).format(broken.map((carrier) => carrier.name));
+        text.textContent = broken.length === 1
+          ? `La cuenta de ${names} necesita atención: no vas a poder despachar con ese transportista hasta revisarla.`
+          : `Las cuentas de ${names} necesitan atención: no vas a poder despachar con esos transportistas hasta revisarlas.`;
+        broken.forEach((carrier) => {
+          const link = document.createElement("a");
+          link.href = accountPage(carrier);
+          link.textContent = `Revisar ${carrier.name}`;
+          link.title = carrier.account.last_error || (carrier.account.missing || []).join(", ");
+          links.appendChild(link);
+        });
+      } else {
+        text.textContent = "Conectá la cuenta de un transportista para despachar con un clic: el envío y el seguimiento se cargan solos.";
+        unconnected.forEach((carrier) => {
+          const link = document.createElement("a");
+          link.href = accountPage(carrier);
+          link.textContent = `Conectar ${carrier.name}`;
+          links.appendChild(link);
+        });
+      }
+      strip.className = "carrier-strip";
+      strip.append(text, links);
+      strip.hidden = false;
+      return;
+    }
+
+    const label = document.createElement("span");
+    label.className = "carrier-quiet-label";
+    label.textContent = "Despachás con";
+    strip.appendChild(label);
+    ready.forEach((carrier) => {
+      const chip = document.createElement("a");
+      chip.className = "carrier-chip";
+      chip.href = accountPage(carrier);
+      chip.title = `Cuenta de ${carrier.name}`;
+      chip.textContent = carrier.name;
+      strip.appendChild(chip);
     });
+    const extras = document.createElement("span");
+    extras.className = "carrier-quiet-links";
     // El precio de los transportistas en el checkout de las tiendas.
     if (ready.some((carrier) => carrier.supports_checkout)) {
       const checkout = document.createElement("a");
       checkout.href = "checkout_transportistas.html";
       checkout.textContent = "Precio en el checkout";
-      links.appendChild(checkout);
+      extras.appendChild(checkout);
     }
-    strip.className = ready.length ? "carrier-strip ok" : "carrier-strip";
-    strip.append(text, links);
+    if (unconnected.length) {
+      const more = document.createElement("a");
+      more.href = accountPage(unconnected[0]);
+      more.textContent = "Conectar otro";
+      more.title = unconnected.map((carrier) => carrier.name).join(", ");
+      extras.appendChild(more);
+    }
+    strip.appendChild(extras);
+    strip.className = "carrier-strip carrier-strip-quiet";
     strip.hidden = false;
   }
 
@@ -204,7 +241,18 @@ window.OrderShipping = (() => {
         actions.push(button("Cancelar envío", "btn-danger-text", (node) => cancelShipment(shipment, node)));
       }
     } else if (order.is_shippable) {
-      actions.push(button("Despachar", "btn btn-primary btn-small", () => window.OrderDispatch.open([order])));
+      // Sin envío del transportista: si todavía no salió, despacharlo es lo
+      // que falta hacer (botón principal). Si ya figura despachado (lo marcó
+      // la tienda o se cargó a mano), crear el envío es opcional: solo da
+      // etiqueta y seguimiento automático, así que va como secundario.
+      const pending = order.status === "created" || order.status === "preparing";
+      const action = pending
+        ? button("Despachar", "btn btn-primary btn-small", () => window.OrderDispatch.open([order]))
+        : button("Crear envío", "btn btn-outline btn-small", () => window.OrderDispatch.open([order]));
+      if (!pending) {
+        action.title = "Ya figura despachado. Crear el envío con un transportista te da la etiqueta y el seguimiento automático.";
+      }
+      actions.push(action);
     }
     footer.prepend(...actions);
   }

@@ -1,58 +1,13 @@
-:root {
-  --bg: #f5f7fb;
-  --card: #ffffff;
-  --border: #e7eaf1;
-  --text-dark: #0f172a;
-  --text-muted: #64748b;
-  --blue: #f97316;
-  --blue-light: #ffedd5;
-}
-
 /* TOPBAR */
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--card);
-  border-bottom: 1px solid var(--border);
-  padding: 16px 28px;
-  gap: 16px;
-}
-
-.btn {
-  border-radius: 8px;
-  padding: 9px 16px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid transparent;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-}
-
-/* base.css ya define .btn-outline, pero se carga ANTES que esta hoja: el .btn
-   de acá arriba le pisa el borde (y el fondo, donde lo define) con su shorthand.
-   Se repite para que el botón conserve borde y fondo propios. */
-.btn-outline {
-  background: transparent;
-  border-color: var(--border);
-  color: var(--text-dark);
-}
 
 /* MAIN */
 .main {
-  flex: 1;
-  padding: 32px 28px 48px;
   max-width: 720px;
-  width: 100%;
-  margin: 0 auto;
 }
 
 .page-message.error {
   background: #fdeeee;
   color: #dc2626;
-  border: 1px solid #f6c9c9;
 }
 
 .page-message.success {
@@ -62,32 +17,6 @@
 }
 
 /* CARDS */
-.profile-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  margin-bottom: 22px;
-  overflow: hidden;
-}
-
-.profile-card-title {
-  font-weight: 700;
-  font-size: 15.5px;
-  padding: 16px 22px;
-  border-bottom: 1px solid var(--border);
-}
-
-.field {
-  margin-bottom: 16px;
-}
-
-.field label {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-}
 
 .field input {
   width: 100%;
@@ -112,11 +41,6 @@
   background: var(--bg);
   color: var(--text-dark);
   font-size: 14px;
-}
-
-.form-message {
-  font-size: 13.5px;
-  margin: 4px 0 0;
 }
 
 .profile-card-actions {

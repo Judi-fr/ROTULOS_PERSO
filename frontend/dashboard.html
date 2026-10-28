@@ -18,38 +18,15 @@
       href="https://cdn.jsdelivr.net/npm/@mdi/font@4.9.95/css/materialdesignicons.min.css"
     />
 
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/app.css" />
     <link rel="stylesheet" href="assets/css/dashboard.css?v=2026-10-21c" />
   </head>
   <body>
     <div class="layout">
-      <header class="topbar">
-        <div class="topbar-user">
-          <img
-            class="avatar"
-            id="userAvatar"
-            src="https://api.dicebear.com/7.x/avataaars/svg?seed=user"
-            alt=""
-          />
-          <div class="topbar-user-info">
-            <span class="topbar-user-name" id="userName">—</span>
-            <span class="topbar-user-email" id="userEmail">—</span>
-          </div>
-        </div>
-        <!-- El comercio de esta pestaña y el cambio a otro (renderTeamSwitcher). -->
-        <div class="topbar-team" id="teamSwitcher"></div>
-        <div class="topbar-actions">
-          <a
-            class="btn btn-outline"
-            id="backToAdminLink"
-            href="gestionuser.html"
-            style="display:none;"
-            >Volver al panel de administración</a
-          >
-          <button class="btn btn-outline" id="logoutBtn" type="button">
-            Cerrar sesión
-          </button>
-        </div>
-      </header>
+      <!-- La barra compartida (assets/js/topbar.js): panel, comercio, cuenta.
+           "Administración" solo para quien puede ver usuarios (el admin). -->
+      <header class="topbar" id="appTopbar" data-links='[{"href": "gestionuser.html", "label": "Administración", "perm": "users.view"}]'></header>
 
       <main class="main">
         <div class="main-heading">
@@ -101,6 +78,7 @@
     <script src="assets/js/config.js"></script>
     <script src="assets/js/auth.js"></script>
     <script src="assets/js/utils.js?v=2026-10-21c"></script>
+    <script src="assets/js/topbar.js"></script>
     <script src="assets/js/dashboard.js?v=2026-10-21d"></script>
   </body>
 </html>

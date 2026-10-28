@@ -347,8 +347,10 @@ def update_profile(request, profile, grantable):
     try:
         if "accesses" in request.data:
             accesses = services.clean_accesses(request.data.get("accesses"))
-            if grantable is not None and set(accesses) - grantable:
-                raise services.TeamForbidden("No podés dar accesos que vos no tenés.")
+            if grantable is not None:
+                services.check_can_edit_profile(profile, request.user)
+                if set(accesses) - grantable:
+                    raise services.TeamForbidden("No podés dar accesos que vos no tenés.")
             profile.accesses = accesses
     except services.TeamError as exc:
         return _error(exc)

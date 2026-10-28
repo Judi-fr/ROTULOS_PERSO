@@ -1577,7 +1577,9 @@ real account. Their Warehouse service (stock, order preparation) is another API,
   "Imprimir" / "Actualizar seguimiento" / "Cancelar envío", the checkbox + sticky selection bar
   ("Despachar (n)", "Imprimir (n)") and a strip with each carrier's account state linking to
   `transportista.html?carrier=…` and `checkout_transportistas.html` (reached only from there, topbar back to
-  `pedidos.html`). Both dialogs refresh the list from their own close() (and from the `close` event, for
+  `pedidos.html`). Since 2026-10-26 that strip is a quiet grey line (green-dot chip per ready carrier, "Precio en el
+  checkout", "Conectar otro") when everything works, and an amber notice only when an existing account needs
+  attention ("Revisar X") or no carrier is ready. Both dialogs refresh the list from their own close() (and from the `close` event, for
   Esc) — the event alone didn't fire in a hidden browser pane. `assets/js/pedidos/despacho.js`
   (`window.OrderDispatch`) is the `<dialog>`: account
   not ready → "Conectar Andreani"; ready → service (contract, home first; hidden if only one), packages,
@@ -1610,8 +1612,25 @@ then the page's own script — and each redirects to `dashboard.html` if the cal
 permission (UI-only gating; the backend re-checks every permission server-side). **They don't load Bootstrap**
 (removed 2026-10-21: it overrode the font and size of labels/selects/dates, which is why the user filter
 looked "raro"); `gestionuser.css` sets Karla on `body` and carries the few resets they took from it
-(`[hidden]`, `.nav { display: flex }`, ...). `index.html`/`register.html`/`logoutpage.html` still load it.
+(`[hidden]`, `.nav { display: flex }`, ...). No page loads Bootstrap since 2026-10-26: the access screens
+(`index.html`, `register.html`, `logoutpage.html`) share `assets/css/acceso.css` (split screen, labels above the
+fields, show/hide password via `data-reveal` in `utils.js`, errors inline in `#pageMessage` instead of a pop-up).
+The old `index.css` is only kept for the PHP-era `index_test.html`.
 In `gestionuser.html` "Crear usuario" is a centred window (`.create-panel` is the backdrop, Esc closes it).
+Its column headers sort (2026-10-26; before they were decorative): click = sort, again = reverse, a third
+time = back to normal, kept in sync with "Ordenar por" in the advanced filters. The API's `ordering` takes
+`name` (what the Usuario column shows), `role` (admin → platform staff → merchant, same rule as
+`get_effective_role`), `status`, `orders_count` and `last_order_at` besides the model fields; empty values go
+last both ways. The bulk actions are a dark floating bar at the bottom (`.bulk-dock`, Esc or × clears).
+"Exportar" is ONE button (2026-10-26; there were "Exportar", an .xlsx built in the browser from the ticked rows with
+SheetJS from a CDN, and "Exportar CSV" from the server): a small panel asks which users (the whole filtered list, or
+the ticked ones — preselected when there are) and the format, and the server builds both:
+`GET /users/export/?file_type=csv|xlsx` (csv by default and unchanged; xlsx via `apps.common.spreadsheet.xlsx_bytes`).
+Redesigned the same day (`assets/css/gestionuser_page.css`, `body.users-page`, so the other admin pages that share
+`gestionuser.css` don't change): one search box (the table's), the four stat cards became one strip — the total
+with an active/inactive bar plus Activos/Inactivos/Bloqueados as buttons that set the status/locked filters
+(same selects as the filter panel; pressing again clears) —, the "Filtros" button shows how many filters are on,
+and the email moved under the name (no Email column; email order stays in "Ordenar por").
 
 - `assets/js/utils.js` — shared helpers loaded as a classic script (global functions, not an ES module):
   `escapeHtml`, `getErrorMessage`, `showMessage`, `formatDate`, `extractResults`. `showMessage`
@@ -1631,12 +1650,20 @@ In `gestionuser.html` "Crear usuario" is a centred window (`.create-panel` is th
   with `integrations.manage` (that page is admin-only). It is the only way in: `integraciones.html`
   is deliberately not in the dashboard menu (`DashboardView`). Batch printing lands on
   `documentos.html?labels=N[&dispatched=M]`, which confirms it and cleans the URL.
-- `assets/js/topbar.js` — the shared top bar for the non-admin pages (avatar, name, email, per-page links
-  and the `logoutBtn` button). The page declares only
+- `assets/js/topbar.js` — the shared top bar for the non-admin pages. Since 2026-10-26: "Panel" (home) and the
+  business switcher on the left, the page's `data-links` in the middle as light links, and an account menu on the
+  right (avatar → Mi cuenta, Mi actividad, Ayuda, Cerrar sesión). A link to `dashboard.html` or to something in the
+  account menu is not repeated among the page links. Under 960px the page links move to a second row that scrolls
+  sideways (they used to pile on top of each other). The page declares only
   `<header class="topbar" id="appTopbar" data-links='[{"href":"…","label":"…"}]'></header>`; the script
   fills it from the stored session on load, and a page holding a fresh user calls
-  `window.AppTopbar.render(user)`. Each page still wires its own `logoutBtn` listener. `dashboard.html` and
-  the admin pages keep their own header (admin ones come from `admin_sidebar.js`).
+  `window.AppTopbar.render(user)`. **The bar logs out by itself** (`logoutBtn` keeps its id, `stopImmediatePropagation`
+  so a page's old listener doesn't run twice): re-rendering with the fresh user replaced the button and the page's
+  listener was lost, so "Cerrar sesión" only worked sometimes. Styles in `ui.css` (`header.topbar.app-topbar`, more
+  specific than each page's `.topbar`). Since 2026-10-26 `dashboard.html` uses it too ("Administración" as a page link
+  with `perm: users.view`; `dashboard.js` renders it with the session user merged in, because the dashboard's user
+  has no permission list and a link with `perm` shows when the list is unknown). The admin pages keep their own
+  header from `admin_sidebar.js`.
 - **Shared UI pieces (2026-10-21): `assets/css/ui.css` + the end of `utils.js`.** Every page links `ui.css` right
   after the favicon (`assets/images/favicon.svg`), before its own stylesheet. In it: the dialogs, the loading bars,
   the empty state, `.table-placeholder`, `button/input/select/textarea { font-family: inherit }` (buttons without
@@ -1658,15 +1685,39 @@ In `gestionuser.html` "Crear usuario" is a centred window (`.create-panel` is th
     the phone-only topbar wrap and `.main` padding applied on desktop too. Fixed.
 - `assets/css/base.css` — reset, `body`/`.layout`/`.main`, top bar and buttons, loaded BEFORE the page's own
   stylesheet by the pages whose CSS had these rules byte-identical (`documentos`/`importar`/`integraciones`/
-  `labels_shared`/`pedidos`/`perfil`). Color tokens (`:root`) stay per file — not every screen uses the same
-  palette, and `tiendas.css`/`despachar.css`/`gestionuser.css` keep their own variants and don't load it.
-- `pedidos.html` is the work screen: the order list comes first (dispatch, see Carriers → Frontend),
-  then "Mis direcciones" and "Nuevo pedido". It paginates its order history (`?page=`, Anterior/Siguiente driven by the API's `next`).
-  Its store filter is one button per store (plus "Todas" and "Cargados a mano"), built from
+  `labels_shared`/`pedidos`/`perfil`). `tiendas.css`/`despachar.css`/`gestionuser.css` don't load it.
+- **One palette, in `ui.css` (2026-10-26).** The `:root` color tokens used to be copied in 14 CSS files — all with
+  the same values, only some files adding their own (sidebar, `--accent`, `--slate`) —; now they live once at the
+  top of `ui.css`, which every page loads first. A page's CSS doesn't redefine them. Exception left alone:
+  `editor_rotulos.html` keeps its own inline palette (a slightly darker orange) for that page only.
+- **`app.css` vs `pedidos.css` (2026-10-26).** `pedidos.css` used to be the de facto base of ~20 merchant pages that
+  show no orders. Its generic part (top bar, buttons, `.main`, `.profile-card`, fields, `.form-message`,
+  `.empty-state`) is now `assets/css/app.css`, loaded where `pedidos.css` was; `pedidos.css` keeps only order things
+  (list and card, `.status-badge`, store colors/chips/tags, addresses, `.orders-pager`) and is loaded right after
+  `app.css` only by the pages that show orders (pedidos, imprimir_rotulos, estado_pedidos, planilla_retiro,
+  cargar_seguimientos, envios_andreani, direcciones). A new merchant page loads `app.css`; add `pedidos.css` only if
+  it draws orders (also via `createOrderPicker`/`renderBulkResult`).
+- **Page CSS only holds what differs (2026-10-26).** `.btn`/`.profile-card`/fields/messages were copied in ~12 page
+  stylesheets; every merchant page now loads `base.css` + `app.css` before its own CSS, and those files keep only
+  their real differences (usually `.main { max-width }`). The cleanup was checked by comparing computed styles of
+  buttons, cards, titles and fields on 23 pages before and after. `.btn` in `app.css` carries `white-space: nowrap`,
+  pressed and focus states; `.profile-card-title` wraps with a gap. In the label editor `.field` is a drawn label
+  element, not a form field: `labels_shared.css` resets its margin (`.label .field`).
+- `pedidos.html` is the work screen: only the order list (dispatch, see Carriers → Frontend); "+ Nuevo pedido" opens
+  a dialog (`pedidos.html#nuevo` opens it on load) and the own addresses have their page, `direcciones.html` +
+  `assets/js/direcciones.js` (2026-10-26). Each order card is compact: number + description on one line, the status
+  history folded in "Historial (n)", and the action follows the status — "Despachar" (primary) while created/preparing,
+  "Crear envío" (secondary) when it already shows dispatched but has no carrier shipment, "Cancelar pedido" as quiet
+  red text. It paginates its order history (`?page=`, Anterior/Siguiente driven by the API's `next`).
+  Its store filter is a sticky column on the left (one row per store with a square of its initials, plus
+  "Todas" and "Cargados a mano"; a horizontal strip under 860px), built from
   `GET /integrations/stores/` — never a hardcoded list — and rebuilt when the tab becomes visible again,
   so a store connected in `tiendas.html` shows up by itself. Each store gets a color (`store-color-N` in
   `pedidos.css`, assigned by store id order so it doesn't shift when another store is added) that also
-  marks its orders' tag and left border.
+  marks its orders' left border. In "Todas" the page's orders are grouped by store (column order, manual
+  last), each group with a header (2026-10-26). Styles in `assets/css/pedidos_tiendas.css`, loaded only
+  here because `pedidos.css` is shared by ~18 pages; that card uses `overflow: clip`, not `hidden`, or the
+  sticky column and selection bar stop sticking.
 - `assets/js/admin_common.js` — permission/formatting helpers for admin pages: `isAdminMode()`,
   `canUseUserPermission()`, `canViewUsers()`, `translateRole()`, `actionLabel()`, `formatDateTime()`,
   `renderSimplePager()`, `loadAuditActionsCatalog()`.
@@ -1764,9 +1815,9 @@ In `gestionuser.html` "Crear usuario" is a centred window (`.create-panel` is th
   one in `estado_sistema.html` say "Actualizando…" and then when they finished — before, refreshing with nothing
   changed looked like a dead button. The answers name buttons and sections as the
   app shows them — **if one is renamed, fix the FAQ too**.
-- **Addresses are not a menu entry.** They live inside `pedidos.html` (its own section, full CRUD); a
-  separate `addresses` entry pointing at `pedidos.html#addressesSection` was a second door to the same
-  screen and was removed.
+- **Addresses are not a menu entry.** They have their own page, `direcciones.html` (full CRUD), reached from the
+  new-order dialog ("Administrar direcciones") and the dashboard's function search; until 2026-10-26 they were a
+  section of `pedidos.html`.
 
 ## Reglas
 

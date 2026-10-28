@@ -4,56 +4,51 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="ie=edge">
-  <title>Acceso a Plugin</title>
+  <title>Iniciar sesión</title>
   <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
   <link rel="stylesheet" href="assets/css/ui.css" />
   <link href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@4.9.95/css/materialdesignicons.min.css">
-  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css">
-  <link rel="stylesheet" href="assets/css/index.css">
+  <link rel="stylesheet" href="assets/css/acceso.css">
 </head>
-<body>
-  <main class="d-flex align-items-center min-vh-100 py-3 py-md-0">
-    <div class="container">
-      <div class="card login-card">
-        <div class="row no-gutters">
-          <div class="col-md-5">
-            <img src="assets/images/LogoLogin.png" alt="login" class="login-card-img">
+<body class="access-page">
+  <div class="access-layout">
+    <aside class="access-aside" aria-hidden="true">
+      <img src="assets/images/LogoLogin.png" alt="">
+      <p class="access-aside-text">Los pedidos de tu tienda entran solos: imprimí los rótulos y despachá con tu transportista <strong>desde un solo lugar</strong>.</p>
+    </aside>
+
+    <main class="access-main">
+      <div class="access-card">
+        <img src="assets/images/HLLogoFinal.jpg" alt="" class="access-logo">
+        <h1>Entrá a tu cuenta</h1>
+        <p class="access-lead">Con Google o con tu email y contraseña.</p>
+
+        <div id="g_id_signin" class="access-google"></div>
+        <div class="access-divider">o</div>
+
+        <form id="login-form" class="access-form" novalidate>
+          <div class="access-field">
+            <label for="user">Email</label>
+            <input type="email" name="user" id="user" autocomplete="email" placeholder="nombre@tucomercio.com" required>
           </div>
-          <div class="col-md-7">
-            <div class="card-body">
-              <div class="brand-wrapper">
-                <img src="assets/images/HLLogoFinal.jpg" alt="logo" class="logo">
-              </div>
-              <p class="login-card-description">Ingresa con tu cuenta</p>
-
-              <div id="g_id_signin"></div>
-              <div class="login-divider text-center my-3">o</div>
-
-              <form id="login-form">
-                <div class="form-group mb-3">
-                  <label for="user" class="sr-only">Usuario</label>
-                  <input type="text" name="user" id="user" class="form-control" placeholder="usuario">
-                </div>
-                <div class="form-group mb-4">
-                  <label for="password" class="sr-only">Clave</label>
-                  <input type="password" name="password" id="password" class="form-control" placeholder="***********">
-                </div>
-                <button type="submit" class="btn btn-block login-btn mb-4">Login</button>
-              </form>
-
-              <a href="recuperar-password.html" class="forgot-password-link">Olvidaste tu clave?</a>
-              <p class="login-card-footer-text">No tienes cuenta aun? <a href="register.html" class="text-reset">Regístrate aquí</a></p>
-              <nav class="login-card-footer-nav">
-                <a href="#!">Terminos de uso.</a>
-                <a href="#!">Política de Privacidad</a>
-              </nav>
+          <div class="access-field">
+            <div class="access-field-row">
+              <label for="password">Contraseña</label>
+              <a href="recuperar-password.html" class="access-link">¿Te la olvidaste?</a>
+            </div>
+            <div class="access-input">
+              <input type="password" name="password" id="password" autocomplete="current-password" required>
+              <button type="button" class="access-reveal" data-reveal="password" aria-pressed="false">Ver</button>
             </div>
           </div>
-        </div>
+          <p id="pageMessage" class="page-message" role="alert" hidden></p>
+          <button type="submit" class="access-submit">Entrar</button>
+        </form>
+
+        <p class="access-switch">¿No tenés cuenta? <a href="register.html" class="access-link">Creá una</a></p>
       </div>
-    </div>
-  </main>
+    </main>
+  </div>
 
   <script src="assets/js/config.js"></script>
   <!-- window.Auth: la sesión viaja en cookies HttpOnly (withSession/saveSession). -->
@@ -106,7 +101,7 @@
 
         handleAuthSuccess(data);
       } catch (error) {
-        appAlert(error.message || 'No se pudo iniciar sesión con Google.');
+        showMessage(error.message || 'No se pudo iniciar sesión con Google.');
       }
     }
 
@@ -115,9 +110,11 @@
         client_id: GOOGLE_CLIENT_ID,
         callback: handleGoogleCredential
       });
+      // Google pide el ancho en píxeles: el de su contenedor (en el celular es menos de 380).
+      const googleBox = document.getElementById('g_id_signin');
       google.accounts.id.renderButton(
-        document.getElementById('g_id_signin'),
-        { theme: 'outline', size: 'large', width: '100%', text: 'continue_with' }
+        googleBox,
+        { theme: 'outline', size: 'large', width: Math.min(380, googleBox.clientWidth || 380), text: 'continue_with' }
       );
     };
 
@@ -126,6 +123,10 @@
 
       const email = document.getElementById('user').value.trim();
       const password = document.getElementById('password').value;
+      if (!email || !password) {
+        showMessage('Escribí tu email y tu contraseña.');
+        return;
+      }
 
       try {
         const response = await fetch(`${window.APP_CONFIG.API_BASE}/auth/login/`, window.Auth.withSession({
@@ -139,7 +140,7 @@
         const data = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-          throw new Error(data.detail || 'Error en usuario o clave - Reingrese');
+          throw new Error(data.detail || 'El email o la contraseña no son correctos.');
         }
 
         window.Auth.saveSession(data.user);
@@ -164,7 +165,7 @@
         // Tiendanube (assets/js/tiendanube/imprimir_tiendanube.js guardó los pedidos elegidos).
         window.location.replace(localStorage.getItem('pendingTiendanubePrint') ? (localStorage.getItem('pendingTiendanubePage') || 'imprimir_tiendanube.html') : localStorage.getItem('pendingStoreClaim') ? 'tiendas.html' : localStorage.getItem('pendingJoinCode') ? 'unirse.html?code=' + encodeURIComponent(localStorage.getItem('pendingJoinCode')) : (isAdmin ? 'gestionuser.html' : 'dashboard.html'));
       } catch (error) {
-        appAlert(error.message || 'Error en usuario o clave - Reingrese');
+        showMessage(error.message || 'El email o la contraseña no son correctos.');
       }
     });
   </script>

@@ -3,66 +3,37 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Logout</title>
+  <title>Cerrar sesión</title>
   <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
   <link rel="stylesheet" href="assets/css/ui.css" />
-  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" />
-  <style>
-    body {
-      background: #f5f7fb;
-      font-family: Arial, sans-serif;
-    }
-    .logout-box {
-      max-width: 520px;
-      margin: 120px auto;
-      background: #fff;
-      border-radius: 16px;
-      padding: 32px;
-      box-shadow: 0 12px 30px rgba(0,0,0,0.08);
-    }
-    .user-card {
-      background: #ffedd5;
-      border-radius: 12px;
-      padding: 16px;
-      margin-bottom: 20px;
-    }
-    .avatar {
-      width: 54px;
-      height: 54px;
-      border-radius: 50%;
-      object-fit: cover;
-      background: #f97316;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-      color: #fff;
-      margin-right: 14px;
-    }
-    .logout-box .btn-danger {
-      background: #111111;
-      border-color: #111111;
-    }
-    .logout-box .btn-danger:hover {
-      background: #f97316;
-      border-color: #f97316;
-    }
-  </style>
+  <link href="https://fonts.googleapis.com/css?family=Karla:400,700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/acceso.css" />
 </head>
-<body>
-  <div class="logout-box">
-    <h2 class="mb-3">Panel de sesión</h2>
-    <div id="user-card" class="user-card d-flex align-items-center" style="display:none;">
-      <div id="avatar" class="avatar">U</div>
-      <div>
-        <strong id="user-name">Usuario</strong><br>
-        <small id="user-email">correo@dominio.com</small>
-      </div>
-    </div>
+<body class="access-page">
+  <div class="access-layout">
+    <aside class="access-aside" aria-hidden="true">
+      <img src="assets/images/LogoLogin.png" alt="" />
+    </aside>
 
-    <p class="text-muted">¿Quieres cerrar la sesión actual?</p>
-    <button id="logout-btn" class="btn btn-danger btn-block w-100">Cerrar sesión</button>
-    <div id="status" class="mt-3 small text-muted"></div>
+    <main class="access-main">
+      <div class="access-card">
+        <img src="assets/images/HLLogoFinal.jpg" alt="" class="access-logo" />
+        <h1>Cerrar sesión</h1>
+        <p class="access-lead">Vas a salir de esta cuenta en este navegador.</p>
+
+        <div id="user-card" class="access-user" hidden>
+          <img id="avatar" alt="" />
+          <div>
+            <strong id="user-name">Usuario</strong>
+            <span id="user-email"></span>
+          </div>
+        </div>
+
+        <p id="status" class="page-message success" role="status" hidden></p>
+        <button id="logout-btn" type="button" class="access-submit" style="width: 100%">Cerrar sesión</button>
+        <a href="dashboard.html" class="access-link access-secondary">Volver al panel</a>
+      </div>
+    </main>
   </div>
 
   <script src="assets/js/config.js"></script>
@@ -82,17 +53,21 @@
         return;
       }
 
-      card.style.display = "flex";
-      const name = user.display_name || "Usuario";
-      const email = user.email || "sin-email";
+      card.hidden = false;
+      const name = user.display_name || user.email || "Usuario";
+      const email = user.email || "";
 
       nameEl.textContent = name;
       emailEl.textContent = email;
-      avatarEl.textContent = user.initial || "U";
+      // La foto propia, si no la de Google, si no un avatar generado.
+      avatarEl.src = user.photo || user.picture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`;
     }
 
     async function logout() {
-      document.getElementById("status").textContent = "Cerrando sesión...";
+      const status = document.getElementById("status");
+      status.textContent = "Cerrando la sesión…";
+      status.hidden = false;
+      document.getElementById("logout-btn").disabled = true;
       await window.Auth.logout();
     }
 

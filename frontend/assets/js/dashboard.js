@@ -32,32 +32,6 @@ function showMessage(text, type = "error") {
   el.style.display = "block";
 }
 
-// El dato ya viene resuelto por el backend (DashboardView): no se decide acá
-// por rol/permissions locales, solo se muestra u oculta según is_admin.
-function renderBackToAdminLink(user) {
-  const link = document.getElementById("backToAdminLink");
-  if (!link) return;
-  link.style.display = user && user.is_admin ? "" : "none";
-}
-
-function renderUser(user) {
-  const nameEl = document.getElementById("userName");
-  const emailEl = document.getElementById("userEmail");
-  const avatarEl = document.getElementById("userAvatar");
-
-  const name = (user && user.full_name) || (user && user.email) || "Usuario";
-  const email = (user && user.email) || "—";
-
-  if (nameEl) nameEl.textContent = name;
-  if (emailEl) emailEl.textContent = email;
-  if (avatarEl) {
-    const picture = getCurrentUser().picture;
-    avatarEl.src = picture
-      ? picture
-      : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`;
-  }
-}
-
 // Todas las tarjetas tienen la misma forma (cabecera, lista de herramientas
 // con lugar para tres, "Abrir" abajo a todo el ancho) para que la grilla
 // quede pareja aunque cada sección tenga distinta cantidad de herramientas.
@@ -153,8 +127,8 @@ const IN_PAGE_TOOLS = [
   { label: "Despachar pedidos", url: "pedidos.html", section: "Pedidos", perm: "orders.dispatch" },
   { label: "Planilla de retiro (elegí pedidos en Mis pedidos)", url: "pedidos.html", section: "Pedidos", perm: "orders.manifest" },
   { label: "Cargar seguimientos desde planilla", url: "pedidos.html", section: "Pedidos", perm: "orders.tracking_import" },
-  { label: "Nuevo pedido a mano", url: "pedidos.html", section: "Pedidos", perm: "orders.create_manual" },
-  { label: "Mis direcciones", url: "pedidos.html#addressesSection", section: "Pedidos", perm: "addresses.manage" },
+  { label: "Nuevo pedido a mano", url: "pedidos.html#nuevo", section: "Pedidos", perm: "orders.create_manual" },
+  { label: "Mis direcciones", url: "direcciones.html", section: "Pedidos", perm: "addresses.manage" },
   { label: "Cambiar mi contraseña", url: "organizacion.html#perfil", section: "Mi cuenta", perm: null },
   { label: "Datos del comercio", url: "organizacion.html#comercio", section: "Mi cuenta", perm: null },
   { label: "Crear o sumarme a otro comercio", url: "comercio_inicio.html", section: "Mi cuenta", perm: null },
@@ -543,9 +517,10 @@ async function loadDashboard() {
       return;
     }
     keepStoredTeams(data);
-    renderUser(data.user || {});
-    renderTeamSwitcher(document.getElementById("teamSwitcher"), { team: data.team, teams: data.teams });
-    renderBackToAdminLink(data.user || {});
+    // La barra compartida con el usuario fresco y su comercio (topbar.js). El
+    // usuario del panel no trae la lista de permisos: sale de la sesión
+    // guardada, que la barra necesita para no ofrecer "Administración" de más.
+    window.AppTopbar.render({ ...getCurrentUser(), ...(data.user || {}), team: data.team, teams: data.teams });
     renderOnboarding(data.onboarding);
     renderSections(data.sections || []);
     setupToolSearch(data.sections || [], data.menu || []);
@@ -567,10 +542,6 @@ async function loadDashboard() {
 // ---------------------------------------------------------------------------
 // Logout: misma lógica que admin_common.js (window.Auth.logout).
 // ---------------------------------------------------------------------------
-const logoutBtn = document.getElementById("logoutBtn");
-if (logoutBtn) {
-  logoutBtn.addEventListener("click", () => window.Auth.logout());
-}
 
 if (!hasSession()) {
   window.location.replace("index.html");

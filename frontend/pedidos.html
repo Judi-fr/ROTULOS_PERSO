@@ -15,16 +15,18 @@
     />
 
     <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/app.css" />
     <link rel="stylesheet" href="assets/css/pedidos.css" />
     <link rel="stylesheet" href="assets/css/acciones_masivas.css" />
     <link rel="stylesheet" href="assets/css/pedidos_envios.css" />
+    <link rel="stylesheet" href="assets/css/pedidos_tiendas.css" />
   </head>
   <body>
     <div class="layout">
       <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
       <header class="topbar" id="appTopbar" data-links='[{"href": "importar.html", "label": "Importar planilla", "perm": "orders.import"}, {"href": "exportar_pedidos.html", "label": "Exportar", "perm": "orders.export"}, {"href": "estado_pedidos.html", "label": "Cambiar estado", "perm": "orders.dispatch"}, {"href": "imprimir_rotulos.html", "label": "Imprimir rótulos", "perm": "labels.batch"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
 
-      <main class="main">
+      <main class="main orders-main">
         <div class="main-heading">
           <h1>Mis pedidos</h1>
           <p>Elegí pedidos y despachalos: el transportista, el número y el link de seguimiento se cargan solos.</p>
@@ -37,123 +39,76 @@
           <div class="profile-card-title">
             <span>Pedidos</span>
             <!-- Para transportistas sin API: su planilla de seguimientos (pedidos/seguimientos.js). -->
-            <button type="button" class="btn btn-outline btn-small" id="trackingImportBtn" hidden>Cargar seguimientos desde planilla</button>
+            <div class="profile-card-tools">
+              <button type="button" class="btn btn-outline btn-small" id="trackingImportBtn" hidden>Cargar seguimientos desde planilla</button>
+              <button type="button" class="btn btn-primary btn-small" id="openNewOrderBtn">+ Nuevo pedido</button>
+            </div>
           </div>
           <div class="profile-card-body">
-            <!-- Un botón por tienda conectada (los arma pedidos.js desde la API,
-                 así una tienda nueva aparece sola). Solo se muestra si el
-                 usuario tiene alguna tienda. -->
-            <div class="store-filter" id="orderStoreFilterField" hidden>
-              <span class="store-filter-label" id="orderStoreFilterLabel">Ver pedidos de</span>
-              <div class="store-chips" id="orderStoreFilter" role="group" aria-labelledby="orderStoreFilterLabel"></div>
-            </div>
-            <!-- Transportista conectado (Andreani) y accesos a su configuración:
-                 lo dibuja assets/js/pedidos/envios.js. -->
-            <div class="carrier-strip" id="carrierStrip" hidden></div>
-            <!-- Barra de acciones sobre los pedidos tildados (pedidos/envios.js). -->
-            <div class="selection-bar" id="selectionBar" hidden>
-              <span id="selectionCount"></span>
-              <div class="selection-actions">
-                <button type="button" class="btn btn-primary btn-small" id="dispatchSelectedBtn">Despachar</button>
-                <button type="button" class="btn btn-outline btn-small" id="labelsSelectedBtn">Imprimir</button>
-                <button type="button" class="btn btn-outline btn-small" id="manifestSelectedBtn">Planilla de retiro</button>
-                <button type="button" class="btn-link" id="clearSelectionBtn">Quitar selección</button>
+            <div class="orders-layout">
+              <!-- Columna de tiendas: una por tienda conectada, con su color (los
+                   arma pedidos.js desde la API, así una tienda nueva aparece sola).
+                   Solo se muestra si el usuario tiene alguna tienda. -->
+              <nav class="store-filter" id="orderStoreFilterField" aria-labelledby="orderStoreFilterLabel" hidden>
+                <span class="store-filter-label" id="orderStoreFilterLabel">Tiendas</span>
+                <div class="store-chips" id="orderStoreFilter" role="group" aria-labelledby="orderStoreFilterLabel"></div>
+              </nav>
+              <div class="orders-column">
+                <!-- Transportista conectado (Andreani) y accesos a su configuración:
+                     lo dibuja assets/js/pedidos/envios.js. -->
+                <div class="carrier-strip" id="carrierStrip" hidden></div>
+                <!-- Barra de acciones sobre los pedidos tildados (pedidos/envios.js). -->
+                <div class="selection-bar" id="selectionBar" hidden>
+                  <span id="selectionCount"></span>
+                  <div class="selection-actions">
+                    <button type="button" class="btn btn-primary btn-small" id="dispatchSelectedBtn">Despachar</button>
+                    <button type="button" class="btn btn-outline btn-small" id="labelsSelectedBtn">Imprimir</button>
+                    <button type="button" class="btn btn-outline btn-small" id="manifestSelectedBtn">Planilla de retiro</button>
+                    <button type="button" class="btn-link" id="clearSelectionBtn">Quitar selección</button>
+                  </div>
+                </div>
+                <div id="orderList" class="order-list">
+                  <p class="empty-state"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
+                </div>
+                <div class="orders-pager" id="ordersPager" style="display:none;">
+                  <button type="button" class="btn btn-outline btn-small" id="ordersPrevBtn">Anterior</button>
+                  <span id="ordersPageInfo"></span>
+                  <button type="button" class="btn btn-outline btn-small" id="ordersNextBtn">Siguiente</button>
+                </div>
               </div>
-            </div>
-            <div id="orderList" class="order-list">
-              <p class="empty-state"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
-            </div>
-            <div class="orders-pager" id="ordersPager" style="display:none;">
-              <button type="button" class="btn btn-outline btn-small" id="ordersPrevBtn">Anterior</button>
-              <span id="ordersPageInfo"></span>
-              <button type="button" class="btn btn-outline btn-small" id="ordersNextBtn">Siguiente</button>
             </div>
           </div>
         </section>
-        <!-- Direcciones -->
-        <section class="profile-card" id="addressesSection">
-          <div class="profile-card-title">
-            <span>Mis direcciones</span>
-            <button type="button" class="btn btn-outline btn-small" id="toggleAddressFormBtn">
-              + Nueva dirección
-            </button>
-          </div>
-          <div class="profile-card-body">
-            <div id="addressList" class="address-list">
-              <p class="empty-state"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
+        <!-- Nuevo pedido a mano: un diálogo, no otra sección de la página
+             (pedidos.js, openNewOrder). Las direcciones tienen su página. -->
+        <dialog class="dispatch-dialog new-order-dialog" id="newOrderDialog" aria-labelledby="newOrderTitle">
+          <form method="dialog" class="new-order-form" id="newOrderFormDialog">
+            <header class="new-order-head">
+              <h2 id="newOrderTitle">Nuevo pedido</h2>
+              <p>Para un envío que no entró por una tienda. Sale con una de tus direcciones guardadas.</p>
+            </header>
+            <div id="noAddressMsg" class="new-order-empty" hidden>
+              <p>Todavía no tenés direcciones guardadas.</p>
+              <a class="btn btn-primary btn-small" href="direcciones.html?nueva=1">Agregar una dirección</a>
             </div>
-
-            <form id="addressForm" style="display:none;">
-              <div class="field-row">
-                <div class="field">
-                  <label for="addrLabel">Nombre (ej. Casa, Trabajo)</label>
-                  <input type="text" id="addrLabel" placeholder="Casa" />
-                </div>
-                <div class="field">
-                  <label for="addrStreet">Calle</label>
-                  <input type="text" id="addrStreet" placeholder="Av. Siempre Viva" />
-                </div>
-              </div>
-              <div class="field-row">
-                <div class="field">
-                  <label for="addrNumber">Número</label>
-                  <input type="text" id="addrNumber" placeholder="742" />
-                </div>
-                <div class="field">
-                  <label for="addrCity">Ciudad</label>
-                  <input type="text" id="addrCity" placeholder="CABA" />
-                </div>
-              </div>
-              <div class="field-row">
-                <div class="field">
-                  <label for="addrState">Provincia</label>
-                  <input type="text" id="addrState" placeholder="Buenos Aires" />
-                </div>
-                <div class="field">
-                  <label for="addrPostalCode">Código postal</label>
-                  <input type="text" id="addrPostalCode" placeholder="1000" />
-                </div>
-              </div>
-              <div class="field">
-                <label for="addrReference">Referencia (opcional)</label>
-                <input type="text" id="addrReference" placeholder="Timbre azul, portón negro..." />
-              </div>
-              <div class="field-checkbox">
-                <input type="checkbox" id="addrIsDefault" />
-                <label for="addrIsDefault" style="margin:0;">Marcar como predeterminada</label>
-              </div>
-              <p id="addressMsg" class="form-message" style="display:none;"></p>
-              <div class="form-actions">
-                <button type="button" class="btn btn-outline" id="cancelAddressFormBtn">Cancelar</button>
-                <button type="button" class="btn btn-primary" id="saveAddressBtn">Guardar dirección</button>
-              </div>
-            </form>
-          </div>
-        </section>
-
-        <!-- Nuevo pedido -->
-        <section class="profile-card">
-          <div class="profile-card-title">Nuevo pedido</div>
-          <div class="profile-card-body">
-            <div id="noAddressMsg" class="empty-state" style="display:none;">
-              Todavía no tenés ninguna dirección guardada. Agregá una arriba para poder crear un pedido.
-            </div>
-            <div id="newOrderForm">
+            <div id="newOrderForm" class="new-order-fields">
               <div class="field">
                 <label for="orderAddressSelect">Dirección de envío</label>
                 <select id="orderAddressSelect"></select>
+                <a class="field-help-link" href="direcciones.html">Administrar direcciones</a>
               </div>
               <div class="field">
                 <label for="orderDescription">Descripción (opcional)</label>
                 <input type="text" id="orderDescription" placeholder="Ej. Caja mediana con rótulos" />
               </div>
               <p id="orderFormMsg" class="form-message" style="display:none;"></p>
-              <div class="form-actions">
-                <button type="button" class="btn btn-primary" id="createOrderBtn">Crear pedido</button>
-              </div>
             </div>
-          </div>
-        </section>
+            <div class="form-actions">
+              <button type="button" class="btn btn-outline" id="closeNewOrderBtn">Volver</button>
+              <button type="button" class="btn btn-primary" id="createOrderBtn">Crear pedido</button>
+            </div>
+          </form>
+        </dialog>
 
       </main>
     </div>

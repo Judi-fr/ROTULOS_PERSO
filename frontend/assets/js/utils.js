@@ -1076,3 +1076,19 @@ function renderMyInvitations(list, { onAccepted, onChanged, emptyText = "No ten�
 
   return { load };
 }
+
+// ---------------------------------------------------------------------------
+// Mostrar / ocultar una contraseña: un botón con data-reveal="<id del input>"
+// (las pantallas de acceso). Alterna el tipo del campo y el texto del botón.
+// ---------------------------------------------------------------------------
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-reveal]");
+  if (!button) return;
+  const input = document.getElementById(button.dataset.reveal);
+  if (!input) return;
+  const show = input.type === "password";
+  input.type = show ? "text" : "password";
+  button.textContent = show ? "Ocultar" : "Ver";
+  button.setAttribute("aria-pressed", String(show));
+  input.focus();
+});

@@ -146,3 +146,47 @@ class PermanentDeleteTests(APITestCase):
         response = self.client.delete(f"/api/v1/users/{owner.id}/?permanent=true", **bearer(self.admin))
         self.assertEqual(response.status_code, 400)
         self.assertTrue(type(owner).objects.filter(pk=owner.pk).exists())
+
+
+class ProfileEditEscalationTests(APITestCase):
+    """Cambiar un perfil cambia a todos los que lo usan: quien no es dueño no
+    puede, por esa vía, tocar a alguien que no podría tocar de a uno."""
+
+    def setUp(self):
+        self.owner = make_owner("owner@example.com")
+        self.team = teams.team_for(self.owner)
+        self.manager, _ = add_employee(self.owner, "equipo@example.com", accesses=["team", "orders.view"])
+        self.strong, _ = add_employee(self.owner, "fuerte@example.com", profile="Todo")
+        self.everything = self.team.profiles.get(name="Todo")
+
+    def test_employee_cannot_strip_a_profile_with_accesses_they_lack(self):
+        response = self.client.patch(
+            f"/api/v1/team/profiles/{self.everything.id}/", {"accesses": ["orders.view"]}, format="json", **bearer(self.manager)
+        )
+        self.assertEqual(response.status_code, 403, response.data)
+        self.everything.refresh_from_db()
+        self.assertIn("carriers", self.everything.accesses)
+
+    def test_employee_edits_a_profile_within_their_accesses(self):
+        profile = self.team.profiles.create(name="Mirar", accesses=["orders.view"])
+        response = self.client.patch(
+            f"/api/v1/team/profiles/{profile.id}/", {"accesses": ["orders.view", "team"]}, format="json", **bearer(self.manager)
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+
+    def test_store_limited_employee_cannot_edit_profile_of_someone_with_more_stores(self):
+        member = teams.membership(self.manager)
+        member.all_stores = False
+        member.save()
+        profile = self.team.profiles.create(name="Mirar", accesses=["orders.view"])
+        add_employee(self.owner, "todas@example.com", profile="Mirar")
+        response = self.client.patch(
+            f"/api/v1/team/profiles/{profile.id}/", {"accesses": []}, format="json", **bearer(self.manager)
+        )
+        self.assertEqual(response.status_code, 403, response.data)
+
+    def test_owner_edits_any_profile(self):
+        response = self.client.patch(
+            f"/api/v1/team/profiles/{self.everything.id}/", {"accesses": ["orders.view"]}, format="json", **bearer(self.owner)
+        )
+        self.assertEqual(response.status_code, 200, response.data)

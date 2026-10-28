@@ -1,4 +1,6 @@
-// Direcciones y pedidos propios (self-service) para usuarios no administradores.
+// Mis pedidos: la lista de pedidos (de las tiendas y cargados a mano) y el
+// diálogo para cargar uno a mano. Las direcciones propias tienen su página
+// (direcciones.html, assets/js/direcciones.js); acá solo se leen para el diálogo.
 // Sesión y apiFetch salen de assets/js/auth.js (window.Auth), compartido con
 // el resto del frontend (ver dashboard.js / perfil.js / usuarios.js).
 
@@ -34,6 +36,8 @@ let selectedStore = "";
 // por orden de alta (id), así cada tienda conserva su color aunque se sumen
 // otras: las tiendas nunca se borran, solo se desconectan.
 let storeColors = new Map();
+// Ids de las tiendas en el orden de la columna: el mismo orden para los grupos.
+let storeOrder = [];
 const STORE_COLOR_COUNT = 6;
 // Firma de la lista de tiendas ya dibujada, para no rearmar los botones si
 // no cambió nada al volver a la pestaña.
@@ -79,49 +83,21 @@ function addressSummary(address) {
   return [parts, cityLine].filter(Boolean).join(" — ");
 }
 
-function renderAddressList() {
-  const container = document.getElementById("addressList");
-  if (!container) return;
-
-  if (addresses.length === 0) {
-    container.innerHTML = '<p class="empty-state">Todavía no agregaste ninguna dirección.</p>';
-    return;
-  }
-
-  container.innerHTML = "";
-  addresses.forEach((address) => {
-    const item = document.createElement("div");
-    item.className = "address-item";
-    item.innerHTML = `
-      <div class="address-item-info">
-        <strong>${escapeHtml(address.label || "Dirección")}${address.is_default ? '<span class="badge-default">Predeterminada</span>' : ""}</strong>
-        <p>${escapeHtml(addressSummary(address))}</p>
-        ${address.reference ? `<p>${escapeHtml(address.reference)}</p>` : ""}
-      </div>
-      <div class="address-item-actions">
-        ${address.is_default ? "" : `<button type="button" class="btn btn-outline btn-small" data-set-default="${escapeHtml(address.id)}">Predeterminada</button>`}
-        <button type="button" class="btn-danger-text" data-delete-address="${escapeHtml(address.id)}">Eliminar</button>
-      </div>
-    `;
-    container.appendChild(item);
-  });
-}
-
 function renderAddressSelect() {
   const select = document.getElementById("orderAddressSelect");
   const noAddressMsg = document.getElementById("noAddressMsg");
   const newOrderForm = document.getElementById("newOrderForm");
   if (!select) return;
 
-  if (addresses.length === 0) {
+  const none = addresses.length === 0;
+  if (noAddressMsg) noAddressMsg.hidden = !none;
+  if (newOrderForm) newOrderForm.hidden = none;
+  const createBtn = document.getElementById("createOrderBtn");
+  if (createBtn) createBtn.hidden = none;
+  if (none) {
     select.innerHTML = "";
-    if (noAddressMsg) noAddressMsg.style.display = "block";
-    if (newOrderForm) newOrderForm.style.display = "none";
     return;
   }
-
-  if (noAddressMsg) noAddressMsg.style.display = "none";
-  if (newOrderForm) newOrderForm.style.display = "block";
 
   select.innerHTML = addresses
     .map(
@@ -137,106 +113,11 @@ async function loadAddresses() {
     if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
     const data = await response.json();
     addresses = extractResults(data);
-    renderAddressList();
     renderAddressSelect();
   } catch (err) {
     if (err.isSessionExpired) return;
     console.error("Error al cargar direcciones:", err);
-    document.getElementById("addressList").innerHTML =
-      '<p class="empty-state">No se pudieron cargar tus direcciones.</p>';
-  }
-}
-
-function resetAddressForm() {
-  ["addrLabel", "addrStreet", "addrNumber", "addrCity", "addrState", "addrPostalCode", "addrReference"].forEach(
-    (id) => {
-      const el = document.getElementById(id);
-      if (el) el.value = "";
-    }
-  );
-  const checkbox = document.getElementById("addrIsDefault");
-  if (checkbox) checkbox.checked = false;
-  const msg = document.getElementById("addressMsg");
-  if (msg) msg.style.display = "none";
-}
-
-async function saveNewAddress() {
-  const payload = {
-    label: document.getElementById("addrLabel").value.trim(),
-    street: document.getElementById("addrStreet").value.trim(),
-    number: document.getElementById("addrNumber").value.trim(),
-    city: document.getElementById("addrCity").value.trim(),
-    state: document.getElementById("addrState").value.trim(),
-    postal_code: document.getElementById("addrPostalCode").value.trim(),
-    reference: document.getElementById("addrReference").value.trim(),
-    is_default: document.getElementById("addrIsDefault").checked,
-  };
-
-  if (!payload.street || !payload.city) {
-    showFieldMessage("addressMsg", "Completá al menos la calle y la ciudad.", false);
-    return;
-  }
-
-  const button = document.getElementById("saveAddressBtn");
-  const originalText = button.textContent;
-  button.disabled = true;
-  button.textContent = "Guardando...";
-
-  try {
-    const response = await apiFetch(ADDRESSES_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(getErrorMessage(data, "No se pudo guardar la dirección."));
-    }
-    resetAddressForm();
-    document.getElementById("addressForm").style.display = "none";
-    await loadAddresses();
-    showMessage("Dirección guardada correctamente.", "success");
-  } catch (err) {
-    if (err.isSessionExpired) return;
-    showFieldMessage("addressMsg", err.message || "No se pudo guardar la dirección.", false);
-  } finally {
-    button.disabled = false;
-    button.textContent = originalText;
-  }
-}
-
-async function setDefaultAddress(id) {
-  try {
-    const response = await apiFetch(`${ADDRESSES_URL}${id}/`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_default: true }),
-    });
-    if (!response.ok) throw new Error("No se pudo actualizar la dirección predeterminada.");
-    await loadAddresses();
-    showMessage("Listo: esa es ahora tu dirección predeterminada.", "success");
-  } catch (err) {
-    if (err.isSessionExpired) return;
-    showMessage(err.message || "No se pudo actualizar la dirección predeterminada.");
-  }
-}
-
-async function deleteAddress(id) {
-  const confirmed = await appConfirm("¿Eliminar esta dirección?");
-  if (!confirmed) return;
-
-  try {
-    const response = await apiFetch(`${ADDRESSES_URL}${id}/`, { method: "DELETE" });
-    if (response.status === 204) {
-      await loadAddresses();
-      showMessage("Dirección eliminada.", "success");
-      return;
-    }
-    const data = await response.json().catch(() => ({}));
-    throw new Error(getErrorMessage(data, "No se pudo eliminar la dirección."));
-  } catch (err) {
-    if (err.isSessionExpired) return;
-    showMessage(err.message || "No se pudo eliminar la dirección.");
+    showFieldMessage("orderFormMsg", "No se pudieron cargar tus direcciones.", false);
   }
 }
 
@@ -267,45 +148,113 @@ function renderOrderList(orders) {
   }
 
   container.innerHTML = "";
-  orders.forEach((order) => {
-    const statusKey = order.status;
-    const statusLabel = order.status_label || STATUS_LABELS[statusKey] || statusKey;
-    const timeline = (order.status_events || [])
-      .map((event) => `<span class="order-timeline-step">${escapeHtml(event.status_label || STATUS_LABELS[event.status] || event.status)}</span>`)
-      .join("");
-
-    // Despachar, seguimiento y etiqueta los agrega pedidos/envios.js (decorate).
-    const actions = [];
-    if (order.is_cancellable) {
-      actions.push(
-        `<button type="button" class="btn btn-outline btn-small" data-cancel-order="${escapeHtml(order.id)}">Cancelar pedido</button>`
-      );
+  // En "Todas" los pedidos de la página se agrupan por tienda (en el orden de
+  // la columna de tiendas, los cargados a mano al final), cada grupo con su
+  // encabezado; dentro de cada grupo siguen del más nuevo al más viejo.
+  // Filtrando una tienda no hace falta agrupar.
+  const groups = selectedStore ? [{ storeId: null, orders }] : groupOrdersByStore(orders);
+  groups.forEach((group) => {
+    let target = container;
+    if (!selectedStore) {
+      const section = document.createElement("section");
+      section.className = `order-group ${storeColorClass(group.storeId)}`;
+      section.setAttribute("aria-label", group.label);
+      section.appendChild(orderGroupHead(group));
+      container.appendChild(section);
+      target = section;
     }
-
-    // Pedido de tienda: se muestra el número que ve el comerciante en su
-    // tienda (#1001) y de qué tienda viene; los manuales, su id propio.
-    const number = order.external_number || order.id;
-    const colorClass = storeColorClass(order.store_connection);
-    const storeTag = order.store_connection
-      ? `<span class="store-tag ${colorClass}" title="${escapeHtml(PLATFORM_LABELS[order.store_platform] || "")}"><span class="store-dot"></span>${escapeHtml(order.store_name || "Tienda")}</span>`
-      : "";
-
-    const item = document.createElement("div");
-    item.className = order.store_connection ? `order-item from-store ${colorClass}` : "order-item";
-    item.innerHTML = `
-      <div class="order-item-header">
-        <div>
-          <div class="order-item-title">Pedido #${escapeHtml(number)}${order.description ? ` — ${escapeHtml(order.description)}` : ""}${storeTag}</div>
-          <p class="order-item-address">${order.address ? escapeHtml(addressSummary(order.address)) : "-"} · ${escapeHtml(formatDate(order.created_at))}</p>
-        </div>
-        <span class="status-badge ${escapeHtml(statusKey)}"><span class="dot"></span>${escapeHtml(statusLabel)}</span>
-      </div>
-      ${timeline ? `<div class="order-timeline">${timeline}</div>` : ""}
-      <div class="order-item-footer">${actions.join("")}</div>
-    `;
-    window.OrderShipping.decorate(order, item);
-    container.appendChild(item);
+    group.orders.forEach((order) => target.appendChild(orderItem(order)));
   });
+}
+
+function groupOrdersByStore(orders) {
+  const byStore = new Map();
+  orders.forEach((order) => {
+    const key = order.store_connection || "manual";
+    if (!byStore.has(key)) {
+      byStore.set(key, {
+        storeId: order.store_connection || null,
+        label: order.store_connection ? order.store_name || "Tienda" : "Cargados a mano",
+        platform: order.store_connection ? PLATFORM_LABELS[order.store_platform] || "" : "",
+        orders: [],
+      });
+    }
+    byStore.get(key).orders.push(order);
+  });
+  const rank = (group) => (group.storeId && storeColors.has(group.storeId) ? storeOrder.indexOf(group.storeId) : Infinity);
+  return [...byStore.values()].sort((a, b) => rank(a) - rank(b));
+}
+
+function orderGroupHead(group) {
+  const head = document.createElement("header");
+  head.className = "order-group-head";
+  const count = group.orders.length;
+  head.innerHTML = `
+    ${storeMonogram(group.storeId ? group.label : "", group.storeId ? "" : "manual")}
+    <div class="order-group-name">
+      <strong>${escapeHtml(group.label)}</strong>
+      ${group.platform ? `<span>${escapeHtml(group.platform)}</span>` : ""}
+    </div>
+    <span class="order-group-count">${count} pedido${count === 1 ? "" : "s"}</span>
+  `;
+  return head;
+}
+
+// Iniciales de la tienda en un cuadrado de su color: es lo que la identifica
+// de un vistazo en la columna de tiendas y en los grupos de pedidos.
+function storeMonogram(name, kind = "") {
+  if (kind === "all" || kind === "manual") {
+    const icon = kind === "all"
+      ? '<rect x="4" y="4" width="7" height="7" rx="1.5" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" />'
+      : '<path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />';
+    return `<span class="store-mono store-mono-${kind}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${icon}</svg></span>`;
+  }
+  const words = String(name || "").split(/[\s\-_.]+/).filter(Boolean);
+  const initials = (words.length > 1 ? words[0][0] + words[1][0] : (words[0] || "T").slice(0, 2)).toUpperCase();
+  return `<span class="store-mono" aria-hidden="true">${escapeHtml(initials)}</span>`;
+}
+
+function orderItem(order) {
+  const statusKey = order.status;
+  const statusLabel = order.status_label || STATUS_LABELS[statusKey] || statusKey;
+  // El historial de estados va plegado: el estado actual ya está en la
+  // pastilla, y repetirlo como fila de chips en cada pedido solo hacía ruido.
+  const events = order.status_events || [];
+  const timeline = events
+    .map((event) => `<li><span>${escapeHtml(event.status_label || STATUS_LABELS[event.status] || event.status)}</span>${event.created_at ? `<time>${escapeHtml(formatDate(event.created_at))}</time>` : ""}</li>`)
+    .join("");
+
+  // Despachar, seguimiento y etiqueta los agrega pedidos/envios.js (decorate).
+  const actions = [];
+  if (order.is_cancellable) {
+    actions.push(
+      `<button type="button" class="btn-danger-text order-cancel" data-cancel-order="${escapeHtml(order.id)}">Cancelar pedido</button>`
+    );
+  }
+
+  // Pedido de tienda: se muestra el número que ve el comerciante en su
+  // tienda (#1001); los manuales, su id propio. De qué tienda viene lo dicen
+  // el encabezado de su grupo, la columna de tiendas y el borde de su color.
+  const number = order.external_number || order.id;
+  const colorClass = storeColorClass(order.store_connection);
+
+  const item = document.createElement("div");
+  item.className = order.store_connection ? `order-item from-store ${colorClass}` : "order-item";
+  item.innerHTML = `
+    <div class="order-item-header">
+      <div class="order-item-main">
+        <div class="order-item-title"><span class="order-number">#${escapeHtml(number)}</span>${order.description ? `<span class="order-desc" title="${escapeHtml(order.description)}">${escapeHtml(order.description)}</span>` : ""}</div>
+        <p class="order-item-address">${order.address ? escapeHtml(addressSummary(order.address)) : "Sin dirección"} · ${escapeHtml(formatDate(order.created_at))}</p>
+      </div>
+      <span class="status-badge ${escapeHtml(statusKey)}"><span class="dot"></span>${escapeHtml(statusLabel)}</span>
+    </div>
+    <div class="order-item-bottom">
+      ${events.length > 1 ? `<details class="order-history"><summary>Historial (${events.length})</summary><ol>${timeline}</ol></details>` : ""}
+      <div class="order-item-footer">${actions.join("")}</div>
+    </div>
+  `;
+  window.OrderShipping.decorate(order, item);
+  return item;
 }
 
 function renderOrdersPager(data) {
@@ -348,24 +297,20 @@ function storeColorClass(storeId) {
   return `store-color-${storeColors.get(storeId)}`;
 }
 
-function storeChip(value, label, { colorClass = "", hint = "", muted = false } = {}) {
+function storeChip(value, label, { colorClass = "", hint = "", muted = false, kind = "" } = {}) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = `store-chip ${colorClass}${muted ? " muted" : ""}`;
   button.dataset.store = value;
+  button.title = hint ? `${label} · ${hint}` : label;
   button.setAttribute("aria-pressed", String(value === selectedStore));
-  if (colorClass) {
-    const dot = document.createElement("span");
-    dot.className = "store-dot";
-    button.appendChild(dot);
-  }
-  button.appendChild(document.createTextNode(label));
-  if (hint) {
-    const small = document.createElement("span");
-    small.className = "store-chip-hint";
-    small.textContent = hint;
-    button.appendChild(small);
-  }
+  button.innerHTML = `
+    ${storeMonogram(label, kind)}
+    <span class="store-chip-text">
+      <span class="store-chip-name">${escapeHtml(label)}</span>
+      ${hint ? `<span class="store-chip-hint">${escapeHtml(hint)}</span>` : ""}
+    </span>
+  `;
   return button;
 }
 
@@ -376,6 +321,7 @@ function renderStoreFilter(stores) {
 
   const sorted = [...stores].sort((a, b) => a.id - b.id);
   storeColors = new Map(sorted.map((store, index) => [store.id, index % STORE_COLOR_COUNT]));
+  storeOrder = sorted.map((store) => store.id);
 
   // La tienda elegida ya no está (otra cuenta, o se borró): volver a todas.
   if (selectedStore && selectedStore !== "manual" && !storeColors.has(Number(selectedStore))) {
@@ -383,7 +329,7 @@ function renderStoreFilter(stores) {
   }
 
   group.replaceChildren(
-    storeChip("", "Todas"),
+    storeChip("", "Todas", { hint: "Todas las tiendas", kind: "all" }),
     ...sorted.map((store) =>
       storeChip(String(store.id), store.name || `Tienda ${store.external_store_id}`, {
         colorClass: storeColorClass(store.id),
@@ -391,7 +337,7 @@ function renderStoreFilter(stores) {
         muted: store.status === "revoked",
       })
     ),
-    storeChip("manual", "Cargados a mano")
+    storeChip("manual", "Cargados a mano", { kind: "manual" })
   );
   field.hidden = sorted.length === 0;
 }
@@ -457,7 +403,9 @@ async function createOrder() {
       throw new Error(getErrorMessage(data, "No se pudo crear el pedido."));
     }
     document.getElementById("orderDescription").value = "";
-    showFieldMessage("orderFormMsg", "Pedido creado correctamente.", true);
+    document.getElementById("newOrderDialog")?.close();
+    showMessage("Pedido creado. Ya está en la lista.", "success");
+    ordersPage = 1;
     await loadOrders();
   } catch (err) {
     if (err.isSessionExpired) return;
@@ -490,33 +438,26 @@ async function cancelOrder(id) {
 // Delegación de clicks (los items se re-crean al pintar las listas).
 // ---------------------------------------------------------------------------
 document.addEventListener("click", (e) => {
-  const setDefaultBtn = e.target.closest("[data-set-default]");
-  if (setDefaultBtn) {
-    setDefaultAddress(setDefaultBtn.dataset.setDefault);
-    return;
-  }
-
-  const deleteBtn = e.target.closest("[data-delete-address]");
-  if (deleteBtn) {
-    deleteAddress(deleteBtn.dataset.deleteAddress);
-    return;
-  }
-
   const cancelBtn = e.target.closest("[data-cancel-order]");
   if (cancelBtn) {
     cancelOrder(cancelBtn.dataset.cancelOrder);
   }
 });
 
-document.getElementById("toggleAddressFormBtn")?.addEventListener("click", () => {
-  const form = document.getElementById("addressForm");
-  form.style.display = form.style.display === "none" ? "block" : "none";
-});
-document.getElementById("cancelAddressFormBtn")?.addEventListener("click", () => {
-  resetAddressForm();
-  document.getElementById("addressForm").style.display = "none";
-});
-document.getElementById("saveAddressBtn")?.addEventListener("click", saveNewAddress);
+// Nuevo pedido a mano: las direcciones se leen al abrir el diálogo (pueden
+// haberse agregado en direcciones.html en otra pestaña).
+async function openNewOrder() {
+  const dialog = document.getElementById("newOrderDialog");
+  if (!dialog) return;
+  const msg = document.getElementById("orderFormMsg");
+  if (msg) msg.style.display = "none";
+  dialog.showModal();
+  await loadAddresses();
+  if (addresses.length) document.getElementById("orderAddressSelect")?.focus();
+}
+
+document.getElementById("openNewOrderBtn")?.addEventListener("click", openNewOrder);
+document.getElementById("closeNewOrderBtn")?.addEventListener("click", () => document.getElementById("newOrderDialog")?.close());
 document.getElementById("createOrderBtn")?.addEventListener("click", createOrder);
 document.getElementById("ordersPrevBtn")?.addEventListener("click", () => {
   if (ordersPage > 1) {
@@ -548,9 +489,10 @@ async function init() {
   } catch (err) {
     if (err.isSessionExpired) return;
   }
-  await loadAddresses();
   await loadStoreFilter();
   window.OrderShipping.init({ reloadOrders: loadOrders });
+  // pedidos.html#nuevo (el buscador del panel) abre el diálogo de entrada.
+  if (location.hash === "#nuevo") openNewOrder();
   await loadOrders();
 }
 

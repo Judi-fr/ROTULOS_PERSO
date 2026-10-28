@@ -3,118 +3,8 @@
    compartidos), con lo propio de esta pantalla: tabla de claves/webhooks,
    el picker de usuario dueño y el banner de "clave mostrada una sola vez". */
 
-:root {
-  --bg: #f5f7fb;
-  --card: #ffffff;
-  --border: #e7eaf1;
-  --text-dark: #0f172a;
-  --text-muted: #64748b;
-  --blue: #f97316;
-  --blue-light: #ffedd5;
-  --green: #16a34a;
-  --green-light: #e9f9ee;
-  --amber: #d97706;
-  --amber-light: #fef6e6;
-  --red: #dc2626;
-  --red-light: #fdeeee;
-}
-
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--card);
-  border-bottom: 1px solid var(--border);
-  padding: 16px 28px;
-  gap: 16px;
-}
-
-.btn {
-  border-radius: 8px;
-  padding: 9px 16px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid transparent;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--card);
-}
-
-/* base.css ya define .btn-outline, pero se carga ANTES que esta hoja: el .btn
-   de acá arriba le pisa el borde (y el fondo, donde lo define) con su shorthand.
-   Se repite para que el botón conserve borde y fondo propios. */
-.btn-outline {
-  background: transparent;
-  border-color: var(--border);
-  color: var(--text-dark);
-}
-
-.btn-small {
-  padding: 6px 12px;
-  font-size: 13px;
-}
-
-.btn-danger-text {
-  background: transparent;
-  border: none;
-  color: var(--red);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 6px 8px;
-}
-
-.btn-danger-text:hover {
-  text-decoration: underline;
-}
-
 .main {
-  flex: 1;
-  padding: 32px 28px 48px;
   max-width: 1080px;
-  width: 100%;
-  margin: 0 auto;
-}
-
-.page-message.error {
-  background: var(--red-light);
-  color: var(--red);
-  border: 1px solid #f6c9c9;
-}
-
-.page-message.success {
-  background: var(--green-light);
-  color: var(--green);
-  border: 1px solid #bfe8cc;
-}
-
-.profile-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  margin-bottom: 22px;
-  overflow: hidden;
-}
-
-.profile-card-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-weight: 700;
-  font-size: 15.5px;
-  padding: 16px 22px;
-  border-bottom: 1px solid var(--border);
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.empty-state {
-  color: var(--text-muted);
-  font-size: 14px;
-  padding: 8px 0;
 }
 
 .table-scroll {
@@ -245,9 +135,6 @@ table.data-table tbody tr:last-child td {
 }
 
 .form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
   margin-top: 12px;
 }
 

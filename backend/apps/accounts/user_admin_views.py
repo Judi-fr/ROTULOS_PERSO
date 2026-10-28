@@ -5,8 +5,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import UNUSABLE_PASSWORD_PREFIX
 from django.contrib.auth.models import Group
 from django.db import transaction
-from django.db.models import Count, Max, Q
-from django.db.models.functions import TruncMonth
+from django.db.models import Case, Count, Exists, F, IntegerField, Max, OuterRef, Q, Value, When
+from django.db.models.functions import Concat, Lower, Trim, TruncMonth
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
@@ -16,10 +16,11 @@ from rest_framework.response import Response
 
 from apps.audit.services import record
 from apps.common.date_filters import date_range_q
+from apps.common.spreadsheet import safe_cell, xlsx_bytes
 
 from .models import LoginLockout, Team
 from .pagination import UserAdminPagination
-from .permissions_map import get_effective_role, user_has_permission
+from .permissions_map import DEFAULT_ROLE, LEGACY_ROLE_ALIASES, get_effective_role, user_has_permission
 from .serializers import ROLE_CHOICES, UserAdminSerializer, ensure_role_groups
 from .teams import internal_users_q
 
@@ -227,15 +228,46 @@ class UserAdminViewSet(viewsets.ModelViewSet):
             return ~is_google
         return Q()
 
+    # Lo que piden los encabezados de la tabla que no es una columna:
+    # "name" ordena por lo que muestra la columna Usuario (nombre y apellido,
+    # o el email si no tiene), sin distinguir mayúsculas; "role"
+    # por el rol que se ve (administrador, personal de la plataforma,
+    # comerciante) y "status" por activo/inactivo.
+    ORDERING_ALIASES = {
+        "name": ("name_sort",),
+        "role": ("role_rank",),
+        "status": ("is_active",),
+    }
+    ORDERING_FIELDS = {
+        "id", "email", "first_name", "last_name", "is_active", "is_staff",
+        "date_joined", "last_login", "orders_count", "last_order_at",
+    }
+
+    @staticmethod
+    def _with_role_rank(queryset):
+        """``role_rank``: 0 administrador, 1 personal de la plataforma (rol
+        personalizado), 2 comerciante — la misma regla que
+        ``get_effective_role``: un Group canónico (o su alias) gana, después un
+        Group personalizado, después ``is_staff``."""
+        admin_names = ["admin"] + [name for name, role in LEGACY_ROLE_ALIASES.items() if role == "admin"]
+        merchant_names = [DEFAULT_ROLE] + [name for name, role in LEGACY_ROLE_ALIASES.items() if role == DEFAULT_ROLE]
+        memberships = User.groups.through.objects.filter(user_id=OuterRef("pk"))
+        return queryset.annotate(
+            role_rank=Case(
+                When(Exists(memberships.filter(group__name__in=admin_names)), then=Value(0)),
+                When(Exists(memberships.filter(group__name__in=merchant_names)), then=Value(2)),
+                When(Exists(memberships), then=Value(1)),
+                When(is_staff=True, then=Value(0)),
+                default=Value(2),
+                output_field=IntegerField(),
+            )
+        )
+
     def _get_ordering(self, queryset):
         ordering_param = self.request.query_params.get("ordering", "").strip()
         if not ordering_param:
             return queryset.order_by("id")
 
-        allowed_fields = {
-            "id", "email", "first_name", "last_name", "is_active", "is_staff",
-            "date_joined", "last_login",
-        }
         ordering_fields = []
         for raw_field in ordering_param.split(","):
             field = raw_field.strip()
@@ -243,11 +275,26 @@ class UserAdminViewSet(viewsets.ModelViewSet):
                 continue
             descending = field.startswith("-")
             field_name = field[1:] if descending else field
-            if field_name in allowed_fields:
-                ordering_fields.append(f"-{field_name}" if descending else field_name)
+            if field_name in self.ORDERING_ALIASES:
+                names = self.ORDERING_ALIASES[field_name]
+            elif field_name in self.ORDERING_FIELDS:
+                names = (field_name,)
+            else:
+                continue
+            if "role_rank" in names and "role_rank" not in queryset.query.annotations:
+                queryset = self._with_role_rank(queryset)
+            if "name_sort" in names and "name_sort" not in queryset.query.annotations:
+                full_name = Trim(Concat("first_name", Value(" "), "last_name"))
+                queryset = queryset.annotate(
+                    name_sort=Lower(Case(When(first_name="", last_name="", then=F("email")), default=full_name))
+                )
+            for name in names:
+                # Sin pedidos o sin ingreso van siempre al final, en las dos direcciones.
+                ordering_fields.append(F(name).desc(nulls_last=True) if descending else F(name).asc(nulls_last=True))
 
         if ordering_fields:
-            return queryset.order_by(*ordering_fields)
+            # "id" desempata: con el mismo valor el orden de las páginas no salta.
+            return queryset.order_by(*ordering_fields, "id")
         return queryset.order_by("id")
 
     def get_queryset(self):
@@ -599,13 +646,14 @@ class UserAdminViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="export")
     def export(self, request, *args, **kwargs):
-        """GET /api/v1/users/export/?<mismos filtros que el listado>&ids=1,2,3
+        """GET /api/v1/users/export/?<mismos filtros que el listado>&ids=1,2,3&file_type=csv|xlsx
 
         Exporta a CSV el resultado de ``get_queryset()`` con los filtros de
         query params ya activos (misma lógica que el listado paginado) o,
         si viene ``ids``, solo esos usuarios (para exportar la selección
-        actual del panel). Genera el archivo en el backend (módulo ``csv``
-        estándar), no en el navegador.
+        actual del panel). Genera el archivo en el backend, no en el
+        navegador: CSV (módulo ``csv``, por defecto) o Excel (``file_type=xlsx``)
+        con las mismas columnas.
         """
         self._require_permission("users.export")
 
@@ -618,20 +666,20 @@ class UserAdminViewSet(viewsets.ModelViewSet):
                 raise ValidationError({"ids": "Todos los IDs deben ser números enteros."})
             queryset = queryset.filter(id__in=ids)
 
-        today = timezone.now().strftime("%Y-%m-%d")
-        response = HttpResponse(content_type="text/csv")
-        response["Content-Disposition"] = f'attachment; filename="usuarios-{today}.csv"'
+        file_type = request.query_params.get("file_type", "csv").strip().lower()
+        if file_type not in ("csv", "xlsx"):
+            raise ValidationError({"file_type": "El formato tiene que ser csv o xlsx."})
 
-        writer = csv.writer(response)
-        writer.writerow([
+        columns = [
             "id", "nombre", "email", "rol", "estado", "fecha_registro",
             "ultimo_login", "metodo_autenticacion", "bloqueado",
             "total_pedidos", "fecha_ultimo_pedido",
-        ])
+        ]
+        rows = []
         for user in queryset:
             lockout = getattr(user, "login_lockout", None)
             full_name = " ".join(filter(None, [user.first_name, user.last_name])).strip()
-            writer.writerow([
+            rows.append([
                 user.id,
                 full_name or user.email,
                 user.email,
@@ -644,6 +692,24 @@ class UserAdminViewSet(viewsets.ModelViewSet):
                 user.orders_count or 0,
                 user.last_order_at.isoformat() if user.last_order_at else "",
             ])
+
+        today = timezone.now().strftime("%Y-%m-%d")
+        if file_type == "xlsx":
+            # Excel con el mismo contenido (apps.common.spreadsheet: texto
+            # forzado a string y fórmulas neutralizadas, como las otras exportaciones).
+            response = HttpResponse(
+                xlsx_bytes(columns, rows, "Usuarios"),
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+            response["Content-Disposition"] = f'attachment; filename="usuarios-{today}.xlsx"'
+            return response
+
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = f'attachment; filename="usuarios-{today}.csv"'
+        writer = csv.writer(response)
+        writer.writerow(columns)
+        # Nombres y mails los escribió cada usuario: sin fórmulas (inyección CSV).
+        writer.writerows([safe_cell(value) for value in row] for row in rows)
         return response
 
     def _month_range(self, cutoff):

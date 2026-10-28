@@ -283,6 +283,25 @@ def _check_can_touch(member, by_user):
         raise TeamForbidden("No podés cambiar ni quitar a alguien con tiendas que vos no tenés.")
 
 
+def check_can_edit_profile(profile, by_user):
+    """Cambiar los accesos de un perfil cambia a todos los que lo usan: quien
+    no es dueño no puede tocar así a alguien que no podría tocar de a uno
+    (un perfil con accesos que él no tiene, o que usa alguien con tiendas
+    que él no tiene)."""
+    mine_member = _member_in(by_user, profile.team)
+    if mine_member is not None and mine_member.role == TeamMember.Role.OWNER:
+        return
+    if not set(profile.accesses) <= accesses_of(mine_member):
+        raise TeamForbidden("No podés cambiar un perfil con accesos que vos no tenés.")
+    mine = stores_of(mine_member)
+    if mine is None:
+        return
+    for member in profile.members.all():
+        theirs = stores_of(member)
+        if theirs is None or not theirs <= mine:
+            raise TeamForbidden("No podés cambiar un perfil que usa alguien con tiendas que vos no tenés.")
+
+
 def update_member(member, by_user, *, profile, accesses, all_stores, store_ids):
     _check_can_touch(member, by_user)
     accesses = clean_accesses(accesses)

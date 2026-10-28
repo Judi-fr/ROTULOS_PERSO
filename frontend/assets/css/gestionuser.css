@@ -1,25 +1,4 @@
-  :root{
-    --sidebar-bg:#0b0b0b;
-    --sidebar-hover:#1f1f1f;
-    --sidebar-active:#f97316;
-    --sidebar-text:#a3a3a3;
-    --bg:#f5f7fb;
-    --card:#ffffff;
-    --border:#e7eaf1;
-    --text-dark:#0f172a;
-    --text-muted:#64748b;
-    --blue:#f97316;
-    --blue-light:#ffedd5;
-    --green:#16a34a;
-    --green-light:#e9f9ee;
-    --amber:#d97706;
-    --amber-light:#fef6e6;
-    --purple:#7c3aed;
-    --purple-light:#f2ecfe;
-    --red:#dc2626;
-    --red-light:#fdeeee;
-  }
-  *{box-sizing:border-box;}
+    *{box-sizing:border-box;}
   body{
     margin:0;
     font-family:"Karla",system-ui,sans-serif;
@@ -294,8 +273,22 @@
     white-space:nowrap;
   }
   th.actions-col, td.actions-col{ text-align:right; }
-  .th-sort{ display:inline-flex; align-items:center; gap:5px; cursor:pointer; }
-  .th-sort svg{ width:12px;height:12px; }
+  /* Encabezados que ordenan (usuarios.js, updateSortHeaders): la flecha del
+     sentido elegido se pinta con el acento y la otra se apaga. */
+  .th-sort{
+    display:inline-flex; align-items:center; gap:5px;
+    margin:-4px -6px; padding:4px 6px; border:0; border-radius:6px;
+    background:transparent; color:inherit; font:inherit; cursor:pointer;
+    transition:background .2s cubic-bezier(.16,1,.3,1), color .2s cubic-bezier(.16,1,.3,1);
+  }
+  .th-sort:hover{ background:#eef1f6; color:var(--text-dark); }
+  .th-sort:focus-visible{ outline:2px solid var(--blue); outline-offset:1px; }
+  .th-sort:active{ transform:translateY(1px); }
+  .th-sort .sort-icon{ width:12px; height:12px; flex-shrink:0; }
+  .th-sort .sort-up, .th-sort .sort-down{ opacity:.45; transition:opacity .2s, stroke .2s; }
+  .th-sort[data-dir]:not([data-dir=""]){ color:var(--text-dark); }
+  .th-sort[data-dir="asc"] .sort-up, .th-sort[data-dir="desc"] .sort-down{ opacity:1; stroke:var(--blue); stroke-width:2.6; }
+  .th-sort[data-dir="asc"] .sort-down, .th-sort[data-dir="desc"] .sort-up{ opacity:.18; }
 
   tbody tr{ border-bottom:1px solid var(--border); }
   tbody tr:hover{ background:#fafbfe; }
@@ -712,28 +705,69 @@
     .roles-sidebar { position: static; }
   }
 
-  /* ACCIONES MASIVAS: barra que aparece sobre la tabla al tildar checkboxes. */
-  .bulk-actions-bar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: var(--blue-light);
-    border: 1px solid var(--blue);
-    border-radius: 12px;
-    padding: 12px 18px;
-    margin-bottom: 18px;
-    flex-wrap: wrap;
+  /* ACCIONES EN BLOQUE: barra flotante oscura que sube desde abajo al tildar
+     usuarios (usuarios.js, updateBulkActionsBar). Pegada al final de la tabla
+     con sticky, así queda centrada en la columna principal y no tapa el menú. */
+  .bulk-dock{
+    position:sticky; bottom:20px; z-index:20;
+    display:flex; align-items:center; gap:6px;
+    width:fit-content; max-width:100%; margin:18px auto 0;
+    padding:8px 8px 8px 14px;
+    background:#18181b; color:#f4f4f5;
+    border:1px solid rgba(255,255,255,.08); border-radius:14px;
+    box-shadow:0 18px 40px -16px rgba(15,23,42,.45), inset 0 1px 0 rgba(255,255,255,.06);
+    opacity:0; transform:translateY(14px) scale(.98); pointer-events:none;
+    visibility:hidden;
+    transition:opacity .28s cubic-bezier(.16,1,.3,1), transform .28s cubic-bezier(.16,1,.3,1), visibility 0s linear .28s;
   }
-  .bulk-actions-bar #bulkActionsCount {
-    font-weight: 600;
-    color: var(--text-dark);
-    margin-right: 6px;
+  .bulk-dock.is-open{
+    opacity:1; transform:none; pointer-events:auto; visibility:visible;
+    transition:opacity .28s cubic-bezier(.16,1,.3,1), transform .28s cubic-bezier(.16,1,.3,1), visibility 0s;
   }
-  .bulk-actions-bar select {
-    padding: 7px 10px;
-    border: 1px solid var(--border);
-    border-radius: 7px;
-    font: inherit;
+  .bulk-dock-count{ display:flex; align-items:center; gap:8px; padding-right:4px; font-size:13px; color:#d4d4d8; white-space:nowrap; }
+  .bulk-dock-num{
+    min-width:24px; height:24px; padding:0 7px; border-radius:999px;
+    display:inline-flex; align-items:center; justify-content:center;
+    background:var(--blue); color:#fff; font-weight:700; font-size:12.5px; font-variant-numeric:tabular-nums;
+  }
+  .bulk-dock-sep{ width:1px; height:22px; background:rgba(255,255,255,.12); margin:0 4px; }
+  .bulk-dock-btn, .bulk-dock-apply, .bulk-dock-close{
+    display:inline-flex; align-items:center; gap:6px;
+    height:34px; padding:0 12px; border-radius:9px; border:0;
+    font:inherit; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap;
+    transition:background .18s, color .18s, transform .12s;
+  }
+  .bulk-dock-btn{ background:transparent; color:#f4f4f5; }
+  .bulk-dock-btn svg{ width:15px; height:15px; color:#a1a1aa; }
+  .bulk-dock-btn:hover{ background:rgba(255,255,255,.08); }
+  #bulkDeactivateBtn:hover{ background:rgba(220,38,38,.18); color:#fecaca; }
+  #bulkDeactivateBtn:hover svg{ color:#fca5a5; }
+  .bulk-dock-role{ display:flex; align-items:center; gap:6px; }
+  .bulk-dock-role select{
+    height:34px; padding:0 30px 0 10px; border-radius:9px;
+    border:1px solid rgba(255,255,255,.14); background-color:#27272a; color:#f4f4f5;
+    font:inherit; font-size:13px; cursor:pointer;
+    appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 9px center; background-size:14px;
+  }
+  .bulk-dock-role select:focus-visible{ outline:2px solid var(--blue); outline-offset:1px; }
+  .bulk-dock-apply{ background:var(--blue); color:#fff; }
+  .bulk-dock-apply:hover{ background:#ea580c; }
+  .bulk-dock-close{ width:34px; padding:0; justify-content:center; background:transparent; color:#a1a1aa; margin-left:2px; }
+  .bulk-dock-close svg{ width:16px; height:16px; }
+  .bulk-dock-close:hover{ background:rgba(255,255,255,.08); color:#fff; }
+  .bulk-dock button:active{ transform:scale(.97); }
+  .bulk-dock button:focus-visible{ outline:2px solid var(--blue); outline-offset:1px; }
+  @media (max-width:760px){
+    .bulk-dock{ flex-wrap:wrap; width:100%; border-radius:12px; }
+    .bulk-dock-sep{ display:none; }
+    .bulk-dock-count{ flex:1; }
+    .bulk-dock-role{ order:5; width:100%; }
+    .bulk-dock-role select{ flex:1; }
+  }
+  @media (prefers-reduced-motion:reduce){
+    .bulk-dock, .bulk-dock.is-open{ transition:none; }
   }
 
   /* Checkbox de "forzar cambio de contraseña" + hint del campo password.

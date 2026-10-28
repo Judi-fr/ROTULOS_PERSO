@@ -1,0 +1,640 @@
+/* Mis pedidos (pedidos.html): columna de tiendas a la izquierda, pedidos
+   agrupados por tienda y la tarjeta compacta de cada pedido (assets/js/pedidos.js). Cada tienda tiene su color
+   (store-color-N, en pedidos.css) y un cuadrado con sus iniciales; es lo que
+   la identifica en la columna, en el encabezado de su grupo y en el borde de
+   cada pedido. Solo lo carga esta página: pedidos.css lo comparten otras. */
+
+.orders-main {
+  max-width: 1180px;
+}
+
+.orders-layout {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+
+/* Sin tiendas no hay columna: la lista ocupa todo el ancho. */
+.orders-layout:has(> .store-filter[hidden]) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.orders-column {
+  min-width: 0;
+}
+
+/* La tarjeta recortaba con overflow: hidden, que apaga el sticky de la
+   columna de tiendas y de la barra de selección. clip recorta igual las
+   esquinas sin crear un contenedor con scroll. */
+.profile-card:has(.orders-layout) {
+  overflow: clip;
+}
+
+/* --- Columna de tiendas ------------------------------------------------- */
+
+.orders-layout > .store-filter {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin: 0;
+  padding-right: 20px;
+  border-right: 1px solid var(--border);
+}
+
+.orders-layout > .store-filter[hidden] {
+  display: none;
+}
+
+.orders-layout .store-filter-label {
+  padding: 0 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.orders-layout .store-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.orders-layout .store-chip {
+  position: relative;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-dark);
+  text-align: left;
+  transition: background 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.orders-layout .store-chip:hover {
+  background: #f1f4f8;
+}
+
+.orders-layout .store-chip:active {
+  transform: translateY(1px);
+}
+
+.orders-layout .store-chip[aria-pressed="true"] {
+  background: var(--store-bg, #eef1f6);
+  color: var(--text-dark);
+}
+
+/* La elegida lleva una barra del color de su tienda pegada al borde. */
+.orders-layout .store-chip[aria-pressed="true"]::before {
+  content: "";
+  position: absolute;
+  left: -2px;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--store-fg, var(--text-dark));
+}
+
+.store-chip-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.store-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.orders-layout .store-chip-hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.orders-layout .store-chip[aria-pressed="true"] .store-chip-hint {
+  color: var(--store-fg, var(--text-muted));
+  opacity: 1;
+}
+
+.orders-layout .store-chip.muted .store-mono {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+
+/* Cuadrado con las iniciales de la tienda (o un ícono para "Todas" y
+   "Cargados a mano"). */
+.store-mono {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: var(--store-fg, #334155);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  box-shadow: inset 0 -1px 0 rgba(15, 23, 42, 0.18);
+}
+
+.store-mono svg {
+  width: 17px;
+  height: 17px;
+}
+
+.store-mono-all,
+.store-mono-manual {
+  background: #eef1f6;
+  color: #334155;
+  box-shadow: none;
+}
+
+.store-chip[aria-pressed="true"] .store-mono-all,
+.store-chip[aria-pressed="true"] .store-mono-manual {
+  background: var(--text-dark);
+  color: #ffffff;
+}
+
+/* --- Grupos de pedidos por tienda ("Todas") ------------------------------ */
+
+.order-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.order-group + .order-group {
+  margin-top: 22px;
+}
+
+.order-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--store-fg, #cbd5e1);
+}
+
+.order-group-head .store-mono {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  font-size: 11px;
+}
+
+.order-group-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.order-group-name strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+
+.order-group-name span {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.order-group-count {
+  margin-left: auto;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--store-bg, #eef1f5);
+  color: var(--store-fg, #475569);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Los cargados a mano también llevan borde, gris, así todas las tarjetas
+   quedan alineadas. */
+.order-list .order-item:not(.from-store) {
+  border-left: 4px solid #cbd5e1;
+}
+
+.order-list .order-item {
+  animation: order-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.order-list .order-item:nth-child(2) { animation-delay: 30ms; }
+.order-list .order-item:nth-child(3) { animation-delay: 60ms; }
+.order-list .order-item:nth-child(4) { animation-delay: 90ms; }
+.order-list .order-item:nth-child(n + 5) { animation-delay: 120ms; }
+
+@keyframes order-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .order-list .order-item {
+    animation: none;
+  }
+}
+
+/* --- Tarjeta de pedido ------------------------------------------------------
+   Compacta: número + descripción en una línea, dirección y fecha abajo, el
+   estado a la derecha; abajo el historial plegado a la izquierda y las
+   acciones a la derecha, con la principal al final. */
+
+.orders-column .order-item {
+  padding: 12px 16px;
+  border-radius: 12px;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+
+.orders-column .order-item:hover {
+  box-shadow: 0 10px 24px -18px rgba(15, 23, 42, 0.35);
+}
+
+.orders-column .order-item-header {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+
+.order-item-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.orders-column .order-item-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 14.5px;
+}
+
+.order-number {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.order-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+  color: #334155;
+}
+
+.orders-column .order-item-address {
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.orders-column .status-badge {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+.orders-column .shipping-line {
+  margin-top: 8px;
+}
+
+.order-item-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.order-item-bottom:has(> .order-item-footer:empty):not(:has(> .order-history)) {
+  display: none;
+}
+
+.orders-column .order-item-footer {
+  margin: 0 0 0 auto;
+  justify-content: flex-end;
+}
+
+/* Cancelar va primero y apagado: es la acción que no se quiere tocar sin querer. */
+.orders-column .order-cancel {
+  order: -1;
+  margin-right: 4px;
+  font-size: 13px;
+}
+
+.order-history {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.order-history summary {
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 6px;
+  border-radius: 7px;
+  font-weight: 600;
+}
+
+.order-history summary::-webkit-details-marker {
+  display: none;
+}
+
+.order-history summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.order-history[open] summary::before {
+  transform: rotate(45deg);
+}
+
+.order-history summary:hover {
+  background: #f1f4f8;
+  color: var(--text-dark);
+}
+
+.order-history ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 6px 0 0;
+  padding: 0 0 0 6px;
+  list-style: none;
+}
+
+.order-history li {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.order-history li + li::before {
+  content: "→";
+  margin-right: 8px;
+  color: #cbd5e1;
+}
+
+.order-history li span {
+  color: var(--text-dark);
+  font-weight: 600;
+}
+
+.order-history time {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Abierto, el historial ocupa la fila entera y las acciones bajan. */
+.order-item-bottom:has(> .order-history[open]) {
+  flex-wrap: wrap;
+}
+
+.order-item-bottom:has(> .order-history[open]) > .order-history {
+  flex-basis: 100%;
+}
+
+/* --- Transportistas (pedidos/envios.js, renderStrip) ------------------------
+   Con todo en orden es una línea gris sin fondo: configuración, no trabajo.
+   El aviso ámbar de pedidos_envios.css queda para cuando falta algo. */
+
+.carrier-strip.carrier-strip-quiet {
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 0 0 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.carrier-quiet-label {
+  margin-right: 2px;
+}
+
+.carrier-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--text-dark);
+  font-weight: 600;
+  text-decoration: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.carrier-strip-quiet .carrier-chip {
+  color: var(--text-dark);
+}
+
+.carrier-chip::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.14);
+}
+
+.carrier-chip:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.carrier-quiet-links {
+  display: inline-flex;
+  gap: 14px;
+  margin-left: auto;
+}
+
+.carrier-strip-quiet .carrier-quiet-links a {
+  color: var(--text-muted);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.carrier-strip-quiet .carrier-quiet-links a:hover {
+  color: var(--blue);
+  text-decoration: underline;
+}
+
+/* --- Título de la tarjeta y "Nuevo pedido" -------------------------------- */
+
+.profile-card-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.new-order-dialog {
+  width: min(480px, calc(100vw - 32px));
+}
+
+.new-order-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px 24px 20px;
+}
+
+.new-order-head h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.new-order-head p {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--text-muted);
+}
+
+.new-order-fields[hidden],
+.new-order-empty[hidden] {
+  display: none;
+}
+
+.new-order-fields .field {
+  margin-bottom: 12px;
+}
+
+.new-order-fields select {
+  width: 100%;
+}
+
+.field-help-link {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--blue);
+}
+
+.new-order-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #f8fafc;
+  font-size: 14px;
+}
+
+.new-order-empty p {
+  margin: 0;
+}
+
+.new-order-form .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0;
+}
+
+/* --- Pantallas angostas: la columna pasa a ser una tira arriba ------------ */
+
+@media (max-width: 860px) {
+  .orders-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .orders-layout > .store-filter {
+    position: static;
+    padding: 0 0 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .orders-layout .store-chips {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 6px;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .orders-layout .store-chip {
+    width: auto;
+    flex-shrink: 0;
+    max-width: 220px;
+    border: 1px solid var(--border);
+  }
+
+  .orders-layout .store-chip[aria-pressed="true"]::before {
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: -1px;
+    width: auto;
+    height: 3px;
+  }
+}
+
+/* En el celular el estado baja debajo del título en vez de apretarlo. */
+@media (max-width: 560px) {
+  .orders-column .order-item-header {
+    flex-wrap: wrap;
+  }
+
+  .orders-column .order-item-header > .order-select + .order-item-main {
+    flex-basis: calc(100% - 40px);
+  }
+
+  .orders-column .order-item-header > .order-select ~ .status-badge {
+    margin-left: 30px;
+  }
+
+  .order-item-bottom {
+    flex-wrap: wrap;
+  }
+
+  .profile-card-title:has(> .profile-card-tools) {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .profile-card-tools {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}

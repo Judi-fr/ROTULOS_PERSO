@@ -2903,6 +2903,25 @@ class UserExportCsvTests(AuthTestCase):
         fila_google = by_email["csv_google@example.com"]
         self.assertEqual(fila_google[7], "Google")
 
+    def test_export_en_excel_trae_las_mismas_columnas_y_filas(self):
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(self.URL, {"file_type": "xlsx", "ids": f"{self.user_a.id},{self.user_b.id}"})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn("usuarios-", resp["Content-Disposition"])
+        self.assertIn(".xlsx", resp["Content-Disposition"])
+        rows = list(load_workbook(BytesIO(resp.content)).active.iter_rows(values_only=True))
+        self.assertEqual(rows[0][:3], ("id", "nombre", "email"))
+        self.assertEqual({row[2] for row in rows[1:]}, {"csv_a@example.com", "csv_b@example.com"})
+
+    def test_export_con_formato_desconocido_es_400(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.get(self.URL, {"file_type": "pdf"})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_export_con_ids_filtra_solo_los_seleccionados(self):
         self.client.force_authenticate(user=self.admin)
         resp = self.client.get(self.URL, {"ids": f"{self.user_a.id},{self.user_b.id}"})
@@ -3650,3 +3669,23 @@ class PasswordResetConfirmTests(AuthTestCase):
 
         usado = self.client.post("/api/v1/auth/refresh/", {"refresh": refresh}, format="json")
         self.assertEqual(usado.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class UserExportCsvInjectionTests(AuthTestCase):
+    """Un nombre que el usuario escribió al registrarse no se convierte en
+    fórmula cuando el admin abre el CSV en Excel."""
+
+    def test_formula_in_name_is_neutralized(self):
+        admin = User.objects.create_user(
+            username="admin_inj@example.com", email="admin_inj@example.com", password=STRONG_PASSWORD, is_staff=True
+        )
+        User.objects.create_user(
+            username="inj@example.com", email="inj@example.com", password=STRONG_PASSWORD,
+            first_name='=HYPERLINK("http://x")', last_name="",
+        )
+        self.client.force_authenticate(user=admin)
+        resp = self.client.get("/api/v1/users/export/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        content = resp.content.decode("utf-8")
+        self.assertNotIn(',=HYPERLINK', content)
+        self.assertNotIn(',"=HYPERLINK', content)
