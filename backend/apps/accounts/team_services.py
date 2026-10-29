@@ -46,6 +46,7 @@ OWNED_DATA = [
     ("orders.ImportMapping", "user", "mapeo(s) de importación"),
     ("labels.LabelTemplate", "owner", "plantilla(s)"),
     ("labels.Label", "user", "rótulo(s)"),
+    ("labels.LabelImage", "owner", "imagen(es)"),
     ("labels.LabelSequence", "owner", "numeración(es)"),
     ("documents.Document", "user", "documento(s)"),
     ("carriers.CarrierAccount", "owner", "cuenta(s) de transportista"),

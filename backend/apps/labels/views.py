@@ -8,6 +8,7 @@ endpoint aparte, de solo lectura, con su propio permiso (``labels.view_all``).
 
 from __future__ import annotations
 
+import re
 
 from django.core.files.base import ContentFile
 from django.db.models import Max, Prefetch, ProtectedError, Q
@@ -27,9 +28,9 @@ from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
 from apps.common.date_filters import date_range_q
 from apps.orders.models import Order
-from apps.accounts.teams import data_owner, order_scope_q
+from apps.accounts.teams import NoTeam, data_owner, order_scope_q
 
-from .models import ElementLayout, Label, LabelSequence, LabelTemplate, LayoutElement, LayoutVariable
+from .models import ElementLayout, Label, LabelImage, LabelSequence, LabelTemplate, LayoutElement, LayoutVariable
 from .label_rendering import (
     BARCODE_HEIGHT_RANGE_CM,
     BARCODE_WIDTH_RANGE_CM,
@@ -45,7 +46,9 @@ from .label_rendering import (
     build_qr_drawing,
     render_code_svg,
     render_label_pdf,
+    sender_logo,
 )
+from . import label_images
 from .template_versions import record_version, restore_version
 from .thumbnails import refresh_template_thumbnail
 from .zpl import DEFAULT_DPMM, SUPPORTED_DPMM, render_label_zpl
@@ -54,12 +57,92 @@ from .element_layout_render.fonts import FontNotAvailable, available_font_famili
 from .serializers import (
     AdminLabelSerializer,
     ElementLayoutSerializer,
+    LabelImageSerializer,
     LabelSerializer,
     LabelTemplateSerializer,
     LabelTemplateVersionSerializer,
     LayoutVariableSerializer,
     RenderElementLayoutSerializer,
 )
+
+ID_RE = re.compile(r"[0-9]{1,18}")
+MAX_IDS_PER_REQUEST = 200
+
+
+class _AnyRolePermission(HasRolePermission):
+    """Alcanza con uno de los permisos."""
+
+    def __init__(self, *permission_keys):
+        super().__init__(permission_keys[0])
+        self.permission_keys = permission_keys
+
+    def has_permission(self, request, view):
+        for key in self.permission_keys:
+            self.permission_key = key
+            if super().has_permission(request, view):
+                return True
+        return False
+
+
+class LabelImageViewSet(viewsets.ModelViewSet):
+    """Biblioteca de imágenes del comercio actual: listar (activas, sin
+    paginar), subir y ocultar. Mismos permisos que las plantillas."""
+
+    serializer_class = LabelImageSerializer
+    pagination_class = None
+    http_method_names = ["get", "post", "delete", "head", "options"]
+
+    def get_permissions(self):
+        if self.action == "destroy":
+            return [IsAuthenticated(), HasRolePermission("labels.template_delete")]
+        if self.action == "list":
+            # Quien edita rótulos guardados tiene que ver las imágenes que
+            # sus diseños usan, aunque no pueda subir ni administrar plantillas.
+            return [IsAuthenticated(), _AnyRolePermission("labels.template_create", "labels.edit")]
+        return [IsAuthenticated(), HasRolePermission("labels.template_create")]
+
+    def get_queryset(self):
+        return LabelImage.objects.filter(owner=data_owner(self.request.user), is_active=True)
+
+    def list(self, request, *args, **kwargs):
+        """Sin ``?ids``, las imágenes activas del comercio. Con ``?ids=1,2``,
+        esas filas aunque estén ocultas, siempre que el usuario pueda usarlas
+        (``allowed_image_ids``): el editor dibuja lo que el PDF imprime. Con
+        ``?template=<id>`` también valen las de ese diseño, si puede leerlo."""
+        raw = request.query_params.get("ids")
+        if raw is None:
+            return super().list(request, *args, **kwargs)
+        parts = [part.strip() for part in raw.split(",")]
+        wanted = {int(part) for part in parts if ID_RE.fullmatch(part)}
+        wanted = set(sorted(wanted)[:MAX_IDS_PER_REQUEST])
+        extra = []
+        template_id = request.query_params.get("template", "")
+        if ID_RE.fullmatch(template_id.strip()):
+            template = LabelTemplate.objects.filter(
+                Q(is_public=True) | Q(owner=data_owner(request.user)), pk=int(template_id.strip()), is_active=True
+            ).first()
+            if template is not None:
+                extra.append(template.design)
+        rows = LabelImage.objects.filter(
+            pk__in=wanted & label_images.allowed_image_ids(request.user, extra)
+        ).order_by("pk")
+        return Response(self.get_serializer(rows, many=True).data)
+
+    def create(self, request, *args, **kwargs):
+        owner = data_owner(request.user)
+        if LabelImage.objects.filter(owner=owner, is_active=True).count() >= label_images.MAX_IMAGES_PER_OWNER:
+            raise ValidationError(
+                f"Llegaste al máximo de {label_images.MAX_IMAGES_PER_OWNER} imágenes. Borrá alguna para subir otra."
+            )
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(owner=owner, created_by=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def perform_destroy(self, instance):
+        # Se oculta, el archivo queda: lo que ya la usa sigue imprimiéndola.
+        instance.is_active = False
+        instance.save(update_fields=["is_active"])
 
 
 class LabelViewSet(viewsets.ModelViewSet):
@@ -236,6 +319,10 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), HasRolePermission("labels.template_edit")]
         if self.action == "destroy":
             return [IsAuthenticated(), HasRolePermission("labels.template_delete")]
+        if self.action == "list":
+            # Quien edita rótulos guardados tiene que ver las imágenes que
+            # sus diseños usan, aunque no pueda subir ni administrar plantillas.
+            return [IsAuthenticated(), _AnyRolePermission("labels.template_create", "labels.edit")]
         return [IsAuthenticated(), HasRolePermission("labels.template_create")]
 
     def get_queryset(self):
@@ -246,6 +333,11 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
         search = self.request.query_params.get("search", "").strip()
         if search:
             queryset = queryset.filter(name__icontains=search)
+        # ?gallery=1: los diseños de "+ Nueva plantilla", en su orden.
+        if self.request.query_params.get("gallery") == "1":
+            queryset = queryset.filter(owner__isnull=True, is_public=True, gallery_order__isnull=False).order_by(
+                "gallery_order"
+            )
         return queryset
 
     def _can_manage_templates(self):
@@ -392,6 +484,7 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
             height_cm=template.height_cm,
             context=SAMPLE_LABEL_CONTEXT,
             computed=computed,
+            logo_file=sender_logo(data_owner(request.user)),
         )
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'inline; filename="plantilla-{template.pk}-preview.pdf"'
@@ -627,6 +720,9 @@ class PreviewLabelView(APIView):
         logo_file = None
         template_id = request.data.get("template_id")
         if template_id:
+            if not ID_RE.fullmatch(str(template_id).strip()):
+                raise ValidationError({"template_id": "Tiene que ser el número de una plantilla."})
+            template_id = int(str(template_id).strip())
             # El logo es un archivo del servidor, no viaja en el diseño: si
             # el editor está trabajando sobre una plantilla guardada, se usa
             # el de esa plantilla para que la vista previa lo incluya.
@@ -634,6 +730,24 @@ class PreviewLabelView(APIView):
                 Q(is_public=True) | Q(owner=data_owner(request.user)), pk=template_id
             ).first()
             logo_file = getattr(template, "logo", None) or None
+        else:
+            template = None
+        if not logo_file:
+            # Sin logo propio de la plantilla, el del comercio (remitente).
+            try:
+                logo_file = sender_logo(data_owner(request.user))
+            except NoTeam:  # el admin sin comercio no tiene logo que usar
+                pass
+
+        # Mismo permiso que al guardar: solo imágenes del comercio, de
+        # plantillas públicas o de la plantilla que se está editando.
+        from .design_shapes import image_ids
+
+        used = image_ids(design)
+        if used and used - label_images.allowed_image_ids(
+            request.user, [template.design] if template is not None else []
+        ):
+            raise ValidationError({"design": "Una de las imágenes del diseño no existe en tu comercio."})
 
         warnings = []
         pdf_bytes = render_label_pdf(
@@ -644,16 +758,47 @@ class PreviewLabelView(APIView):
             logo_file=logo_file,
             warnings=warnings,
         )
-        response = HttpResponse(pdf_bytes, content_type="application/pdf")
-        response["Content-Disposition"] = 'inline; filename="vista-previa.pdf"'
+        if request.data.get("thermal") is True:
+            # Vista térmica del editor: el mismo dibujo en 1 bit a 203 dpi.
+            from .thermal_preview import thermal_png
+
+            response = HttpResponse(thermal_png(pdf_bytes), content_type="image/png")
+        else:
+            response = HttpResponse(pdf_bytes, content_type="application/pdf")
+            response["Content-Disposition"] = 'inline; filename="vista-previa.pdf"'
         # Avisos del dibujo como "código:ancho mínimo en cm" (hoy, un código
         # de barras que con el tracking de muestra, de 19 dígitos, no entra
         # legible en su recuadro). El editor los traduce a un mensaje.
         if warnings:
             response["X-Label-Warnings"] = ",".join(
-                "%s:%s" % (warning["code"], warning["min_width_cm"]) for warning in warnings
+                "%s:%s" % (warning["code"], warning.get("min_width_cm", warning.get("field", ""))) for warning in warnings
             )
         return response
+
+
+class PreviewContextView(APIView):
+    """GET /api/v1/labels/preview-context/
+
+    Los datos de muestra que usa la vista previa, para que el lienzo del
+    editor muestre el mismo texto que el PDF: ``context`` (datos del envío)
+    y ``computed`` (variables calculadas, ya resueltas). Sin sesión de
+    comercio ``data_owner`` responde 403 ``no_team`` como el resto."""
+
+    COMPUTED_KEYS = ("fecha", "hora", "fecha_hora", "secuencia", "bulto", "bultos", "bulto_de_bultos")
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission("labels.render")]
+
+    def get(self, request):
+        resolver = build_computed_context(
+            owner=data_owner(request.user), is_preview=True, bulto=1, bultos=2
+        )
+        return Response(
+            {
+                "context": build_preview_context(),
+                "computed": {key: resolver(key) or "" for key in self.COMPUTED_KEYS},
+            }
+        )
 
 
 class RenderLabelView(APIView):

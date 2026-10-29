@@ -1,0 +1,161 @@
+/* Galería de "+ Nueva plantilla" (galeria_plantillas.html). Tarjetas altas
+   con la miniatura del rótulo y el nombre DEBAJO, como en una galería. */
+.gallery-main {
+  max-width: 1240px;
+}
+.gallery-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+  align-items: end;
+  gap: 16px 48px;
+  margin-bottom: 28px;
+}
+.gallery-kicker {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.gallery-heading h1 {
+  margin: 0;
+  font-size: clamp(26px, 3vw, 34px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--text-dark);
+}
+.gallery-lede {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+.gallery-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 32px 24px;
+}
+.gallery-item {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: gallery-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: calc(var(--index) * 60ms);
+}
+@keyframes gallery-in {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gallery-item {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+.gallery-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 14px;
+  outline: none;
+}
+.gallery-sheet {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 2 / 3;
+  margin-bottom: 10px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 18px 36px -24px rgba(15, 23, 42, 0.35);
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.2s;
+}
+.gallery-sheet img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.gallery-card:hover .gallery-sheet,
+.gallery-card:focus-visible .gallery-sheet {
+  transform: translateY(-4px);
+  border-color: var(--accent);
+  box-shadow: 0 26px 44px -26px rgba(234, 88, 12, 0.45);
+}
+.gallery-card:active .gallery-sheet {
+  transform: translateY(-1px) scale(0.99);
+}
+.gallery-card:focus-visible .gallery-name {
+  text-decoration: underline;
+}
+.gallery-sheet-blank {
+  background: repeating-linear-gradient(135deg, #fafbfd 0 10px, #f3f5f9 10px 20px);
+  border-style: dashed;
+  border-color: #cfd6e2;
+  box-shadow: none;
+}
+.gallery-sheet-blank svg {
+  width: 40px;
+  height: 40px;
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+.gallery-card-blank:hover .gallery-sheet-blank svg {
+  stroke: var(--accent);
+}
+.gallery-sheet-missing {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.gallery-name {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text-dark);
+}
+.gallery-text {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.gallery-card-loading .gallery-sheet {
+  background: linear-gradient(90deg, #eef1f6 0%, #f7f8fb 50%, #eef1f6 100%) 0 0 / 200% 100%;
+  animation: gallery-shimmer 1.4s linear infinite;
+  box-shadow: none;
+}
+.gallery-bar {
+  display: block;
+  height: 12px;
+  width: 60%;
+  border-radius: 6px;
+  background: #eef1f6;
+}
+.gallery-bar.short {
+  width: 85%;
+  height: 10px;
+}
+@keyframes gallery-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (max-width: 760px) {
+  .gallery-heading {
+    grid-template-columns: 1fr;
+  }
+  .gallery-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px 16px;
+  }
+}

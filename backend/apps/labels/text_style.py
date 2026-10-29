@@ -13,6 +13,7 @@ Si una familia no tiene una variante (la manuscrita no tiene itálica, la
 condensada tampoco), se usa la más cercana: nunca falla por eso.
 """
 
+from functools import lru_cache
 from pathlib import Path
 
 from reportlab.pdfbase import pdfmetrics
@@ -249,9 +250,14 @@ def zpl_native_ok(style):
 
 
 def _pillow_font(ttf, size_dots):
+    return _load_pillow_font(str(ttf), max(1, int(round(size_dots))))
+
+
+@lru_cache(maxsize=64)
+def _load_pillow_font(ttf, size):
     from PIL import ImageFont
 
-    return ImageFont.truetype(str(ttf), max(1, int(round(size_dots))))
+    return ImageFont.truetype(ttf, size)
 
 
 def _line_length(font, text, spacing_dots):

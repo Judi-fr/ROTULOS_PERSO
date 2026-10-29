@@ -24,7 +24,8 @@ import re
 
 from rest_framework import serializers
 
-SHAPE_KINDS = ("rect", "ellipse", "line", "icon")
+SHAPE_KINDS = ("rect", "ellipse", "line", "icon", "image")
+IMAGE_FITS = ("contain", "cover")
 STROKE_STYLES = ("solid", "dashed", "dotted")
 TEXT_ALIGNS = ("left", "center", "right")
 VALIGNS = ("top", "middle", "bottom")
@@ -186,7 +187,7 @@ def _validate_shape(shape, label, palette):
         raise serializers.ValidationError(f"'{label}' debe ser un objeto.")
     allowed = {
         "id", "kind", "left", "top", "width", "height", "fill", "stroke", "stroke_width",
-        "stroke_style", "radius", "z", "locked", "text", "icon",
+        "stroke_style", "radius", "z", "locked", "text", "icon", "image", "fit", "circle",
     }
     extra = set(shape) - allowed
     if extra:
@@ -223,6 +224,22 @@ def _validate_shape(shape, label, palette):
             raise serializers.ValidationError(f"'{label}': un ícono no lleva texto.")
     elif "icon" in shape:
         raise serializers.ValidationError(f"'{label}.icon' solo va en una forma de tipo ícono.")
+    if kind == "image":
+        # Imágenes (fase 3): "logo" (el del comercio/tienda) o el id de una
+        # LabelImage; que el id sea del comercio lo chequea el serializer.
+        image = shape.get("image")
+        if image != "logo" and (not isinstance(image, int) or isinstance(image, bool) or image < 1):
+            raise serializers.ValidationError(f"'{label}.image' debe ser \"logo\" o el id de una imagen.")
+        if "text" in shape:
+            raise serializers.ValidationError(f"'{label}': una imagen no lleva texto.")
+        if "fit" in shape and shape["fit"] not in IMAGE_FITS:
+            raise serializers.ValidationError(f"'{label}.fit' debe ser uno de: {', '.join(IMAGE_FITS)}.")
+        if "circle" in shape and not isinstance(shape["circle"], bool):
+            raise serializers.ValidationError(f"'{label}.circle' debe ser verdadero/falso.")
+    else:
+        for key in ("image", "fit", "circle"):
+            if key in shape:
+                raise serializers.ValidationError(f"'{label}.{key}' solo va en una forma de tipo imagen.")
     if "stroke_width" in shape:
         _number(shape["stroke_width"], f"{label}.stroke_width", 0, STROKE_WIDTH_PT_MAX)
     if "radius" in shape:
@@ -263,4 +280,17 @@ def shape_targets(design):
         shape_rule_target(shape["id"])
         for shape in shapes
         if isinstance(shape, dict) and isinstance(shape.get("id"), str)
+    }
+
+
+def image_ids(design):
+    """Los ids de ``LabelImage`` que usan las formas imagen de ``design``."""
+    shapes = design.get("shapes") if isinstance(design, dict) else None
+    if not isinstance(shapes, list):
+        return set()
+    return {
+        shape["image"]
+        for shape in shapes
+        if isinstance(shape, dict) and shape.get("kind") == "image"
+        and isinstance(shape.get("image"), int) and not isinstance(shape["image"], bool)
     }

@@ -689,7 +689,7 @@ printed text came out ~1.8× the size shown on a 10×15cm label — and the gap 
 `applyRenderMetrics()` computes the same numbers as `draw_label_page`: `max(6, height_cm * (72/2.54) *
 0.035)` pt for text, `max(1, min(w,h) * 0.22)` cm for the logo box, 3cm for the QR and 8×1.5cm for the
 barcode (both shrunk by the `_fit_size_cm` rule), fields anchored with no padding (outline, not border),
-`line-height: 1`, and no wrapping because the renderer truncates with an ellipsis. **If those constants
+`line-height: 1`, and one line (the renderer truncates with an ellipsis) unless the text sets `max_lines` > 1. **If those constants
 change in `label_rendering.py`, change them in the editor too.** `renderDecorations()` also draws the
 `border`/`lines`/`texts` the renderer adds, and `applyRenderMetrics` honours per-field `font_size`/`bold`/
 `align`/`width` — the seeded template uses all of them, and none of it used to show.
@@ -737,6 +737,99 @@ change in `label_rendering.py`, change them in the editor too.** `renderDecorati
   "Formas y colores" (add rect/circle/box/lines, the two palette colors, thermal-color notice) and "Forma
   seleccionada" (position/size in %, fill/stroke swatches with P/A palette refs, stroke width/style, corners, text,
   front/back, lock, delete); drag, resize handle, arrows, Delete; the snap module uses shape edges.
+- **Typography and icons (2026-10-28, phase 2 of the same spec; plan
+  `docs/superpowers/plans/2026-10-28-editor-fase2-tipografia-iconos.md`).** New optional keys on every text — fields,
+  `texts[]` and a shape's inner text: `font_family` (sans|serif|script|condensed|mono, default sans), `italic`,
+  `uppercase`, `letter_spacing` (pt, -1..10), `max_lines` (1..10, default 1) and `line_height` (0.8..3, default 1.15,
+  only with several lines); fields and fixed texts also take `color` (hex/`primary`/`accent`; a shape's text already had
+  it). Validation in `text_style.validate_text_typography`; `text_style.py` is the one place for family → font file/PDF
+  name, case, letter-spaced width, ellipsis fitting and wrapping (a missing variant falls back: script and condensed
+  have no italic). Fonts (OFL, no CDN) live in `backend/apps/labels/fonts/` with an IDENTICAL copy in
+  `frontend/assets/fonts/` of the four OFL families (Liberation Sans is backend-only) (`test_frontend_copies_are_identical`): **serif is Crimson Text** (Libre Baskerville only
+  ships as a variable font now), script Kalam, condensed PT Sans Narrow, mono Courier Prime; sans is the built-in
+  Helvetica in the PDF and **Liberation Sans only to draw sans as a graphic in ZPL**. PDF: `max_lines` > 1 wraps by
+  words and the last line ends with "…"; one line keeps the old truncation; `shrink_to_fit` is ignored when `max_lines` > 1 (PDF and ZPL). ZPL: **native `^A0` only for sans without
+  italic or spacing** (several lines go through `^FB`, so the PRINTER wraps and may break at a different word than the
+  PDF; what doesn't fit is cut with "…" BEFORE sending, using a Helvetica wrap — the Zebra overprints the overflow
+  on the last line, unreadable, seen in Labelary; font 0 is narrower, so the cut text fits); anything else is rasterized with Pillow (`zpl_text_image` → `^GF`, `^FR` when inverted or light). The invert/frame band follows the REAL line count (graphic: the wrapped lines; native: a Helvetica estimate). Rotated
+  non-native text stays `^A0` (approximation). Icons are one more shape, `kind: "icon"` + `icon` (fragil, arriba,
+  no_mojar, no_apilar, telefono, casa, corazon, estrella, camion, caja) with the color in `fill`: geometry in
+  `backend/apps/labels/icons.json` (24×24 grid of `poly`/`circle` primitives; identical copy
+  `frontend/assets/data/label_icons.json`, `test_icons_json_copies_identical`), drawn by `icons.py` in the largest
+  square that fits the box, centred (`icon_box`, never stretched): vector in the PDF, `^GF` from Pillow in ZPL (black,
+  white only if white, like borders). Editor: `assets/js/label_editor_type.js` (`window.LabelEditorType`: the shared
+  "Tipografía" block and `applyToElement`, which mirrors the PDF with `@font-face` families `RotulosSerif`, `RotulosScript`...
+  in `editor_rotulos.html`) and the "+ Ícono" button with its icon grid in `label_editor_shapes.js`. The canvas shows
+  `{{markers}}` raw unless the "Ver con datos de ejemplo" toggle is on (phase 3, below); a wrapped name is exact only in "Ver cómo sale impreso".
+- **Images and new data (2026-10-28, phase 3 of the same spec; plan
+  `docs/superpowers/plans/2026-10-28-editor-fase3-imagenes-datos.md`).** The business's own image library:
+  `LabelImage` (`label_images.py`, migration `labels/0013`), API `/api/v1/labels/images/` (list/create/destroy, plus
+  `?ids=a,b[&template=<id>]` to fetch specific ones — only `[0-9]{1,18}` parts count, at most 200 ids, `template` adds the
+  images of that readable design), per business (`data_owner`). **GET needs `labels.template_create` OR `labels.edit`**
+  (whoever edits saved labels must see the images their designs use); POST `labels.template_create`, DELETE
+  `labels.template_delete`. `OWNED_DATA` includes `labels.LabelImage` (a business with only images isn't "empty"). Upload limits 4 MB, 40 MP, 300 images per business;
+  `normalize_upload` applies EXIF orientation, strips EXIF, caps the long side at 2000 px, keeps PNG for
+  transparent/PNG/GIF sources (a flat logo gets no JPEG artefacts) and JPEG q90 for the rest, random file name;
+  delete = soft (`is_active=False`: what already uses it keeps printing); files are public in Caddy
+  (`/media/labels/images/*`, random names). Shape keys on `kind: "image"`: `image` (`"logo"` or a LabelImage id),
+  `fit` (contain|cover), `circle`, plus the usual `radius` (rounded corners), `stroke`/`stroke_width` (border), `z`,
+  `locked`; no `text` (validation in `design_shapes.py`, `image_ids(design)`). **`allowed_image_ids(user,
+  extra_designs)`** = own images (active or not) ∪ ids used by public/system templates ∪ ids in the design being
+  edited; it is the one rule on save (serializer), on `preview/` and on `images/?ids=`, so a template can't point at
+  another business's file. **`"logo"` = the sender logo** (`sender_logo(owner)` / the store's), and preview and
+  thumbnails fall back to `sender_logo` when no logo is passed. A missing file or id draws nothing and adds the
+  warning `image_missing` (`X-Label-Warnings`, shown in the preview dialog). PDF: `label_images.prepare` resamples to
+  the box at 300 dpi capped at 2400 px (`IMAGE_DPI`/`IMAGE_MAX_SIDE_PX`, `shapes_pdf.py`) with cover/contain, circle
+  and rounded masks, drawn in `z` order among the shapes. ZPL: the same `prepare` result flattened on white and
+  dithered to a 1-bit `^GF` (`shapes_zpl.py`), so photos print as halftone. **Codes over shapes get a white box in ZPL too**: when any shape's box overlaps a QR/barcode box plus `QUIET_ZONE_CM`, `zpl._white_box_commands` emits a solid white `^GB` (quiet zone per side, like the PDF's `_draw_white_box`) right before the code; designs without shapes stay byte-identical. **New markers** (`label_editor_markers.js`
+  + `build_label_context`/`build_shipment_context`/`SAMPLE_LABEL_CONTEXT`): `{{nombre}}` = first word of the ADDRESS
+  recipient only (initial uppercased, rest as typed; titles are kept: "Dra. Ana" → "Dra."), empty without one — never the business name; `{{peso}}` =
+  `total_weight_kg` as "2,5 kg" (comma, no trailing zeros, empty if none); `{{bultos_pedido}}` = `Order.package_count`,
+  display only (a 3-package order still prints ONE label; `{{bulto}}`/`{{bultos}}` stay the per-label numbering);
+  `{{transportista}}` = `Order.carrier`. Same rule as always: no products, prices or buyer contact. `GET
+  /api/v1/labels/preview-context/` (`PreviewContextView`, `labels.render`) returns the preview's sample data
+  (`context`) plus the resolved computed variables (`computed`: fecha, hora, secuencia, bulto, bultos...), so the
+  canvas shows the same text as the PDF. Editor: `assets/js/label_editor_images.js` ("+ Imagen" with the picker/upload
+  dialog, fit/circle/corner controls) and the **"Ver con datos de ejemplo" toggle**, which only paints samples on the
+  canvas: the field's real text (the `{{markers}}`) stays in `data-raw` and `withoutSamples(fn, rerender)` removes the
+  samples around every save/thumbnail/collect, so a sample is never stored in the design.
+- **Editing comforts (2026-10-29, phase 4; plan `docs/superpowers/plans/2026-10-29-editor-fase4-comodidades.md`).** A
+  canvas toolbar above the label. **Undo/redo** (`assets/js/label_editor_history.js`, `window.LabelEditorHistory`): snapshots
+  of the whole design (`collectFields()` + size, max 100), recorded only when the snapshot changed, at the end of each gesture
+  (document `pointerup`, `change`, `input` debounced 500 ms, arrow/Delete `keyup`); restore = size + `applyFields` + code
+  previews; reset after the rótulo/template loads. Shortcuts: Ctrl/⌘+Z, Ctrl/⌘+Shift+Z and Ctrl/⌘+Y, Ctrl/⌘+D duplicates
+  the chosen shape, line or fixed text (copy +2 %, unlocked; data fields are unique), Supr deletes a chosen line/fixed text
+  (shapes already did) — **none is intercepted while typing** (`LabelEditorHistory.isTypingTarget`: text inputs, textarea,
+  contenteditable keep the browser's own text undo; a checkbox/select/color doesn't count, so Ctrl+Z after ticking one undoes
+  the design) nor with the preview dialog open. A text field dragged is blurred on release (it is always contenteditable, and
+  with the caret left in it Ctrl+Z undid its text instead of the drag). **Multi-select** (`assets/js/label_editor_align.js`): Shift+click toggles fields, fixed texts, lines and shapes
+  (decorations carry `data-deco-index`); with 2+ the bar shows align left/centre/right/top/middle/bottom and, with 3+, even
+  distribution; boxes come from the DOM in % so every type aligns alike (a text field counts its visible text, measured with a
+  Range — its box runs to the right edge), and each type moves through its own adapter; a locked element doesn't move and is
+  the reference. Esc or a plain click clears. **Zoom** 50-300 % (buttons, Ctrl+wheel over the canvas, per browser in
+  localStorage) only scales the label's CSS size — everything measures with `getBoundingClientRect` and stores %, so saved
+  positions don't change; the html2canvas export/thumbnail divide their scale by the zoom so their resolution doesn't. **Thermal view**: `POST /labels/preview/` with `"thermal": true` returns the same
+  render as a 1-bit PNG at 203 dpi (`thermal_preview.py`: the PDF rasterized with pypdfium2, black below luminance 96, nothing
+  above 245, the Bayer 4×4 screen in between — exactly the shapes' ZPL rule, ink where `bayer < tone*16`); an approximation
+  (the Zebra draws the sans with its own font and prints grey strokes/lines/icons solid black), said in the dialog. Not in
+  the history: an unfinished "mover" rule (`LabelEditorRules.collect` drops it) disappears on undo. Tests: `tests/test_thermal_preview.py`.
+- **Gallery (2026-10-29, phase 5; plan `docs/superpowers/plans/2026-10-29-editor-fase5-galeria.md`).** "+ Nueva plantilla"
+  (Mis plantillas) opens `galeria_plantillas.html` + `assets/js/galeria_plantillas.js`: "En blanco" plus the system
+  templates with `LabelTemplate.gallery_order` (`GET /labels/templates/?gallery=1`, ordered; the field is read-only in the
+  API), each card linking to `editor_rotulos.html?nueva=plantilla&template=<id>` — the editor loads it as a starting point
+  and "Guardar plantilla" creates the business's OWN copy; the system one is untouched. The seven new designs (H Moderno, D
+  Con la marca, C Destacado, E Editorial, F Banda lateral, G Postal, B Celdas; A, the standard, is 8th and unchanged) live
+  as data in `backend/apps/labels/gallery.py`, built ONLY with keys the editor edits (the user's rule: the editor must be able
+  to build every gallery design); brand images are the `"logo"` image shape (no stock images). Migration `labels/0015` seeds
+  them as `owner=None`, public, with their v1 — a COPY of the designs (`test_migration_copy_matches_gallery_module` keeps it
+  equal to `gallery.py` today; a later change to a design needs a new migration); idempotent by name. Thumbnails come from
+  `generate_template_thumbnails`. `tests/test_gallery.py`: order, validation, only label markers, every data field placed, PDF
+  and ZPL (8/12 dpmm) without code warnings, QR + Code128 read at 203 dpi. **A design without a `logo` key now opens without
+  the old logo field** (`applyFields` hides `#logoField`, `collectFields` skips it; "Subir logo" shows it again): saving
+  used to add it at its default spot and the gallery's logo printed twice. **Known, not fixed:** ZPL encodes Code128 as
+  subset B (`^BCN,...,N,N`), so a 19-digit tracking prints ~6 cm wide in a Zebra vs ~4.4 cm in the PDF and can spill out of
+  its box — "Celdas" gives the barcode a full-width row for that; switching to `^BC` mode A changes every existing ZPL (the
+  pinned hash tests), so it is a separate decision.
 - The **field properties panel** (`fieldPropsGroup`) edits those per-field styles: click a text field on
   the canvas and set `font_size`, `bold`, `align`, `width`, `hide_if_empty`, `shrink_to_fit`. It follows
   the same select-then-configure pattern as the QR/barcode panel beside it. An empty or unchecked control
@@ -1863,7 +1956,7 @@ and the email moved under the name (no Email column; email order stays in "Orden
   `topbar.js` appends " · Human Log Rótulos" to the tab title; the admin sidebar says "Rótulos / Administración";
   mail subjects and the default sender say "Human Log · Rótulos". The logo is green, the app accent orange: not
   unified on purpose (left for a design decision).
-- `editor_rotulos.html?nueva=plantilla` (the "+ Nueva plantilla" button) titles the page "Nueva plantilla" and its
+- `editor_rotulos.html?nueva=plantilla` (reached from the gallery, `galeria_plantillas.html`) titles the page "Nueva plantilla" and its
   main button saves a template ("Guardar plantilla", same path as "Guardar como plantilla"); plain
   `editor_rotulos.html` still saves a `Label`.
 

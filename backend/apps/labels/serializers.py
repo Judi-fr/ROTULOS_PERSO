@@ -28,10 +28,11 @@ from apps.accounts.teams import contact_email as owner_contact_email
 from apps.orders.models import Order
 from apps.accounts.teams import data_owner, order_scope_q
 
-from .design_shapes import shape_targets, validate_palette, validate_shapes
+from .design_shapes import image_ids, shape_targets, validate_palette, validate_shapes
 from .text_style import validate_text_typography
 from .styles import validate_style
-from .models import ElementLayout, Label, LabelTemplate, LabelTemplateVersion, LayoutElement, LayoutVariable
+from .models import ElementLayout, Label, LabelImage, LabelTemplate, LabelTemplateVersion, LayoutElement, LayoutVariable
+from . import label_images
 
 # Campos de texto simple del diseño: solo left/top + un "text" opcional.
 TEXT_DESIGN_FIELDS = {
@@ -282,6 +283,22 @@ def _validate_design_rule(rule, index, known_targets):
                 )
 
 
+def check_design_images(value, serializer, extra_designs=()):
+    """Las imágenes del diseño tienen que poder usarse (``label_images.
+    allowed_image_ids``: las del comercio, las de plantillas públicas y las
+    que el diseño que se edita ya tiene). Va en el serializer y no en
+    ``validate_design``, que es puro: necesita la petición."""
+    ids = image_ids(value)
+    request = serializer.context.get("request")
+    if not ids or request is None:
+        return value
+    if callable(extra_designs):
+        extra_designs = extra_designs()  # perezoso: solo si el diseño usa imágenes
+    if ids - label_images.allowed_image_ids(request.user, extra_designs):
+        raise serializers.ValidationError("Una de las imágenes del diseño no existe en tu comercio.")
+    return value
+
+
 def validate_design(value):
     """Valida el bloque ``design``/``fields`` del editor.
 
@@ -405,6 +422,8 @@ def _decode_data_url(value, *, max_bytes, field_label):
     try:
         image = Image.open(BytesIO(raw))
         image.verify()
+    except Image.DecompressionBombError:
+        raise serializers.ValidationError(f"{field_label}: la imagen es demasiado grande (máximo 40 megapíxeles).")
     except (UnidentifiedImageError, OSError, ValueError):
         raise serializers.ValidationError(f"{field_label}: el archivo no es una imagen válida.")
     return ContentFile(raw, name=f"{uuid.uuid4().hex}.{ext}")
@@ -459,6 +478,7 @@ class LabelTemplateSerializer(serializers.ModelSerializer):
             "height_cm",
             "design",
             "preview",
+            "gallery_order",
             "current_version",
             "can_edit",
             "can_delete",
@@ -466,7 +486,7 @@ class LabelTemplateSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "owner", "owner_email", "created_at", "updated_at"]
+        read_only_fields = ["id", "owner", "owner_email", "gallery_order", "created_at", "updated_at"]
         extra_kwargs = {
             "width_cm": {"min_value": Decimal("5"), "max_value": Decimal("30")},
             "height_cm": {"min_value": Decimal("5"), "max_value": Decimal("40")},
@@ -476,7 +496,14 @@ class LabelTemplateSerializer(serializers.ModelSerializer):
         return owner_contact_email(getattr(obj, "owner", None)) or None
 
     def validate_design(self, value):
-        return validate_design(value)
+        def extra():
+            if self.instance is None:
+                return []
+            # Lo que la plantilla ya tiene (y su historial, de donde se
+            # restaura) se puede volver a guardar tal cual.
+            return [self.instance.design] + list(self.instance.versions.values_list("design", flat=True))
+
+        return check_design_images(validate_design(value), self, extra)
 
     def get_current_version(self, obj):
         annotated = getattr(obj, "current_version", None)
@@ -589,7 +616,8 @@ class LabelSerializer(serializers.ModelSerializer):
                 self.fields["order"].queryset = Order.objects.filter(order_scope_q(user), user=data_owner(user))
 
     def validate_design(self, value):
-        return validate_design(value)
+        extra = [self.instance.design] if self.instance is not None else []
+        return check_design_images(validate_design(value), self, extra)
 
 
 class AdminLabelSerializer(serializers.ModelSerializer):
@@ -818,3 +846,35 @@ class RenderElementLayoutSerializer(serializers.Serializer):
                           "sola imagen y no tiene páginas."}
             )
         return attrs
+
+
+class LabelImageSerializer(serializers.ModelSerializer):
+    """Lo que ve el editor de una imagen de la biblioteca. La subida acepta
+    archivo o data URL y la guarda normalizada."""
+
+    url = serializers.SerializerMethodField()
+    image = ImageOrDataUrlField(write_only=True, field_label="La imagen")
+
+    class Meta:
+        model = LabelImage
+        fields = ["id", "url", "name", "width_px", "height_px", "created_at", "image"]
+        read_only_fields = ["id", "url", "width_px", "height_px", "created_at"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Leída acá y no al definir la clase, para que valga lo vigente.
+        self.fields["image"].max_bytes = label_images.MAX_UPLOAD_BYTES
+
+    def get_url(self, obj):
+        request = self.context.get("request")
+        url = obj.image.url
+        return request.build_absolute_uri(url) if request is not None else url
+
+    def validate_image(self, value):
+        if value is None:
+            raise serializers.ValidationError("Elegí una imagen.")
+        if value.size > label_images.MAX_UPLOAD_BYTES:
+            raise serializers.ValidationError(
+                f"La imagen supera el tamaño máximo permitido ({label_images.MAX_UPLOAD_BYTES // (1024 * 1024)} MB)."
+            )
+        return label_images.normalize_upload(value)

@@ -49,6 +49,10 @@ class LabelTemplate(models.Model):
     # Bloque "fields" del editor: posiciones por defecto de cada campo.
     design = models.JSONField(default=dict, blank=True)
     preview = models.ImageField(upload_to="labels/templates/", null=True, blank=True)
+    # Lugar en la galería de "+ Nueva plantilla" (``gallery.py``). Solo las
+    # plantillas del sistema que se ofrecen como punto de partida; ``None`` =
+    # no está en la galería.
+    gallery_order = models.PositiveSmallIntegerField(null=True, blank=True)
     # Soft-delete, igual criterio que Label/Document: archivar una
     # plantilla nunca la destruye (rótulos ya generados con ella siguen
     # apuntándola vía Label.template).
@@ -518,3 +522,26 @@ class LayoutElement(models.Model):
 
         if errors:
             raise ValidationError(errors)
+
+
+class LabelImage(models.Model):
+    """Imagen propia del comercio para poner en los rótulos. Se guarda ya
+    normalizada (``label_images.normalize_upload``). Borrar es ocultarla: las
+    plantillas y versiones que la usan siguen imprimiéndola."""
+
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="label_images")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    image = models.ImageField(upload_to="labels/images/", width_field="width_px", height_field="height_px")
+    width_px = models.PositiveIntegerField(default=0)
+    height_px = models.PositiveIntegerField(default=0)
+    name = models.CharField(max_length=120, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return self.name or f"Imagen {self.pk}"

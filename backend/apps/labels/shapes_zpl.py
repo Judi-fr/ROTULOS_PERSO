@@ -14,6 +14,7 @@ Una térmica no tiene color (design_shapes.thermal_tone):
   claro, ``^FR`` (blanco donde pisa negro).
 """
 
+import logging
 import math
 
 from .design_shapes import (
@@ -26,6 +27,8 @@ from .design_shapes import (
 )
 from .shapes_pdf import DASH_PATTERNS, ordered_shapes, shape_box_pct, shape_is_hidden
 
+logger = logging.getLogger(__name__)
+
 BAYER_4X4 = (
     (0, 8, 2, 10),
     (12, 4, 14, 6),
@@ -35,14 +38,15 @@ BAYER_4X4 = (
 ALIGN_TO_ZPL = {"left": "L", "center": "C", "right": "R"}
 
 
-def shape_commands(design, context, computed, width_cm, height_cm, default_font_pt, dpmm):
+def shape_commands(design, context, computed, width_cm, height_cm, default_font_pt, dpmm, logo_file=None,
+                   warnings=None):
     from .zpl import cm_to_dots, points_to_dots
 
     palette = design.get("palette") if isinstance(design.get("palette"), dict) else None
     width_dots, height_dots = cm_to_dots(width_cm, dpmm), cm_to_dots(height_cm, dpmm)
     commands = []
     for shape in ordered_shapes(design):
-        if shape.get("kind") not in ("rect", "ellipse", "line", "icon") or shape_is_hidden(shape, context, computed):
+        if shape.get("kind") not in ("rect", "ellipse", "line", "icon", "image") or shape_is_hidden(shape, context, computed):
             continue
         left, top, right, bottom = shape_box_pct(shape)
         x0, x1 = round(left / 100 * width_dots), round(right / 100 * width_dots)
@@ -50,6 +54,9 @@ def shape_commands(design, context, computed, width_cm, height_cm, default_font_
         thickness = max(1, points_to_dots(_num(shape.get("stroke_width"), DEFAULT_STROKE_WIDTH_PT), dpmm))
         if shape["kind"] == "icon":
             commands += _icon(shape, palette, x0, x1, y0, y1)
+            continue
+        if shape["kind"] == "image":
+            commands += _image(shape, palette, x0, x1, y0, y1, thickness, dpmm, logo_file, warnings)
             continue
         if shape["kind"] == "line":
             commands += _line(shape, palette, x0, x1, y0, y1, thickness, dpmm)
@@ -121,6 +128,54 @@ def _icon(shape, palette, x0, x1, y0, y1):
     rows, bytes_per_row = _rows(icon_bitmap(shape.get("icon"), side))
     total = bytes_per_row * side
     return [f"^FO{round(x)},{round(y)}", f"^GFA,{total},{total},{bytes_per_row},{compress_rows(rows)}^FS"]
+
+
+def _image(shape, palette, x0, x1, y0, y1, thickness, dpmm, logo_file, warnings):
+    """La imagen como gráfico monocromo (difuminado Floyd-Steinberg, como el
+    logo) más su borde; mismas reglas que ``shapes_pdf._draw_image``."""
+    from PIL import Image, ImageOps
+
+    from .icons import icon_box
+    from .label_images import prepare, resolve_source
+    from .zpl import cm_to_dots
+
+    width, height = x1 - x0, y1 - y0
+    if width <= 0 or height <= 0:
+        return []
+    circle = bool(shape.get("circle"))
+    radius_dots = 0 if circle else cm_to_dots(_num(shape.get("radius"), 0) / 10, dpmm)
+    source = resolve_source(shape, logo_file)
+    image = None
+    if source is not None:
+        try:
+            image = prepare(source, width, height, shape.get("fit", "contain"), circle, radius_dots)
+        except Exception:
+            logger.warning("No se pudo preparar la imagen %r del rótulo.", shape.get("id"), exc_info=True)
+            image = None
+        finally:
+            # Solo se cierra lo que abrió image_file, nunca el logo del llamador.
+            if shape.get("image") != "logo":
+                source.close()
+    if image is None:
+        if warnings is not None:
+            warnings.append({"code": "image_missing", "field": shape.get("id", "")})
+        return []
+    # Sobre blanco: lo transparente no debe quemarse.
+    flat = Image.alpha_composite(Image.new("RGBA", image.size, (255, 255, 255, 255)), image)
+    ink = ImageOps.invert(flat.convert("L").convert("1").convert("L"))
+    rows, bytes_per_row = _rows(ink)
+    total = bytes_per_row * height
+    commands = [f"^FO{x0},{y0}", f"^GFA,{total},{total},{bytes_per_row},{compress_rows(rows)}^FS"]
+    stroke = stroke_color(shape, palette)
+    if _prints_black(stroke):
+        border = {k: shape.get(k) for k in ("stroke", "stroke_width", "stroke_style", "radius")}
+        border["kind"] = "ellipse" if circle else "rect"
+        bx0, by0, bx1, by1 = x0, y0, x1, y1
+        if circle:
+            bx, by, side = icon_box(x0, y0, width, height)
+            bx0, by0, bx1, by1 = round(bx), round(by), round(bx + side), round(by + side)
+        commands += _area(border, palette, bx0, bx1, by0, by1, thickness, dpmm)
+    return commands
 
 
 def _rounding(radius_dots, width, height):

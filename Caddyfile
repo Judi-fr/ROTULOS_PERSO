@@ -23,7 +23,7 @@
 	# plantillas y de rótulos guardados, con nombres al azar). Las sirve Caddy
 	# directo desde el volumen compartido: hacerlas pasar por Django sería
 	# gastar un worker de gunicorn en mandar un archivo.
-	@public_media path /media/store_logos/* /media/accounts/logos/* /media/accounts/avatars/* /media/labels/templates/* /media/labels/logos/* /media/labels/thumbs/*
+	@public_media path /media/store_logos/* /media/accounts/logos/* /media/accounts/avatars/* /media/labels/templates/* /media/labels/logos/* /media/labels/images/* /media/labels/thumbs/*
 	handle @public_media {
 		root * /srv
 		file_server

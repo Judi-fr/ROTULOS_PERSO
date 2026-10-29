@@ -30,6 +30,7 @@ from __future__ import annotations
 import logging
 import math
 import re
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 
 from django.conf import settings
@@ -265,6 +266,31 @@ def percent_to_canvas_xy(left_pct, top_pct, width_cm, height_cm):
     return x_cm * CM_TO_POINTS, y_cm_from_bottom * CM_TO_POINTS
 
 
+def first_name_of(full_name):
+    """Primera palabra del nombre con la inicial en mayúscula y el resto como
+    vino (``"  maría  josé "`` -> ``"María"``); vacío si no hay nombre."""
+    words = (full_name or "").split()
+    if not words:
+        return ""
+    return words[0][:1].upper() + words[0][1:]
+
+
+def format_weight_kg(value):
+    """``Decimal`` de kilos -> ``"2,5 kg"`` (coma decimal, sin ceros de más).
+    No depende de la configuración regional; vacío si no hay peso."""
+    if value is None:
+        return ""
+    try:
+        text = format(Decimal(value).normalize(), "f")
+    except (InvalidOperation, TypeError, ValueError):
+        return ""
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    if text in ("", "0", "-0"):
+        return ""
+    return text.replace(".", ",") + " kg"
+
+
 def build_label_context(order=None, label=None):
     """Arma el diccionario de valores reales del envío, usado para
     reemplazar los marcadores ``{{clave}}`` del diseño (ver
@@ -327,6 +353,11 @@ def build_label_context(order=None, label=None):
         "envio": order.shipping_option or order.carrier or "",
         "tracking": tracking,
         "tracking_url": tracking_url,
+        "nombre": first_name_of(getattr(address, "recipient_name", "")),
+        "peso": format_weight_kg(order.total_weight_kg),
+        # Bultos cargados en el pedido; no es la posición en el lote ({{bulto}}).
+        "bultos_pedido": str(order.package_count) if order.package_count else "",
+        "transportista": order.carrier or "",
     }
 
     if address is not None:
@@ -369,6 +400,10 @@ def build_preview_context():
         # transportistas): el código de barras más ancho que va a tocar.
         "tracking": "3600001016516001234",
         "tracking_url": "https://example.com/seguimiento.html?codigo=3600001016516001234",
+        "nombre": "María",
+        "peso": "2,5 kg",
+        "bultos_pedido": "2",
+        "transportista": "Correo Argentino",
     }
 
 
@@ -446,6 +481,11 @@ def build_shipment_context(shipment, store=None):
         "envio": shipment.shipping_option or "",
         "tracking": tracking,
         "tracking_url": tracking_url,
+        "nombre": first_name_of(shipment.recipient_name),
+        # El callback de la tienda no trae peso, bultos ni transportista.
+        "peso": format_weight_kg(getattr(shipment, "total_weight_kg", None)),
+        "bultos_pedido": str(getattr(shipment, "package_count", "") or ""),
+        "transportista": getattr(shipment, "carrier", "") or "",
     }
 
 
@@ -897,7 +937,8 @@ def draw_label_page(
     # Formas y cajas (design_shapes.py): capa de fondo, debajo de lo demás.
     from .shapes_pdf import draw_shapes
 
-    draw_shapes(pdf, effective_design, context, computed, width_cm, height_cm, font_size)
+    draw_shapes(pdf, effective_design, context, computed, width_cm, height_cm, font_size,
+                logo_file=logo_file, warnings=warnings)
 
     logo_entry = effective_design.get("logo")
     if logo_entry and logo_file:
@@ -1116,6 +1157,10 @@ SAMPLE_LABEL_CONTEXT = {
     "pais": "Argentina",
     "tracking": "001234",
     "tracking_url": "https://example.com/seguimiento.html?codigo=001234",
+    "nombre": "María",
+    "peso": "1,2 kg",
+    "bultos_pedido": "1",
+    "transportista": "Andreani",
 }
 
 

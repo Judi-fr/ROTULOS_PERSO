@@ -18,7 +18,7 @@ from io import BytesIO
 import pypdfium2
 from django.core.files.base import ContentFile
 
-from .label_rendering import SAMPLE_LABEL_CONTEXT, build_computed_context, render_label_pdf
+from .label_rendering import SAMPLE_LABEL_CONTEXT, build_computed_context, render_label_pdf, sender_logo
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,8 @@ def render_template_thumbnail(template) -> bytes:
         context=SAMPLE_LABEL_CONTEXT,
         # Vista previa: {{secuencia}} no consume el contador real.
         computed=build_computed_context(owner=template.owner, is_preview=True),
+        # Una plantilla no tiene logo propio: el del comercio dueño (si hay).
+        logo_file=sender_logo(template.owner),
     )
     document = pypdfium2.PdfDocument(pdf_bytes)
     try:

@@ -23,8 +23,12 @@
     <script src="assets/js/label_editor_markers.js"></script>
     <script src="assets/js/label_editor_rules.js"></script>
     <script src="assets/js/label_editor_snap.js"></script>
+    <script src="assets/js/label_editor_type.js"></script>
+    <script src="assets/js/label_editor_images.js"></script>
     <script src="assets/js/label_editor_shapes.js"></script>
     <script src="assets/js/label_editor_sizes.js"></script>
+    <script src="assets/js/label_editor_history.js"></script>
+    <script src="assets/js/label_editor_align.js"></script>
 
     <!-- Estilos comunes del frontend (header/topbar, botones, avatar). Va
          ANTES del <style> propio del editor para que este último (más
@@ -106,6 +110,111 @@
         font-size: 14.5px;
         line-height: 1.5;
         text-wrap: pretty;
+      }
+      .samples-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--muted, #5b6470);
+        cursor: pointer;
+        user-select: none;
+      }
+      .samples-toggle input:disabled {
+        cursor: not-allowed;
+      }
+      /* Barra del lienzo (fase 4). */
+      .canvas-toolbar {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px 12px;
+        padding: 6px 8px;
+        margin-bottom: 10px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-sm);
+      }
+      .tb-group {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+      }
+      .tb-group[hidden] {
+        display: none;
+      }
+      .tb-group + .tb-group:not(.tb-right) {
+        padding-left: 12px;
+        border-left: 1px solid var(--border);
+      }
+      .tb-right {
+        margin-left: auto;
+      }
+      .tb-btn,
+      .tb-zoom,
+      .tb-text {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 32px;
+        min-width: 32px;
+        padding: 0 6px;
+        border: 0;
+        border-radius: var(--radius-sm);
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .tb-btn svg {
+        width: 18px;
+        height: 18px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .tb-btn:hover:not(:disabled),
+      .tb-zoom:hover,
+      .tb-text:hover {
+        background: var(--surface-sunken);
+      }
+      .tb-btn:focus-visible,
+      .tb-zoom:focus-visible,
+      .tb-text:focus-visible {
+        outline: 2px solid var(--accent-ring);
+        outline-offset: 1px;
+      }
+      .tb-btn:disabled {
+        color: var(--border-strong);
+        cursor: default;
+      }
+      .tb-zoom {
+        min-width: 56px;
+        font-variant-numeric: tabular-nums;
+        color: var(--muted);
+      }
+      .tb-text {
+        padding: 0 10px;
+        border: 1px solid var(--border);
+        margin-left: 6px;
+      }
+      .tb-count {
+        font-size: 12px;
+        color: var(--muted);
+        padding: 0 6px 0 2px;
+        font-variant-numeric: tabular-nums;
+      }
+      .tb-hint {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .label .multi-selected {
+        outline: 2px dashed var(--accent) !important;
+        outline-offset: 2px;
       }
       .heading-actions {
         display: flex;
@@ -198,6 +307,60 @@
         padding-top: 14px;
         border-top: 1px solid var(--border);
       }
+
+      /* Tipografías del rótulo (las mismas .ttf que usa el PDF). */
+      @font-face { font-family: "RotulosSerif"; src: url("assets/fonts/CrimsonText-Regular.ttf"); font-weight: 400; font-style: normal; }
+      @font-face { font-family: "RotulosSerif"; src: url("assets/fonts/CrimsonText-Italic.ttf"); font-weight: 400; font-style: italic; }
+      @font-face { font-family: "RotulosSerif"; src: url("assets/fonts/CrimsonText-Bold.ttf"); font-weight: 700; font-style: normal; }
+      @font-face { font-family: "RotulosSerif"; src: url("assets/fonts/CrimsonText-BoldItalic.ttf"); font-weight: 700; font-style: italic; }
+      @font-face { font-family: "RotulosScript"; src: url("assets/fonts/Kalam-Regular.ttf"); font-weight: 400; font-style: normal; }
+      @font-face { font-family: "RotulosScript"; src: url("assets/fonts/Kalam-Bold.ttf"); font-weight: 700; font-style: normal; }
+      @font-face { font-family: "RotulosCondensed"; src: url("assets/fonts/PT_Sans-Narrow-Web-Regular.ttf"); font-weight: 400; font-style: normal; }
+      @font-face { font-family: "RotulosCondensed"; src: url("assets/fonts/PT_Sans-Narrow-Web-Bold.ttf"); font-weight: 700; font-style: normal; }
+      @font-face { font-family: "RotulosMono"; src: url("assets/fonts/CourierPrime-Regular.ttf"); font-weight: 400; font-style: normal; }
+      @font-face { font-family: "RotulosMono"; src: url("assets/fonts/CourierPrime-Italic.ttf"); font-weight: 400; font-style: italic; }
+      @font-face { font-family: "RotulosMono"; src: url("assets/fonts/CourierPrime-Bold.ttf"); font-weight: 700; font-style: normal; }
+      @font-face { font-family: "RotulosMono"; src: url("assets/fonts/CourierPrime-BoldItalic.ttf"); font-weight: 700; font-style: italic; }
+      /* Bloque "Tipografía" (label_editor_type.js), en los tres paneles. */
+      .type-slot { grid-column: 1 / -1; }
+      .type-slot[hidden] { display: none; }
+      .type-block {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px 12px;
+        padding: 12px;
+        border-radius: var(--radius-md);
+        background: var(--bg, #f5f7fb);
+      }
+      .type-block .type-block-title,
+      .type-block .type-wide { grid-column: 1 / -1; }
+      .type-block .type-block-title {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .type-block label {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        min-width: 0;
+      }
+      .type-block label:has(input[type="checkbox"]) {
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        font-weight: 500;
+        font-size: 13px;
+        color: var(--text);
+        cursor: pointer;
+      }
+      .type-block input:disabled { cursor: not-allowed; }
 
       /* Controles del panel: etiqueta arriba, campo abajo, en dos columnas;
          las casillas y los botones ocupan la fila entera. */
@@ -430,6 +593,25 @@
       .preview-warning[hidden] {
         display: none;
       }
+      .thermal-preview {
+        flex: 1;
+        overflow: auto;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 16px;
+        background: var(--surface-sunken);
+      }
+      .thermal-preview[hidden] {
+        display: none;
+      }
+      .thermal-preview img {
+        max-width: 100%;
+        height: auto;
+        background: #fff;
+        box-shadow: var(--shadow-md);
+        image-rendering: pixelated;
+      }
       #serverPreviewFrame {
         flex: 1;
         width: 100%;
@@ -558,6 +740,26 @@
         font-weight: 600;
         color: var(--muted);
       }
+      .shape-icon-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+      }
+      .shape-icon-btn {
+        display: grid;
+        place-items: center;
+        aspect-ratio: 1;
+        padding: 0;
+        color: #0f172a;
+        background: #fff;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: transform 0.15s, border-color 0.15s;
+      }
+      .shape-icon-btn:hover { border-color: #9ca3af; }
+      .shape-icon-btn:active { transform: scale(0.96); }
+      .shape-icon-btn.active { border-color: #ea580c; box-shadow: inset 0 0 0 1px #ea580c; color: #ea580c; }
       .shape-swatches {
         display: flex;
         flex-wrap: wrap;
@@ -597,6 +799,34 @@
         background: none;
         cursor: pointer;
       }
+      .shape-image { overflow: visible; }
+      .shape-img-frame {
+        position: absolute;
+        overflow: hidden;
+        box-sizing: border-box;
+        pointer-events: none;
+      }
+      .shape-img-frame img { width: 100%; height: 100%; display: block; }
+      .shape-img-border { position: absolute; box-sizing: border-box; pointer-events: none; }
+      .shape-img-frame:has(.shape-img-border) { overflow: visible; }
+      .shape-img-frame:has(.shape-img-border) img { border-radius: inherit; }
+      .shape-img-missing {
+        display: grid;
+        place-items: center;
+        border: 1px dashed #94a3b8;
+        background: rgba(241, 245, 249, 0.7);
+        font: 600 10px/1.2 Karla, sans-serif;
+        color: #64748b;
+        text-align: center;
+      }
+      .shape-image-current { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+      .shape-image-thumb {
+        width: 52px; height: 52px; flex: none; display: grid; place-items: center;
+        border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; color: #94a3b8;
+        background: repeating-conic-gradient(#f1f5f9 0 25%, #fff 0 50%) 0 0 / 12px 12px;
+      }
+      .shape-image-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+      .shape-image-check { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
       .shape-actions {
         display: flex;
         gap: 8px;
@@ -672,6 +902,9 @@
         user-select: none;
       }
 
+      #logoField[hidden] {
+        display: none;
+      }
       #logoField {
         display: flex;
         align-items: center;
@@ -962,6 +1195,10 @@
           </p>
         </div>
         <div class="heading-actions">
+          <label class="samples-toggle" title="Muestra datos de ejemplo en lugar de los {{marcadores}}. No cambia lo que se guarda.">
+            <input type="checkbox" id="samplesToggle" />
+            Ver con datos de ejemplo
+          </label>
           <button id="previewServerBtn" title="Muestra el PDF que genera el servidor, que es lo que sale impreso">
             Ver cómo sale impreso
           </button>
@@ -976,6 +1213,61 @@
 
       <div class="workspace">
         <section class="canvas-column" aria-label="Rótulo">
+          <!-- Barra del lienzo (fase 4): historial, duplicar, alinear, zoom y
+               vista térmica. Cada botón dice su atajo en el title. -->
+          <div class="canvas-toolbar" role="toolbar" aria-label="Herramientas del lienzo">
+            <div class="tb-group">
+              <button type="button" class="tb-btn" id="undoBtn" title="Deshacer (Ctrl+Z)" aria-label="Deshacer" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+              </button>
+              <button type="button" class="tb-btn" id="redoBtn" title="Rehacer (Ctrl+Y o Ctrl+Shift+Z)" aria-label="Rehacer" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
+              </button>
+              <button type="button" class="tb-btn" id="duplicateBtn" title="Duplicar la forma, línea o texto fijo elegido (Ctrl+D)" aria-label="Duplicar" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>
+              </button>
+            </div>
+            <div class="tb-group" id="alignGroup" hidden>
+              <span class="tb-count" id="alignCount"></span>
+              <button type="button" class="tb-btn" data-align="left" title="Alinear a la izquierda" aria-label="Alinear a la izquierda">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3v18"/><rect x="8" y="6" width="12" height="4" rx="1"/><rect x="8" y="14" width="7" height="4" rx="1"/></svg>
+              </button>
+              <button type="button" class="tb-btn" data-align="hcenter" title="Centrar en horizontal" aria-label="Centrar en horizontal">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18"/><rect x="5" y="6" width="14" height="4" rx="1"/><rect x="8" y="14" width="8" height="4" rx="1"/></svg>
+              </button>
+              <button type="button" class="tb-btn" data-align="right" title="Alinear a la derecha" aria-label="Alinear a la derecha">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 3v18"/><rect x="4" y="6" width="12" height="4" rx="1"/><rect x="9" y="14" width="7" height="4" rx="1"/></svg>
+              </button>
+              <button type="button" class="tb-btn" data-align="top" title="Alinear arriba" aria-label="Alinear arriba">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18"/><rect x="6" y="8" width="4" height="12" rx="1"/><rect x="14" y="8" width="4" height="7" rx="1"/></svg>
+              </button>
+              <button type="button" class="tb-btn" data-align="vcenter" title="Centrar en vertical" aria-label="Centrar en vertical">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18"/><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="8" width="4" height="8" rx="1"/></svg>
+              </button>
+              <button type="button" class="tb-btn" data-align="bottom" title="Alinear abajo" aria-label="Alinear abajo">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18"/><rect x="6" y="4" width="4" height="12" rx="1"/><rect x="14" y="9" width="4" height="7" rx="1"/></svg>
+              </button>
+              <button type="button" class="tb-btn" data-align="hdistribute" title="Repartir en horizontal (3 o más)" aria-label="Repartir en horizontal">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4v16M21 4v16"/><rect x="9" y="7" width="6" height="10" rx="1"/></svg>
+              </button>
+              <button type="button" class="tb-btn" data-align="vdistribute" title="Repartir en vertical (3 o más)" aria-label="Repartir en vertical">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16M4 21h16"/><rect x="7" y="9" width="10" height="6" rx="1"/></svg>
+              </button>
+            </div>
+            <span class="tb-hint" id="alignHint">Shift+clic para elegir varios</span>
+            <div class="tb-group tb-right">
+              <button type="button" class="tb-btn" id="zoomOutBtn" title="Alejar (Ctrl + rueda)" aria-label="Alejar">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
+              </button>
+              <button type="button" class="tb-zoom" id="zoomResetBtn" title="Volver al 100 %">100 %</button>
+              <button type="button" class="tb-btn" id="zoomInBtn" title="Acercar (Ctrl + rueda)" aria-label="Acercar">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+              <button type="button" class="tb-text" id="thermalViewBtn" title="Cómo lo imprime una térmica Zebra: en blanco y negro, con trama en los grises">
+                Vista térmica
+              </button>
+            </div>
+          </div>
           <div class="canvas-wrap">
             <div id="label" class="label">
               <div class="field" data-field="logo" id="logoField">
@@ -1206,6 +1498,8 @@
                   <option value="270">Vertical, se lee hacia arriba</option>
                 </select>
               </label>
+              <div id="propColorSlot" class="type-slot"></div>
+              <div id="propTypeSlot" class="type-slot"></div>
               <label title="Se inserta donde estaba el cursor en el texto del campo">
                 Insertar dato
                 <select id="propMarkerSelect"></select>
@@ -1265,6 +1559,8 @@
                 <input type="checkbox" id="decoLocked" />
                 Bloquear posición
               </label>
+              <div id="decoColorSlot" class="type-slot" hidden></div>
+              <div id="decoTypeSlot" class="type-slot" hidden></div>
               <button type="button" class="btn btn-outline" id="decoDeleteBtn">
                 Eliminar
               </button>
@@ -1372,7 +1668,10 @@
               <button type="button" class="btn btn-outline" data-add-shape="box">+ Caja con texto</button>
               <button type="button" class="btn btn-outline" data-add-shape="lineH">+ Línea horizontal</button>
               <button type="button" class="btn btn-outline" data-add-shape="lineV">+ Línea vertical</button>
+              <button type="button" class="btn btn-outline" data-add-shape="icon">+ Ícono</button>
+              <button type="button" class="btn btn-outline" data-add-shape="image">+ Imagen</button>
             </div>
+            <p class="hint" id="iconMessage" role="alert" hidden></p>
             <div class="tool-group palette-group">
               <label title="Las formas que usan «P» toman este color">
                 Color principal
@@ -1414,12 +1713,16 @@
     <div class="preview-overlay" id="serverPreviewOverlay" hidden>
       <div class="preview-dialog">
         <div class="preview-dialog-head">
-          <strong>Así sale impreso</strong>
-          <span class="hint">Generado por el servidor, con datos de muestra</span>
+          <strong id="serverPreviewTitle">Así sale impreso</strong>
+          <span class="hint" id="serverPreviewHint">Generado por el servidor, con datos de muestra</span>
           <button id="closeServerPreviewBtn">Cerrar</button>
         </div>
         <p class="preview-warning" id="serverPreviewWarning" hidden></p>
         <iframe id="serverPreviewFrame" title="Vista previa del rótulo"></iframe>
+        <!-- Vista térmica: un PNG de 1 bit a 203 dpi (thermal_preview.py). -->
+        <div class="thermal-preview" id="thermalPreview" hidden>
+          <img id="thermalPreviewImg" alt="El rótulo como lo imprime una térmica" />
+        </div>
       </div>
     </div>
 
@@ -1574,6 +1877,11 @@
           }
           el.classList.toggle("text-inverted", Boolean(style.invert));
           el.classList.toggle("text-framed", Boolean(style.frame));
+          window.LabelEditorType.applyToElement(el, style, perCm, {
+            inverted: Boolean(style.invert),
+            rotated: Boolean(rotate),
+            hasPrefix: Boolean((style.prefix || "").trim()),
+          });
           // La etiqueta fija va en un ::before (no es parte del texto que se
           // guarda: collectFields lee textContent, que no la incluye).
           const prefix = (style.prefix || "").trim();
@@ -1623,7 +1931,18 @@
         renderDecorations(perCm, widthCm, heightCm, fontPt);
         // Formas y cajas (label_editor_shapes.js): encima del recuadro y las
         // líneas, debajo de los campos, como en el PDF.
+        window.LabelEditorShapes.noteTextColors([
+          ...Object.values(fieldStyles || {}).map((style) => style && style.color),
+          ...(decorations.texts || []).map((item) => item.color),
+        ]);
         window.LabelEditorShapes.render(perCm, widthCm, heightCm, fontPt);
+        // Las capas se rearman en cada render: se vuelve a marcar la
+        // selección múltiple (label_editor_align.js).
+        window.LabelEditorAlign?.paint();
+        // Ver con datos de ejemplo: solo cambia lo que se muestra.
+        window.LabelEditorMarkers.syncFields(
+          [...document.querySelectorAll(".field")].filter((el) => TEXT_FIELDS.includes(el.dataset.field)),
+        );
       }
 
       // Decoraciones del diseño: recuadro, líneas y textos fijos. El backend
@@ -1682,6 +2001,7 @@
             el.classList.add("selected");
           }
           el.classList.toggle("locked", Boolean(line.locked));
+          el.dataset.decoIndex = index;
           attachDecoPointer(el, "line", index);
           layer.appendChild(el);
         });
@@ -1701,11 +2021,15 @@
           el.style.fontSize = ptToPx(pt, perCm) + "px";
           el.style.fontWeight = item.bold ? "700" : "400";
           el.style.textAlign = item.align || "left";
-          el.textContent = item.text || "";
+          el.textContent = window.LabelEditorMarkers.sample(item.text || "");
+          const textLines = window.LabelEditorType.applyToElement(el, item, perCm);
+          // Sin ancho propio, el texto fijo llega hasta el borde derecho.
+          if (textLines > 1) el.style.width = 100 - (parseFloat(item.left) || 0) + "%";
           if (selectedDeco?.type === "text" && selectedDeco.index === index) {
             el.classList.add("selected");
           }
           el.classList.toggle("locked", Boolean(item.locked));
+          el.dataset.decoIndex = index;
           attachDecoPointer(el, "text", index);
           textLayer.appendChild(el);
         });
@@ -1793,12 +2117,115 @@
         },
       });
 
+      // Zoom (fase 4): solo el tamaño en pantalla. Todo lo demás mide el
+      // rótulo con getBoundingClientRect y guarda en %, así que no cambia nada
+      // de lo que se guarda.
+      const ZOOM_MIN = 0.5;
+      const ZOOM_MAX = 3;
+      const ZOOM_STEP = 0.25;
+      let zoom = 1;
+      try {
+        const stored = parseFloat(localStorage.getItem("labelEditorZoom"));
+        if (stored >= ZOOM_MIN && stored <= ZOOM_MAX) zoom = stored;
+      } catch (error) {
+        /* sin almacenamiento: 100 % */
+      }
+
+      function setZoom(value) {
+        zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(value / ZOOM_STEP) * ZOOM_STEP));
+        try {
+          localStorage.setItem("labelEditorZoom", String(zoom));
+        } catch (error) {
+          /* no importa */
+        }
+        updateLabelSize();
+      }
+
+      document.getElementById("zoomInBtn").addEventListener("click", () => setZoom(zoom + ZOOM_STEP));
+      document.getElementById("zoomOutBtn").addEventListener("click", () => setZoom(zoom - ZOOM_STEP));
+      document.getElementById("zoomResetBtn").addEventListener("click", () => setZoom(1));
+      document.querySelector(".canvas-wrap").addEventListener(
+        "wheel",
+        (event) => {
+          if (!event.ctrlKey && !event.metaKey) return;
+          event.preventDefault();
+          setZoom(zoom + (event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
+        },
+        { passive: false },
+      );
+
       function updateLabelSize() {
-        label.style.width = (parseFloat(widthCmInput.value) || 10) + "cm";
-        label.style.height = (parseFloat(heightCmInput.value) || 15) + "cm";
+        label.style.width = (parseFloat(widthCmInput.value) || 10) * zoom + "cm";
+        label.style.height = (parseFloat(heightCmInput.value) || 15) * zoom + "cm";
+        document.getElementById("zoomResetBtn").textContent = Math.round(zoom * 100) + " %";
+        document.getElementById("zoomInBtn").disabled = zoom >= ZOOM_MAX;
+        document.getElementById("zoomOutBtn").disabled = zoom <= ZOOM_MIN;
         applyRenderMetrics();
         window.LabelEditorSizes?.sync();
       }
+
+      // Selección múltiple y alinear (label_editor_align.js). Cada tipo de
+      // elemento se mueve donde vive su posición.
+      const clampPct = (value) => Math.max(0, Math.min(100, value));
+      window.LabelEditorAlign.init({
+        label,
+        adapters: {
+          field: {
+            element: (key) => fieldEl(key),
+            locked: (key) => lockedFields.has(key),
+            move: (key, dx, dy) => {
+              const el = fieldEl(key);
+              if (!el) return;
+              el.style.left = clampPct((parseFloat(el.style.left) || 0) + dx) + "%";
+              el.style.top = clampPct((parseFloat(el.style.top) || 0) + dy) + "%";
+            },
+          },
+          text: {
+            element: (index) => label.querySelector(`.deco-text[data-deco-index="${index}"]`),
+            locked: (index) => Boolean(decorations.texts?.[index]?.locked),
+            move: (index, dx, dy) => {
+              const entry = decorations.texts?.[index];
+              if (!entry) return;
+              entry.left = clampPct((parseFloat(entry.left) || 0) + dx);
+              entry.top = clampPct((parseFloat(entry.top) || 0) + dy);
+            },
+          },
+          line: {
+            element: (index) => label.querySelector(`.deco-line[data-deco-index="${index}"]`),
+            locked: (index) => Boolean(decorations.lines?.[index]?.locked),
+            move: (index, dx, dy) => {
+              const entry = decorations.lines?.[index];
+              if (!entry) return;
+              const left = entry.left != null ? parseFloat(entry.left) : LINE_DEFAULT_LEFT;
+              const right = entry.right != null ? parseFloat(entry.right) : LINE_DEFAULT_RIGHT;
+              const shift = Math.max(-left, Math.min(100 - right, dx));
+              entry.left = left + shift;
+              entry.right = right + shift;
+              entry.top = clampPct((parseFloat(entry.top) || 0) + dy);
+            },
+          },
+          shape: {
+            element: (id) => label.querySelector(`.shape-el[data-shape-id="${CSS.escape(id)}"]`),
+            locked: (id) => Boolean(window.LabelEditorShapes.boxOf(id)?.locked),
+            move: (id, dx, dy) => window.LabelEditorShapes.moveBy(id, dx, dy),
+          },
+        },
+        currentSingle: () => {
+          if (selectedFieldKey) return { type: "field", key: selectedFieldKey };
+          if (selectedDeco) return { type: selectedDeco.type, key: selectedDeco.index };
+          const shapeId = window.LabelEditorShapes.selectedId();
+          return shapeId ? { type: "shape", key: shapeId } : null;
+        },
+        clearSingle: () => {
+          selectField(null);
+          window.selectDeco?.(null);
+          if (window.LabelEditorShapes.selectedId()) window.LabelEditorShapes.select(null);
+        },
+        onMoved: () => {
+          applyRenderMetrics();
+          window.LabelEditorHistory.record();
+        },
+      });
       updateLabelSize();
       widthCmInput.addEventListener("input", updateLabelSize);
       heightCmInput.addEventListener("input", updateLabelSize);
@@ -1974,6 +2401,9 @@
           window.LabelEditorSnap.clearGuides(label);
           // El ancho de un texto depende de su X: se recalcula al soltar.
           applyRenderMetrics();
+          // Un texto arrastrado no queda en modo escritura: si no, Ctrl+Z
+          // deshacía su texto en vez del arrastre.
+          if (moved && activeEl.isContentEditable) activeEl.blur();
         }
         activeEl = null;
       });
@@ -1991,6 +2421,8 @@
           document.getElementById("logoImg").src = reader.result;
           document.getElementById("logoImg").style.display = "block";
           document.getElementById("logoPlaceholder").style.display = "none";
+          // Un diseño sin campo de logo (ver applyFields) lo recupera al subir uno.
+          document.getElementById("logoField").hidden = false;
         };
         reader.readAsDataURL(file);
       });
@@ -2000,10 +2432,15 @@
       // abajo, sección "Configuración del QR/código de barras").
 
       // --- Exportar ---
-      async function captureLabel() {
+      // Siempre con marcadores, aunque el lienzo muestre datos de ejemplo.
+      function captureLabel() {
+        return window.LabelEditorMarkers.withoutSamples(captureLabelRaw, () => applyRenderMetrics());
+      }
+      async function captureLabelRaw() {
         label.classList.add("exporting");
         const canvas = await html2canvas(label, {
-          scale: 4,
+          // Misma resolución con cualquier zoom: el lienzo se captura agrandado.
+          scale: 4 / zoom,
           backgroundColor: "#ffffff",
         });
         label.classList.remove("exporting");
@@ -2285,6 +2722,8 @@
         propInputs.invert.checked = Boolean(style.invert);
         propInputs.frame.checked = Boolean(style.frame);
         propInputs.rotate.value = String(style.rotate || 0);
+        propType.refresh();
+        propColor.mark(style.color);
       }
 
       function updateSelectedFieldStyle(key, value) {
@@ -2335,6 +2774,16 @@
         updateSelectedFieldStyle("rotate", event.target.value === "0" ? "" : Number(event.target.value)),
       );
 
+      const propColor = window.LabelEditorShapes.colorControl(
+        document.getElementById("propColorSlot"), "propColor", "Color del texto",
+        (value) => updateSelectedFieldStyle("color", value || ""),
+      );
+      const propType = window.LabelEditorType.renderControls(
+        document.getElementById("propTypeSlot"),
+        () => (selectedTextField && fieldStyles[selectedTextField]) || {},
+        (key, value) => updateSelectedFieldStyle(key, value),
+      );
+
       // "Insertar dato": pone {{dato}} donde estaba el cursor en el texto del
       // campo elegido (o al final), incluidos los calculados al imprimir.
       const propMarkerSelect = document.getElementById("propMarkerSelect");
@@ -2375,6 +2824,18 @@
         return list ? list[selectedDeco.index] || null : null;
       }
 
+      const decoColor = window.LabelEditorShapes.colorControl(
+        document.getElementById("decoColorSlot"), "decoColor", "Color del texto",
+        (value) => updateDeco("color", value || ""),
+      );
+      const decoColorSlot = document.getElementById("decoColorSlot");
+      const decoTypeSlot = document.getElementById("decoTypeSlot");
+      const decoType = window.LabelEditorType.renderControls(
+        decoTypeSlot,
+        () => decoEntry() || {},
+        (key, value) => updateDeco(key, value),
+      );
+
       function selectDeco(type, index) {
         selectedDeco = type ? { type, index } : null;
         // Una decoración y un campo no se eligen a la vez (las flechas
@@ -2398,6 +2859,12 @@
           if (label) label.hidden = !visible.includes(name);
         });
 
+        decoTypeSlot.hidden = selectedDeco.type !== "text";
+        decoColorSlot.hidden = selectedDeco.type !== "text";
+        if (selectedDeco.type === "text") {
+          decoType.refresh();
+          decoColor.mark(entry.color);
+        }
         if (selectedDeco.type === "line") {
           decoPropsTitle.textContent = "Línea";
           decoInputs.left.value = Math.round(
@@ -2533,7 +3000,12 @@
         // El campo es contenteditable: el click lo enfoca para escribir y
         // además abre sus propiedades. Las dos cosas conviven.
         el.addEventListener("click", () => selectTextField(key));
-        el.addEventListener("focus", () => selectTextField(key));
+        el.addEventListener("focus", () => {
+          // Se edita el texto con marcadores, no la muestra.
+          window.LabelEditorMarkers.restoreField(el);
+          selectTextField(key);
+        });
+        el.addEventListener("blur", () => applyRenderMetrics());
       });
 
       document
@@ -2636,7 +3108,7 @@
         if (!addr) return;
         const setText = (field, text) => {
           const el = document.querySelector(`.field[data-field="${field}"]`);
-          if (el) el.textContent = text;
+          if (el) window.LabelEditorMarkers.setFieldText(el, text);
         };
         setText("domicilio", `Domicilio: ${[addr.street, addr.number].filter(Boolean).join(" ")}`);
         setText("cp", `CP: ${addr.postal_code || ""}`);
@@ -2652,12 +3124,18 @@
       // plantilla" para no duplicar el mismo mapeo dos veces.
       function applyFields(fields) {
         if (!fields) return;
+        // Un diseño sin "logo" (los de la galería llevan el logo como imagen,
+        // fase 5) no muestra el campo viejo: guardarlo lo agregaba y el logo
+        // salía dos veces. "Subir logo" lo vuelve a mostrar.
+        document.getElementById("logoField").hidden = !fields.logo;
         Object.entries(fields).forEach(([key, val]) => {
           const el = document.querySelector(`.field[data-field="${key}"]`);
           if (!el) return;
           if (val.left != null) el.style.left = val.left + "%";
           if (val.top != null) el.style.top = val.top + "%";
-          if (TEXT_FIELDS.includes(key) && val.text != null) el.textContent = val.text;
+          if (TEXT_FIELDS.includes(key) && val.text != null) {
+            window.LabelEditorMarkers.setFieldText(el, val.text);
+          }
         });
         // Un diseño viejo puede no traer qr/barcode todavía, o traer el qr
         // en el formato viejo (solo left/top): se completa con los
@@ -2747,7 +3225,7 @@
       async function generateThumbnail() {
         label.classList.add("exporting");
         const canvas = await html2canvas(label, {
-          scale: 1.5,
+          scale: 1.5 / zoom,
           backgroundColor: "#ffffff",
         });
         label.classList.remove("exporting");
@@ -2786,6 +3264,7 @@
       // el más largo de los transportistas.
       function previewWarningText(header) {
         if (!header) return "";
+        let missingShown = false;
         return header
           .split(",")
           .map((item) => {
@@ -2793,6 +3272,12 @@
             const cm = String(minWidth || "").replace(".", ",");
             if (code === "barcode_widened") {
               return `El código de barras no entra legible en su recuadro: necesita ${cm} cm de ancho para leerse impreso en una térmica, así que se dibuja más ancho y puede tapar lo que tenga al lado. Agrandá el recuadro o hacé lugar.`;
+            }
+            if (code === "image_missing") {
+              // Una sola vez aunque falten varias.
+              if (missingShown) return "";
+              missingShown = true;
+              return "Una imagen no está disponible y no se imprime.";
             }
             if (code === "barcode_unreadable") {
               return `El código de barras no va a poder leerse: necesita ${cm} cm de ancho y en el rótulo no hay tanto lugar desde donde empieza. Movelo más a la izquierda o usá un rótulo más ancho.`;
@@ -2819,46 +3304,59 @@
         if (event.target === serverPreviewOverlay) closeServerPreview();
       });
 
-      document
-        .getElementById("previewServerBtn")
-        .addEventListener("click", async () => {
-          const button = document.getElementById("previewServerBtn");
-          button.disabled = true;
-          try {
-            const response = await window.Auth.apiFetch(PREVIEW_URL, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                design: collectFields(),
-                width_cm: parseFloat(widthCmInput.value) || 10,
-                height_cm: parseFloat(heightCmInput.value) || 15,
-                template_id: currentTemplateId || null,
-              }),
-            });
-            if (!response.ok) {
-              const data = await response.json().catch(() => ({}));
-              throw new Error(
-                (data && (data.detail || data.design)) ||
-                  "No se pudo generar la vista previa.",
-              );
-            }
-            if (serverPreviewUrl) URL.revokeObjectURL(serverPreviewUrl);
-            serverPreviewUrl = URL.createObjectURL(await response.blob());
-            serverPreviewFrame.src = serverPreviewUrl;
-            const warningText = previewWarningText(
-              response.headers.get("X-Label-Warnings"),
+      // "Ver cómo sale impreso" (PDF) y "Vista térmica" (PNG de 1 bit) piden
+      // el mismo render al servidor; cambia solo el formato que vuelve.
+      async function openServerPreview(thermal) {
+        const button = document.getElementById(thermal ? "thermalViewBtn" : "previewServerBtn");
+        button.disabled = true;
+        try {
+          const response = await window.Auth.apiFetch(PREVIEW_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              design: collectFields(),
+              width_cm: parseFloat(widthCmInput.value) || 10,
+              height_cm: parseFloat(heightCmInput.value) || 15,
+              template_id: currentTemplateId || null,
+              thermal,
+            }),
+          });
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(
+              (data && (data.detail || data.design)) ||
+                "No se pudo generar la vista previa.",
             );
-            serverPreviewWarning.textContent = warningText;
-            serverPreviewWarning.hidden = !warningText;
-            serverPreviewOverlay.hidden = false;
-          } catch (err) {
-            if (err && err.isSessionExpired) return;
-            console.error("Error en la vista previa:", err);
-            showStatus(err.message || "No se pudo generar la vista previa.");
-          } finally {
-            button.disabled = false;
           }
-        });
+          if (serverPreviewUrl) URL.revokeObjectURL(serverPreviewUrl);
+          serverPreviewUrl = URL.createObjectURL(await response.blob());
+          const thermalBox = document.getElementById("thermalPreview");
+          document.getElementById("serverPreviewTitle").textContent = thermal
+            ? "Así sale en una térmica"
+            : "Así sale impreso";
+          document.getElementById("serverPreviewHint").textContent = thermal
+            ? "En blanco y negro a 203 dpi, con trama en los grises. Aproximado: la Zebra usa su propia letra para la sans y los bordes, líneas e íconos grises los imprime negros."
+            : "Generado por el servidor, con datos de muestra";
+          serverPreviewFrame.hidden = thermal;
+          thermalBox.hidden = !thermal;
+          if (thermal) document.getElementById("thermalPreviewImg").src = serverPreviewUrl;
+          else serverPreviewFrame.src = serverPreviewUrl;
+          const warningText = previewWarningText(
+            response.headers.get("X-Label-Warnings"),
+          );
+          serverPreviewWarning.textContent = warningText;
+          serverPreviewWarning.hidden = !warningText;
+          serverPreviewOverlay.hidden = false;
+        } catch (err) {
+          if (err && err.isSessionExpired) return;
+          console.error("Error en la vista previa:", err);
+          showStatus(err.message || "No se pudo generar la vista previa.");
+        } finally {
+          button.disabled = false;
+        }
+      }
+      document.getElementById("previewServerBtn").addEventListener("click", () => openServerPreview(false));
+      document.getElementById("thermalViewBtn").addEventListener("click", () => openServerPreview(true));
 
       function collectFields() {
         const fields = {};
@@ -2867,6 +3365,7 @@
           // qr/barcode no son texto: se arman aparte, con su config
           // (tamaño/simbología/data) en vez de leer el DOM.
           if (key === "qr" || key === "barcode") return;
+          if (key === "logo" && el.hidden) return;
           fields[key] = fieldPosition(el);
           if (TEXT_FIELDS.includes(key)) {
             // Los estilos que el editor todavía no edita (font_size, bold,
@@ -2878,7 +3377,7 @@
             // Una sola línea, sin los saltos y la sangría del HTML: los
             // campos nuevos los traen de su <div> y el PDF los dibujaba como
             // "■" (el render no hace saltos de línea, recorta).
-            const flatText = el.textContent.replace(/\s+/g, " ").trim();
+            const flatText = window.LabelEditorMarkers.rawText(el).replace(/\s+/g, " ").trim();
             fields[key] = { ...keep, ...fields[key], text: flatText };
           }
         });
@@ -2903,7 +3402,7 @@
         if (decorations.texts) fields.texts = decorations.texts;
         // Reglas y bloqueos: sin la clave cuando no hay ninguno, igual que
         // las decoraciones.
-        Object.assign(fields, window.LabelEditorShapes.collect());
+        Object.assign(fields, window.LabelEditorShapes.collect({ fields, texts: fields.texts }));
         const rules = window.LabelEditorRules.collect();
         if (rules.length) fields.rules = rules;
         if (lockedFields.size) fields.locked = [...lockedFields];
@@ -2923,12 +3422,15 @@
 
       document.getElementById("saveBtn").addEventListener("click", async () => {
         if (!(await confirmIncompleteRules())) return;
-        const thumbnail = await generateThumbnail();
+        const thumbnail = await window.LabelEditorMarkers.withoutSamples(
+          generateThumbnail,
+          () => applyRenderMetrics(),
+        );
         const payload = {
           nombre: nombreInput.value.trim() || "Rótulo sin nombre",
-          cliente: document
-            .querySelector('.field[data-field="destinatario"]')
-            .textContent.trim(),
+          cliente: window.LabelEditorMarkers.rawText(
+            document.querySelector('.field[data-field="destinatario"]'),
+          ).trim(),
           thumbnail,
           size: {
             widthCm: parseFloat(document.getElementById("widthCm").value) || 10,
@@ -2953,8 +3455,113 @@
       });
 
       window.LabelEditorRules.init(document.getElementById("rulesPanel"));
+      window.LabelEditorMarkers.initSamplesToggle(
+        document.getElementById("samplesToggle"),
+        () => applyRenderMetrics(),
+      );
       window.LabelEditorMarkers.initSequencePanel(document.getElementById("sequencePanel"));
-      loadExisting();
+
+      // --- Deshacer / rehacer (fase 4, label_editor_history.js) ---
+      // Una instantánea = lo que se guardaría + la medida.
+      const undoBtn = document.getElementById("undoBtn");
+      const redoBtn = document.getElementById("redoBtn");
+      const duplicateBtn = document.getElementById("duplicateBtn");
+
+      window.LabelEditorHistory.init({
+        capture: () =>
+          JSON.stringify({ design: collectFields(), width: widthCmInput.value, height: heightCmInput.value }),
+        restore: (state) => {
+          const { design, width, height } = JSON.parse(state);
+          widthCmInput.value = width;
+          heightCmInput.value = height;
+          window.LabelEditorAlign.clear();
+          selectField(null);
+          updateLabelSize();
+          applyFields(design);
+          refreshCodePreview("qr");
+          refreshCodePreview("barcode");
+        },
+        onChange: ({ canUndo, canRedo }) => {
+          undoBtn.disabled = !canUndo;
+          redoBtn.disabled = !canRedo;
+        },
+      });
+      undoBtn.addEventListener("click", () => window.LabelEditorHistory.undo());
+      redoBtn.addEventListener("click", () => window.LabelEditorHistory.redo());
+
+      // Se graba al terminar cada gesto; si nada cambió no hay paso nuevo.
+      document.addEventListener("pointerup", () => setTimeout(() => window.LabelEditorHistory.record(), 0));
+      document.addEventListener("change", () => window.LabelEditorHistory.record());
+      document.addEventListener("input", () => window.LabelEditorHistory.scheduleRecord());
+      document.addEventListener("keyup", (event) => {
+        if (event.key.startsWith("Arrow")) window.LabelEditorHistory.scheduleRecord(400);
+        else if (event.key === "Delete" || event.key === "Backspace") window.LabelEditorHistory.record();
+      });
+
+      // --- Duplicar (Ctrl+D) ---
+      function duplicateSelectedDeco() {
+        if (!selectedDeco) return false;
+        const key = selectedDeco.type === "line" ? "lines" : "texts";
+        const entry = decorations[key]?.[selectedDeco.index];
+        if (!entry) return false;
+        const copy = JSON.parse(JSON.stringify(entry));
+        delete copy.locked;
+        copy.top = Math.min(100, (parseFloat(copy.top) || 0) + 2);
+        if (key === "texts") copy.left = Math.min(100, (parseFloat(copy.left) || 0) + 2);
+        decorations[key].push(copy);
+        selectDeco(selectedDeco.type, decorations[key].length - 1);
+        return true;
+      }
+
+      function duplicateSelection() {
+        const done = window.LabelEditorShapes.selectedId()
+          ? window.LabelEditorShapes.duplicateSelected()
+          : duplicateSelectedDeco();
+        if (done) window.LabelEditorHistory.record();
+        return done;
+      }
+      duplicateBtn.addEventListener("click", duplicateSelection);
+
+      // El botón Duplicar solo con una forma, línea o texto fijo elegido (los
+      // campos de datos son únicos).
+      function syncDuplicateButton() {
+        duplicateBtn.disabled = !(window.LabelEditorShapes.selectedId() || selectedDeco);
+      }
+      document.addEventListener("pointerup", () => setTimeout(syncDuplicateButton, 0));
+      document.addEventListener("keyup", syncDuplicateButton);
+
+      // --- Atajos ---
+      // Mientras se escribe, Ctrl+Z y compañía son del navegador (deshace el
+      // texto), no del diseño.
+      document.addEventListener("keydown", (event) => {
+        if (window.LabelEditorHistory.isTypingTarget(document.activeElement)) return;
+        // Con la vista previa abierta el diseño está tapado: nada lo toca.
+        if (!serverPreviewOverlay.hidden) return;
+        const mod = event.ctrlKey || event.metaKey;
+        const key = event.key.toLowerCase();
+        if (mod && key === "z") {
+          event.preventDefault();
+          if (event.shiftKey) window.LabelEditorHistory.redo();
+          else window.LabelEditorHistory.undo();
+        } else if (mod && key === "y") {
+          event.preventDefault();
+          window.LabelEditorHistory.redo();
+        } else if (mod && key === "d") {
+          event.preventDefault();
+          duplicateSelection();
+        } else if (
+          !mod &&
+          (event.key === "Delete" || event.key === "Backspace") &&
+          selectedDeco &&
+          !["INPUT", "SELECT", "BUTTON"].includes(document.activeElement?.tagName)
+        ) {
+          // Las formas ya se borran solas (label_editor_shapes.js).
+          event.preventDefault();
+          document.getElementById("decoDeleteBtn").click();
+        }
+      });
+
+      loadExisting().finally(() => window.LabelEditorHistory.reset());
     </script>
   </body>
 </html>

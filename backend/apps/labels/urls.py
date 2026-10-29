@@ -15,10 +15,12 @@ from .views import (
     AvailableFontsView,
     BarcodeImageView,
     ElementLayoutViewSet,
+    LabelImageViewSet,
     LabelSequenceView,
     LabelTemplateViewSet,
     LabelViewSet,
     LayoutVariableViewSet,
+    PreviewContextView,
     PreviewLabelView,
     RenderLabelView,
 )
@@ -28,6 +30,7 @@ router.register(r"labels", LabelViewSet, basename="label")
 router.register(r"templates", LabelTemplateViewSet, basename="label-template")
 router.register(r"element-layouts", ElementLayoutViewSet, basename="element-layout")
 router.register(r"layout-variables", LayoutVariableViewSet, basename="layout-variable")
+router.register(r"images", LabelImageViewSet, basename="label-image")
 router.register(r"sizes", LabelSizeViewSet, basename="label-size")
 
 urlpatterns = [
@@ -40,6 +43,7 @@ urlpatterns = [
     # Vista previa de un diseño sin guardar, con datos de muestra: es lo que
     # hace que el editor muestre lo mismo que se imprime.
     path("preview/", PreviewLabelView.as_view(), name="label-preview"),
+    path("preview-context/", PreviewContextView.as_view(), name="label-preview-context"),
     # SVG suelto de un QR/código de barras (preview del editor + debug).
     path("barcode/", BarcodeImageView.as_view(), name="label-barcode"),
     # Generación por lote: muchos rótulos -> un Document (apps.documents).

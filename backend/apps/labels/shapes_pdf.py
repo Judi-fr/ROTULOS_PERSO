@@ -6,7 +6,11 @@ Los números (grosor por defecto, punteados, márgenes) son los mismos que usan
 el ZPL (shapes_zpl.py) y el lienzo del editor (label_editor_shapes.js).
 """
 
+import logging
+
 from .design_shapes import DEFAULT_PADDING_MM, DEFAULT_STROKE_WIDTH_PT, parse_hex, resolve_color, stroke_color
+
+logger = logging.getLogger(__name__)
 
 # Punteados (pt): mismos valores en el editor y en ZPL.
 DASH_PATTERNS = {"dashed": (4, 3), "dotted": (1, 2)}
@@ -65,20 +69,23 @@ def _rgb(hex_color):
     return tuple(channel / 255 for channel in parse_hex(hex_color))
 
 
-def draw_shapes(pdf, design, context, computed, width_cm, height_cm, default_font_size):
+def draw_shapes(pdf, design, context, computed, width_cm, height_cm, default_font_size,
+                logo_file=None, warnings=None):
     from .label_rendering import CM_TO_POINTS
 
     palette = design.get("palette") if isinstance(design.get("palette"), dict) else None
     width_pt, height_pt = width_cm * CM_TO_POINTS, height_cm * CM_TO_POINTS
     mm_to_pt = CM_TO_POINTS / 10
     for shape in ordered_shapes(design):
-        if shape.get("kind") not in ("rect", "ellipse", "line", "icon") or shape_is_hidden(shape, context, computed):
+        if shape.get("kind") not in ("rect", "ellipse", "line", "icon", "image") or shape_is_hidden(shape, context, computed):
             continue
         left, top, right, bottom = shape_box_pct(shape)
         x0, x1 = left / 100 * width_pt, right / 100 * width_pt
         y_top, y_bottom = height_pt * (1 - top / 100), height_pt * (1 - bottom / 100)
         pdf.saveState()
-        if shape["kind"] == "icon":
+        if shape["kind"] == "image":
+            _draw_image(pdf, shape, palette, x0, x1, y_top, y_bottom, mm_to_pt, logo_file, warnings)
+        elif shape["kind"] == "icon":
             _draw_icon(pdf, shape, palette, x0, x1, y_top, y_bottom)
         elif shape["kind"] == "line":
             _draw_line(pdf, shape, palette, x0, x1, y_top, y_bottom)
@@ -96,6 +103,53 @@ def _draw_icon(pdf, shape, palette, x0, x1, y_top, y_bottom):
     x, top_from_top, side = icon_box(x0, -y_top, x1 - x0, y_top - y_bottom)
     if side > 0:
         draw_icon_pdf(pdf, shape.get("icon"), x, -top_from_top, side, _rgb(color))
+
+
+IMAGE_DPI = 300
+IMAGE_MAX_SIDE_PX = 2400
+
+
+def _draw_image(pdf, shape, palette, x0, x1, y_top, y_bottom, mm_to_pt, logo_file, warnings):
+    from reportlab.lib.utils import ImageReader
+
+    from .icons import icon_box
+    from .label_images import prepare, resolve_source
+
+    width, height = x1 - x0, y_top - y_bottom
+    if width <= 0 or height <= 0:
+        return
+    circle = bool(shape.get("circle"))
+    radius_pt = 0 if circle else min(_number(shape.get("radius"), 0) * mm_to_pt, width / 2, height / 2)
+    scale = min(IMAGE_DPI / 72, IMAGE_MAX_SIDE_PX / max(width, height))
+    box_w, box_h = max(1, round(width * scale)), max(1, round(height * scale))
+    source = resolve_source(shape, logo_file)
+    image = None
+    if source is not None:
+        try:
+            image = prepare(source, box_w, box_h, shape.get("fit", "contain"), circle, radius_pt * scale)
+        except Exception:
+            logger.warning("No se pudo preparar la imagen %r del rótulo.", shape.get("id"), exc_info=True)
+            image = None
+        finally:
+            # Solo se cierra lo que abrió image_file, nunca el logo del llamador.
+            if shape.get("image") != "logo":
+                source.close()
+    if image is None:
+        if warnings is not None:
+            warnings.append({"code": "image_missing", "field": shape.get("id", "")})
+        return
+    pdf.drawImage(ImageReader(image), x0, y_bottom, width, height, mask="auto")
+    stroke = stroke_color(shape, palette)
+    if not stroke:
+        return
+    _set_stroke(pdf, shape, stroke)
+    if circle:
+        cx, cy, side = icon_box(x0, -y_top, width, height)
+        pdf.circle(cx + side / 2, -cy - side / 2, side / 2, stroke=1, fill=0)
+    elif radius_pt > 0:
+        pdf.roundRect(x0, y_bottom, width, height, radius_pt, stroke=1, fill=0)
+    else:
+        pdf.rect(x0, y_bottom, width, height, stroke=1, fill=0)
 
 
 def _set_stroke(pdf, shape, color):

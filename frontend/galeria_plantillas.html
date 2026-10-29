@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Nueva plantilla</title>
+    <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
+    <link rel="stylesheet" href="assets/css/ui.css" />
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Karla:400,500,600,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/app.css" />
+    <link rel="stylesheet" href="assets/css/galeria_plantillas.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <!-- La barra la dibuja assets/js/topbar.js. -->
+      <header class="topbar" id="appTopbar" data-links='[{"href": "mis_plantillas.html", "label": "Mis plantillas"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+
+      <main class="main gallery-main">
+        <div class="gallery-heading">
+          <div>
+            <p class="gallery-kicker">Nueva plantilla</p>
+            <h1>Elegí un diseño para empezar</h1>
+          </div>
+          <p class="gallery-lede">
+            Cada uno se abre en el editor como una copia tuya: cambiá colores, letras, el logo y la
+            posición de cada dato. El diseño original no se toca.
+          </p>
+        </div>
+
+        <p
+          id="pageMessage"
+          class="page-message"
+          role="status"
+          aria-live="polite"
+          style="display: none"
+        ></p>
+
+        <!-- Lo arma assets/js/galeria_plantillas.js: "En blanco" y los diseños
+             de la galería (GET /labels/templates/?gallery=1), en su orden. -->
+        <ol id="galleryGrid" class="gallery-grid" aria-label="Diseños para empezar"></ol>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/galeria_plantillas.js"></script>
+  </body>
+</html>

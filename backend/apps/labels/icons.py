@@ -67,10 +67,15 @@ def draw_icon_pdf(pdf, name, x, y_top, side, rgb):
 def icon_bitmap(name, side_dots):
     """El ícono a 1 bit (1 = tinta) en un cuadrado de ``side_dots``. Se
     dibuja al cuádruple y se reduce, para que las diagonales no salgan
-    escalonadas."""
+    escalonadas. Cacheado: quien lo reciba no debe modificarlo (shapes_zpl
+    solo lo lee)."""
+    return _icon_bitmap(name, max(1, int(side_dots)))
+
+
+@lru_cache(maxsize=128)
+def _icon_bitmap(name, side):
     from PIL import Image, ImageDraw
 
-    side = max(1, int(side_dots))
     big = side * 4
     scale = big / VIEWBOX
     image = Image.new("L", (big, big), 0)
