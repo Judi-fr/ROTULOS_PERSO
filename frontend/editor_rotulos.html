@@ -3185,7 +3185,10 @@
           updateLabelSize();
         }
         applyFields(template.fields);
-        offerTemplateVersion(template);
+        // Desde la galería (?nueva=plantilla) la plantilla es solo el punto de
+        // partida: se guarda como copia, nunca como versión del original (un
+        // admin puede editar las del sistema y las cambiaría para todos).
+        if (params.get("nueva") !== "plantilla") offerTemplateVersion(template);
       }
 
       // --- Cargar rótulo existente si venimos con ?id= ---

@@ -817,7 +817,8 @@ change in `label_rendering.py`, change them in the editor too.** `renderDecorati
   (Mis plantillas) opens `galeria_plantillas.html` + `assets/js/galeria_plantillas.js`: "En blanco" plus the system
   templates with `LabelTemplate.gallery_order` (`GET /labels/templates/?gallery=1`, ordered; the field is read-only in the
   API), each card linking to `editor_rotulos.html?nueva=plantilla&template=<id>` — the editor loads it as a starting point
-  and "Guardar plantilla" creates the business's OWN copy; the system one is untouched. The seven new designs (H Moderno, D
+  and "Guardar plantilla" creates the business's OWN copy; the system one is untouched (in that mode `loadFromTemplate`
+  does not offer "Guardar cambios en «…»": an admin can edit system templates and would have changed it for everyone). The seven new designs (H Moderno, D
   Con la marca, C Destacado, E Editorial, F Banda lateral, G Postal, B Celdas; A, the standard, is 8th and unchanged) live
   as data in `backend/apps/labels/gallery.py`, built ONLY with keys the editor edits (the user's rule: the editor must be able
   to build every gallery design); brand images are the `"logo"` image shape (no stock images). Migration `labels/0015` seeds
