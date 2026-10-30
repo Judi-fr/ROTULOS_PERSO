@@ -6,13 +6,13 @@
 
 const API_BASE = `${window.APP_CONFIG.API_BASE}/auth`;
 const DASHBOARD_URL = `${API_BASE}/users/me/dashboard/`;
-const ORDERS_URL = `${window.APP_CONFIG.API_BASE}/orders/`;
 const MY_INVITATIONS_URL = `${window.APP_CONFIG.API_BASE}/team/my-invitations/`;
 
 // Las secciones del panel (cada una con sus links internos) y sus íconos
 // vienen armadas del backend (apps/accounts/dashboard_sections.py): acá solo
 // se dibujan.
 const NOTICES_URL = `${window.APP_CONFIG.API_BASE}/notices/`;
+const SUMMARY_URL = `${window.APP_CONFIG.API_BASE}/orders/summary/`;
 const ONBOARDING_HIDDEN_KEY = "onboardingHidden";
 
 const hasSession = () => window.Auth.hasSession();
@@ -278,63 +278,142 @@ function setupToolSearch(sections, menu) {
 // AVISOS: lo que se rompió en el comercio (apps/monitoring/notices.py). Los
 // tres más nuevos acá; todos en notificaciones.html.
 // ---------------------------------------------------------------------------
-async function loadNotices() {
-  const box = document.getElementById("noticesBox");
-  if (!box) return;
+// ---------------------------------------------------------------------------
+// BANDEJA DE TRABAJO: los números del día y "Qué hacer ahora". Junta el
+// resumen de pedidos (GET /orders/summary/) con los avisos del comercio
+// (GET /notices/): todo lo que espera al comerciante, en un solo lugar.
+// ---------------------------------------------------------------------------
+async function fetchJson(url) {
   try {
-    const response = await apiFetch(NOTICES_URL);
-    if (!response.ok) return;
-    const notices = await response.json();
-    box.innerHTML = "";
-    notices.slice(0, 3).forEach((notice) => box.appendChild(buildNotice(notice)));
-    if (notices.length > 3) {
-      const more = document.createElement("a");
-      more.className = "notice-more";
-      more.href = "notificaciones.html";
-      more.textContent = `Ver los ${notices.length} avisos`;
-      box.appendChild(more);
-    }
-    box.hidden = notices.length === 0;
+    const response = await apiFetch(url);
+    return response.ok ? await response.json() : null;
   } catch (err) {
-    if (!err || !err.isSessionExpired) console.error("Error al leer los avisos:", err);
+    if (!err || !err.isSessionExpired) console.error(`Error al leer ${url}:`, err);
+    return null;
   }
 }
 
-function buildNotice(notice) {
-  const item = document.createElement("div");
-  item.className = "notice";
-  item.setAttribute("role", "status");
-  const text = document.createElement("span");
-  text.className = "notice-text";
-  text.textContent = notice.title;
-  item.innerHTML = '<i class="ph ph-warning" aria-hidden="true"></i>';
-  item.appendChild(text);
-  if (notice.url) {
-    const review = document.createElement("a");
-    review.href = notice.url;
-    review.textContent = "Revisar";
-    item.appendChild(review);
+const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+
+// Cada número lleva a la pantalla donde se resuelve.
+function renderTodayStats(summary, noticeCount) {
+  const box = document.getElementById("todayStats");
+  const problems = summary.shipment_problems + noticeCount;
+  const stats = [
+    { label: "Para imprimir", value: summary.to_print, href: "imprimir_rotulos.html" },
+    { label: "Para despachar", value: summary.to_dispatch, href: "pedidos.html" },
+    { label: "En camino", value: summary.on_the_way, href: "pedidos.html" },
+    { label: "Con problemas", value: problems, href: noticeCount ? "notificaciones.html" : "pedidos.html", alert: problems > 0 },
+  ];
+  box.replaceChildren(
+    ...stats.map((stat) => {
+      const link = document.createElement("a");
+      link.className = `today-stat${stat.alert ? " is-alert" : ""}`;
+      link.href = stat.href;
+      link.innerHTML = `<span class="today-stat-label">${escapeHtml(stat.label)}</span>
+        <span class="today-stat-value">${Number(stat.value) || 0}</span>`;
+      return link;
+    })
+  );
+  box.hidden = false;
+}
+
+function todoItem({ icon, text, tone = "", action = "", href = "", primary = false, onHide = null }) {
+  const item = document.createElement("li");
+  item.className = `todo-item${tone ? ` is-${tone}` : ""}`;
+  item.innerHTML = `<i class="ph ph-${icon}" aria-hidden="true"></i>`;
+  const label = document.createElement("span");
+  label.className = "todo-text";
+  label.textContent = text;
+  item.appendChild(label);
+  if (action && href) {
+    const link = document.createElement("a");
+    link.className = `btn btn-small ${primary ? "btn-primary" : "btn-outline"}`;
+    link.href = href;
+    link.textContent = action;
+    item.appendChild(link);
   }
-  const hide = document.createElement("button");
-  hide.type = "button";
-  hide.className = "notice-hide";
-  hide.textContent = "Ocultar";
-  hide.addEventListener("click", async () => {
-    hide.disabled = true;
-    try {
-      const response = await apiFetch(`${NOTICES_URL}${notice.id}/dismiss/`, { method: "POST" });
-      if (response.ok || response.status === 404) {
-        await loadNotices();
-        return;
-      }
-      showMessage("No se pudo ocultar el aviso.");
-    } catch (err) {
-      if (!err || !err.isSessionExpired) showMessage("No se pudo ocultar el aviso.");
-    }
-    hide.disabled = false;
-  });
-  item.appendChild(hide);
+  if (onHide) {
+    const hide = document.createElement("button");
+    hide.type = "button";
+    hide.className = "btn btn-small btn-ghost";
+    hide.textContent = "Ocultar";
+    hide.addEventListener("click", () => onHide(hide));
+    item.appendChild(hide);
+  }
   return item;
+}
+
+// "Ocultar" un aviso lo esconde para todo el comercio mientras dure el problema.
+async function dismissNotice(notice, button) {
+  button.disabled = true;
+  try {
+    const response = await apiFetch(`${NOTICES_URL}${notice.id}/dismiss/`, { method: "POST" });
+    if (response.ok || response.status === 404) {
+      await loadToday();
+      return;
+    }
+    showMessage("No se pudo ocultar el aviso.");
+  } catch (err) {
+    if (!err || !err.isSessionExpired) showMessage("No se pudo ocultar el aviso.");
+  }
+  button.disabled = false;
+}
+
+async function loadToday() {
+  const [summary, notices] = await Promise.all([
+    hasPermission("orders.view") ? fetchJson(SUMMARY_URL) : null,
+    fetchJson(NOTICES_URL),
+  ]);
+  const openNotices = Array.isArray(notices) ? notices : [];
+  if (summary) renderTodayStats(summary, openNotices.length);
+
+  const items = [];
+  if (summary && summary.to_print) {
+    items.push({
+      icon: "printer",
+      text: `${plural(summary.to_print, "pedido sin rótulo", "pedidos sin rótulo")}`,
+      action: hasPermission("labels.batch") ? "Imprimir" : "",
+      href: "imprimir_rotulos.html",
+    });
+  }
+  if (summary && summary.to_dispatch) {
+    items.push({
+      icon: "truck",
+      text: `${plural(summary.to_dispatch, "pedido con rótulo, listo", "pedidos con rótulo, listos")} para despachar`,
+      action: hasPermission("orders.dispatch") ? "Despachar" : "",
+      href: "pedidos.html",
+    });
+  }
+  if (summary && summary.shipment_problems) {
+    items.push({
+      icon: "warning-circle",
+      tone: "danger",
+      text: `${plural(summary.shipment_problems, "envío con un problema", "envíos con un problema")} en el transportista`,
+      action: "Ver",
+      href: "pedidos.html",
+    });
+  }
+  openNotices.forEach((notice) => {
+    items.push({
+      icon: "warning",
+      tone: "warning",
+      text: notice.title,
+      action: notice.url ? "Revisar" : "",
+      href: notice.url || "",
+      onHide: (button) => dismissNotice(notice, button),
+    });
+  });
+  // La primera acción es la principal; las demás, secundarias.
+  const firstAction = items.find((item) => item.action);
+  if (firstAction) firstAction.primary = true;
+
+  const list = document.getElementById("todoList");
+  list.replaceChildren(...items.map(todoItem));
+  if (!items.length) {
+    list.appendChild(todoItem({ icon: "check-circle", tone: "done", text: "Todo al día: no hay pedidos esperando ni avisos." }));
+  }
+  document.getElementById("todoBox").hidden = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -415,77 +494,6 @@ function renderOnboarding(onboarding) {
 // de rótulos (apps.labels sigue sin modelos/urls, ver dashboard_views.py),
 // así que no hay de dónde traer ese dato sin inventarlo.
 // ---------------------------------------------------------------------------
-function formatOrderDate(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString("es-AR", {
-    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
-  });
-}
-
-function renderLastOrderSummary(order) {
-  const grid = document.getElementById("summaryGrid");
-  if (!grid) return;
-
-  if (!order) {
-    grid.style.display = "none";
-    return;
-  }
-
-  const card = document.createElement("div");
-  card.className = "summary-card";
-  card.innerHTML = `
-    <div class="summary-card-title">Último pedido</div>
-    <div class="summary-card-main">${escapeHtml(order.description || `Pedido #${order.id}`)} — ${escapeHtml(order.status_label)}</div>
-    <div class="summary-card-sub">Creado el ${formatOrderDate(order.created_at)}</div>
-    <a class="summary-card-link" href="pedidos.html">Ver mis pedidos →</a>
-  `;
-  grid.innerHTML = "";
-  grid.appendChild(card);
-  grid.style.display = "grid";
-}
-
-// Si el último evento de estado del pedido es reciente (últimas 48hs) y no
-// es el evento inicial de creación, avisa en #dashboardMessage.
-function maybeShowOrderStatusNotice(order) {
-  const events = Array.isArray(order && order.status_events) ? order.status_events : [];
-  if (events.length < 2) return; // solo el evento de creación: nada que avisar
-
-  const lastEvent = events[events.length - 1];
-  const changedAt = new Date(lastEvent.created_at);
-  if (Number.isNaN(changedAt.getTime())) return;
-
-  const hoursSince = (Date.now() - changedAt.getTime()) / (1000 * 60 * 60);
-  if (hoursSince < 0 || hoursSince > 48) return;
-
-  showMessage(
-    `Tu pedido "${order.description || `#${order.id}`}" cambió a "${lastEvent.status_label}" el ${formatOrderDate(lastEvent.created_at)}.`,
-    "info"
-  );
-}
-
-async function loadOrderSummary() {
-  if (!hasPermission("orders.view")) {
-    const grid = document.getElementById("summaryGrid");
-    if (grid) grid.style.display = "none";
-    return;
-  }
-
-  try {
-    const response = await apiFetch(ORDERS_URL);
-    if (!response.ok) return; // resumen es "nice to have": no rompe el dashboard si falla
-    const data = await response.json();
-    const orders = Array.isArray(data) ? data : data.results || [];
-    const lastOrder = orders[0] || null;
-    renderLastOrderSummary(lastOrder);
-    if (lastOrder) maybeShowOrderStatusNotice(lastOrder);
-  } catch (err) {
-    if (err.isSessionExpired) return;
-    console.error("Error al cargar el resumen de pedidos:", err);
-  }
-}
-
 // Si alguien invitó a este usuario a su comercio, se lo dice acá: es lo
 // primero que ve al entrar (ver invitaciones.html).
 async function loadInvitationNotice() {
@@ -534,6 +542,9 @@ async function loadDashboard() {
       return;
     }
     keepStoredTeams(data);
+    if (data.team) {
+      document.getElementById("dashboardTitle").textContent = `Hoy en ${data.team.display_name || data.team.name}`;
+    }
     // La barra compartida con el usuario fresco y su comercio (topbar.js). El
     // usuario del panel no trae la lista de permisos: sale de la sesión
     // guardada, que la barra necesita para no ofrecer "Administración" de más.
@@ -546,8 +557,7 @@ async function loadDashboard() {
       document.getElementById("noTeamNotice").hidden = false;
       return;
     }
-    loadOrderSummary();
-    loadNotices();
+    loadToday();
   } catch (err) {
     if (!err || !err.isSessionExpired) {
       console.error("Error al cargar el dashboard:", err);

@@ -300,5 +300,8 @@ def render_document(token, platform):
         except (CarrierError, ShipmentError) as exc:
             raise PrintError(str(exc)) from exc
     pdf_bytes, _count = render_pdf(connection, orders)
+    from apps.orders.print_marks import mark_labels_printed
+
+    mark_labels_printed(order.pk for order in orders)
     return pdf_bytes, "rotulos.pdf"
 

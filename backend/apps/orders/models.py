@@ -176,6 +176,10 @@ class Order(models.Model):
     # Última modificación EN LA TIENDA: un aviso viejo que llega tarde no
     # pisa datos más nuevos (ver ingestion.upsert_store_order).
     external_updated_at = models.DateTimeField(null=True, blank=True)
+    # La primera vez que salió su rótulo (lote, impresión desde la tienda o
+    # rótulo + etiqueta del transportista; ver print_marks). Es lo que separa
+    # "para imprimir" de "para despachar" en el panel (summary_views).
+    labels_printed_at = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

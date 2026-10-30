@@ -260,7 +260,7 @@ and `/static` → 8000 and `/` → 8001 under one domain, so someone else's brow
   (`support-messages/`, admin inbox)
 - `api/v1/` → `apps.orders.urls` (`addresses/`, `orders/` — list filters `?store=<id>|manual`,
   `?status=created,preparing` and `?date_from=`/`?date_to=` (YYYY-MM-DD, both inclusive, by creation
-  date) —, `admin/orders/`, `orders/metrics/`,
+  date) —, `admin/orders/`, `orders/metrics/`, `orders/summary/` (the dashboard's "Hoy"),
   `orders/manual/`, `orders/imports/...`, `orders/import-mappings/`)
 - `api/v1/audit/` → `apps.audit.urls` (`logs/`, `actions/`, `metrics/`)
 - `api/v1/documents/` → `apps.documents.urls` (generated batch output)
@@ -334,6 +334,19 @@ exact midnight. It reads `.get()`, so it takes query params or a JSON body dict 
   password reset revokes all outstanding refresh tokens.
 - Password rules (`validate_password_strength`, `auth_views.py`): 6+ chars, one uppercase, one digit, plus
   Django's own validators — enforced on register, admin-create, change-password, and reset-confirm.
+- **The dashboard is a work inbox (2026-10-30, option "A" chosen by the user)**: title "Hoy en «comercio»", the
+  primeros pasos (new businesses), four numbers that link where they get solved — Para imprimir, Para despachar, En
+  camino, Con problemas — from `GET /api/v1/orders/summary/` (`summary_views.OrderSummaryView`, `orders.view`, same
+  scope as the order list: current business + `order_scope_q`), and "Qué hacer ahora" (`loadToday` in
+  `dashboard.js`), which merges those counts with the business's open notices (`/notices/`, still hidable with
+  "Ocultar"); the first action is the primary button, "Imprimir"/"Despachar" only with `labels.batch`/
+  `orders.dispatch`. The sections grid stays below as "Todas las herramientas". **"Para imprimir" vs "para
+  despachar"** = pending orders (created/preparing) without/with `Order.labels_printed_at`, set the FIRST time a
+  label comes out (`orders.print_marks.mark_labels_printed`, an `update`: no status audit or store push) by the
+  batch (`_run_batch`), the store print link (`store_print.render_document`, labels action) and rótulo + carrier
+  label (`carriers.printing.bundle`); not by previews nor Tiendanube's Labels API. Orders printed before the field
+  existed (migration `orders/0005`) count as "para imprimir". Con problemas = carrier shipments in issue/returning
+  + open notices. Tests: `apps/orders/tests/test_order_summary.py`.
 - `dashboard_views.DashboardView` (`GET users/me/dashboard/`) returns the role-based menu — the frontend
   only renders it. **Since 2026-10-20 the dashboard draws `sections`, not `menu`** (user: "hay muchos botones
   y se terminó creando un menú larguísimo"): `dashboard_sections.build_sections(user)` groups the 19-23 entries

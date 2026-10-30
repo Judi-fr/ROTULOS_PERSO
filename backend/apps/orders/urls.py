@@ -23,6 +23,7 @@ from .import_views import (
     OrderImportUploadView,
     OrderImportValidateView,
 )
+from .summary_views import OrderSummaryView
 from .views import AddressViewSet, AdminOrderListView, ManualOrderCreateView, OrderMetricsView, OrderViewSet
 
 router = SimpleRouter()
@@ -36,6 +37,7 @@ urlpatterns = [
     # self-service: Django resuelve urlpatterns en orden y estos van primero.
     path("admin/orders/", AdminOrderListView.as_view(), name="admin-order-list"),
     path("orders/metrics/", OrderMetricsView.as_view(), name="order-metrics"),
+    path("orders/summary/", OrderSummaryView.as_view(), name="order-summary"),
     # Carga operativa (story 20): alta manual de un envío a nombre propio o
     # (con orders.create_for_others) de otro usuario.
     path("orders/manual/", ManualOrderCreateView.as_view(), name="order-manual-create"),

@@ -17,7 +17,7 @@
 
     <link rel="stylesheet" href="assets/css/base.css" />
     <link rel="stylesheet" href="assets/css/app.css" />
-    <link rel="stylesheet" href="assets/css/dashboard.css?v=2026-10-21c" />
+    <link rel="stylesheet" href="assets/css/dashboard.css?v=2026-10-29" />
   </head>
   <body>
     <div class="layout">
@@ -27,8 +27,8 @@
 
       <main class="main">
         <div class="main-heading">
-          <h1>Mi panel</h1>
-          <p>Elegí una sección: adentro de cada una están sus herramientas.</p>
+          <h1 id="dashboardTitle">Hoy</h1>
+          <p>Lo que tu comercio tiene pendiente y por dónde seguir.</p>
         </div>
 
         <!-- Buscador de funciones (dashboard.js, setupToolSearch): busca en
@@ -59,13 +59,17 @@
         <!-- Invitaciones a un comercio (dashboard.js / loadInvitationNotice). -->
         <p id="invitationNotice" class="dashboard-message info" hidden></p>
 
-        <!-- Avisos del comercio (dashboard.js / loadNotices) y primeros pasos
-             de un comercio nuevo (renderOnboarding). -->
-        <section id="noticesBox" class="notices" aria-label="Avisos" hidden></section>
+        <!-- Bandeja de trabajo (dashboard.js / loadToday): los números del día
+             (GET /orders/summary/) y "Qué hacer ahora", que junta lo pendiente
+             con los avisos del comercio (GET /notices/). -->
         <section id="onboardingBox" class="onboarding" aria-label="Primeros pasos" hidden></section>
+        <section id="todayStats" class="today-stats" aria-label="Números de hoy" hidden></section>
+        <section id="todoBox" class="todo" aria-labelledby="todoTitle" hidden>
+          <h2 class="todo-title" id="todoTitle">Qué hacer ahora</h2>
+          <ul class="todo-list" id="todoList"></ul>
+        </section>
 
-        <div class="summary-grid" id="summaryGrid" style="display:none;"></div>
-
+        <h2 class="tools-title" id="toolsTitle">Todas las herramientas</h2>
         <div id="menuGroups">
           <p class="menu-loading"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></p>
         </div>
@@ -74,8 +78,8 @@
 
     <script src="assets/js/config.js"></script>
     <script src="assets/js/auth.js"></script>
-    <script src="assets/js/utils.js?v=2026-10-21c"></script>
+    <script src="assets/js/utils.js?v=2026-10-29"></script>
     <script src="assets/js/topbar.js"></script>
-    <script src="assets/js/dashboard.js?v=2026-10-21d"></script>
+    <script src="assets/js/dashboard.js?v=2026-10-29"></script>
   </body>
 </html>

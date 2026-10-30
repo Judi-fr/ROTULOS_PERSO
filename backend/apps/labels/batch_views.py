@@ -747,6 +747,11 @@ class LabelBatchView(APIView):
             if notes:
                 document.error_message = " ".join(notes)
             document.save()
+            # Para el panel: estos pedidos ya tienen rótulo (los saltados por
+            # error también se marcan; su rótulo se reintenta a mano).
+            from apps.orders.print_marks import mark_labels_printed
+
+            mark_labels_printed(item.pk if isinstance(item, Order) else item.order_id for item in items)
         except ValidationError as exc:
             # P.ej. "el rótulo no entra en una hoja A4": un error de
             # generación, no de la solicitud (el Document YA existe) — se

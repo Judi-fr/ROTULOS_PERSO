@@ -73,4 +73,7 @@ def bundle(shipments):
             raise CarrierError(f"{provider.name} devolvió una etiqueta ilegible para el envío {shipment.tracking_number}.") from exc
     buffer = io.BytesIO()
     writer.write(buffer)
+    from apps.orders.print_marks import mark_labels_printed
+
+    mark_labels_printed(shipment.order_id for shipment in shipments)
     return buffer.getvalue()
