@@ -47,6 +47,11 @@ source venv/bin/activate
   (`demo@rotulos.local`, password in the command, `--email`/`--password`), an Empretienda store (the only platform
   that calls no API) with sender and rates, its orders in every status through `upsert_store_order`, two manual
   orders and an own address. Idempotent; refuses with `DEBUG` off unless `--force`.
+- End-to-end check of the merchant's flow: `python manage.py test apps.orders.tests.test_commercial_flow` — only
+  through the API, like the frontend: register → create business → account data → Empretienda store + spreadsheet
+  import → label batch PDF → Andreani account (simulated) → quote + dispatch → rótulo + carrier label → pickup
+  manifest → tracking to delivered → export + team activity. Run it before a test round with clients or a deploy:
+  it catches breaks in the seams between apps that each app's own tests don't.
 - ERD: `python manage.py erd_mermaid --output ../docs/erd.md` (`apps/accounts/management/commands/`) — the
   Mermaid `erDiagram` of every `apps.*` model, generated from the loaded models so it can't drift; the Django
   models they point to (`User`, `Group`) appear with only their PK. Regenerate it when models change.
@@ -185,6 +190,11 @@ not exposed at all, unlike the dev compose.
   files are never rewritten. Local dev (no nginx) can still show a stale file: hard reload.
 - Media (`MEDIA_ROOT`) is a real volume: the generated batch PDFs and store logos live on disk, so a
   platform with an ephemeral filesystem would lose them on every redeploy.
+- **Backups (2026-10-29)**: `scripts/backup.sh [label]` (database `pg_dump -Fc` + the whole media folder,
+  verified before keeping, rotation `BACKUP_KEEP`, optional copy to `BACKUP_S3_URI`) and `scripts/restore.sh
+  <dump> [<media>]` (validates, asks to type RESTAURAR, backs up the current state first, stops api/worker/monitor,
+  restores in one transaction). Run on the server from the repo root; `backups/` is gitignored. Details and the
+  cron line in `docs/despliegue.md` → "Backups".
 - The images use fully-qualified names (`docker.io/library/...`) so Podman resolves them too. Note the
   laptop has `docker-compose` 1.29.2, which is too old for these files (and for `backend/docker-compose.yml`
   as well) — Compose v2 (`docker compose`, no hyphen) is required.

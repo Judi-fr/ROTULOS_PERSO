@@ -220,6 +220,18 @@ class DispatchManifestTests(BulkTestBase):
         response = self.post(self.URL, {"order_ids": [self.foreign.pk]})
         self.assertEqual(response.status_code, 400)
 
+    def test_el_seguimiento_entra_entero_en_un_renglon(self):
+        # El chofer lo lee y lo compara con el bulto: partido en dos renglones se
+        # confunde con el número de bultos de la columna de al lado. 19 dígitos
+        # es el de OCA, el más largo de los transportistas con API.
+        from pypdf import PdfReader
+
+        self.order_a.tracking_number = "3000012345678901234"
+        self.order_a.save()
+        response = self.post(self.URL, {"order_ids": [self.order_a.pk]})
+        text = PdfReader(io.BytesIO(response.content)).pages[0].extract_text()
+        self.assertIn("3000012345678901234", text.splitlines())
+
 
 def _csv_file(rows, name="seguimientos.csv"):
     buffer = io.StringIO()

@@ -138,9 +138,9 @@ def render_manifest_pdf(orders, user, carrier=""):
             ]
         )
 
-    # Suman 18 cm (A4 menos márgenes); "Bultos", "Seguimiento" y un
-    # número de fila de tres cifras no se parten.
-    widths = [0.9, 2.3, 3.0, 3.3, 2.9, 1.5, 1.3, 2.8]
+    # Suman 18 cm (A4 menos márgenes); "Bultos", un número de fila de tres
+    # cifras y un seguimiento de 19 dígitos (OCA, el más largo) no se parten.
+    widths = [0.9, 2.2, 2.7, 3.0, 2.7, 1.5, 1.3, 3.7]
     table = Table(rows, colWidths=[w * cm for w in widths], repeatRows=1)
     table.setStyle(
         TableStyle(

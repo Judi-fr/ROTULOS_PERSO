@@ -43,9 +43,8 @@ hay que crear y cómo quedaría el pipeline el día que se haga.
 
 Orden en el servidor, en una etapa `Deploy` que depende de `Image`:
 
-1. **Backup de la base** antes de tocar nada:
-   `docker compose exec -T db pg_dump -U rotulos -Fc rotulos > backups/<versión>.dump`.
-   Guardar los últimos 10.
+1. **Backup de la base y de media** antes de tocar nada:
+   `scripts/backup.sh antes-de-<versión>` (ver "Backups" más abajo).
 2. **Traer la versión nueva**: con registro, `docker compose pull`. Sin
    registro, copiar el código de ese commit y `docker compose build`.
 3. **Migrar en un paso aparte**, antes de reemplazar la API:
@@ -74,12 +73,41 @@ Orden en el servidor, en una etapa `Deploy` que depende de `Image`:
   una columna va en dos releases. Así un rollback de código casi nunca
   necesita tocar la base.
 - Si una migración no se puede deshacer y rompe datos: restaurar el backup
-  del paso 1 (`pg_restore --clean`). Se pierde lo que entró entre el deploy y
+  del paso 1 con `scripts/restore.sh <db-....dump> [<media-....tar.gz>]`. Se pierde lo que entró entre el deploy y
   la restauración (pedidos de las tiendas incluidos). Por eso es el último
   recurso, y conviene volver a sincronizar las tiendas después (la
   reconciliación de WooCommerce/VTEX/Magento lo hace sola; en Tiendanube y
   Shopify hay que reimportar los pedidos de la tienda).
 - Probar el rollback una vez en `stage` antes de necesitarlo en `prod`.
+
+## Backups (hecho 2026-10-29)
+
+`scripts/backup.sh` y `scripts/restore.sh`, en la raíz del repo, se corren en el
+servidor desde esa carpeta (usan `docker-compose.prod.yml`).
+
+- **Qué guarda**: la base (`pg_dump -Fc`, `db-<fecha>[-etiqueta].dump`) y la
+  carpeta media entera (`media-<fecha>[-etiqueta].tar.gz`: PDFs de lotes,
+  logos, imágenes de plantillas). Un backup se escribe como `.partial`, se
+  verifica (`pg_restore --list`, `gzip -t`) y recién ahí toma su nombre.
+  Permisos `600`: tienen datos de compradores.
+- **Dónde**: `backups/` (o `BACKUP_DIR`), con los últimos `BACKUP_KEEP` (14)
+  de cada tipo. Con `BACKUP_S3_URI` además se copian a S3 (hace falta el `aws`
+  CLI con permiso de escritura en el bucket; la retención allá, con una regla
+  de ciclo de vida). **Un backup que solo vive en el mismo disco no sirve si se
+  pierde la máquina**: en AWS, S3 o snapshots del volumen EBS.
+- **Cuándo**: todos los días por cron
+  (`0 4 * * * cd /ruta/al/repo && scripts/backup.sh >> backups/backup.log 2>&1`)
+  y antes de cada deploy con una etiqueta.
+- **Restaurar**: `scripts/restore.sh <dump> [<media>]` valida los archivos,
+  pide escribir `RESTAURAR`, hace un backup `antes-de-restaurar` de lo que hay,
+  para API/worker/monitor, restaura en una sola transacción y los vuelve a
+  levantar (también si falla).
+- Probado el 2026-10-29 contra un Postgres 16 real con los datos de
+  `seed_demo` (backup, rotación, restaurar después de borrar pedidos y archivos,
+  archivo inválido, cancelar). No probado todavía en el servidor con
+  `docker compose` de verdad: hacerlo una vez en cuanto esté.
+- Si la base termina en RDS, `pg_dump` deja de correr en el contenedor `db`:
+  hay que adaptar el script (o usar los snapshots automáticos de RDS).
 
 ## Lo que ya está y no hay que rehacer
 
