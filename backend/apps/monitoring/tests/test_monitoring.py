@@ -266,6 +266,9 @@ class WorkerTickTests(MonitoringTestMixin, TestCase):
         self.assertTrue(Heartbeat.objects.filter(name="monitor").exists())
 
 
+# Los destinatarios por defecto (los admins), no los del .env local: con
+# MONITORING_ALERT_EMAILS cargado ahí, estos tests fallaban solo en esa máquina.
+@override_settings(MONITORING_ALERT_EMAILS=[])
 class MonitoringApiTests(MonitoringTestMixin, APITestCase):
     def test_status_panel_is_admin_only_and_has_the_detail(self):
         merchant = User.objects.create_user(username="tienda@example.com", email="tienda@example.com", password="Clave123!")

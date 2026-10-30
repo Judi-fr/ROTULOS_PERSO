@@ -195,3 +195,10 @@
 .carrier-checkout[open] > .carrier-checkout-summary {
   margin-bottom: 8px;
 }
+
+/* transportista.html: "Quitar" de cada servicio, al pie de la fila y de su
+   tamaño (en la fila flex se estiraba a todo el alto: 63 px). */
+.contract-row .btn-danger-text {
+  align-self: flex-end;
+  margin-bottom: 4px;
+}

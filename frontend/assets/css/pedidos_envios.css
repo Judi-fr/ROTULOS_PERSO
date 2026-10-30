@@ -146,9 +146,18 @@
   align-items: center;
 }
 
+/* Sobre la barra oscura: sin el fondo blanco de .btn-outline (ui.css), que
+   dejaba "Imprimir" y "Planilla de retiro" en blanco sobre blanco. */
 .selection-bar .btn-outline {
+  background: transparent;
   color: var(--n-0);
   border-color: rgba(255, 255, 255, 0.4);
+}
+
+.selection-bar .btn-outline:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.7);
+  color: var(--n-0);
 }
 
 .btn-link {

@@ -1119,8 +1119,24 @@ Three-step flow (`apps/processing/urls.py` docstring):
    `schema.py`) asking for element positions as percentages, converts them to mm, and stores the result as
    a reviewable `proposal` JSON on the new `LabelImport` row (`processing.import`; `POST
    /label-imports/<id>/retry/` re-reads the same file).
-3. `POST /api/v1/labels/element-layouts/` — the user reviews the proposal and saves it as real
-   `ElementLayout`/`LayoutElement` rows. The agent never writes to `apps.labels` directly.
+3. The user reviews the proposal and then, **primary since 2026-10-30, "Abrir en el editor de rótulos"**:
+   `GET /api/v1/processing/label-imports/<id>/template/` (`LabelImportViewSet.template`, no import throttle, 400
+   without a proposal) translates it with `processing/to_template.proposal_to_template` into a System 1
+   `LabelTemplate` design `{name, width_cm, height_cm, design, omitted}`, and `editor_rotulos.html?nueva=plantilla
+   &importacion=<id>[&ancho=&alto=]` (cm, the sizes corrected in the review win) opens it as a new template, saved
+   with "Guardar plantilla" in the current business. Before this, an imported label ended as an `ElementLayout`,
+   which no order-printing flow uses. Mapping: text variables → their field with `"text": "{{field}}"` (only the
+   datum: the photo's own labels come as fixed texts), `codigo_postal`→`cp`, `localidad_provincia`→`localidad`,
+   `numero_pedido`→`pedido`; `numero_seguimiento` → a fixed text `{{tracking}}`; `texto_estatico` → `texts`;
+   `logo_empresa` → `logo`; `qr`/`qr_envio` → `qr` (size = smaller side); `codigo_barras` → `barcode`; `linea` →
+   line shape (horizontal or vertical), `recuadro` → rect shape; everything clamped to the template limits;
+   duplicates and variables the editor doesn't know go to `omitted` (shown under the editor title). In that mode
+   the data fields the photo didn't have are **hidden** (`applyFields(design, {hideMissing: true})`) and a hidden
+   field is not saved (`collectFields`, qr/barcode included); "Mostrar los datos ocultos" brings them back. The
+   catalog got `codigo_barras` and `numero_seguimiento` (migration `labels/0016`).
+   Secondary: `POST /api/v1/labels/element-layouts/` ("Guardar como diseño por elementos", kept on purpose) saves
+   it as `ElementLayout`/`LayoutElement` rows. The agent never writes to `apps.labels` directly. Tests:
+   `apps/processing/tests/test_template_from_import.py`.
 
 `apps.documents.Document` is a different model: the generated *output* of a label batch (PDF/ZIP), created
 by `apps.labels.batch_views.LabelBatchView`, with `status` (processing/ready/failed), `error_message`,

@@ -12,6 +12,7 @@ from apps.audit.services import record
 from . import agent
 from .models import LabelImport, LabelImportStatus
 from .serializers import LabelImportSerializer
+from .to_template import proposal_to_template
 
 
 class LabelImportThrottle(UserRateThrottle):
@@ -33,8 +34,9 @@ class LabelImportViewSet(
     """Lectura de un rótulo desde una foto o un PDF ya subido.
 
     ``POST`` con ``{"uploaded_file": <id>}`` procesa el archivo y devuelve la
-    plantilla **propuesta**. No la guarda: el usuario la revisa en el editor y
-    después la manda él mismo a ``POST /api/v1/labels/element-layouts/``.
+    plantilla **propuesta**. No la guarda: el usuario la revisa y la abre en
+    el editor de rótulos (``GET <id>/template/``, una plantilla nueva) o la
+    manda él mismo a ``POST /api/v1/labels/element-layouts/``.
 
     No hay ``update`` ni ``destroy``: una lectura es un hecho registrado, no
     algo que se edite.
@@ -75,6 +77,19 @@ class LabelImportViewSet(
             else status.HTTP_502_BAD_GATEWAY
         )
         return Response(output.data, status=code)
+
+    # Sin el límite de importaciones: no llama al modelo, solo traduce lo leído.
+    @action(detail=True, methods=["get"], throttle_classes=[])
+    def template(self, request, pk=None):
+        """La lectura como plantilla del editor de rótulos (``to_template``),
+        para abrirla en editor_rotulos.html. No guarda nada."""
+        label_import = self.get_object()
+        if not label_import.proposal:
+            return Response(
+                {"detail": "Esta importación todavía no tiene una lectura para abrir."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(proposal_to_template(label_import.proposal))
 
     @action(detail=True, methods=["post"])
     def retry(self, request, pk=None):

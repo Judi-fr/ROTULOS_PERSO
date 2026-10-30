@@ -29,6 +29,7 @@ const CATEGORY_LABELS = {
   perfil: "PERFIL PROPIO",
   users: "USUARIOS",
   orders: "PEDIDOS Y ENVÍOS",
+  stats: "ESTADÍSTICAS DEL COMERCIO",
   labels: "RÓTULOS",
   plantillas: "PLANTILLAS Y VARIABLES",
   documents: "DOCUMENTOS",
@@ -46,6 +47,7 @@ const CATEGORY_LABELS = {
 const CATEGORY_ORDER = [
   "perfil",
   "orders",
+  "stats",
   "labels",
   "plantillas",
   "documents",
@@ -68,6 +70,7 @@ const CATEGORY_BY_PREFIX = [
   ["users.me.", "perfil"],
   ["plantillas.", "plantillas"],
   ["variables.", "plantillas"],
+  ["stats.", "stats"],
 ];
 
 const MANAGEABLE_ROLE_KEYS = new Set(ROLE_DEFINITIONS.map((role) => role.key));

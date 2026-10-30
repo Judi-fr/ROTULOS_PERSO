@@ -97,7 +97,7 @@
         <!-- Paso 3: guardar -->
         <section class="profile-card" id="saveCard" style="display: none">
           <div class="profile-card-title">
-            <span>3. Guardala como plantilla</span>
+            <span>3. Llevala al editor</span>
           </div>
           <div class="profile-card-body">
             <form id="saveForm" class="save-form">
@@ -123,10 +123,19 @@
                 Si el rótulo real mide distinto, corregí las medidas acá: las
                 posiciones se reacomodan solas porque son proporcionales.
               </span>
+              <p class="field-hint">
+                «Abrir en el editor de rótulos» la convierte en una plantilla
+                nueva para ajustarla, guardarla e imprimir tus pedidos con ella.
+              </p>
 
               <div class="form-actions">
-                <button type="submit" class="btn btn-primary btn-small" id="saveBtn">
-                  Guardar plantilla
+                <button type="button" class="btn btn-primary btn-small" id="openEditorBtn">
+                  Abrir en el editor de rótulos
+                </button>
+                <!-- El formato de antes (diseño por elementos, editor_layout.html):
+                     ningún flujo de impresión de pedidos lo usa todavía. -->
+                <button type="submit" class="btn btn-outline btn-small" id="saveBtn">
+                  Guardar como diseño por elementos
                 </button>
                 <button type="button" class="btn btn-outline btn-small" id="startOverBtn">
                   Empezar de nuevo

@@ -358,6 +358,10 @@
         gap: 10px 12px;
         align-items: end;
       }
+      /* Botones de dos palabras ("Restablecer posiciones") en una sola línea. */
+      .tool-group > button {
+        white-space: nowrap;
+      }
       .tool-group label {
         display: flex;
         flex-direction: column;
@@ -1618,6 +1622,7 @@
               <button id="uploadLogoBtn">Subir logo</button>
               <input type="file" id="logoInput" accept="image/*" hidden />
               <button id="resetBtn">Restablecer posiciones</button>
+              <button id="showHiddenFieldsBtn" hidden>Mostrar los datos ocultos</button>
             </div>
           </section>
 
@@ -3108,12 +3113,24 @@
       // canvas: posiciones + textos de los campos de texto, y la config de
       // qr/barcode. Compartido entre "cargar rótulo existente" y "cargar
       // plantilla" para no duplicar el mismo mapeo dos veces.
-      function applyFields(fields) {
+      // Datos que una lectura de foto puede no traer: se ocultan en vez de
+      // quedar encimados en su lugar por defecto, y no se guardan mientras
+      // estén ocultos (collectFields). "Mostrar los datos ocultos" los trae.
+      const HIDEABLE_FIELDS = [...TEXT_FIELDS, "qr", "barcode"];
+
+      function applyFields(fields, { hideMissing = false } = {}) {
         if (!fields) return;
         // Un diseño sin "logo" (los de la galería llevan el logo como imagen,
         // fase 5) no muestra el campo viejo: guardarlo lo agregaba y el logo
         // salía dos veces. "Subir logo" lo vuelve a mostrar.
         document.getElementById("logoField").hidden = !fields.logo;
+        if (hideMissing) {
+          HIDEABLE_FIELDS.forEach((key) => {
+            const el = document.querySelector(`.field[data-field="${key}"]`);
+            if (el) el.hidden = !fields[key];
+          });
+        }
+        syncHiddenFieldsButton();
         Object.entries(fields).forEach(([key, val]) => {
           const el = document.querySelector(`.field[data-field="${key}"]`);
           if (!el) return;
@@ -3177,9 +3194,53 @@
         if (params.get("nueva") !== "plantilla") offerTemplateVersion(template);
       }
 
+      function syncHiddenFieldsButton() {
+        const anyHidden = HIDEABLE_FIELDS.some((key) => document.querySelector(`.field[data-field="${key}"]`)?.hidden);
+        document.getElementById("showHiddenFieldsBtn").hidden = !anyHidden;
+      }
+
+      document.getElementById("showHiddenFieldsBtn").addEventListener("click", () => {
+        HIDEABLE_FIELDS.forEach((key) => {
+          const el = document.querySelector(`.field[data-field="${key}"]`);
+          if (el) el.hidden = false;
+        });
+        syncHiddenFieldsButton();
+        applyRenderMetrics();
+      });
+
+      // --- Abrir la lectura de una foto (importar_rotulo.html,
+      // ?nueva=plantilla&importacion=<id>): el backend la traduce a plantilla
+      // (GET label-imports/<id>/template/, apps/processing/to_template.py) y
+      // acá se abre como plantilla nueva, sin guardar nada todavía.
+      async function loadFromImport(importId) {
+        try {
+          const response = await window.Auth.apiFetch(
+            `${window.APP_CONFIG.API_BASE}/processing/label-imports/${encodeURIComponent(importId)}/template/`
+          );
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.detail || "");
+          // Las medidas que se corrigieron en la revisión ganan a las leídas.
+          const width = Number(params.get("ancho")) || data.width_cm;
+          const height = Number(params.get("alto")) || data.height_cm;
+          document.getElementById("widthCm").value = width;
+          document.getElementById("heightCm").value = height;
+          updateLabelSize();
+          applyFields(data.design, { hideMissing: true });
+          nombreInput.value = data.name || "";
+          const omitted = (data.omitted || []).map((item) => `${item.label} (${item.reason})`);
+          document.querySelector(".editor-heading .subtitle").textContent =
+            "Esta plantilla salió de la foto de un rótulo: revisá posiciones y tamaños antes de guardarla." +
+            (omitted.length ? ` Quedó afuera: ${omitted.join(", ")}.` : "");
+        } catch (err) {
+          if (err && err.isSessionExpired) return;
+          showStatus(err.message || "No se pudo abrir la lectura de la foto. Empezando en blanco.");
+        }
+      }
+
       // --- Cargar rótulo existente si venimos con ?id= ---
       async function loadExisting() {
         if (!editingId) {
+          if (params.get("importacion")) await loadFromImport(params.get("importacion"));
           if (currentTemplateId) await loadFromTemplate(currentTemplateId);
           if (currentOrderId) await prefillFromOrder(currentOrderId);
         } else {
@@ -3354,7 +3415,7 @@
           // qr/barcode no son texto: se arman aparte, con su config
           // (tamaño/simbología/data) en vez de leer el DOM.
           if (key === "qr" || key === "barcode") return;
-          if (key === "logo" && el.hidden) return;
+          if (el.hidden) return;
           fields[key] = fieldPosition(el);
           if (TEXT_FIELDS.includes(key)) {
             // Los estilos que el editor todavía no edita (font_size, bold,
@@ -3370,12 +3431,12 @@
             fields[key] = { ...keep, ...fields[key], text: flatText };
           }
         });
-        fields.qr = {
+        if (!document.getElementById("qrField").hidden) fields.qr = {
           ...fieldPosition(document.getElementById("qrField")),
           size: codeConfig.qr.size,
           data: codeConfig.qr.data,
         };
-        fields.barcode = {
+        if (!document.getElementById("barcodeField").hidden) fields.barcode = {
           ...fieldPosition(document.getElementById("barcodeField")),
           width: codeConfig.barcode.width,
           height: codeConfig.barcode.height,

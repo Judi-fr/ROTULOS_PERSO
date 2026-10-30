@@ -28,7 +28,9 @@ def store(owner, tag, **extra):
     )
 
 
-@override_settings(NOTICES_MAIL_RETRY_SECONDS=600)
+# NOTICES_MAIL_ENABLED fijo: el .env local lo apaga para no escribirles a los
+# dueños de la base local, y estos tests prueban justamente el mail.
+@override_settings(NOTICES_MAIL_RETRY_SECONDS=600, NOTICES_MAIL_ENABLED=True)
 class NoticeTests(APITestCase):
     def setUp(self):
         self.owner = make_user("owner@example.com")

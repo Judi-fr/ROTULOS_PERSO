@@ -6,7 +6,9 @@
 //
 //   1. POST /documents/documentos/      sube la foto
 //   2. POST /processing/label-imports/  el modelo la lee -> propuesta
-//   3. POST /labels/element-layouts/    el usuario guarda lo que revisó
+//   3. abrirla en el editor de rótulos (GET label-imports/<id>/template/,
+//      lo pide editor_rotulos.html?importacion=<id>) o guardarla como diseño
+//      por elementos (POST /labels/element-layouts/)
 //
 // El paso 2 NO guarda ninguna plantilla: devuelve una propuesta y nada más.
 // Que el paso 3 sea una acción explícita del usuario es la garantía de que
@@ -283,7 +285,7 @@ saveForm.addEventListener("submit", async (event) => {
     if (!response.ok) {
       throw new Error(getErrorMessage(data, "No se pudo guardar la plantilla."));
     }
-    showMessage("Plantilla guardada. Ya la podés usar para imprimir.", "success");
+    showMessage("Diseño por elementos guardado: lo encontrás en el editor de diseños.", "success");
     resetAll();
   } catch (err) {
     if (err.isSessionExpired) return;
@@ -292,6 +294,21 @@ saveForm.addEventListener("submit", async (event) => {
   } finally {
     saveBtn.disabled = false;
   }
+});
+
+// "Abrir en el editor de rótulos": el editor pide la lectura traducida a
+// plantilla (GET label-imports/<id>/template/) y la abre como plantilla nueva.
+// Las medidas corregidas acá viajan en la URL (en cm, como las usa el editor).
+document.getElementById("openEditorBtn").addEventListener("click", () => {
+  if (!proposal || !importId) return;
+  const params = new URLSearchParams({ nueva: "plantilla", importacion: String(importId) });
+  const width = Number(widthInput.value);
+  const height = Number(heightInput.value);
+  if (width > 0 && height > 0) {
+    params.set("ancho", String(Math.round(width) / 10));
+    params.set("alto", String(Math.round(height) / 10));
+  }
+  window.location.href = `editor_rotulos.html?${params.toString()}`;
 });
 
 function resetAll() {
