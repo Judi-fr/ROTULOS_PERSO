@@ -1,4 +1,4 @@
-// Baja del comercio (organizacion.html, POST /team/close/): solo el dueño.
+// Baja del comercio (Mi comercio → Datos del comercio, equipo.html#datos; POST /team/close/): solo el dueño.
 // Nada se borra en el backend; la persona sigue con sus otros comercios (o
 // sin ninguno: entonces va a la pantalla para crear uno o sumarse).
 (function () {

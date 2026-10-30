@@ -1,10 +1,11 @@
-// Datos de la cuenta (organizacion.html, GET/PATCH /auth/me/account/): los
+// Datos del comercio (pestaña de Mi comercio, equipo.html#datos; hasta el
+// 2026-10-30 en Mi cuenta. GET/PATCH /auth/me/account/): los
 // datos fiscales, el remitente y logo por defecto de los rótulos y las
 // preferencias. El backend valida (CUIT, que la plantilla y el transportista
 // existan); acá se arma el formulario y se manda.
 //
-// Comparte la página con perfil.js ("Mi cuenta"): todo va en su propio ámbito
-// para que sus constantes (API_BASE, apiFetch) no choquen con las de aquel.
+// Comparte la página con las otras pestañas: todo va en su propio ámbito para
+// que sus constantes (API_BASE, apiFetch) no choquen con las de equipo.js.
 (function () {
   const API_BASE = window.APP_CONFIG.API_BASE;
   const ACCOUNT_URL = `${API_BASE}/auth/me/account/`;

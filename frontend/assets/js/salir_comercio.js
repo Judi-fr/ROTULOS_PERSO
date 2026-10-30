@@ -1,4 +1,4 @@
-// Salir del comercio (organizacion.html, POST /team/leave/): solo un empleado.
+// Salir del comercio (Mi comercio → Datos del comercio, equipo.html#datos; POST /team/leave/): solo un empleado.
 // El dueño no puede irse así: pasa la titularidad o da de baja el comercio.
 // Lo que hizo queda en el comercio; la pestaña sigue en otro de sus
 // comercios, o va a la pantalla para crear uno o sumarse.

@@ -85,6 +85,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "total_weight_kg",
             "items",
             "status_events",
+            "labels_printed_at",
             "created_at",
             "updated_at",
         ]
@@ -104,6 +105,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "package_count",
             "total_weight_kg",
             "items",
+            "labels_printed_at",
             "created_at",
             "updated_at",
         ]

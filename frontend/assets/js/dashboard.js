@@ -147,10 +147,12 @@ const IN_PAGE_TOOLS = [
   { label: "Nuevo pedido a mano", url: "pedidos.html#nuevo", section: "Pedidos", perm: "orders.create_manual" },
   { label: "Mis direcciones", url: "direcciones.html", section: "Pedidos", perm: "addresses.manage" },
   { label: "Cambiar mi contraseña", url: "organizacion.html#perfil", section: "Mi cuenta", perm: null },
-  { label: "Datos del comercio", url: "organizacion.html#comercio", section: "Mi cuenta", perm: null },
+  { label: "Datos del comercio", url: "equipo.html#datos", section: "Mi comercio", perm: null },
+  { label: "Estadísticas del comercio", url: "equipo.html#estadisticas", section: "Mi comercio", perm: "stats.dispatch" },
   { label: "Crear o sumarme a otro comercio", url: "comercio_inicio.html", section: "Mi cuenta", perm: null },
-  { label: "Código para sumarse al comercio", url: "equipo.html#miembros", section: "Mi cuenta", perm: "team.manage" },
-  { label: "Salir de este comercio", url: "organizacion.html#leaveTeamSection", section: "Mi cuenta", perm: null },
+  { label: "Código para sumarse al comercio", url: "equipo.html#miembros", section: "Mi comercio", perm: "team.manage" },
+  { label: "Salir de este comercio", url: "equipo.html#datos", section: "Mi comercio", perm: null },
+  { label: "Dar de baja el comercio", url: "equipo.html#datos", section: "Mi comercio", perm: "team.manage" },
   { label: "Preguntas frecuentes", url: "ayuda.html#preguntas", section: "Ayuda", perm: null },
 ];
 
@@ -296,19 +298,36 @@ async function fetchJson(url) {
 const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
 
 // Cada número lleva a la pantalla donde se resuelve.
+// Cada número abre su lista ya filtrada: "Para imprimir" con esos pedidos
+// tildados (print_labels.js) y los demás como una vista de Mis pedidos
+// (pedidos.js, ORDER_VIEWS), con los mismos filtros que cuenta el resumen.
+const TO_PRINT_URL = "imprimir_rotulos.html?rotulo=sin_imprimir";
+const TO_DISPATCH_URL = "pedidos.html?vista=para_despachar";
+const ON_THE_WAY_URL = "pedidos.html?vista=en_camino";
+const DELAYED_URL = "pedidos.html?vista=demorados";
+
+// El panel se actualiza solo cada minuto mientras la pestaña está a la vista
+// (y al volver a ella si pasó más de eso); un número que cambió se resalta.
+const TODAY_REFRESH_MS = 60 * 1000;
+let todayLoadedAt = 0;
+let lastStats = null;
+
 function renderTodayStats(summary, noticeCount) {
   const box = document.getElementById("todayStats");
   const problems = summary.shipment_problems + noticeCount;
   const stats = [
-    { label: "Para imprimir", value: summary.to_print, href: "imprimir_rotulos.html" },
-    { label: "Para despachar", value: summary.to_dispatch, href: "pedidos.html" },
-    { label: "En camino", value: summary.on_the_way, href: "pedidos.html" },
-    { label: "Con problemas", value: problems, href: noticeCount ? "notificaciones.html" : "pedidos.html", alert: problems > 0 },
+    { key: "to_print", label: "Para imprimir", value: summary.to_print, href: TO_PRINT_URL },
+    { key: "to_dispatch", label: "Para despachar", value: summary.to_dispatch, href: TO_DISPATCH_URL },
+    { key: "on_the_way", label: "En camino", value: summary.on_the_way, href: ON_THE_WAY_URL },
+    { key: "problems", label: "Con problemas", value: problems, href: noticeCount ? "notificaciones.html" : "pedidos.html", alert: problems > 0 },
   ];
+  const previous = lastStats;
+  lastStats = Object.fromEntries(stats.map((stat) => [stat.key, Number(stat.value) || 0]));
   box.replaceChildren(
     ...stats.map((stat) => {
       const link = document.createElement("a");
-      link.className = `today-stat${stat.alert ? " is-alert" : ""}`;
+      const changed = previous && previous[stat.key] !== lastStats[stat.key];
+      link.className = `today-stat${stat.alert ? " is-alert" : ""}${changed ? " is-changed" : ""}`;
       link.href = stat.href;
       link.innerHTML = `<span class="today-stat-label">${escapeHtml(stat.label)}</span>
         <span class="today-stat-value">${Number(stat.value) || 0}</span>`;
@@ -318,14 +337,29 @@ function renderTodayStats(summary, noticeCount) {
   box.hidden = false;
 }
 
-function todoItem({ icon, text, tone = "", action = "", href = "", primary = false, onHide = null }) {
+function todoItem({ icon, text, tone = "", action = "", href = "", primary = false, onHide = null, stores = [] }) {
   const item = document.createElement("li");
   item.className = `todo-item${tone ? ` is-${tone}` : ""}`;
   item.innerHTML = `<i class="ph ph-${icon}" aria-hidden="true"></i>`;
+  const body = document.createElement("span");
+  body.className = "todo-body";
   const label = document.createElement("span");
   label.className = "todo-text";
   label.textContent = text;
-  item.appendChild(label);
+  body.appendChild(label);
+  // Con varias tiendas, cuántos son de cada una; cada tienda abre su lista.
+  if (stores.length) {
+    const byStore = document.createElement("span");
+    byStore.className = "todo-stores";
+    stores.forEach((store) => {
+      const link = document.createElement("a");
+      link.href = store.href;
+      link.textContent = `${store.name} ${store.count}`;
+      byStore.appendChild(link);
+    });
+    body.appendChild(byStore);
+  }
+  item.appendChild(body);
   if (action && href) {
     const link = document.createElement("a");
     link.className = `btn btn-small ${primary ? "btn-primary" : "btn-outline"}`;
@@ -366,15 +400,29 @@ async function loadToday() {
     fetchJson(NOTICES_URL),
   ]);
   const openNotices = Array.isArray(notices) ? notices : [];
-  if (summary) renderTodayStats(summary, openNotices.length);
+  if (summary) {
+    renderTodayStats(summary, openNotices.length);
+    window.DashboardWeek.render(summary.week);
+  }
 
   const items = [];
+  // Primero lo demorado: es lo que el comprador ya está esperando.
+  if (summary && summary.delayed) {
+    items.push({
+      icon: "clock-countdown",
+      tone: "warning",
+      text: `${plural(summary.delayed, "pedido espera", "pedidos esperan")} hace más de ${summary.delayed_days} días`,
+      action: "Ver",
+      href: DELAYED_URL,
+    });
+  }
   if (summary && summary.to_print) {
     items.push({
       icon: "printer",
       text: `${plural(summary.to_print, "pedido sin rótulo", "pedidos sin rótulo")}`,
       action: hasPermission("labels.batch") ? "Imprimir" : "",
-      href: "imprimir_rotulos.html",
+      href: TO_PRINT_URL,
+      stores: storeBreakdown(summary, "to_print", TO_PRINT_URL),
     });
   }
   if (summary && summary.to_dispatch) {
@@ -382,7 +430,8 @@ async function loadToday() {
       icon: "truck",
       text: `${plural(summary.to_dispatch, "pedido con rótulo, listo", "pedidos con rótulo, listos")} para despachar`,
       action: hasPermission("orders.dispatch") ? "Despachar" : "",
-      href: "pedidos.html",
+      href: TO_DISPATCH_URL,
+      stores: storeBreakdown(summary, "to_dispatch", TO_DISPATCH_URL),
     });
   }
   if (summary && summary.shipment_problems) {
@@ -414,7 +463,42 @@ async function loadToday() {
     list.appendChild(todoItem({ icon: "check-circle", tone: "done", text: "Todo al día: no hay pedidos esperando ni avisos." }));
   }
   document.getElementById("todoBox").hidden = false;
+  todayLoadedAt = Date.now();
+  renderTodayUpdated();
 }
+
+// Desglose por tienda de un número del día (summary.by_store): solo cuando
+// los pedidos vienen de más de una tienda, cada una con su lista (&tienda=).
+function storeBreakdown(summary, key, url) {
+  const rows = (summary.by_store || []).filter((row) => row[key] > 0);
+  if (rows.length < 2) return [];
+  return rows.map((row) => ({
+    name: row.name,
+    count: row[key],
+    href: `${url}&tienda=${encodeURIComponent(row.store)}`,
+  }));
+}
+
+function renderTodayUpdated() {
+  const label = document.getElementById("todayUpdated");
+  if (!label || !todayLoadedAt) return;
+  const minutes = Math.floor((Date.now() - todayLoadedAt) / 60000);
+  label.textContent = minutes < 1 ? "Actualizado recién" : `Actualizado hace ${minutes} min`;
+}
+
+async function refreshToday() {
+  if (document.visibilityState !== "visible" || !todayLoadedAt) return;
+  if (Date.now() - todayLoadedAt < TODAY_REFRESH_MS - 1000) return;
+  try {
+    await loadToday();
+  } catch (err) {
+    /* sin conexión un momento: se reintenta en la próxima vuelta */
+  }
+}
+
+setInterval(refreshToday, TODAY_REFRESH_MS);
+setInterval(renderTodayUpdated, 15 * 1000);
+document.addEventListener("visibilitychange", refreshToday);
 
 // ---------------------------------------------------------------------------
 // PRIMEROS PASOS: solo para el dueño de un comercio que no terminó de

@@ -71,23 +71,26 @@ def build_sections(user):
                 ("Rótulos de la tienda", "rotulos_tienda.html", "orders.view"),
             ],
         )
-    add(
-        "business", "Mi cuenta", "mdi mdi-account-group-outline", "organizacion.html",
-        "Tu perfil, los datos del comercio y tu equipo.",
-        # Perfil y datos del comercio son una sola página (organizacion.html,
-        # 2026-10-21). Quien maneja el equipo ve sus herramientas; el resto, un
-        # atajo a cada parte de la página (así la tarjeta no queda vacía).
-        [
-            ("Equipo", "equipo.html", "team.manage"),
-            ("Perfiles del equipo", "equipo.html#perfiles", "team.manage"),
-            ("Actividad", "equipo.html#actividad", "team.manage"),
-        ]
-        if can("team.manage")
-        else [
-            ("Tu perfil", "organizacion.html#perfil", None),
-            ("Datos del comercio", "organizacion.html#comercio", None),
+    # Mi comercio (antes "Mi cuenta" con el equipo, 2026-10-30): los datos del
+    # comercio, el equipo y las estadísticas, en pestañas de equipo.html. Mi
+    # cuenta (organizacion.html) queda solo para la persona, en el menú de su
+    # foto. Cada herramienta aparece con su permiso; alcanza uno de ellos.
+    business_links = [
+        ("Estadísticas", "equipo.html#estadisticas", ("stats.dispatch", "stats.carriers", "stats.buyers")),
+        ("Miembros y perfiles", "equipo.html#miembros", ("team.manage",)),
+        ("Actividad", "equipo.html#actividad", ("team.manage",)),
+    ]
+    business_links = [(label, url, None) for label, url, perms in business_links if any(can(key) for key in perms)]
+    if not business_links:
+        business_links = [
+            ("Datos del comercio", "equipo.html#datos", None),
+            ("Tu cuenta", "organizacion.html", None),
             ("Tu actividad", "mi_actividad.html", "users.me.view"),
-        ],
+        ]
+    add(
+        "business", "Mi comercio", "mdi mdi-account-group-outline", "equipo.html",
+        "Los datos de tu comercio, tu equipo y cómo le va.",
+        business_links,
     )
     add(
         "help", "Ayuda", "mdi mdi-lifebuoy", "ayuda.html", "Preguntas frecuentes, consultas a soporte y avisos.",
@@ -137,9 +140,8 @@ def onboarding(user):
         {
             "key": "account",
             "label": "Completá los datos del comercio",
-            # Al ancla: arriba de Mi cuenta está el perfil personal, y los datos
-            # del comercio quedan una pantalla y media más abajo.
-            "url": "organizacion.html#comercio",
+            # La pestaña Datos del comercio de Mi comercio.
+            "url": "equipo.html#datos",
             "done": bool(settings_row and (settings_row.sender_name or settings_row.legal_name)),
         },
         {

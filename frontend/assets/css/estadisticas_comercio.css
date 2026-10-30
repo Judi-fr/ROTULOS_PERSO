@@ -1,0 +1,210 @@
+/* Pestaña Estadísticas de Mi comercio (estadisticas_comercio.js). Tarjetas,
+   campos y botones vienen de ui.css + app.css; acá solo lo propio. */
+
+.stats-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 16px;
+}
+
+.stats-intro {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/* Período: un grupo de botones, el elegido en blanco sobre el gris. */
+.stats-period {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.stats-period-btn {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.stats-period-btn[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-xs);
+}
+
+.stats-period-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+#statsContent {
+  display: grid;
+  gap: 16px;
+  transition: opacity var(--speed) var(--ease);
+}
+
+/* Al cambiar el período se queda lo anterior, más tenue, hasta que llega lo nuevo. */
+#statsContent.is-loading {
+  opacity: 0.55;
+}
+
+.stats-card {
+  margin: 0;
+}
+
+.stats-help {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.stats-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.stats-foot {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.stats-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.stats-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+
+.stats-tile-label {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.stats-tile-value {
+  color: var(--ink);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-table-wrap {
+  overflow-x: auto;
+}
+
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.stats-table th,
+.stats-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-table thead th {
+  color: var(--muted);
+  font-weight: 600;
+  white-space: normal;
+  vertical-align: bottom;
+}
+
+.stats-table th:first-child {
+  text-align: left;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.stats-table thead th:first-child {
+  color: var(--muted);
+}
+
+.stats-table td.is-alert {
+  color: var(--danger-500);
+  font-weight: 600;
+}
+
+.stats-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px 32px;
+}
+
+.stats-subtitle {
+  margin: 0 0 10px;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+/* Barras horizontales de una serie: color de la app, punta redondeada,
+   el número al final de la barra en color de texto. */
+.stats-bars {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stats-bar-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 38%) 1fr;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--text-sm);
+}
+
+.stats-bar-name {
+  overflow: hidden;
+  color: var(--ink-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-bar-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.stats-bar {
+  height: 12px;
+  border-radius: 0 4px 4px 0;
+  background: var(--accent-500);
+}
+
+.stats-bar-value {
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

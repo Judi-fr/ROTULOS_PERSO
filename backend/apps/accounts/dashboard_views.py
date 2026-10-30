@@ -228,7 +228,7 @@ class DashboardView(APIView):
             )
         # El equipo del comercio y lo que hizo cada uno (apps/accounts/teams.py).
         if user_has_permission(user, "team.manage"):
-            menu.append({"key": "team", "label": "Mi equipo", "url": "equipo.html", "enabled": True})
+            menu.append({"key": "team", "label": "Mi comercio", "url": "equipo.html", "enabled": True})
             menu.append(
                 {
                     "key": "team_activity",
@@ -242,7 +242,7 @@ class DashboardView(APIView):
                 {"key": "profile", "label": "Mi perfil", "url": "perfil.html", "enabled": True},
                 # Datos del negocio (AccountSettings): fiscales, remitente y
                 # logo por defecto, preferencias.
-                {"key": "account_settings", "label": "Datos de la cuenta", "url": "organizacion.html", "enabled": True},
+                {"key": "account_settings", "label": "Datos del comercio", "url": "equipo.html#datos", "enabled": True},
                 {"key": "support", "label": "Ayuda / Soporte", "url": "ayuda.html", "enabled": True},
             ]
         )

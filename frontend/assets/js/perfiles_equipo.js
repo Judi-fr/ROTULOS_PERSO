@@ -69,6 +69,8 @@ function bootstrap() {
     window.location.replace("index.html");
     return;
   }
+  // Pestaña solo para quien maneja el equipo (data-perm en equipo.html).
+  if (!sessionHasPermission("team.manage")) return;
   load();
 }
 

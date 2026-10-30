@@ -66,10 +66,30 @@ def filter_orders(queryset, params):
                 {"status": f"Estado desconocido: {', '.join(unknown)}."}
             )
         queryset = queryset.filter(status__in=wanted)
+    # ?labels_printed=1|0 — con o sin el rótulo ya impreso
+    # (``Order.labels_printed_at``): lo que abren "Para despachar" y "Para
+    # imprimir" del panel.
+    printed = params.get("labels_printed")
+    if printed:
+        if printed not in ("0", "1"):
+            raise ValidationError({"labels_printed": "Debe ser 1 o 0."})
+        queryset = queryset.filter(labels_printed_at__isnull=printed == "0")
+    # ?older_than_days=N — los dados de alta hace más de N días (los
+    # "demorados" del panel; misma cuenta que ``summary_views``).
+    older = params.get("older_than_days")
+    if older:
+        if not older.isdigit():
+            raise ValidationError({"older_than_days": "Debe ser un número de días."})
+        queryset = queryset.filter(created_at__lt=created_before(int(older)))
     # ?date_from=/&date_to= (YYYY-MM-DD, inclusive los dos) acota por
     # fecha de alta. Lo usa la pantalla de impresión para juntar "los
     # pedidos de esta semana" sin tener que tildarlos de a uno.
     return queryset.filter(date_range_q(params))
+
+
+def created_before(days):
+    """El corte de "hace más de ``days`` días": ahora menos esos días."""
+    return timezone.now() - timedelta(days=days)
 
 
 class AddressViewSet(viewsets.ModelViewSet):

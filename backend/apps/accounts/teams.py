@@ -40,6 +40,11 @@ ACCESSES = {
     "account": "Datos del comercio",
     "team": "Equipo",
     "orders.export": "Exportar",
+    # Estadísticas del comercio (pestaña de Mi comercio, 2026-10-30): una por
+    # bloque, para que el dueño decida quién ve cada una.
+    "stats.dispatch": "Estadísticas de despacho",
+    "stats.carriers": "Estadísticas de transportistas",
+    "stats.buyers": "Estadísticas de compradores",
 }
 
 # Con los que arranca cada comercio; el dueño los cambia.

@@ -19,6 +19,13 @@
     <link rel="stylesheet" href="assets/css/app.css" />
     <link rel="stylesheet" href="assets/css/perfil.css" />
     <link rel="stylesheet" href="assets/css/organizacion.css" />
+    <script>
+      // organizacion.html#comercio (enlaces viejos): los datos del comercio
+      // pasaron a Mi comercio.
+      if (["#comercio", "#leaveTeamSection", "#closeTeamSection"].includes(location.hash)) {
+        location.replace("equipo.html#datos");
+      }
+    </script>
   </head>
   <body>
     <div class="layout">
@@ -126,135 +133,15 @@
           </div>
         </section>
 
-        <!-- DATOS DEL COMERCIO (assets/js/organizacion.js): lo del negocio. El
-             remitente y el logo se usan en los rótulos cuando la tienda del
-             pedido no tiene los suyos, y en los pedidos cargados a mano. -->
-        <h2 class="account-section-title" id="comercio">Datos del comercio</h2>
-        <p class="account-section-help">
-          El remitente y el logo salen en los rótulos cuando la tienda del pedido
-          no tiene los suyos, y en los pedidos que cargás a mano.
-        </p>
-
-        <form id="accountForm">
-          <section class="profile-card">
-            <div class="profile-card-title">Datos fiscales</div>
-            <div class="profile-card-body account-grid">
-              <div class="field">
-                <label for="legalName">Razón social</label>
-                <input id="legalName" type="text" maxlength="150" placeholder="Mi Negocio SRL" />
-              </div>
-              <div class="field">
-                <label for="taxId">CUIT</label>
-                <input id="taxId" type="text" maxlength="13" inputmode="numeric" placeholder="30-12345678-9" />
-              </div>
-              <p class="account-hint">Salen en la planilla de retiro que firma el transportista.</p>
-            </div>
-          </section>
-
-          <section class="profile-card">
-            <div class="profile-card-title">Remitente y logo por defecto</div>
-            <div class="profile-card-body account-grid">
-              <div class="field">
-                <label for="senderName">Nombre del remitente</label>
-                <input id="senderName" type="text" maxlength="150" placeholder="Como querés que figure en el rótulo" />
-              </div>
-              <div class="field">
-                <label for="senderAddress">Domicilio</label>
-                <input id="senderAddress" type="text" maxlength="255" placeholder="Para que te devuelvan un paquete" />
-              </div>
-              <div class="field">
-                <label for="senderPhone">Teléfono</label>
-                <input id="senderPhone" type="text" maxlength="50" />
-              </div>
-              <div class="field account-logo">
-                <label for="logoInput">Logo</label>
-                <img id="logoPreview" alt="Logo de la cuenta" hidden />
-                <input id="logoInput" type="file" accept="image/*" />
-                <button type="button" class="btn btn-outline" id="logoRemove" hidden>Quitar el logo</button>
-              </div>
-              <p class="account-hint">
-                Cada tienda puede tener su propio remitente y logo en
-                <a href="tiendas.html">Tiendas conectadas</a>: esos ganan.
-              </p>
-            </div>
-          </section>
-
-          <section class="profile-card">
-            <div class="profile-card-title">Preferencias</div>
-            <div class="profile-card-body account-grid">
-              <div class="field">
-                <label for="defaultTemplate">Plantilla de rótulo</label>
-                <select id="defaultTemplate">
-                  <option value="">La estándar</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="defaultCarrier">Transportista con el que despachás</label>
-                <select id="defaultCarrier">
-                  <option value="">Sin preferencia</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="defaultPrintFormat">Cómo imprimís</label>
-                <select id="defaultPrintFormat">
-                  <option value="">Sin preferencia</option>
-                  <option value="label">PDF, una hoja por rótulo</option>
-                  <option value="a4">PDF, varios rótulos por hoja A4</option>
-                  <option value="zpl">Térmica Zebra (ZPL)</option>
-                </select>
-              </div>
-              <p class="account-hint">
-                Son los valores con los que arrancan Imprimir rótulos y el
-                despacho de Mis pedidos; ahí los podés cambiar en cada caso.
-              </p>
-            </div>
-          </section>
-
-          <p id="accountMsg" class="form-message" style="display:none;"></p>
-          <div class="form-actions account-actions">
-            <button type="submit" class="btn btn-primary" id="saveBtn">Guardar</button>
-          </div>
-        </form>
-
-        <!-- BAJA DEL COMERCIO (assets/js/baja_comercio.js): solo el dueño. -->
-        <section class="profile-card close-team-card" id="closeTeamSection" hidden>
-          <div class="profile-card-title">Dar de baja el comercio</div>
+        <!-- Los datos del comercio, la baja y salir del comercio están desde el
+             2026-10-30 en Mi comercio (equipo.html#datos): esta página es solo
+             de la persona. -->
+        <section class="profile-card account-moved">
           <div class="profile-card-body">
-            <p class="close-team-text">
-              Tus tiendas se desconectan, se apagan los transportistas, las impresoras y
-              las claves de API, y vos y tu equipo dejan de ver los pedidos, rótulos y
-              plantillas de este comercio. Nada se borra: queda guardado y el
-              administrador de la plataforma lo puede reactivar si se lo pedís por
-              <a href="ayuda.html">Ayuda</a>. Tu cuenta sigue funcionando, con tus
-              otros comercios si tenés.
+            <p class="account-section-help">
+              Los datos de tu comercio (razón social, remitente, logo y
+              preferencias) ahora están en <a href="equipo.html#datos">Mi comercio</a>.
             </p>
-            <form id="closeTeamForm" class="close-team-form">
-              <div class="field">
-                <label for="closeTeamReason">¿Por qué te das de baja? (opcional)</label>
-                <textarea id="closeTeamReason" rows="2" maxlength="2000"></textarea>
-              </div>
-              <div class="field">
-                <label for="closeTeamConfirm">Para confirmar, escribí <strong>BAJA</strong></label>
-                <input id="closeTeamConfirm" type="text" autocomplete="off" />
-              </div>
-              <div class="form-actions">
-                <button type="submit" class="btn close-team-btn" id="closeTeamBtn" disabled>Dar de baja el comercio</button>
-              </div>
-            </form>
-          </div>
-        </section>
-
-        <!-- SALIR DEL COMERCIO (assets/js/salir_comercio.js): solo un empleado. -->
-        <section class="profile-card" id="leaveTeamSection" hidden>
-          <div class="profile-card-title">Salir de este comercio</div>
-          <div class="profile-card-body">
-            <p class="close-team-text" id="leaveTeamText">
-              Dejás de ver sus tiendas, pedidos y plantillas. Lo que hiciste queda en
-              el comercio. Para volver, te tienen que invitar o aprobar de nuevo.
-            </p>
-            <div class="form-actions">
-              <button type="button" class="btn btn-outline" id="leaveTeamBtn">Salir de este comercio</button>
-            </div>
           </div>
         </section>
       </main>
@@ -265,8 +152,5 @@
     <script src="assets/js/utils.js"></script>
     <script src="assets/js/topbar.js"></script>
     <script src="assets/js/perfil.js"></script>
-    <script src="assets/js/organizacion.js"></script>
-    <script src="assets/js/baja_comercio.js"></script>
-    <script src="assets/js/salir_comercio.js"></script>
   </body>
 </html>

@@ -1,5 +1,5 @@
 // Perfil propio (self-service): la parte "Tu perfil" de Mi cuenta
-// (organizacion.html, que también tiene los datos del comercio).
+// (organizacion.html; los datos del comercio pasaron a Mi comercio, equipo.html#datos).
 // Carga y guarda siempre contra /api/v1/auth/me/ (nunca localStorage como
 // fuente de verdad). Sesión y apiFetch salen de assets/js/auth.js
 // (window.Auth), compartido con el resto del frontend (ver dashboard.js /

@@ -214,6 +214,54 @@ class LoginLockoutTests(AuthTestCase):
         self.assertEqual(lockout.failed_attempts, 0)
         self.assertIsNone(lockout.locked_until)
 
+    def _lock_and_expire(self):
+        """Tres fallidos (bloquea) y devuelve cuánto duró; después lo vence.
+        Limpia la caché: el rate limit de login (5/min por IP) cortaría la ronda."""
+        from django.utils import timezone
+
+        from ..models import LoginLockout
+
+        cache.clear()
+        before = timezone.now()
+        for _ in range(3):
+            self._login("mal")
+        lockout = LoginLockout.objects.get(user=self.user)
+        duration = lockout.locked_until - before
+        lockout.locked_until = timezone.now() - timezone.timedelta(seconds=1)
+        lockout.save(update_fields=["locked_until"])
+        return duration
+
+    def test_el_bloqueo_arranca_en_un_minuto_y_se_duplica_hasta_una_hora(self):
+        from django.utils import timezone
+
+        expected = [1, 2, 4, 8, 16, 32, 60, 60]
+        for minutes in expected:
+            duration = self._lock_and_expire()
+            self.assertAlmostEqual(
+                duration.total_seconds(), minutes * 60, delta=5, msg=f"esperado {minutes} min"
+            )
+        self.assertLessEqual(duration, timezone.timedelta(hours=1, seconds=5))
+
+    def test_entrar_reinicia_la_escala_de_bloqueos(self):
+        from ..models import LoginLockout
+
+        self._lock_and_expire()
+        self._lock_and_expire()
+        cache.clear()
+        resp = self._login(STRONG_PASSWORD)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(LoginLockout.objects.get(user=self.user).lockout_count, 0)
+
+        duration = self._lock_and_expire()
+        self.assertAlmostEqual(duration.total_seconds(), 60, delta=5)
+
+    def test_el_mensaje_dice_los_minutos_del_bloqueo_actual(self):
+        for _ in range(3):
+            self._login("mal")
+        resp = self._login(STRONG_PASSWORD)
+        self.assertEqual(resp.status_code, status.HTTP_423_LOCKED)
+        self.assertIn("1 minuto", resp.data["detail"])
+
 
 class RefreshRotationTests(AuthTestCase):
     def setUp(self):
@@ -603,6 +651,10 @@ class RolePermissionSystemTests(AuthTestCase):
         "users.export",
         "audit.export",
         "reports.view",
+        # Estadísticas del comercio, una por bloque (0037_seed_stats_permissions).
+        "stats.dispatch",
+        "stats.carriers",
+        "stats.buyers",
     }
 
     # Self-service: perfil propio + direcciones/pedidos propios + soporte +
@@ -648,6 +700,11 @@ class RolePermissionSystemTests(AuthTestCase):
         "orders.manifest",
         "labels.template_edit",
         "labels.template_delete",
+        # Las estadísticas del comercio: quien ve pedidos las tiene
+        # (0037_seed_stats_permissions).
+        "stats.dispatch",
+        "stats.carriers",
+        "stats.buyers",
     }
 
     # El que tenía operator: ME_VIEW_PERMISSIONS + carga operativa (alta

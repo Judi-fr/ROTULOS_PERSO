@@ -71,14 +71,21 @@ class LoginLockout(models.Model):
     No hay job/cron para "desbloquear": la expiración se resuelve al vuelo,
     la primera vez que algo pregunta ``is_locked()`` (típicamente el próximo
     intento de login) comparando contra ``locked_until``.
+
+    El bloqueo es progresivo: el primero dura ``FIRST_DURATION`` (1 minuto) y
+    cada bloqueo siguiente dura el doble, hasta ``MAX_DURATION`` (1 hora).
+    ``lockout_count`` cuenta los bloqueos y NO se limpia cuando uno vence: solo
+    un login exitoso (o el desbloqueo del admin) lo vuelve a cero.
     """
 
     THRESHOLD = 3
-    DURATION = timedelta(hours=1)
+    FIRST_DURATION = timedelta(minutes=1)
+    MAX_DURATION = timedelta(hours=1)
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="login_lockout")
     failed_attempts = models.PositiveIntegerField(default=0)
     locked_until = models.DateTimeField(null=True, blank=True)
+    lockout_count = models.PositiveIntegerField(default=0)
 
     class Meta:
         verbose_name = "bloqueo de login"
@@ -90,6 +97,7 @@ class LoginLockout(models.Model):
         Si ``locked_until`` ya pasó, el bloqueo se limpia acá mismo (contador
         incluido, para que el próximo ciclo de intentos arranque de cero) y
         se devuelve ``False``. Es la "expiración automática" sin cron.
+        ``lockout_count`` queda: el próximo bloqueo dura más.
         """
         if self.locked_until is None:
             return False
@@ -105,25 +113,29 @@ class LoginLockout(models.Model):
             return 0
         return max(0, int((self.locked_until - timezone.now()).total_seconds()))
 
+    def next_duration(self):
+        """Lo que dura el próximo bloqueo: 1, 2, 4, 8... minutos, tope 1 hora."""
+        return min(self.FIRST_DURATION * (2 ** min(self.lockout_count, 16)), self.MAX_DURATION)
+
     def register_failure(self):
-        """Suma un intento fallido; al llegar al umbral, bloquea 1 hora."""
+        """Suma un intento fallido; al llegar al umbral, bloquea (progresivo)."""
         self.failed_attempts += 1
         if self.failed_attempts >= self.THRESHOLD:
-            self.locked_until = timezone.now() + self.DURATION
-        self.save(update_fields=["failed_attempts", "locked_until"])
+            self.locked_until = timezone.now() + self.next_duration()
+            self.lockout_count += 1
+        self.save(update_fields=["failed_attempts", "locked_until", "lockout_count"])
 
     def register_success(self):
-        """Login exitoso: resetea el contador de intentos fallidos."""
-        if self.failed_attempts or self.locked_until:
-            self.failed_attempts = 0
-            self.locked_until = None
-            self.save(update_fields=["failed_attempts", "locked_until"])
+        """Login exitoso: resetea intentos y la escala de bloqueos."""
+        if self.failed_attempts or self.locked_until or self.lockout_count:
+            self.unlock()
 
     def unlock(self):
-        """Desbloqueo manual (admin): resetea contador y ``locked_until``."""
+        """Desbloqueo manual (admin): resetea contador, ``locked_until`` y la escala."""
         self.failed_attempts = 0
         self.locked_until = None
-        self.save(update_fields=["failed_attempts", "locked_until"])
+        self.lockout_count = 0
+        self.save(update_fields=["failed_attempts", "locked_until", "lockout_count"])
 
     def __str__(self):
         estado = "bloqueado" if self.is_locked() else "libre"

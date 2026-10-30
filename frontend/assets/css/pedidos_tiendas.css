@@ -330,7 +330,7 @@
   margin-top: 10px;
 }
 
-.order-item-bottom:has(> .order-item-footer:empty):not(:has(> .order-history)) {
+.order-item-bottom:has(> .order-item-footer:empty):not(:has(> .order-history, > .order-printed)) {
   display: none;
 }
 
@@ -645,4 +645,40 @@
     width: 100%;
     justify-content: flex-start;
   }
+}
+
+/* Vista abierta desde un número del panel (pedidos.html?vista=...). */
+.order-view-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+
+.order-view-notice .ph {
+  color: var(--muted);
+}
+
+.order-view-notice .btn-link {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* "Rótulo impreso 29/10" abajo de la tarjeta, junto al historial (Order.labels_printed_at). */
+.order-printed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: var(--success-50);
+  color: var(--success-700);
+  font-size: var(--text-xs);
+  white-space: nowrap;
 }

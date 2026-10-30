@@ -29,9 +29,34 @@ let addresses = [];
 let ordersPage = 1;
 let ordersHasNext = false;
 
+// Vista que llega desde un número del panel (pedidos.html?vista=...): recorta
+// la lista con los mismos filtros que usa el resumen del día
+// (orders/summary_views.py), así lo que se ve es lo que se contó. Se quita
+// con "Ver todos" del aviso de arriba de la lista.
+const ORDER_VIEWS = {
+  para_despachar: {
+    label: "Pedidos con rótulo, listos para despachar",
+    params: { status: "created,preparing", labels_printed: "1" },
+    empty: "No hay pedidos con rótulo esperando el despacho.",
+  },
+  demorados: {
+    label: "Pedidos pendientes que esperan hace más de 2 días",
+    params: { status: "created,preparing", older_than_days: "2" },
+    empty: "No hay pedidos demorados.",
+  },
+  en_camino: {
+    label: "Pedidos en camino",
+    params: { status: "dispatched,in_transit" },
+    empty: "No hay pedidos en camino.",
+  },
+};
+const requestedView = new URLSearchParams(location.search).get("vista");
+let orderView = ORDER_VIEWS[requestedView] ? requestedView : "";
+
 // Filtro por tienda: "" = todas, "manual" = cargados a mano, o el id de una
-// tienda (el backend acepta ?store=<id>|manual).
-let selectedStore = "";
+// tienda (el backend acepta ?store=<id>|manual). Puede llegar elegido desde el
+// panel (pedidos.html?tienda=...).
+let selectedStore = new URLSearchParams(location.search).get("tienda") || "";
 // id de tienda -> número de color (store-color-N en pedidos.css). Se asigna
 // por orden de alta (id), así cada tienda conserva su color aunque se sumen
 // otras: las tiendas nunca se borran, solo se desconectan.
@@ -136,6 +161,7 @@ function renderOrderList(orders) {
         };
     if (selectedStore === "manual") empty = { icon: "box", title: "No hay pedidos cargados a mano" };
     else if (selectedStore) empty = { icon: "box", title: "No hay pedidos de esta tienda" };
+    if (orderView) empty = { icon: "check-circle", title: ORDER_VIEWS[orderView].empty };
     container.innerHTML = appEmptyState(empty);
     return;
   }
@@ -240,6 +266,7 @@ function orderItem(order) {
       <span class="status-badge ${escapeHtml(statusKey)}"><span class="dot"></span>${escapeHtml(statusLabel)}</span>
     </div>
     <div class="order-item-bottom">
+      ${order.labels_printed_at ? `<span class="order-printed" title="Primera vez que salió su rótulo"><i class="ph ph-printer" aria-hidden="true"></i>Rótulo impreso ${escapeHtml(formatDate(order.labels_printed_at))}</span>` : ""}
       ${events.length > 1 ? `<details class="order-history"><summary>Historial (${events.length})</summary><ol>${timeline}</ol></details>` : ""}
       <div class="order-item-footer">${actions.join("")}</div>
     </div>
@@ -262,6 +289,8 @@ async function loadOrders() {
   try {
     const params = new URLSearchParams({ page: String(ordersPage) });
     if (selectedStore) params.set("store", selectedStore);
+    if (orderView) Object.entries(ORDER_VIEWS[orderView].params).forEach(([key, value]) => params.set(key, value));
+    renderOrderViewNotice();
     const response = await apiFetch(`${ORDERS_URL}?${params.toString()}`);
     if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
     const data = await response.json();
@@ -276,6 +305,23 @@ async function loadOrders() {
     document.getElementById("orderList").innerHTML =
       '<p class="empty-state">No se pudieron cargar tus pedidos.</p>';
   }
+}
+
+function renderOrderViewNotice() {
+  const notice = document.getElementById("orderViewNotice");
+  if (!notice) return;
+  notice.hidden = !orderView;
+  if (!orderView) return;
+  document.getElementById("orderViewLabel").textContent = ORDER_VIEWS[orderView].label;
+}
+
+function clearOrderView() {
+  orderView = "";
+  ordersPage = 1;
+  const url = new URL(location.href);
+  url.searchParams.delete("vista");
+  history.replaceState(null, "", url);
+  loadOrders();
 }
 
 // Filtro por tienda: un botón por cada tienda del usuario (incluye las
@@ -478,6 +524,7 @@ document.getElementById("orderAddressSelect")?.addEventListener("change", () => 
   }
 });
 renderAddressFields(document.getElementById("newAddressFields"), "newAddr");
+document.getElementById("clearOrderViewBtn")?.addEventListener("click", clearOrderView);
 document.getElementById("ordersPrevBtn")?.addEventListener("click", () => {
   if (ordersPage > 1) {
     ordersPage -= 1;

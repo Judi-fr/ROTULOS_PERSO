@@ -174,6 +174,10 @@ PERMISSIONS = frozenset(
         "users.export",
         "audit.export",
         "reports.view",
+        # Estadísticas del comercio, un permiso por bloque (migración 0037).
+        "stats.dispatch",
+        "stats.carriers",
+        "stats.buyers",
     }
 )
 
@@ -223,6 +227,14 @@ _SELF_SERVICE_PERMISSIONS |= {
     "orders.manifest",
     "labels.template_edit",
     "labels.template_delete",
+}
+
+# Estadísticas del comercio (migración 0037): quien ve pedidos las tiene; el
+# dueño decide en los perfiles qué empleado ve cada bloque.
+_SELF_SERVICE_PERMISSIONS |= {
+    "stats.dispatch",
+    "stats.carriers",
+    "stats.buyers",
 }
 
 # Más la carga OPERATIVA de pedidos (alta manual, importación CSV/Excel,
@@ -285,6 +297,9 @@ TEAM_SCOPED_PERMISSIONS = {
     "account.manage": "account",
     "team.manage": "team",
     "orders.export": "orders.export",
+    "stats.dispatch": "stats.dispatch",
+    "stats.carriers": "stats.carriers",
+    "stats.buyers": "stats.buyers",
 }
 
 

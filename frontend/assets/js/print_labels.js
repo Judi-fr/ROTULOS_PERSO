@@ -66,7 +66,7 @@ function renderOrders(orders) {
       <span class="print-order-body">
         <span class="print-order-title">Pedido #${escapeHtml(number)}${store}</span>
         <span class="print-order-meta">${escapeHtml(recipient)}${recipient ? " · " : ""}${escapeHtml(addressSummary(order.address))}</span>
-        <span class="print-order-meta">${escapeHtml(formatDate(order.created_at))} · ${escapeHtml(order.status_label || STATUS_LABELS[order.status] || order.status)}</span>
+        <span class="print-order-meta">${escapeHtml(formatDate(order.created_at))} · ${escapeHtml(order.status_label || STATUS_LABELS[order.status] || order.status)}${order.labels_printed_at ? ` · Rótulo impreso ${escapeHtml(formatDate(order.labels_printed_at))}` : ""}</span>
       </span>
     `;
     row.querySelector("input").addEventListener("change", (event) => {
@@ -94,11 +94,13 @@ async function loadOrders() {
   const container = document.getElementById("orderList");
   const store = document.getElementById("storeFilter").value;
   const status = document.getElementById("statusFilter").value;
+  const printed = document.getElementById("printedFilter").value;
   const dateFrom = document.getElementById("dateFrom").value;
   const dateTo = document.getElementById("dateTo").value;
   const params = new URLSearchParams({ page: String(currentPage) });
   if (store) params.set("store", store);
   if (status) params.set("status", status);
+  if (printed) params.set("labels_printed", printed);
   // El rango acota la LISTA; lo que se manda al lote siguen siendo los
   // pedidos tildados (order_ids). Así el filtro por tienda sigue valiendo,
   // que es algo que el selector "filters" del backend no contempla.
@@ -312,10 +314,44 @@ document.getElementById("storeFilter").addEventListener("change", () => {
   });
 });
 
-document.getElementById("statusFilter").addEventListener("change", () => {
-  currentPage = 1;
-  loadOrders();
+["statusFilter", "printedFilter"].forEach((id) => {
+  document.getElementById(id).addEventListener("change", () => {
+    currentPage = 1;
+    loadOrders();
+  });
 });
+
+// "Para imprimir" del panel abre imprimir_rotulos.html?rotulo=sin_imprimir
+// (y &tienda= desde el desglose por tienda): los pendientes sin rótulo de esa
+// selección, ya tildados TODOS (no solo los de la primera
+// página), listos para "Generar rótulos". Sigue las páginas del backend hasta
+// el tope de un lote.
+const SELECT_ALL_MAX = 1000;
+
+async function selectAllPending() {
+  const params = new URLSearchParams({ status: "created,preparing", labels_printed: "0" });
+  const store = document.getElementById("storeFilter").value;
+  if (store) params.set("store", store);
+  let url = `${ORDERS_URL}?${params.toString()}`;
+  while (url && selectedIds.size < SELECT_ALL_MAX) {
+    const response = await apiFetch(url);
+    if (!response.ok) return;
+    const data = await response.json();
+    extractResults(data).forEach((order) => selectedIds.add(order.id));
+    url = data.next;
+  }
+  document.querySelectorAll("#orderList input[type=checkbox]").forEach((checkbox) => {
+    checkbox.checked = selectedIds.has(Number(checkbox.value));
+  });
+  updateSelectionCount();
+  if (selectedIds.size) {
+    const count = selectedIds.size;
+    showPrintMsg(
+      `${count === 1 ? "Quedó tildado el pedido" : `Quedaron tildados los ${count} pedidos`} sin rótulo. Revisá la plantilla y tocá «Generar rótulos».`,
+      true
+    );
+  }
+}
 document.getElementById("selectAll").addEventListener("change", (event) => {
   document.querySelectorAll("#orderList input[type=checkbox]").forEach((checkbox) => {
     checkbox.checked = event.target.checked;
@@ -351,8 +387,19 @@ async function init() {
   await loadTemplates();
   await loadPrinters();
   await applyPreferredFormat();
+  const query = new URLSearchParams(location.search);
+  const fromDashboard = query.get("rotulo") === "sin_imprimir";
+  if (fromDashboard) {
+    document.getElementById("statusFilter").value = "created,preparing";
+    document.getElementById("printedFilter").value = "0";
+    // Una tienda del desglose del panel (&tienda=<id>|manual), si está en la lista.
+    const storeFilter = document.getElementById("storeFilter");
+    const store = query.get("tienda");
+    if (store && [...storeFilter.options].some((option) => option.value === store)) storeFilter.value = store;
+  }
   await loadOrders();
   updateSelectionCount();
+  if (fromDashboard) await selectAllPending();
 }
 
 if (!window.Auth.hasSession()) {

@@ -584,6 +584,39 @@
   box-shadow: var(--shadow-xs);
 }
 
+.todo-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.today-updated {
+  color: var(--subtle);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+/* Un número que cambió en la actualización automática se marca un momento. */
+.today-stat.is-changed {
+  animation: today-stat-changed 2.4s var(--ease);
+}
+
+@keyframes today-stat-changed {
+  0%,
+  40% {
+    border-color: var(--accent-300);
+    background: var(--accent-50);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .today-stat.is-changed {
+    animation: none;
+    border-color: var(--accent-300);
+  }
+}
+
 .todo-title {
   margin: 0 0 4px;
   font-size: var(--text-md);
@@ -602,6 +635,33 @@
   gap: 12px;
   padding: 12px 0;
   font-size: var(--text-base);
+}
+
+.todo-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* "Tienda A 5 · Tienda B 2": cuántos de cada tienda, cada una con su lista. */
+.todo-stores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  font-size: var(--text-sm);
+}
+
+.todo-stores a {
+  color: var(--muted);
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+}
+
+.todo-stores a:hover {
+  color: var(--accent-600);
+  text-decoration-color: currentColor;
 }
 
 .todo-item + .todo-item {
@@ -651,7 +711,7 @@
     flex-wrap: wrap;
   }
 
-  .todo-text {
+  .todo-body {
     flex-basis: calc(100% - 32px);
   }
 
@@ -662,4 +722,199 @@
   .todo-item .btn + .btn {
     margin-left: 0;
   }
+}
+
+/* La semana (dashboard_week.js): entraron vs. despachados por día. Azul
+   (--info-500) y el verde de la app (--accent-500): par validado para
+   daltonismo; la leyenda y la tabla llevan la identidad, no solo el color. */
+.week {
+  margin: 0 0 8px;
+  padding: 16px 20px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.week-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.week-summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.week-legend {
+  display: flex;
+  gap: 16px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.week-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.week-key {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.week-key.week-entered,
+.week-key-line.week-entered {
+  background: var(--info-500);
+}
+
+.week-key.week-dispatched,
+.week-key-line.week-dispatched {
+  background: var(--accent-500);
+}
+
+.week-chart-wrap {
+  position: relative;
+  margin-top: 8px;
+}
+
+.week-chart {
+  width: 100%;
+  min-height: 168px;
+}
+
+.week-chart svg {
+  display: block;
+  overflow: visible;
+}
+
+.week-grid {
+  stroke: var(--n-150);
+  stroke-width: 1;
+}
+
+.week-base {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.week-axis {
+  fill: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.week-axis.is-today {
+  fill: var(--ink);
+  font-weight: 600;
+}
+
+.week-bar.week-entered {
+  fill: var(--info-500);
+}
+
+.week-bar.week-dispatched {
+  fill: var(--accent-500);
+}
+
+.week-hit {
+  fill: transparent;
+}
+
+.week-day {
+  outline: none;
+  cursor: default;
+}
+
+.week-day:hover .week-hit,
+.week-day:focus-visible .week-hit {
+  fill: var(--n-50);
+}
+
+.week-day:focus-visible .week-hit {
+  stroke: var(--accent-300);
+  stroke-width: 1;
+}
+
+.week-tooltip {
+  position: absolute;
+  top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.week-tooltip strong {
+  margin-bottom: 2px;
+  font-weight: 600;
+}
+
+.week-tip-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.week-tip-row b {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.week-key-line {
+  width: 12px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.week-table {
+  margin-top: 6px;
+  font-size: var(--text-sm);
+}
+
+.week-table summary {
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.week-table table {
+  width: 100%;
+  margin-top: 8px;
+  border-collapse: collapse;
+}
+
+.week-table th,
+.week-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.week-table th:first-child,
+.week-table td:first-child {
+  text-align: left;
+}
+
+.week-table th {
+  color: var(--muted);
+  font-weight: 600;
 }

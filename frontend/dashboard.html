@@ -65,8 +65,36 @@
         <section id="onboardingBox" class="onboarding" aria-label="Primeros pasos" hidden></section>
         <section id="todayStats" class="today-stats" aria-label="Números de hoy" hidden></section>
         <section id="todoBox" class="todo" aria-labelledby="todoTitle" hidden>
-          <h2 class="todo-title" id="todoTitle">Qué hacer ahora</h2>
+          <div class="todo-head">
+            <h2 class="todo-title" id="todoTitle">Qué hacer ahora</h2>
+            <span class="today-updated" id="todayUpdated" aria-live="off"></span>
+          </div>
           <ul class="todo-list" id="todoList"></ul>
+        </section>
+
+        <!-- La semana: entraron vs. despachados por día (dashboard_week.js). -->
+        <section id="weekBox" class="week" aria-labelledby="weekTitle" hidden>
+          <div class="week-head">
+            <div>
+              <h2 class="todo-title" id="weekTitle">La semana</h2>
+              <p class="week-summary" id="weekSummary"></p>
+            </div>
+            <ul class="week-legend" aria-label="Referencias">
+              <li><i class="week-key week-entered" aria-hidden="true"></i>Entraron</li>
+              <li><i class="week-key week-dispatched" aria-hidden="true"></i>Despachados</li>
+            </ul>
+          </div>
+          <div class="week-chart-wrap">
+            <div class="week-chart" id="weekChart"></div>
+            <div class="week-tooltip" id="weekTooltip" role="status" hidden></div>
+          </div>
+          <details class="week-table">
+            <summary>Ver como tabla</summary>
+            <table>
+              <thead><tr><th scope="col">Día</th><th scope="col">Entraron</th><th scope="col">Despachados</th></tr></thead>
+              <tbody id="weekTableBody"></tbody>
+            </table>
+          </details>
         </section>
 
         <h2 class="tools-title" id="toolsTitle">Todas las herramientas</h2>
@@ -80,6 +108,7 @@
     <script src="assets/js/auth.js"></script>
     <script src="assets/js/utils.js?v=2026-10-29"></script>
     <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/dashboard_week.js"></script>
     <script src="assets/js/dashboard.js?v=2026-10-29"></script>
   </body>
 </html>

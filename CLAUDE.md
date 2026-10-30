@@ -334,6 +334,10 @@ exact midnight. It reads `.get()`, so it takes query params or a JSON body dict 
   password reset revokes all outstanding refresh tokens.
 - Password rules (`validate_password_strength`, `auth_views.py`): 6+ chars, one uppercase, one digit, plus
   Django's own validators — enforced on register, admin-create, change-password, and reset-confirm.
+- **Login lockout is progressive (`LoginLockout`, 2026-10-30, migration `accounts/0036`)**: 3 wrong passwords in a row
+  lock the account (423) for 1 minute, and each further lockout doubles it (1, 2, 4… 32 min, capped at 1 hour).
+  `lockout_count` survives a lockout expiring; only a successful login or the admin's `users/<id>/unlock/` resets it.
+  It used to be a flat hour. Separate from the `login` throttle (5/min per IP).
 - **The dashboard is a work inbox (2026-10-30, option "A" chosen by the user)**: title "Hoy en «comercio»", the
   primeros pasos (new businesses), four numbers that link where they get solved — Para imprimir, Para despachar, En
   camino, Con problemas — from `GET /api/v1/orders/summary/` (`summary_views.OrderSummaryView`, `orders.view`, same
@@ -347,6 +351,23 @@ exact midnight. It reads `.get()`, so it takes query params or a JSON body dict 
   label (`carriers.printing.bundle`); not by previews nor Tiendanube's Labels API. Orders printed before the field
   existed (migration `orders/0005`) count as "para imprimir". Con problemas = carrier shipments in issue/returning
   + open notices. Tests: `apps/orders/tests/test_order_summary.py`.
+  **Each number opens its list already filtered (2026-10-30)**: "Para imprimir" → `imprimir_rotulos.html?rotulo=sin_imprimir`
+  (filter "Rótulo: Sin imprimir" and ALL matching orders ticked, following the API pages up to 1000), the rest →
+  `pedidos.html?vista=para_despachar|en_camino|demorados` (`ORDER_VIEWS` in `pedidos.js`, a removable "Ver todos"
+  notice). Same filters the summary counts with: `GET /orders/?labels_printed=1|0` and `?older_than_days=N`
+  (`views.filter_orders`, so the export takes them too). The summary also returns `delayed` (pending orders created more
+  than `DELAYED_AFTER_DAYS` = 2 days ago) + `delayed_days`, shown first in "Qué hacer ahora". The order serializer exposes
+  `labels_printed_at` ("Rótulo impreso dd/mm" on the card and in the print list), and the batch's `skip_existing` also
+  skips orders with `labels_printed_at`, not only those with a saved `Label`. The dashboard refreshes the summary every
+  minute while the tab is visible (and on returning to it), marks a number that changed and shows "Actualizado hace N min".
+  **By store and the week (2026-10-30)**: the summary also returns `by_store` (`[{store: id|"manual", name, to_print,
+  to_dispatch}]`, stores in id order, manual last, only stores with something pending, same team scope) and `week` (the
+  last 7 days in local time, oldest first: `{date, entered, dispatched}`; an order counts as dispatched on the day of its
+  FIRST status event in dispatched/in_transit/delivered, so one synced straight to delivered still counts, once). With 2+
+  stores, "Para imprimir"/"Para despachar" in "Qué hacer ahora" list each store as a link (`&tienda=<id>|manual`, read by
+  `print_labels.js` and `pedidos.js`). "La semana" (`assets/js/dashboard_week.js`, `window.DashboardWeek.render`) draws
+  grouped SVG columns, Entraron `--info-500` vs Despachados `--accent-500` (pair checked with the dataviz validator), with
+  legend, per-day tooltip (hover/focus) and a folded table; hidden when the whole week is zero.
 - `dashboard_views.DashboardView` (`GET users/me/dashboard/`) returns the role-based menu — the frontend
   only renders it. **Since 2026-10-20 the dashboard draws `sections`, not `menu`** (user: "hay muchos botones
   y se terminó creando un menú larguísimo"): `dashboard_sections.build_sections(user)` groups the 19-23 entries
@@ -631,6 +652,31 @@ a store between businesses was considered as a stage 2 and dropped (2026-10-23, 
   employee (`salir_comercio.js`); without a business its "Datos del comercio" part is replaced by a link to start one.
 - Local testing: `.claude/launch.json` → `backend-sin-mail` runs the API with mails to the console (the local
   `.env` uses real SMTP and an invitation sends a real mail).
+
+### Mi comercio and business statistics (2026-10-30)
+
+"Equipo" is now **Mi comercio** (`equipo.html`, the file keeps its name; dashboard card `business` → `equipo.html`, menu
+`team`/`account_settings` relabelled). Tabs, each with its own JS and a `data-perm` list (any one shows it; `equipo.js`
+`showTeamTab`/`tabAllowed`, first visible tab is the default, `hashchange` switches): **Datos del comercio** (`#datos`,
+no perm: `organizacion.js` + `baja_comercio.js` + `salir_comercio.js`, moved from Mi cuenta), Miembros / Perfiles /
+Actividad (`team.manage`; their scripts return early without it) and **Estadísticas** (`#estadisticas`,
+`estadisticas_comercio.js` + `estadisticas_comercio.css`). **Mi cuenta (`organizacion.html`) is only the person** now
+(profile, password); `organizacion.html#comercio|#leaveTeamSection|#closeTeamSection` redirect to `equipo.html#datos`.
+- **Statistics are per block and the owner hands each one out** (user's ask: autonomy): three team accesses / permissions
+  `stats.dispatch`, `stats.carriers`, `stats.buyers` (`teams.ACCESSES`, `TEAM_SCOPED_PERMISSIONS`, migration
+  `accounts/0037`: groups with `orders.view` get them; team profiles/members/invitations that had ALL 13 previous
+  accesses get them, so "Todo" does and "Depósito"/"Atención" don't).
+- `GET /api/v1/orders/stats/?days=7|30|90` (`orders/stats_views.py`, default 30, anything else 400) returns `allowed` and
+  only those blocks; none → 403. Same scope as the order list (current business + `order_scope_q`). An order "shipped" at
+  its first dispatched/in_transit/delivered event (`summary_views.SHIPPED`). `dispatch`: of orders created in the period,
+  `shipped`, `waiting`, `avg_hours`, `median_hours`, `within_24h`/`within_48h` (%). `carriers`: of orders shipped in the
+  period, grouped by `Order.carrier` ("Sin indicar" when empty), `shipped`, `delivered`, `avg_delivery_days`
+  (delivered − shipped), `problems`/`problem_rate` (carrier shipment issue/returning), `cost_total`/`cost_avg` from
+  non-cancelled shipments' `quoted_price` (strings, null when none). `buyers`: orders created in the period minus
+  cancelled, `total` and top 10 `states`/`cities` (grouped ignoring case and spaces). Tests:
+  `apps/orders/tests/test_business_stats.py`.
+- Screen: period buttons (remembered in localStorage), dispatch as stat tiles, carriers as a table (several measures),
+  buyers as single-series horizontal bars in the app green (no legend; the title says what is counted).
 
 ### Audit trail (`apps/audit`)
 

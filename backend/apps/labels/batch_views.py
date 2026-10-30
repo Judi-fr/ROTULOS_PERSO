@@ -631,8 +631,9 @@ class LabelBatchView(APIView):
 
     def _filter_skip_existing(self, orders, skip_existing):
         """Si ``skip_existing``, saca de ``orders`` los que ya tienen un
-        ``Label`` activo asociado (correr el mismo lote dos veces no debe
-        volver a imprimir todo sin avisar). Devuelve ``(orders, cuántos se
+        ``Label`` activo asociado o cuyo rótulo ya salió en un lote, desde la
+        tienda o con la etiqueta del transportista (``labels_printed_at``):
+        correr el mismo lote dos veces no debe volver a imprimir todo sin avisar. Devuelve ``(orders, cuántos se
         saltearon)`` — el llamador decide qué hacer con ese conteo (ver
         ``post``/``_run_batch``, que lo suma al ``error_message`` del
         documento junto con los ítems omitidos por error)."""
@@ -643,6 +644,7 @@ class LabelBatchView(APIView):
             .values_list("order_id", flat=True)
             .distinct()
         )
+        order_ids_with_label |= {o.pk for o in orders if o.labels_printed_at}
         if not order_ids_with_label:
             return orders, 0
         remaining = [o for o in orders if o.pk not in order_ids_with_label]

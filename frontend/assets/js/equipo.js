@@ -1,4 +1,4 @@
-// Mi equipo (equipo.html, pestaña Miembros; GET/PATCH /team/ y sus subrutas): miembros,
+// Mi comercio (equipo.html, pestaña Miembros; GET/PATCH /team/ y sus subrutas): miembros,
 // invitaciones, el código para sumarse y sus pedidos, y los accesos de cada uno. El backend decide y valida todo
 // (no se puede dar lo que uno no tiene, ni tocar al dueño ni a uno mismo);
 // acá se arma la pantalla y se muestra cómo terminó cada acción.
@@ -449,15 +449,28 @@ function bootstrap() {
     });
   });
   showTeamTab(window.location.hash.slice(1));
-  load();
+  window.addEventListener("hashchange", () => showTeamTab(window.location.hash.slice(1)));
+  // Miembros (y el nombre del comercio) solo para quien maneja el equipo.
+  if (sessionHasPermission("team.manage")) load();
 }
 
-// Pestañas Miembros / Perfiles / Actividad (antes eran tres páginas). La
-// elegida queda en el #hash: perfiles_equipo.html y actividad_equipo.html
-// redirigen a #perfiles y #actividad.
+// Pestañas de Mi comercio (antes tres páginas, y "Equipo"). La elegida queda
+// en el #hash: perfiles_equipo.html y actividad_equipo.html redirigen a
+// #perfiles y #actividad. Cada pestaña dice en data-perm qué permisos la
+// muestran (alcanza uno); sin data-perm la ve cualquiera del comercio.
+function tabAllowed(tab) {
+  const perms = (tab.dataset.perm || "").split(" ").filter(Boolean);
+  return !perms.length || perms.some((key) => sessionHasPermission(key));
+}
+
 function showTeamTab(name) {
-  const tabs = [...document.querySelectorAll(".app-tab")];
-  if (!tabs.some((tab) => tab.dataset.tab === name)) name = "miembros";
+  const all = [...document.querySelectorAll(".app-tab")];
+  all.forEach((tab) => {
+    tab.hidden = !tabAllowed(tab);
+  });
+  const tabs = all.filter((tab) => !tab.hidden);
+  if (!tabs.some((tab) => tab.dataset.tab === name)) name = tabs[0].dataset.tab;
+  document.dispatchEvent(new CustomEvent("team:tab-shown", { detail: name }));
   tabs.forEach((tab) => {
     const active = tab.dataset.tab === name;
     tab.classList.toggle("active", active);

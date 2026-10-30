@@ -35,11 +35,13 @@ class DashboardSectionTests(APITestCase):
         self.assertEqual(
             [link["url"] for link in data["print"]["links"]], ["documentos.html", "cola_impresion.html", "impresoras.html"]
         )
-        # Mi perfil está en la misma página que los datos del comercio (2026-10-21).
-        self.assertEqual(data["business"]["url"], "organizacion.html")
+        # Mi comercio (2026-10-30): datos, equipo y estadísticas en equipo.html;
+        # Mi cuenta queda para la persona.
+        self.assertEqual(data["business"]["label"], "Mi comercio")
+        self.assertEqual(data["business"]["url"], "equipo.html")
         self.assertEqual(
             [link["url"] for link in data["business"]["links"]],
-            ["equipo.html", "equipo.html#perfiles", "equipo.html#actividad"],
+            ["equipo.html#estadisticas", "equipo.html#miembros", "equipo.html#actividad"],
         )
 
     def test_employee_sees_only_what_their_accesses_allow(self):
@@ -49,8 +51,13 @@ class DashboardSectionTests(APITestCase):
         self.assertEqual([link["url"] for link in data["orders"]["links"]], ["estado_pedidos.html"])
         self.assertEqual([link["url"] for link in data["print"]["links"]], ["documentos.html", "cola_impresion.html"])
         self.assertEqual(
-            [link["url"] for link in data["business"]["links"]], ["organizacion.html#perfil", "organizacion.html#comercio", "mi_actividad.html"]
+            [link["url"] for link in data["business"]["links"]], ["equipo.html#datos", "organizacion.html", "mi_actividad.html"]
         )
+
+    def test_employee_with_only_some_stats_gets_the_stats_link(self):
+        employee, _ = add_employee(self.owner, "st@example.com", accesses=["orders.view", "stats.buyers"])
+        data = sections(self.client, employee)
+        self.assertEqual([link["url"] for link in data["business"]["links"]], ["equipo.html#estadisticas"])
 
     def test_carriers_only_opens_stores_section_on_rates(self):
         employee, _ = add_employee(self.owner, "c@example.com", accesses=["carriers"])
