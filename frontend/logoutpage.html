@@ -38,6 +38,7 @@
 
   <script src="assets/js/config.js"></script>
   <script src="assets/js/auth.js"></script>
+  <script src="assets/js/utils.js"></script>
   <script>
     // La sesión vive en cookies HttpOnly (assets/js/auth.js): acá solo se
     // muestra quién es y se cierra con window.Auth.logout().
@@ -59,8 +60,8 @@
 
       nameEl.textContent = name;
       emailEl.textContent = email;
-      // La foto propia, si no la de Google, si no un avatar generado.
-      avatarEl.src = user.photo || user.picture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`;
+      // La foto propia, si no la de Google, si no sus iniciales (utils.js).
+      avatarEl.src = personAvatarUrl({ ...user, display_name: name });
     }
 
     async function logout() {

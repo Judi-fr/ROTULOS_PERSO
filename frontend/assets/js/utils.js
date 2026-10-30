@@ -538,12 +538,24 @@ async function attachCarrierSuggestions(input) {
 // --- Perfil personal (foto, nombre para mostrar, puesto) ----------------------
 // ``person`` es un usuario o un miembro del equipo: ``photo`` (la que subió),
 // ``picture`` (la de Google, solo al entrar con Google) o, sin ninguna, el
-// dibujo automático por email que usaba siempre la barra de arriba.
-const PERSON_AVATAR_FALLBACK = "https://api.dicebear.com/7.x/avataaars/svg?seed=";
+// círculo con sus iniciales, dibujado acá. Antes era api.dicebear.com con el
+// email en la URL: cada página le mandaba a un tercero el email de cada persona.
+
+function initialsAvatarUrl(name, seed) {
+  const words = String(name || "").replace(/@.*/, "").split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const initials = (words.length > 1 ? words[0][0] + words[1][0] : (words[0] || "?").slice(0, 2)).toUpperCase();
+  let hash = 0;
+  for (const ch of String(seed || name || "")) hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">`
+    + `<rect width="64" height="64" fill="hsl(${hash % 360},40%,42%)"/>`
+    + `<text x="32" y="32" dy=".35em" text-anchor="middle" font-family="Karla,Arial,sans-serif" font-size="26" font-weight="700" fill="#fff">${escapeHtml(initials)}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
 
 function personAvatarUrl(person) {
   const p = person || {};
-  return p.photo || p.picture || `${PERSON_AVATAR_FALLBACK}${encodeURIComponent(p.email || "")}`;
+  // El color sale del email (no cambia si la persona cambia su nombre).
+  return p.photo || p.picture || initialsAvatarUrl(p.display_name || p.email, p.email);
 }
 
 function personAvatar(person, className = "person-avatar") {

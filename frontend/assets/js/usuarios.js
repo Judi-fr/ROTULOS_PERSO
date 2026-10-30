@@ -188,7 +188,7 @@ function renderUsers(users) {
       <td><input type="checkbox" class="row-checkbox" data-user-id="${u.id}"></td>
       <td>
         <div class="user-cell">
-          <img class="user-avatar" src="https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(u.email || u.id)}" alt="">
+          <img class="user-avatar" src="${personAvatarUrl(u)}" alt="">
           <div class="user-ident">
             <span class="user-name" title="${escapeHtml(u.display_name || u.email)}">${escapeHtml(u.display_name || u.email)}</span>
             ${u.display_name && u.display_name !== u.email ? `<span class="user-email" title="${escapeHtml(u.email || "")}">${escapeHtml(u.email || "")}</span>` : ""}

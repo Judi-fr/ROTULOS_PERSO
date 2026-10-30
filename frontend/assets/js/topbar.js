@@ -23,7 +23,6 @@
 // Cargar DESPUÉS de config.js/auth.js y ANTES del script propio de la página.
 
 (function () {
-  const AVATAR_FALLBACK = "https://api.dicebear.com/7.x/avataaars/svg?seed=";
 
   function container() {
     return document.getElementById("appTopbar");
@@ -128,7 +127,11 @@
     avatar.className = "avatar";
     avatar.id = "userAvatar";
     avatar.alt = "";
-    avatar.src = picture || `${AVATAR_FALLBACK}${encodeURIComponent(email)}`;
+    // Sin foto, las iniciales de personAvatarUrl (utils.js). En muchas páginas
+    // utils.js carga DESPUÉS que esta barra: entonces se pone al terminar de leer la página.
+    const drawAvatar = () => { avatar.src = picture || personAvatarUrl({ ...(user || {}), display_name: name }); };
+    if (picture || typeof personAvatarUrl === "function") drawAvatar();
+    else document.addEventListener("DOMContentLoaded", drawAvatar, { once: true });
     const nameEl = document.createElement("span");
     nameEl.className = "topbar-user-name";
     nameEl.id = "userName";

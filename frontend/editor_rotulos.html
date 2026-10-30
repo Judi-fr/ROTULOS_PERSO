@@ -1175,9 +1175,7 @@
         if (nameEl) nameEl.textContent = name;
         if (emailEl) emailEl.textContent = email || "—";
         if (avatarEl) {
-          avatarEl.src = user.picture
-            ? user.picture
-            : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email || "user")}`;
+          avatarEl.src = personAvatarUrl({ ...user, display_name: name });
         }
 
         document.getElementById("logoutBtn")?.addEventListener("click", () => window.Auth.logout());

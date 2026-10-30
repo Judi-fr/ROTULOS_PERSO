@@ -188,6 +188,12 @@ not exposed at all, unlike the dev compose.
   rewrites every own CSS/JS reference in the `.html` to `?v=<md5 of its content>` (manual `?v=` included;
   `config.js` excluded), and nginx serves `.html` with `no-cache`. Nothing to stamp by hand; the repo
   files are never rewritten. Local dev (no nginx) can still show a stale file: hard reload.
+- **Changing domain** (still the laptop's Tailscale tunnel as of 2026-10-29): the checklist is
+  `docs/cambio-de-dominio.md` (server `.env`, Shopify TOML + `shopify app deploy`, Tiendanube Partner Portal,
+  Google console, merchants' print agents). `python manage.py update_store_urls [--dry-run]` re-points the
+  connected stores: enqueues `internal/store_setup` for each active one (webhooks with the new URL) and updates
+  the Tiendanube carrier callbacks via `register_carrier` (which reuses the existing carrier). Known gap: VTEX
+  treats its own hook on the old domain as a foreign one and won't overwrite it.
 - Media (`MEDIA_ROOT`) is a real volume: the generated batch PDFs and store logos live on disk, so a
   platform with an ephemeral filesystem would lose them on every redeploy.
 - **Backups (2026-10-29)**: `scripts/backup.sh [label]` (database `pg_dump -Fc` + the whole media folder,
@@ -362,7 +368,7 @@ exact midnight. It reads `.get()`, so it takes query params or a JSON body dict 
   is deleted). Optional row, created on the first save; edited through `me/` (`ProfileSerializer`). `user_payload`
   carries `display_name` and `photo` (which wins over Google's `picture`); the team's `members` and each
   `activity/` row's `actor` carry `public_fields` (name, job title, phone, photo). Frontend: `personAvatar`/
-  `personAvatarUrl` in `utils.js` (photo → Google → dicebear), the topbar, `equipo.js`, `actividad_equipo.js`.
+  `personAvatarUrl` in `utils.js` (photo → Google → initials drawn locally by `initialsAvatarUrl`; it used to be api.dicebear.com with the EMAIL in the URL, which sent every person's email to a third party on every page — 2026-10-29), the topbar, `equipo.js`, `actividad_equipo.js`.
   Tests: `apps/accounts/tests/test_personal_profile.py`.
 
 ### Roles & permissions (`apps/accounts`)
@@ -1961,6 +1967,12 @@ and the email moved under the name (no Email column; email order stays in "Orden
   also edit) and by the "Nuevo pedido" dialog, whose "Enviar a" select ends in "+ Una dirección nueva…" to create
   it without leaving (saved to Mis direcciones). A saved address without a recipient is refused there. The API
   still accepts an address without one (existing tests post that), so the rule lives in the screen.
+- **Legal pages (2026-10-29, DRAFT)**: `privacidad.html` and `terminos.html` (public, no JS, `assets/css/legal.css`),
+  written from what the app really stores and shares (buyer email/phone only from some platforms and never on the
+  label; Anthropic only for photo import; Google Fonts/jsDelivr; no analytics). Company data is marked
+  `.legal-todo` (yellow) and the whole text needs review by the company before publishing. Linked from the login,
+  the register form ("Al crear tu cuenta aceptás…") and the end of `ayuda.html`. **If what the app stores or who it
+  shares data with changes, update `privacidad.html`.**
 - **Brand: "Human Log · Rótulos"** (company · product, decided 2026-10-28). Access pages show the cropped Human Log
   logo (`humanlog-logo.png` / `humanlog-lockup.png`, cut from `LogoLogin.png`; `HLLogoFinal.jpg`, the globe one, is
   no longer used) + "Rótulos"; the shared topbar's home link is the app mark (`favicon.svg`) + "Rótulos" and

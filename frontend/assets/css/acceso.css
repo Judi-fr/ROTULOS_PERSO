@@ -293,6 +293,20 @@ body.access-page {
   font-size: 14px;
 }
 
+.access-legal {
+  margin: 12px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.access-form .access-legal {
+  margin: 0 0 4px;
+}
+
+.access-legal a {
+  color: inherit;
+}
+
 /* --- Cerrar sesión --------------------------------------------------------- */
 
 .access-user {
