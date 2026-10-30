@@ -102,10 +102,12 @@
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(getErrorMessage(data, "No se pudieron guardar los datos."));
       fillForm(data);
-      showMessage("Datos de la cuenta guardados.", "success");
+      // Al lado del botón: el aviso de arriba de la página queda a una pantalla
+      // y media de este formulario (arriba está el perfil personal).
+      showFieldMessage("accountMsg", "Datos del comercio guardados.", true);
     } catch (err) {
       if (err.isSessionExpired) return;
-      showMessage(err.message);
+      showFieldMessage("accountMsg", err.message, false);
     } finally {
       button.disabled = false;
     }

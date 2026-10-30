@@ -37,6 +37,10 @@
    que no tienen una regla propia salían en Arial. */
 button, input, select, textarea { font-family: inherit; }
 
+/* El atributo hidden siempre oculta: cualquier regla con display (.btn, flex de
+   un panel…) le ganaba y el elemento seguía visible ("Quitar la foto" sin foto). */
+[hidden] { display: none !important; }
+
 /* Links de texto en el naranja de la app (los del navegador salían azul
    subrayado en diálogos y avisos). Los que tienen clase propia ganan igual. */
 a { color: #c2410c; text-underline-offset: 2px; }

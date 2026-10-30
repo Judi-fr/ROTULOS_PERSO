@@ -61,10 +61,8 @@ contesta 200 y la página de login abre.
   escribir al plugin/módulo las URLs (`configure_admin_print`); para no esperar, "Verificar plugin"
   en `tiendas.html`. Sus webhooks nuevos los registra el paso 6; los viejos fallan y WooCommerce
   los desactiva solo.
-- **VTEX**: el hook con el dominio viejo se toma como "de otro sistema" y no se pisa (para no
-  romperle el hook a un ERP que use la misma clave), así que la tienda queda con el aviso de pedir
-  una clave propia. Los pedidos igual entran por el feed. Hasta resolverlo en el código, borrar el
-  hook viejo a mano en VTEX y correr el paso 6. (Hoy no hay tiendas VTEX reales.)
+- **VTEX**: el paso 6 reapunta el hook. Se reconoce como nuestro por el secreto que lleva en
+  el header `key` aunque apunte al dominio viejo; uno sin nuestro secreto (de un ERP) no se pisa.
 
 ## 6. Tiendas ya conectadas: `update_store_urls`
 

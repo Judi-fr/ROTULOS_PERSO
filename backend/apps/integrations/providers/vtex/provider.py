@@ -635,7 +635,8 @@ class VtexProvider(VtexFreightMixin, StoreProvider):
         Idempotente: corre al conectar y en cada repaso, porque VTEX borra un
         hook que pasó 3 días sin avisos. El hook nunca hace fallar el repaso:
         sin él, los pedidos entran igual por el feed. Uno que ya apunta a
-        otro sistema no se pisa (cada clave tiene un solo hook)."""
+        otro sistema no se pisa (cada clave tiene un solo hook); uno con
+        nuestro secreto en otro dominio es nuestro y se reapunta."""
         changed = ["feed"] if self.ensure_feed(connection) else []
 
         secret = self.ensure_webhook_secret(connection)
@@ -648,12 +649,14 @@ class VtexProvider(VtexFreightMixin, StoreProvider):
             hook = (current or {}).get("hook") if isinstance(current, dict) else None
             hook = hook if isinstance(hook, dict) else {}
             current_url = _text(hook.get("url"))
-            if current_url and not current_url.startswith(url):
+            headers = hook.get("headers") if isinstance(hook.get("headers"), dict) else {}
+            same_secret = hmac.compare_digest(_text(headers.get(HOOK_SECRET_HEADER)), secret)
+            # Un hook con NUESTRO secreto es nuestro aunque apunte a otro dominio
+            # (el anterior, después de cambiar de dominio): se reapunta.
+            if current_url and not current_url.startswith(url) and not same_secret:
                 _update_preferences(connection, vtex_hook="foreign")
                 _set_last_error(connection, FOREIGN_HOOK_ERROR.format(minutes=self.reconcile_minutes))
                 return changed
-            headers = hook.get("headers") if isinstance(hook.get("headers"), dict) else {}
-            same_secret = hmac.compare_digest(_text(headers.get(HOOK_SECRET_HEADER)), secret)
             if current_url != delivery_url or not same_secret:
                 self.api_request(
                     connection,

@@ -192,8 +192,8 @@ not exposed at all, unlike the dev compose.
   `docs/cambio-de-dominio.md` (server `.env`, Shopify TOML + `shopify app deploy`, Tiendanube Partner Portal,
   Google console, merchants' print agents). `python manage.py update_store_urls [--dry-run]` re-points the
   connected stores: enqueues `internal/store_setup` for each active one (webhooks with the new URL) and updates
-  the Tiendanube carrier callbacks via `register_carrier` (which reuses the existing carrier). Known gap: VTEX
-  treats its own hook on the old domain as a foreign one and won't overwrite it.
+  the Tiendanube carrier callbacks via `register_carrier` (which reuses the existing carrier). VTEX recognizes its
+  own hook on the old domain by our secret in the `key` header and re-points it.
 - Media (`MEDIA_ROOT`) is a real volume: the generated batch PDFs and store logos live on disk, so a
   platform with an ephemeral filesystem would lose them on every redeploy.
 - **Backups (2026-10-29)**: `scripts/backup.sh [label]` (database `pg_dump -Fc` + the whole media folder,
@@ -1309,7 +1309,7 @@ Empretienda (no API: its exported sales spreadsheet is imported).
     (`webhook_secret_per_store`; the hook isn't signed). Configuring it makes VTEX ping
     (`{"hookConfig": "ping"}` → bare 200) and it refuses to save it if the ping fails; VTEX also deletes a
     hook after 3 days without notifications, so it is re-checked on every pass. **A hook pointing to
-    another system (the merchant's ERP using the same key) is never overwritten**: `last_error` asks for a
+    another system (the merchant's ERP using the same key) is never overwritten** (one carrying OUR secret in `key` is ours even on another domain, e.g. after changing domain, and is re-pointed): `last_error` asks for a
     dedicated key. The backup is the *orders feed* (a queue VTEX keeps up to 14 days), read on every
     reconciliation (`VTEX_RECONCILE_MINUTES`, 5 — `StoreProvider.reconcile_minutes` lets each platform
     have its own interval); it needs no public URL, so without a hook orders still arrive. A page's feed
@@ -1711,7 +1711,7 @@ real account. Their Warehouse service (stock, order preparation) is another API,
   another page and still type the tracking by hand in `despachar.html`). In `pedidos.html`:
   `assets/js/pedidos/envios.js` (`window.OrderShipping`) draws, per order, the carrier + tracking link +
   Andreani's status (from `GET shipments/`, latest non-cancelled per order), the buttons "Despachar" /
-  "Imprimir" / "Actualizar seguimiento" / "Cancelar envío", the checkbox + sticky selection bar
+  "Imprimir" / "Actualizar seguimiento" / "Cancelar envío", the checkbox + a selection bar floating at the bottom (fixed since 2026-10-29: in the flow above the list it pushed the orders down ~50px when it appeared, and the next click landed on another order)
   ("Despachar (n)", "Imprimir (n)") and a strip with each carrier's account state linking to
   `transportista.html?carrier=…` and `checkout_transportistas.html` (reached only from there, topbar back to
   `pedidos.html`). Since 2026-10-26 that strip is a quiet grey line (green-dot chip per ready carrier, "Precio en el
@@ -1859,7 +1859,7 @@ and the email moved under the name (no Email column; email order stays in "Orden
   marks its orders' left border. In "Todas" the page's orders are grouped by store (column order, manual
   last), each group with a header (2026-10-26). Styles in `assets/css/pedidos_tiendas.css`, loaded only
   here because `pedidos.css` is shared by ~18 pages; that card uses `overflow: clip`, not `hidden`, or the
-  sticky column and selection bar stop sticking.
+  sticky store column stops sticking.
 - `assets/js/admin_common.js` — permission/formatting helpers for admin pages: `isAdminMode()`,
   `canUseUserPermission()`, `canViewUsers()`, `translateRole()`, `actionLabel()`, `formatDateTime()`,
   `renderSimplePager()`, `loadAuditActionsCatalog()`.
@@ -1967,6 +1967,9 @@ and the email moved under the name (no Email column; email order stays in "Orden
   also edit) and by the "Nuevo pedido" dialog, whose "Enviar a" select ends in "+ Una dirección nueva…" to create
   it without leaving (saved to Mis direcciones). A saved address without a recipient is refused there. The API
   still accepts an address without one (existing tests post that), so the rule lives in the screen.
+- **`[hidden]` always hides (2026-10-29)**: `ui.css` has `[hidden] { display: none !important; }`. Any rule with a
+  `display` (`.btn`, a flex panel…) used to beat the attribute, so `hidden` elements stayed visible ("Quitar la foto"
+  with no photo). Show/hide with the `hidden` property; something shown with `style.display` must not carry `hidden`.
 - **Legal pages (2026-10-29, DRAFT)**: `privacidad.html` and `terminos.html` (public, no JS, `assets/css/legal.css`),
   written from what the app really stores and shares (buyer email/phone only from some platforms and never on the
   label; Anthropic only for photo import; Google Fonts/jsDelivr; no analytics). Company data is marked

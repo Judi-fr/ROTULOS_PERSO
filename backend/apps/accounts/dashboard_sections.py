@@ -137,7 +137,9 @@ def onboarding(user):
         {
             "key": "account",
             "label": "Completá los datos del comercio",
-            "url": "organizacion.html",
+            # Al ancla: arriba de Mi cuenta está el perfil personal, y los datos
+            # del comercio quedan una pantalla y media más abajo.
+            "url": "organizacion.html#comercio",
             "done": bool(settings_row and (settings_row.sender_name or settings_row.legal_name)),
         },
         {

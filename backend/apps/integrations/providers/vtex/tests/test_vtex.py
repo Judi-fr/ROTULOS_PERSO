@@ -217,6 +217,23 @@ class SetupAndHookTests(VtexTestMixin, APITestCase):
         self.assertEqual(self.connection.last_error, FOREIGN_HOOK_ERROR.format(minutes=5))
         self.assertEqual(self.connection.preferences["vtex_hook"], "foreign")
 
+    def test_nuestro_hook_en_el_dominio_viejo_se_actualiza(self):
+        # Después de cambiar de dominio (update_store_urls): el hook apunta a la
+        # URL vieja pero trae NUESTRO secreto, así que es nuestro y se reapunta.
+        secret = get_provider("vtex").ensure_webhook_secret(self.connection)
+        self.vtex.hook_config = {
+            "filter": {"type": "FromWorkflow"},
+            "hook": {"url": f"https://tunel-viejo.example.com{WEBHOOKS_URL}?store={self.connection.pk}", "headers": {"key": secret}},
+        }
+        provider = get_provider("vtex")
+
+        changed = provider.register_webhooks(self.connection, f"{BASE_URL}{WEBHOOKS_URL}", provider.webhook_events)
+
+        self.assertIn("hook", changed)
+        self.assertEqual(self.vtex.hook_config["hook"]["url"], f"{BASE_URL}{WEBHOOKS_URL}?store={self.connection.pk}")
+        self.connection.refresh_from_db()
+        self.assertEqual(self.connection.preferences["vtex_hook"], "ok")
+
     def test_hook_que_vtex_no_acepta_no_frena_la_configuracion(self):
         self.vtex.hook_ping_ok = False
         provider = get_provider("vtex")

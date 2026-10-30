@@ -112,7 +112,7 @@ function collectContracts() {
 }
 
 function setupPage() {
-  document.title = `Cuenta de ${info.name}`;
+  document.title = `Cuenta de ${info.name} · Human Log Rótulos`;
   el("pageTitle").textContent = `Cuenta de ${info.name}`;
   el("accountHelp").textContent = `Se despacha con tu propia cuenta de ${info.name}. ${info.account_help}`;
   el("contractsTitle").textContent = `${info.contract_label}s`;
@@ -158,6 +158,21 @@ function render(account) {
   el("missingNotice").style.display = problems.length ? "" : "none";
 }
 
+// Cuenta nueva: el remitente arranca con los datos que el comercio ya cargó en
+// Mi cuenta, para no pedirlos dos veces. El domicilio no: allá es una sola línea
+// y acá van calle, número y código postal por separado.
+async function prefillFromBusiness() {
+  const business = await loadAccountSettings();
+  const values = {
+    sender_name: business.sender_name || business.legal_name,
+    sender_document: business.tax_id,
+    sender_phone: business.sender_phone,
+  };
+  Object.entries(values).forEach(([name, value]) => {
+    if (value && !el(name).value) el(name).value = value;
+  });
+}
+
 async function load() {
   try {
     const response = await apiFetch(ACCOUNT_URL);
@@ -170,6 +185,7 @@ async function load() {
     info = data.carrier_info;
     setupPage();
     render(data);
+    if (!data.exists) prefillFromBusiness();
     if (info.supports_push) loadPush(data.exists);
   } catch (err) {
     if (err.isSessionExpired) return;
