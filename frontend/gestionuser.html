@@ -8,14 +8,11 @@
     <title>Gestión de usuarios</title>
     <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
     <link rel="stylesheet" href="assets/css/ui.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css" />
 
     <link
-      href="https://fonts.googleapis.com/css?family=Karla:400,500,600,700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
       rel="stylesheet"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/@mdi/font@4.9.95/css/materialdesignicons.min.css"
     />
 
     <link rel="stylesheet" href="assets/css/gestionuser.css" />
@@ -37,17 +34,7 @@
           </div>
           <div class="topbar-actions">
             <button class="btn btn-primary" id="openCreatePanel">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
+              <i class="ph ph-plus" aria-hidden="true"></i>
               Crear usuario
             </button>
             <button class="btn btn-quiet" id="logoutAdminBtn" type="button">Cerrar sesión</button>
@@ -88,17 +75,7 @@
         <div class="table-card">
           <div class="table-toolbar">
             <div class="search-box">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
+              <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
               <input
                 type="text"
                 placeholder="Buscar por nombre, email o rol..."
@@ -108,18 +85,7 @@
             <div class="toolbar-right">
               <div class="filters-control">
                 <button class="btn btn-outline" id="openUserFilters">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <polygon
-                      points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"
-                    />
-                  </svg>
+                  <i class="ph ph-funnel" aria-hidden="true"></i>
                   Filtros
                   <span class="filter-count" id="userFilterCount" hidden></span>
                 </button>
@@ -245,11 +211,7 @@
                    (users/export/?file_type=csv|xlsx), usuarios.js. -->
               <div class="export-control">
                 <button class="btn btn-outline" id="exportUsersBtn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="exportUsersPanel">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
+                  <i class="ph ph-download-simple" aria-hidden="true"></i>
                   Exportar
                 </button>
                 <div class="export-panel" id="exportUsersPanel" role="dialog" aria-label="Exportar usuarios" hidden>
@@ -275,20 +237,7 @@
                 </div>
               </div>
               <button class="icon-btn" title="Actualizar">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <polyline points="23 4 23 10 17 10" />
-                  <polyline points="1 20 1 14 7 14" />
-                  <path
-                    d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
-                  />
-                </svg>
+                <i class="ph ph-arrows-clockwise" aria-hidden="true"></i>
               </button>
             </div>
           </div>
@@ -323,47 +272,17 @@
             <div class="showing" id="paginationInfo">Mostrando 0 usuarios</div>
             <div class="pager" id="paginationControls">
               <button title="Primera" data-page="first">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <polyline points="11 17 6 12 11 7" />
-                  <polyline points="18 17 13 12 18 7" />
-                </svg>
+                <i class="ph ph-caret-double-left" aria-hidden="true"></i>
               </button>
               <button title="Anterior" data-page="prev">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <polyline points="15 18 9 12 15 6" />
-                </svg>
+                <i class="ph ph-caret-left" aria-hidden="true"></i>
               </button>
               <span id="pageNumbers"></span>
               <button title="Siguiente" data-page="next">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
+                <i class="ph ph-caret-right" aria-hidden="true"></i>
               </button>
               <button title="Última" data-page="last">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <polyline points="13 17 18 12 13 7" />
-                  <polyline points="6 17 11 12 6 7" />
-                </svg>
+                <i class="ph ph-caret-double-right" aria-hidden="true"></i>
               </button>
             </div>
           </div>
@@ -377,11 +296,11 @@
           </div>
           <span class="bulk-dock-sep" aria-hidden="true"></span>
           <button type="button" class="bulk-dock-btn" id="bulkActivateBtn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
+            <i class="ph ph-check" aria-hidden="true"></i>
             Activar
           </button>
           <button type="button" class="bulk-dock-btn" id="bulkDeactivateBtn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><line x1="5.6" y1="5.6" x2="18.4" y2="18.4" /></svg>
+            <i class="ph ph-prohibit" aria-hidden="true"></i>
             Desactivar
           </button>
           <span class="bulk-dock-sep" aria-hidden="true"></span>
@@ -392,7 +311,7 @@
             <button type="button" class="bulk-dock-apply" id="bulkSetRoleBtn">Aplicar</button>
           </div>
           <button type="button" class="bulk-dock-close" id="bulkClearBtn" title="Quitar la selección" aria-label="Quitar la selección">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+            <i class="ph ph-x" aria-hidden="true"></i>
           </button>
         </div>
 
@@ -404,17 +323,7 @@
           <div class="create-panel-head">
             <h3 id="userFormTitle">Crear usuario</h3>
             <button id="closeCreatePanel" type="button">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
+              <i class="ph ph-x" aria-hidden="true"></i>
             </button>
           </div>
           <div class="create-panel-grid">

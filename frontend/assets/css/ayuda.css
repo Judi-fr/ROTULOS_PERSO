@@ -9,7 +9,7 @@
 }
 
 .faq-list details {
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--n-150);
 }
 
 .faq-list details:last-child {
@@ -23,7 +23,7 @@
   gap: 12px;
   padding: 14px 0;
   font-weight: 700;
-  font-size: 15px;
+  font-size: var(--text-base);
   cursor: pointer;
   list-style: none;
 }
@@ -38,10 +38,10 @@
   flex: 0 0 auto;
   width: 26px;
   height: 26px;
-  border-radius: 8px;
-  background: #fff7ed;
-  color: #c2410c;
-  font-size: 18px;
+  border-radius: var(--radius-md);
+  background: var(--accent-50);
+  color: var(--accent-600);
+  font-size: var(--text-lg);
   line-height: 26px;
   text-align: center;
   transition: transform 0.2s;
@@ -52,19 +52,19 @@
 }
 
 .faq-list summary:hover {
-  color: #c2410c;
+  color: var(--accent-600);
 }
 
 .faq-list summary:focus-visible {
-  outline: 2px solid #f97316;
+  outline: 2px solid var(--accent-500);
   outline-offset: 2px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 .faq-list details p {
   margin: 0 0 16px;
-  color: #475569;
-  font-size: 14.5px;
+  color: var(--n-700);
+  font-size: var(--text-base);
   line-height: 1.6;
   max-width: 68ch;
 }
@@ -88,9 +88,9 @@
 
 .faq-head-hint::after {
   content: "Ocultar";
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   font-weight: 700;
-  color: #c2410c;
+  color: var(--accent-600);
 }
 
 .faq:not([open]) .faq-head-hint::after {
@@ -107,8 +107,8 @@
   border: 0;
   background: transparent;
   padding: 0;
-  color: #c2410c;
-  font-size: 13px;
+  color: var(--accent-600);
+  font-size: var(--text-sm);
   font-weight: 700;
   cursor: pointer;
 }
@@ -120,5 +120,5 @@
 .legal-links {
   margin: 8px 0 0;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-base);
 }

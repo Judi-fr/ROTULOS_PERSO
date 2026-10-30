@@ -8,45 +8,32 @@
     <title>Verificar email</title>
     <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
     <link rel="stylesheet" href="assets/css/ui.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css" />
 
     <link
-      href="https://fonts.googleapis.com/css?family=Karla:400,500,600,700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
 
     <!-- Reusa el mismo estilo de tarjeta que perfil.html/cambiar-password.html (.profile-card). -->
-    <link rel="stylesheet" href="assets/css/base.css" />
-    <link rel="stylesheet" href="assets/css/app.css" />
-    <link rel="stylesheet" href="assets/css/perfil.css" />
+      <link rel="stylesheet" href="assets/css/acceso.css" />
   </head>
-  <body>
-    <div class="layout">
-      <!-- Sin sidebar ni topbar de usuario a propósito: esta página se abre
-           desde el link del correo, sin necesidad de estar logueado (el
-           token de verificación es la credencial). -->
-      <header class="topbar">
-        <div class="topbar-user">
-          <div class="topbar-user-info">
-            <span class="topbar-user-name">Verificación de email</span>
-          </div>
-        </div>
-      </header>
-
-      <main class="main">
-        <div class="main-heading">
+  <body class="access-page">
+    <!-- Se abre desde el link del correo, sin necesidad de estar logueado
+         (el token de verificación es la credencial). -->
+    <div class="access-layout">
+    <aside class="access-aside" aria-hidden="true">
+      <img src="assets/images/humanlog-lockup.png" alt="">
+      <p class="access-aside-text">Los pedidos de tu tienda entran solos: imprimí los rótulos y despachá con tu transportista <strong>desde un solo lugar</strong>.</p>
+    </aside>
+      <main class="access-main">
+        <div class="access-card">
+        <div class="access-brand"><img src="assets/images/humanlog-logo.png" alt="Human Log"><span>Rótulos</span></div>
           <h1>Confirmar tu email</h1>
-          <p>Estamos verificando el enlace que abriste desde tu correo.</p>
+          <p class="access-lead">Estamos verificando el enlace que abriste desde tu correo.</p>
+          <p id="verifyMsg" class="page-message" role="status" hidden></p>
+          <a class="access-submit" href="index.html">Ir al login</a>
         </div>
-
-        <section class="profile-card">
-          <div class="profile-card-title">Estado</div>
-          <div class="profile-card-body">
-            <p id="verifyMsg" class="form-message" style="display:none;"></p>
-            <div class="profile-card-actions">
-              <a class="btn btn-primary" href="index.html">Ir al login</a>
-            </div>
-          </div>
-        </section>
       </main>
     </div>
 
@@ -59,8 +46,8 @@
       const showMsg = (text, ok) => {
         if (!msg) return;
         msg.textContent = text;
-        msg.style.color = ok ? "green" : "red";
-        msg.style.display = "block";
+        msg.className = `page-message ${ok ? "success" : "error"}`;
+        msg.hidden = false;
       };
 
       const token = new URLSearchParams(window.location.search).get("token") || "";

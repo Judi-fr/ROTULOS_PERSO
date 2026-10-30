@@ -9,8 +9,8 @@ body.access-page {
   min-height: 100dvh;
   background: var(--bg);
   color: var(--text-dark);
-  font-family: "Karla", system-ui, sans-serif;
-  font-size: 15px;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
   line-height: 1.5;
 }
 
@@ -36,8 +36,8 @@ body.access-page {
   gap: 32px;
   padding: 40px 48px;
   background:
-    radial-gradient(120% 80% at 0% 0%, #ffedd5 0%, rgba(255, 237, 213, 0) 60%),
-    #fbf7f2;
+    radial-gradient(120% 80% at 0% 0%, var(--accent-100) 0%, rgba(255, 237, 213, 0) 60%),
+    var(--warning-50);
   border-right: 1px solid var(--border);
   overflow: hidden;
 }
@@ -47,18 +47,18 @@ body.access-page {
   width: 100%;
   max-width: 366px;
   padding: 28px;
-  background: #fff;
+  background: var(--n-0);
   box-sizing: content-box;
   margin: auto 0;
-  border-radius: 20px;
-  box-shadow: 0 30px 60px -36px rgba(120, 53, 15, 0.45);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
 }
 
 .access-aside-text {
   max-width: 42ch;
   margin: 0;
-  color: #57534e;
-  font-size: 15px;
+  color: var(--n-700);
+  font-size: var(--text-base);
 }
 
 .access-aside-text strong {
@@ -73,7 +73,7 @@ body.access-page {
   align-items: center;
   justify-content: center;
   padding: 48px 32px;
-  background: #ffffff;
+  background: var(--n-0);
 }
 
 .access-card {
@@ -105,16 +105,16 @@ body.access-page {
 
 .access-brand span {
   padding-left: 12px;
-  border-left: 1px solid #e2e8f0;
-  font-size: 18px;
+  border-left: 1px solid var(--n-150);
+  font-size: var(--text-lg);
   font-weight: 700;
-  color: #0f172a;
+  color: var(--n-900);
   letter-spacing: -0.01em;
 }
 
 .access-card h1 {
   margin: 0 0 6px;
-  font-size: 26px;
+  font-size: var(--text-2xl);
   letter-spacing: -0.02em;
   line-height: 1.15;
 }
@@ -133,8 +133,8 @@ body.access-page {
   align-items: center;
   gap: 12px;
   margin: 20px 0;
-  color: #94a3b8;
-  font-size: 13px;
+  color: var(--n-400);
+  font-size: var(--text-sm);
 }
 
 .access-divider::before,
@@ -164,13 +164,13 @@ body.access-page {
 }
 
 .access-field label {
-  font-size: 13.5px;
+  font-size: var(--text-sm);
   font-weight: 700;
 }
 
 .access-field small {
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm);
 }
 
 .access-input {
@@ -181,22 +181,22 @@ body.access-page {
   width: 100%;
   height: 44px;
   padding: 0 14px;
-  border: 1px solid #d9dee8;
-  border-radius: 10px;
-  background: #ffffff;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-md);
+  background: var(--n-0);
   color: var(--text-dark);
   font: inherit;
   transition: border-color 0.18s, box-shadow 0.18s;
 }
 
 .access-field input::placeholder {
-  color: #a3acba;
+  color: var(--n-400);
 }
 
 .access-field input:focus {
   outline: none;
   border-color: var(--blue);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.16);
+  box-shadow: var(--ring);
 }
 
 .access-input input {
@@ -212,23 +212,23 @@ body.access-page {
   height: 32px;
   padding: 0 10px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-muted);
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   font-weight: 700;
   cursor: pointer;
 }
 
 .access-reveal:hover {
-  background: #f1f4f8;
+  background: var(--n-100);
   color: var(--text-dark);
 }
 
 .access-link {
-  color: #c2410c;
-  font-size: 13.5px;
+  color: var(--accent-600);
+  font-size: var(--text-sm);
   font-weight: 700;
   text-decoration: none;
 }
@@ -237,21 +237,38 @@ body.access-page {
   text-decoration: underline;
 }
 
+/* El mismo botón primario de toda la app (verde del acento), más alto. */
 .access-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
   height: 46px;
   margin-top: 4px;
   border: 0;
-  border-radius: 10px;
-  background: var(--text-dark);
-  color: #ffffff;
+  border-radius: var(--radius-md);
+  background: var(--accent-500);
+  color: var(--n-0);
   font: inherit;
   font-weight: 700;
+  text-decoration: none;
   cursor: pointer;
-  transition: background 0.18s, transform 0.12s;
+  box-shadow: var(--shadow-xs);
+  transition: background var(--speed) var(--ease), transform 0.12s var(--ease);
+}
+
+a.access-submit:hover { color: var(--n-0); }
+
+.access-link-button {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
 }
 
 .access-submit:hover {
-  background: var(--blue);
+  background: var(--accent-600);
 }
 
 .access-submit:active:not(:disabled) {
@@ -273,30 +290,30 @@ body.access-page {
 .access-page .page-message {
   margin: 0;
   padding: 11px 14px;
-  border-radius: 10px;
-  font-size: 14px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
 }
 
 .access-page .page-message.error {
   background: var(--red-light);
-  color: #b91c1c;
+  color: var(--danger-500);
 }
 
 .access-page .page-message.success {
   background: var(--green-light);
-  color: #15803d;
+  color: var(--success-500);
 }
 
 .access-switch {
   margin: 24px 0 0;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-base);
 }
 
 .access-legal {
   margin: 12px 0 0;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .access-form .access-legal {
@@ -316,8 +333,8 @@ body.access-page {
   margin: 0 0 24px;
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 14px;
-  background: #ffffff;
+  border-radius: var(--radius-lg);
+  background: var(--n-0);
 }
 
 .access-user img {
@@ -334,7 +351,7 @@ body.access-page {
 
 .access-user span {
   color: var(--text-muted);
-  font-size: 13.5px;
+  font-size: var(--text-sm);
 }
 
 .access-secondary {

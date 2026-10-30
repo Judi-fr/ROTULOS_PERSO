@@ -44,14 +44,11 @@
     { href: "mi_actividad.html", label: "Mi actividad" },
     { href: "ayuda.html", label: "Ayuda" },
   ];
-  const ICONS = {
-    home: '<path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20h14V9.5" /><path d="M10 20v-6h4v6" />',
-    chevron: '<polyline points="6 9 12 15 18 9" />',
-    logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />',
-  };
+  // Íconos de Phosphor (el juego único de la app, ver ui.css).
+  const ICONS = { home: "house-simple", chevron: "caret-down", logout: "sign-out" };
 
   function icon(name) {
-    return `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
+    return `<i class="ph ph-${ICONS[name]}" aria-hidden="true"></i>`;
   }
 
   const here = () => location.pathname.split("/").pop() || "index.html";

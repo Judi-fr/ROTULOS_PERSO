@@ -5,7 +5,7 @@
 
 /* MAIN */
 .main {
-  max-width: 900px;
+  max-width: var(--page-content);
 }
 
 /* Toolbar de búsqueda + filtro de estado */
@@ -19,12 +19,12 @@
 .search-input,
 .status-filter {
   padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 14px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
   font-family: inherit;
   color: var(--text-dark);
-  background: #fff;
+  background: var(--n-0);
 }
 
 .search-input {
@@ -47,7 +47,7 @@
 
 .document-item {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 16px;
   display: flex;
   align-items: flex-start;
@@ -63,19 +63,19 @@
 
 .document-item-title {
   font-weight: 700;
-  font-size: 14.5px;
+  font-size: var(--text-base);
   margin: 0 0 4px;
 }
 
 .document-item-meta {
   margin: 2px 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
 .document-item-error {
   margin: 6px 0 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--red);
 }
 
@@ -91,8 +91,8 @@
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12.5px;
+  border-radius: var(--radius-xl);
+  font-size: var(--text-sm);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -131,7 +131,7 @@
 
 .batch-field label {
   display: block;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-muted);
   margin-bottom: 6px;
@@ -141,19 +141,19 @@
 .batch-field input {
   width: 100%;
   padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 14px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
   font-family: inherit;
   color: var(--text-dark);
-  background: #fff;
+  background: var(--n-0);
 }
 
 .batch-orders-list {
   max-height: 220px;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 8px 12px;
 }
 
@@ -162,7 +162,7 @@
   align-items: center;
   gap: 8px;
   padding: 6px 0;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
 }
 
 .batch-order-option input {

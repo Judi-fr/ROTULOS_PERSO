@@ -31,7 +31,7 @@
 /* Transportista, número de seguimiento y estado. */
 .shipping-line {
   margin: 10px 0 0;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -44,8 +44,8 @@
 }
 
 .shipment-state {
-  font-size: 12px;
-  border-radius: 20px;
+  font-size: var(--text-xs);
+  border-radius: var(--radius-xl);
   padding: 2px 9px;
   background: var(--purple-light);
   color: var(--purple);
@@ -78,9 +78,9 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   margin-bottom: 14px;
   background: var(--amber-light);
   color: var(--text-dark);
@@ -121,12 +121,12 @@
   gap: 12px;
   flex-wrap: wrap;
   padding: 10px 14px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--text-dark);
-  color: #fff;
-  font-size: 14px;
+  color: var(--n-0);
+  font-size: var(--text-base);
   font-weight: 600;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.28);
+  box-shadow: var(--shadow-md);
 }
 
 /* Que la barra no tape el último pedido de la página. */
@@ -147,7 +147,7 @@
 }
 
 .selection-bar .btn-outline {
-  color: #fff;
+  color: var(--n-0);
   border-color: rgba(255, 255, 255, 0.4);
 }
 
@@ -155,7 +155,7 @@
   background: none;
   border: none;
   color: inherit;
-  font-size: 13px;
+  font-size: var(--text-sm);
   text-decoration: underline;
   cursor: pointer;
   padding: 6px;
@@ -166,10 +166,10 @@
   width: min(560px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);
   border: none;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   padding: 0;
   color: var(--text-dark);
-  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+  box-shadow: var(--shadow-lg);
 }
 
 .dispatch-dialog-wide {
@@ -177,7 +177,7 @@
 }
 
 .dispatch-dialog::backdrop {
-  background: rgba(15, 23, 42, 0.45);
+  background: rgba(28, 26, 23, 0.45);
 }
 
 .dispatch-header {
@@ -189,13 +189,13 @@
 
 .dispatch-header h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--text-lg);
 }
 
 .dispatch-close {
   background: none;
   border: none;
-  font-size: 24px;
+  font-size: var(--text-2xl);
   line-height: 1;
   cursor: pointer;
   color: var(--text-muted);
@@ -203,7 +203,7 @@
 
 .dispatch-body {
   padding: 14px 20px;
-  font-size: 14px;
+  font-size: var(--text-base);
 }
 
 .dispatch-options {
@@ -217,7 +217,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-muted);
 }
@@ -234,10 +234,10 @@
 .dispatch-field input,
 .dispatch-branch select {
   font: inherit;
-  font-size: 14px;
+  font-size: var(--text-base);
   padding: 7px 9px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-md);
   color: var(--text-dark);
 }
 
@@ -250,7 +250,7 @@
   margin: 0;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   max-height: 320px;
   overflow-y: auto;
 }
@@ -282,7 +282,7 @@
 
 .dispatch-order-info span {
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .dispatch-price {
@@ -318,7 +318,7 @@
 
 .dispatch-hint {
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   margin: 10px 0 0;
 }
 
@@ -327,7 +327,7 @@
   align-items: center;
   gap: 8px;
   margin-top: 14px;
-  font-size: 14px;
+  font-size: var(--text-base);
   cursor: pointer;
 }
 
@@ -359,7 +359,7 @@
 
 .dispatch-manual {
   margin-right: auto;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -384,14 +384,14 @@
   margin-top: 12px;
   padding: 28px 16px;
   border: 2px dashed var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   text-align: center;
 }
 
 .file-drop span {
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .file-drop.over,
@@ -409,7 +409,7 @@
 
 .mapping-editor {
   margin-top: 12px;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
 }
 
 .mapping-editor summary {
@@ -436,7 +436,7 @@
 }
 
 .dispatch-carriers small {
-  color: var(--text-muted, #6b7280);
+  color: var(--text-muted, var(--n-500));
 }
 
 /* Bultos de cada pedido en Despachar (despacho.js): cada uno puede llevar distintos. */
@@ -444,8 +444,8 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
-  color: var(--text-muted, #64748b);
+  font-size: var(--text-sm);
+  color: var(--text-muted, var(--n-500));
 }
 
 .dispatch-order-packages {

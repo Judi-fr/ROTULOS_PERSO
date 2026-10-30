@@ -6,7 +6,7 @@
    de .btn de arriba le ganaría el color si no se repite acá. */
 
 .main {
-  max-width: 900px;
+  max-width: var(--page-content);
 }
 
 .empty-state {
@@ -17,12 +17,12 @@
 .status-filter,
 .rate-form input {
   padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 14px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
   font-family: inherit;
   color: var(--text-dark);
-  background: #fff;
+  background: var(--n-0);
   width: 100%;
 }
 
@@ -56,13 +56,13 @@
 }
 
 .field-hint {
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
 .field-hint code {
   background: var(--bg);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 1px 5px;
 }
 
@@ -79,7 +79,7 @@
 
 .rate-item {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 14px 16px;
   display: flex;
   align-items: center;
@@ -99,19 +99,19 @@
 
 .rate-item-title {
   font-weight: 700;
-  font-size: 14.5px;
+  font-size: var(--text-base);
   margin: 0 0 3px;
 }
 
 .rate-item-meta {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
 .rate-item-price {
   font-weight: 700;
-  font-size: 15px;
+  font-size: var(--text-base);
   margin: 0;
   white-space: nowrap;
 }
@@ -141,7 +141,7 @@
 }
 
 .publish-status.error {
-  color: #b42318;
+  color: var(--danger-500);
 }
 
 .publish-steps {

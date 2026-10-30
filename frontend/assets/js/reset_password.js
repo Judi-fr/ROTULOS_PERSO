@@ -24,7 +24,7 @@ if (!uid || !token) {
   showMessage(
     "El enlace está incompleto. Abrilo tal cual te llegó al correo, o pedí uno nuevo."
   );
-  form.closest(".profile-card").hidden = true;
+  (form.closest(".profile-card") || form).hidden = true;
 }
 
 form.addEventListener("submit", async (event) => {
@@ -69,7 +69,7 @@ form.addEventListener("submit", async (event) => {
       data.detail || "Listo, ya podés entrar con tu contraseña nueva.",
       "success"
     );
-    form.closest(".profile-card").hidden = true;
+    (form.closest(".profile-card") || form).hidden = true;
   } catch (error) {
     showMessage("Error de red. Revisá tu conexión.");
   } finally {

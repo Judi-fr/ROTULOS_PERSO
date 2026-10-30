@@ -197,10 +197,8 @@ function orderGroupHead(group) {
 // de un vistazo en la columna de tiendas y en los grupos de pedidos.
 function storeMonogram(name, kind = "") {
   if (kind === "all" || kind === "manual") {
-    const icon = kind === "all"
-      ? '<rect x="4" y="4" width="7" height="7" rx="1.5" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" />'
-      : '<path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />';
-    return `<span class="store-mono store-mono-${kind}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${icon}</svg></span>`;
+    const icon = kind === "all" ? "squares-four" : "pencil-simple-line";
+    return `<span class="store-mono store-mono-${kind}" aria-hidden="true"><i class="ph ph-${icon}"></i></span>`;
   }
   const words = String(name || "").split(/[\s\-_.]+/).filter(Boolean);
   const initials = (words.length > 1 ? words[0][0] + words[1][0] : (words[0] || "T").slice(0, 2)).toUpperCase();

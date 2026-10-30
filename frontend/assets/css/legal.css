@@ -5,8 +5,8 @@ body.legal-page {
   margin: 0;
   background: var(--bg);
   color: var(--text-dark);
-  font-family: "Karla", Arial, sans-serif;
-  font-size: 16px;
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
   line-height: 1.6;
 }
 
@@ -27,7 +27,7 @@ body.legal-page {
   color: var(--text-dark);
   text-decoration: none;
   font-weight: 700;
-  font-size: 18px;
+  font-size: var(--text-lg);
 }
 
 .legal-brand img {
@@ -38,7 +38,7 @@ body.legal-page {
 .legal-header nav {
   display: flex;
   gap: 16px;
-  font-size: 15px;
+  font-size: var(--text-base);
 }
 
 .legal-header nav a,
@@ -56,31 +56,31 @@ body.legal-page {
   max-width: 820px;
   margin: 0 auto 48px;
   padding: 32px 40px;
-  background: #fff;
+  background: var(--n-0);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
 }
 
 .legal-doc h1 {
   margin: 0 0 4px;
-  font-size: 30px;
+  font-size: var(--text-2xl);
   line-height: 1.2;
 }
 
 .legal-updated {
   margin: 0 0 24px;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-base);
 }
 
 .legal-doc h2 {
   margin: 32px 0 8px;
-  font-size: 20px;
+  font-size: var(--text-xl);
 }
 
 .legal-doc h3 {
   margin: 20px 0 6px;
-  font-size: 16px;
+  font-size: var(--text-md);
 }
 
 .legal-doc ul {
@@ -95,7 +95,7 @@ body.legal-page {
   margin: 0 0 8px;
   padding: 14px 18px;
   background: var(--accent-light);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
 }
 
 .legal-summary ul {
@@ -104,10 +104,10 @@ body.legal-page {
 
 /* Lo que tiene que completar la empresa antes de publicar: imposible de pasar por alto. */
 .legal-todo {
-  background: #fde68a;
-  color: #7c2d12;
+  background: var(--warning-200);
+  color: var(--warning-700);
   padding: 0 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-weight: 700;
 }
 
@@ -116,7 +116,7 @@ body.legal-page {
   margin: 0 auto;
   padding: 0 16px 32px;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-base);
 }
 
 @media (max-width: 640px) {
@@ -131,6 +131,6 @@ body.legal-page {
   }
 
   .legal-doc h1 {
-    font-size: 24px;
+    font-size: var(--text-2xl);
   }
 }

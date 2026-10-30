@@ -17,16 +17,9 @@
   background: var(--accent-light);
 }
 
-/* BOTONES */
-
-.btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
 /* MAIN */
 .main {
-  max-width: 820px;
+  max-width: var(--page-form);
 }
 
 .main-heading-row {
@@ -57,14 +50,14 @@
 }
 
 .page-message.error {
-  background: #fdeeee;
-  color: #b91c1c;
+  background: var(--danger-50);
+  color: var(--danger-500);
 }
 
 .page-message.success {
-  background: #dcfce7;
-  color: #15803d;
-  border: 1px solid #bbf7d0;
+  background: var(--success-100);
+  color: var(--success-500);
+  border: 1px solid var(--success-200);
 }
 
 /* Resultado de conectar una tienda, dentro de la tarjeta de conexión. */
@@ -92,7 +85,7 @@
 
 .connect-card-title::after {
   content: "▾";
-  font-size: 14px;
+  font-size: var(--text-base);
   color: var(--text-muted);
   transition: transform 0.15s ease;
 }
@@ -109,14 +102,14 @@
 .card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   margin-bottom: 22px;
   overflow: hidden;
 }
 
 .card-title {
   font-weight: 700;
-  font-size: 15.5px;
+  font-size: var(--text-md);
   padding: 16px 22px;
   border-bottom: 1px solid var(--border);
 }
@@ -135,7 +128,7 @@
 .muted-text {
   margin: 0;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-base);
 }
 
 /* CONECTAR */
@@ -149,13 +142,13 @@
 .connect-platform {
   margin: 0 0 4px;
   font-weight: 700;
-  font-size: 15px;
+  font-size: var(--text-base);
 }
 
 .connect-help {
   margin: 0;
   color: var(--text-muted);
-  font-size: 13.5px;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 
@@ -185,10 +178,10 @@
   flex: 1;
   min-width: 0;
   padding: 9px 11px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-md);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-sm);
   background: var(--card);
   color: var(--text-dark);
 }
@@ -207,10 +200,10 @@
 .connect-shop input {
   width: 230px;
   padding: 9px 11px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-md);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--text-base);
   background: var(--card);
   color: var(--text-dark);
 }
@@ -227,7 +220,7 @@
 
 .woo-manual summary {
   cursor: pointer;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-dark);
 }
@@ -256,16 +249,16 @@
 }
 
 .woo-manual-form label {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
 .woo-manual-form input {
   padding: 9px 11px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-md);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--text-base);
   background: var(--card);
   color: var(--text-dark);
 }
@@ -287,7 +280,7 @@
 /* TIENDA */
 .store-card {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 16px 18px;
   margin-bottom: 14px;
 }
@@ -305,11 +298,11 @@
 
 .store-name {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--text-md);
 }
 
 .store-platform {
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -317,30 +310,30 @@
   display: inline-flex;
   align-items: center;
   padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
   font-weight: 600;
 }
 
 .store-status.ok {
-  background: #dcfce7;
-  color: #15803d;
+  background: var(--success-100);
+  color: var(--success-500);
 }
 
 .store-status.warn {
-  background: #fef3c7;
-  color: #b45309;
+  background: var(--warning-100);
+  color: var(--warning-500);
 }
 
 .store-status.off {
-  background: #e2e8f0;
-  color: #475569;
+  background: var(--n-150);
+  color: var(--n-700);
 }
 
 .store-link {
   display: inline-block;
   margin-top: 6px;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
   color: var(--accent);
   word-break: break-all;
 }
@@ -350,7 +343,7 @@
   grid-template-columns: max-content 1fr;
   gap: 4px 14px;
   margin: 12px 0 0;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
 }
 
 .store-details dt {
@@ -364,10 +357,10 @@
 .store-error {
   margin: 12px 0 0;
   padding: 10px 12px;
-  border-radius: 8px;
-  background: #fef3c7;
-  color: #92400e;
-  font-size: 13.5px;
+  border-radius: var(--radius-md);
+  background: var(--warning-100);
+  color: var(--warning-700);
+  font-size: var(--text-sm);
 }
 
 .store-actions {
@@ -404,13 +397,13 @@
   margin: 16px 0 0;
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--bg);
 }
 
 .store-sender-title {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-base);
 }
 
 /* "Rótulos de esta tienda" desplegable (<details>), misma flecha que
@@ -430,7 +423,7 @@
 
 .store-sender-summary::after {
   content: "▾";
-  font-size: 14px;
+  font-size: var(--text-base);
   color: var(--text-muted);
   transition: transform 0.15s ease;
 }
@@ -441,7 +434,7 @@
 
 .store-sender-help {
   margin: 4px 0 12px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -452,17 +445,17 @@
 .store-sender .field label {
   display: block;
   margin: 0 0 4px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
 .store-sender .field input {
   width: 100%;
   padding: 9px 11px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-md);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--text-base);
   background: var(--card);
   color: var(--text-dark);
 }
@@ -474,24 +467,24 @@
 
 .store-sender-msg {
   margin: 0 0 10px;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .store-sender-msg.ok {
-  color: var(--green, #16a34a);
+  color: var(--green, var(--success-500));
 }
 
 .store-sender-msg.error {
-  color: var(--red, #dc2626);
+  color: var(--red, var(--danger-500));
 }
 
 .store-sender .field select {
   width: 100%;
   padding: 9px 11px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-md);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--text-base);
   background: var(--card);
   color: var(--text-dark);
 }
@@ -507,7 +500,7 @@
   max-width: 120px;
   max-height: 60px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--card);
   padding: 4px;
 }
@@ -517,5 +510,5 @@
   background: none;
   padding: 0;
   font: inherit;
-  color: #dc2626;
+  color: var(--danger-500);
 }

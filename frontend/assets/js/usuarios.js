@@ -174,15 +174,15 @@ function renderUsers(users) {
     const statusText = statusLabel[statusKey] || u.status_label || statusKey;
     const isSelf = Number(u.id) === currentUserId;
     const lockedLine = u.is_locked
-      ? `<div style="font-size:11px; color:#7c3aed; margin-top:2px;">${formatLockoutRemaining(u.lockout_remaining_seconds)}</div>`
+      ? `<div style="font-size:11px; color:var(--info-500); margin-top:2px;">${formatLockoutRemaining(u.lockout_remaining_seconds)}</div>`
       : "";
     // El admin NO puede desactivarse/eliminarse a sí mismo (protección doble:
     // backend devuelve 403 y el frontend no muestra siquiera la opción).
     const deleteAction = !canDeactivateUsers
       ? ""
       : isSelf
-      ? `<span class="self-protected" style="font-size:12px; color:#94a3b8;" title="No podés desactivar tu propia cuenta">No podés eliminarte</span>`
-      : `<a href="#" class="danger delete-user" data-delete-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>Eliminar</a>`;
+      ? `<span class="self-protected" style="font-size:12px; color:var(--subtle);" title="No podés desactivar tu propia cuenta">No podés eliminarte</span>`
+      : `<a href="#" class="danger delete-user" data-delete-id="${u.id}"><i class="ph ph-trash" aria-hidden="true"></i>Eliminar</a>`;
 
     tr.innerHTML = `
       <td><input type="checkbox" class="row-checkbox" data-user-id="${u.id}"></td>
@@ -203,15 +203,15 @@ function renderUsers(users) {
       <td class="actions-col">
         <div class="row-actions">
           <button class="more-btn" data-idx="${i}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+            <i class="ph ph-dots-three-vertical" aria-hidden="true"></i>
           </button>
           <div class="dropdown" id="dd-${i}" style="display:none;">
-            <a href="#" class="view-user" data-view-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Ver</a>
-            ${canEditUsers ? `<a href="#" class="edit-user" data-edit-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>Editar</a>` : ""}
-            ${canEditUsers ? `<a href="comercio_usuario.html?user=${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1-5h16l1 5"/><path d="M4 9v11h16V9"/><path d="M9 20v-6h6v6"/></svg>Comercio</a>` : ""}
+            <a href="#" class="view-user" data-view-id="${u.id}"><i class="ph ph-eye" aria-hidden="true"></i>Ver</a>
+            ${canEditUsers ? `<a href="#" class="edit-user" data-edit-id="${u.id}"><i class="ph ph-pencil-simple" aria-hidden="true"></i>Editar</a>` : ""}
+            ${canEditUsers ? `<a href="comercio_usuario.html?user=${u.id}"><i class="ph ph-storefront" aria-hidden="true"></i>Comercio</a>` : ""}
             <div class="sep"></div>
-            ${canReactivateUsers && u.can_reactivate ? `<a href="#" class="reactivate-user" data-reactivate-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>Reactivar</a>` : ""}
-            ${canUnlockUsers && u.is_locked ? `<a href="#" class="unlock-user" data-unlock-id="${u.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>Unlock</a>` : ""}
+            ${canReactivateUsers && u.can_reactivate ? `<a href="#" class="reactivate-user" data-reactivate-id="${u.id}"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i>Reactivar</a>` : ""}
+            ${canUnlockUsers && u.is_locked ? `<a href="#" class="unlock-user" data-unlock-id="${u.id}"><i class="ph ph-lock-key-open" aria-hidden="true"></i>Unlock</a>` : ""}
             ${deleteAction}
           </div>
         </div>
@@ -750,7 +750,7 @@ function openViewModal(userId) {
   const content = document.getElementById("viewUserContent");
   if (!modal || !content) return;
 
-  content.innerHTML = `<div style="text-align:center; color:#64748b; padding:20px;"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></div>`;
+  content.innerHTML = `<div style="text-align:center; color:var(--muted); padding:20px;"><span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span></div>`;
   modal.style.display = "flex";
 
   apiFetch(`${API_URL}${userId}/`)
@@ -792,9 +792,9 @@ function openViewModal(userId) {
       content.innerHTML = rows
         .map(
           ([label, value]) => `
-            <div style="display:flex; justify-content:space-between; align-items:baseline; gap:16px; padding:9px 0; border-bottom:1px solid #e7eaf1;">
-              <span style="flex:0 0 auto; max-width:55%; font-size:12.5px; font-weight:600; color:#64748b; line-height:1.35;">${escapeHtml(label)}</span>
-              <span style="flex:1; font-size:14px; color:#0f172a; text-align:right; word-break:break-word;">${escapeHtml(value)}</span>
+            <div style="display:flex; justify-content:space-between; align-items:baseline; gap:16px; padding:9px 0; border-bottom:1px solid var(--line);">
+              <span style="flex:0 0 auto; max-width:55%; font-size:12.5px; font-weight:600; color:var(--muted); line-height:1.35;">${escapeHtml(label)}</span>
+              <span style="flex:1; font-size:14px; color:var(--ink); text-align:right; word-break:break-word;">${escapeHtml(value)}</span>
             </div>
           `
         )
@@ -803,7 +803,7 @@ function openViewModal(userId) {
     .catch((err) => {
       if (err.isSessionExpired) return;
       console.error("Error al ver usuario:", err);
-      content.innerHTML = `<div style="text-align:center; color:#dc2626; padding:20px;">${escapeHtml(err.message)}</div>`;
+      content.innerHTML = `<div style="text-align:center; color:var(--danger-500); padding:20px;">${escapeHtml(err.message)}</div>`;
     });
 }
 

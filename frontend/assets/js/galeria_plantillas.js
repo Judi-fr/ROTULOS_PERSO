@@ -27,7 +27,7 @@
     link.href = EDITOR_URL;
     link.innerHTML =
       '<span class="gallery-sheet gallery-sheet-blank" aria-hidden="true">' +
-      '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>';
+      '<i class="ph ph-plus" aria-hidden="true"></i></span>';
     const name = document.createElement("span");
     name.className = "gallery-name";
     name.textContent = "En blanco";

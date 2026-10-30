@@ -175,7 +175,7 @@ function showFieldMessage(id, text, ok) {
   const el = document.getElementById(id);
   if (!el) return;
   el.textContent = text;
-  el.style.color = ok ? "#16a34a" : "#dc2626";
+  el.style.color = ok ? "var(--success-500)" : "var(--danger-500)";
   el.style.display = "block";
 }
 
@@ -547,8 +547,8 @@ function initialsAvatarUrl(name, seed) {
   let hash = 0;
   for (const ch of String(seed || name || "")) hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">`
-    + `<rect width="64" height="64" fill="hsl(${hash % 360},40%,42%)"/>`
-    + `<text x="32" y="32" dy=".35em" text-anchor="middle" font-family="Karla,Arial,sans-serif" font-size="26" font-weight="700" fill="#fff">${escapeHtml(initials)}</text></svg>`;
+    + `<rect width="64" height="64" fill="hsl(${hash % 360},24%,40%)"/>`
+    + `<text x="32" y="32" dy=".35em" text-anchor="middle" font-family="Geist,Arial,sans-serif" font-size="26" font-weight="700" fill="#fff">${escapeHtml(initials)}</text></svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
@@ -797,23 +797,23 @@ function appSkeleton() {
 }
 
 // Íconos de línea propios (no todas las páginas cargan la fuente de íconos).
+// Ícono de cada lista vacía (Phosphor).
 const APP_EMPTY_ICONS = {
-  box: '<path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/>',
-  store: '<path d="M4 9.5V20h16V9.5"/><path d="M3 9.5 5 4h14l2 5.5a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0z"/><path d="M10 20v-5h4v5"/>',
-  printer: '<path d="M7 8V3h10v5"/><rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 14h10v7H7z"/>',
-  doc: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>',
-  check: '<circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.7 2.7L16 10"/>',
-  list: '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>',
+  box: "package",
+  store: "storefront",
+  printer: "printer",
+  doc: "file-text",
+  check: "check-circle",
+  list: "list-bullets",
 };
 
 function appEmptyState({ icon = "list", title, text = "", actionLabel = "", actionHref = "" } = {}) {
   const action = actionLabel && actionHref
     ? `<a class="app-empty-action" href="${escapeHtml(actionHref)}">${escapeHtml(actionLabel)}</a>`
     : "";
-  const svg = APP_EMPTY_ICONS[icon] || APP_EMPTY_ICONS.list;
+  const iconName = APP_EMPTY_ICONS[icon] || APP_EMPTY_ICONS.list;
   return `<div class="app-empty">
-    <span class="app-empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none"
-      stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${svg}</svg></span>
+    <span class="app-empty-icon" aria-hidden="true"><i class="ph ph-${iconName}"></i></span>
     <p class="app-empty-title">${escapeHtml(title)}</p>
     ${text ? `<p class="app-empty-text">${escapeHtml(text)}</p>` : ""}
     ${action}

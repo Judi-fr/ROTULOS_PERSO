@@ -10,9 +10,9 @@
 .closed-head input {
   min-width: 240px;
   padding: 6px 10px;
-  border: 1px solid #d9d9e3;
-  border-radius: 8px;
-  font-size: 13px;
+  border: 1px solid var(--info-200);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
 }
 
 .closed-item {
@@ -21,7 +21,7 @@
   justify-content: space-between;
   gap: 16px;
   padding: 14px 18px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--n-150);
 }
 
 .closed-item:first-child {
@@ -33,12 +33,12 @@
   flex-direction: column;
   gap: 3px;
   min-width: 0;
-  font-size: 14px;
+  font-size: var(--text-base);
 }
 
 .closed-muted {
-  color: #6b6b7b;
-  font-size: 13px;
+  color: var(--n-500);
+  font-size: var(--text-sm);
 }
 
 .closed-reason {

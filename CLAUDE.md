@@ -348,8 +348,9 @@ exact midnight. It reads `.get()`, so it takes query params or a JSON body dict 
   `"perm"`, which `topbar.js` checks against the stored session). `menu` is still sent (its tests and anything
   reading it). `onboarding(user)`: four first steps (store, business data, template, carrier) computed from
   the data of the current business, only for its OWNER who isn't the admin; "Ocultar" is per browser (localStorage). Icons:
-  `@mdi/font@4.9.95` from jsdelivr — `cdn.materialdesignicons.com` stopped answering and every icon was blank;
-  some 5.x names (`printer-outline`, `storefront-outline`) don't exist in 4.x. **Function search** (2026-10-21, above the
+  the backend still names each section's icon with its Material Design name (`mdi mdi-printer`…); `dashboard.js`
+  (`SECTION_ICONS`/`sectionIcon`) translates them to Phosphor, the app's icon set (see "Design system") — a new
+  section icon needs an entry there. **Function search** (2026-10-21, above the
   cards; `setupToolSearch` in `dashboard.js`): searches every tool the user can reach — the sections and their
   links plus the full `menu`, one entry per page (a second name for the same page only widens the match), plus
   `IN_PAGE_TOOLS`, actions that are a button inside another page (planilla de retiro, cargar seguimientos, nuevo
@@ -716,8 +717,8 @@ change in `label_rendering.py`, change them in the editor too.** `renderDecorati
 - **Layout** (2026-10-16): canvas on the left, a sticky inspector on the right (`.workspace` grid, one column
   under 1000px) with panels "Elemento seleccionado" (the code/field/decoration/lock groups — only the chosen
   element's panel shows; `selectField` hides the others), "Rótulo", "Decoraciones" and "Guardar y exportar";
-  "Guardar rótulo" and "Ver cómo sale impreso" at the top. Same palette and font as the rest of the app (orange
-  accent, Karla); the label itself uses Helvetica/Arial, the renderer's font. `topbar.js` loads right after
+  "Guardar rótulo" and "Ver cómo sale impreso" at the top. Same palette and font as the rest of the app (the
+  design-system tokens, Geist); the label itself uses Helvetica/Arial, the renderer's font. `topbar.js` loads right after
   the `<header>` — in the `<head>` it found no `#appTopbar` and the bar stayed empty.
 - **Text options (2026-10-21)**, per text field and fixed text: `prefix` (a fixed label before the value, e.g.
   "CP:", hidden with the field by `hide_if_empty`) + `prefix_bold`, `invert` (white on a black band), `frame` (its
@@ -1748,7 +1749,7 @@ share the same script order — `config.js`, `auth.js`, `utils.js`, `admin_commo
 then the page's own script — and each redirects to `dashboard.html` if the caller lacks that page's
 permission (UI-only gating; the backend re-checks every permission server-side). **They don't load Bootstrap**
 (removed 2026-10-21: it overrode the font and size of labels/selects/dates, which is why the user filter
-looked "raro"); `gestionuser.css` sets Karla on `body` and carries the few resets they took from it
+looked "raro"); `gestionuser.css` sets the app font on `body` and carries the few resets they took from it
 (`[hidden]`, `.nav { display: flex }`, ...). No page loads Bootstrap since 2026-10-26: the access screens
 (`index.html`, `register.html`, `logoutpage.html`) share `assets/css/acceso.css` (split screen, labels above the
 fields, show/hide password via `data-reveal` in `utils.js`, errors inline in `#pageMessage` instead of a pop-up).
@@ -1775,7 +1776,7 @@ and the email moved under the name (no Email column; email order stays in "Orden
   `addressSummary`, `showFieldMessage`, `fillStoreFilter(select, field, {minStores})` and
   `renderPrevNextPager(container, data, page, goTo)` — copies of them used to live in 3-5 pages each.
   `hasPermission` (dashboard/templates) and the page `formatDate`s were left on purpose: they behave
-  differently. Karla is loaded with 400,500,600,700 (the CSS uses all four). `showMessage`
+  differently. Geist is loaded with 400,500,600,700 (+ Geist Mono 400/500). `showMessage`
   scrolls the page to `#pageMessage` when it is out of view: the notice sits at the top, and an
   action taken further down used to end with no visible result at all.
 - **Every action says how it ended.** A write that succeeds shows a green `page-message success`
@@ -1828,10 +1829,41 @@ and the email moved under the name (no Email column; email order stays in "Orden
 - `assets/css/base.css` — reset, `body`/`.layout`/`.main`, top bar and buttons, loaded BEFORE the page's own
   stylesheet by the pages whose CSS had these rules byte-identical (`documentos`/`importar`/`integraciones`/
   `labels_shared`/`pedidos`/`perfil`). `tiendas.css`/`despachar.css`/`gestionuser.css` don't load it.
-- **One palette, in `ui.css` (2026-10-26).** The `:root` color tokens used to be copied in 14 CSS files — all with
-  the same values, only some files adding their own (sidebar, `--accent`, `--slate`) —; now they live once at the
-  top of `ui.css`, which every page loads first. A page's CSS doesn't redefine them. Exception left alone:
-  `editor_rotulos.html` keeps its own inline palette (a slightly darker orange) for that page only.
+- **Design system (2026-10-29, redesign with the redesign/minimalist/design-system skills; user: "que se sienta
+  consistente y bonito", identity renewed).** Everything visual is a token at the top of `ui.css`, which every page
+  loads first; **page CSS never writes a hex color, font, font size, radius or shadow by hand** — it uses the tokens.
+  Audit before: 116 hand-written colors, 28 font sizes, 18 radii, 35 shadows, buttons defined in 20 files.
+  - **Identity**: font **Geist** (+ Geist Mono) from Google Fonts on every page (was Karla); warm "stone" neutrals
+    `--n-0…--n-900`; ONE accent, the Human Log logo green `--accent-500` `#308028` (ramp 50-700; the app was orange
+    and clashed with the green logo); state colors as muted pastels + ink: `--success-*`, `--danger-*`,
+    `--warning-*`, `--info-*`. The app mark `favicon.svg` is green too. Store colors (`store-color-N` in
+    `pedidos.css`) are identification colors and stay as they are.
+  - **Scales**: `--text-xs…--text-2xl` (12/13/14/16/18/22/28), `--radius-sm|md|lg|xl|full` (6/8/12/16),
+    `--shadow-xs|sm|md|lg` (tinted, near invisible), `--ring` (focus), `--page-form|content|wide` (800/1080/1400 for
+    `.main`). Roles: `--bg --surface --surface-2 --line --line-strong --ink --ink-2 --muted --subtle
+    --placeholder --field-border`. The old names (`--blue`, `--card`, `--border`, `--text-dark`, `--text-muted`,
+    `--green`…) still exist as aliases of the new ones.
+  - **Components, once, in `ui.css`**: `.btn` + `.btn-primary` (green) / `.btn-outline|-secondary|-cancel` /
+    `.btn-ghost|-quiet` / `.btn-danger` / `.btn-small`, the page heading (`.main-heading h1/p`; the admin `.topbar
+    h1/p` matches it), form fields (border `--field-border`, green border on focus, `accent-color` on checkboxes),
+    `.page-message.error|success|info|warning`. Pages don't redefine them (the copies in base/app/despachar/
+    tiendas/gestionuser were removed); a page that needs something else uses its own class.
+  - **Contrast (WCAG AA, checked)**: `--muted` 4.6:1 on `--bg`, primary button 4.95:1, state pairs ≥ 4.8:1,
+    field borders and `--n-400` icons 3:1, placeholders 3.7:1.
+  - **Icons: Phosphor (regular) only** (2026-10-29, second pass): `@phosphor-icons/web@2.1.1` from jsDelivr, linked
+    right after `ui.css` on every page; `<i class="ph ph-name" aria-hidden="true"></i>`, inheriting color and sized
+    by the container (`.ph` base rule in `ui.css`; the old `... svg {width}` rules also cover `.ph`). Material Design
+    Icons and the hand-drawn Lucide-style SVGs are gone; the only inline SVGs left are the column sort arrows of
+    `gestionuser.html` (they change state through CSS) and the initials avatar. No emojis as icons.
+  - **Selects** lose the native look: `select:not([multiple]):not([size])` in `ui.css` draws the system chevron
+    (`!important` on the background image/position and `padding-right`, because page rules use the `background:`
+    and `padding:` shorthands that would erase it).
+  - The access flow (login, register, recuperar/reset password, verify-email, cambiar-password) shares the split
+    `acceso.css` layout; its submit is the same green primary.
+  - `editor_rotulos.html` maps its own variable names onto the tokens (no inline palette any more); the LABEL
+    canvas keeps pure black on white — it mirrors the print.
+  - Local dev serves files without cache headers: after a CSS change the browser can show the old one (worse with
+    the manual `?v=` stamps). Hard reload; in the server `version_assets.sh` stamps by content.
 - **`app.css` vs `pedidos.css` (2026-10-26).** `pedidos.css` used to be the de facto base of ~20 merchant pages that
   show no orders. Its generic part (top bar, buttons, `.main`, `.profile-card`, fields, `.form-message`,
   `.empty-state`) is now `assets/css/app.css`, loaded where `pedidos.css` was; `pedidos.css` keeps only order things
@@ -1980,8 +2012,8 @@ and the email moved under the name (no Email column; email order stays in "Orden
   logo (`humanlog-logo.png` / `humanlog-lockup.png`, cut from `LogoLogin.png`; `HLLogoFinal.jpg`, the globe one, is
   no longer used) + "Rótulos"; the shared topbar's home link is the app mark (`favicon.svg`) + "Rótulos" and
   `topbar.js` appends " · Human Log Rótulos" to the tab title; the admin sidebar says "Rótulos / Administración";
-  mail subjects and the default sender say "Human Log · Rótulos". The logo is green, the app accent orange: not
-  unified on purpose (left for a design decision).
+  mail subjects and the default sender say "Human Log · Rótulos". Since the 2026-10-29 redesign the app accent IS the
+  logo green (see "Design system").
 - `editor_rotulos.html?nueva=plantilla` (reached from the gallery, `galeria_plantillas.html`) titles the page "Nueva plantilla" and its
   main button saves a template ("Guardar plantilla", same path as "Guardar como plantilla"); plain
   `editor_rotulos.html` still saves a `Label`.

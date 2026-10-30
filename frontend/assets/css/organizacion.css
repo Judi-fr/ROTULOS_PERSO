@@ -15,7 +15,7 @@
   grid-column: 1 / -1;
   margin: 0;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .account-logo img {
@@ -25,8 +25,8 @@
   margin-bottom: 8px;
   object-fit: contain;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fff;
+  border-radius: var(--radius-md);
+  background: var(--n-0);
 }
 
 .account-logo .btn {
@@ -55,7 +55,7 @@
 .account-section-help {
   margin: -4px 0 14px;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-base);
 }
 
 .main > .profile-card + .profile-card {
@@ -88,17 +88,17 @@
 /* Baja del comercio (baja_comercio.js): al final, en rojo, solo el dueño. */
 .close-team-card {
   margin-top: 36px;
-  border-color: #f1b8b4;
+  border-color: var(--danger-200);
 }
 
 .close-team-card .profile-card-title {
-  color: #b42318;
+  color: var(--danger-500);
 }
 
 .close-team-text {
   margin: 0 0 14px;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-base);
   line-height: 1.5;
 }
 
@@ -108,9 +108,9 @@
 }
 
 .close-team-btn {
-  background: #b42318;
-  border-color: #b42318;
-  color: #fff;
+  background: var(--danger-500);
+  border-color: var(--danger-500);
+  color: var(--n-0);
 }
 
 .close-team-btn:disabled {

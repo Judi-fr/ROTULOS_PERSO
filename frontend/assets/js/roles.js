@@ -163,7 +163,8 @@ function renderRoles() {
     button.dataset.roleId = getRoleId(role);
     button.classList.toggle("active", getRoleId(selectedRole) === getRoleId(role));
     const name = document.createElement("span");
-    name.textContent = role.locked ? `${role.label} 🔒` : role.label;
+    name.textContent = role.label;
+    if (role.locked) name.insertAdjacentHTML("beforeend", ' <i class="ph ph-lock-simple" aria-label="Bloqueado"></i>');
     if (role.locked) button.title = role.locked_reason || "";
     const kind = document.createElement("small");
     kind.textContent =
@@ -179,7 +180,7 @@ function renderRoles() {
       deleteBtn.className = "role-delete-btn";
       deleteBtn.title = `Eliminar el rol ${role.label}`;
       deleteBtn.setAttribute("aria-label", deleteBtn.title);
-      deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /></svg>';
+      deleteBtn.innerHTML = '<i class="ph ph-trash" aria-hidden="true"></i>';
       deleteBtn.dataset.roleId = getRoleId(role);
       deleteBtn.addEventListener("click", (e) => {
         e.stopPropagation();

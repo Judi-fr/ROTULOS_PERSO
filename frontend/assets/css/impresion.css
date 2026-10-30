@@ -13,7 +13,7 @@
 .print-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: var(--text-base);
 }
 
 .print-table th,
@@ -26,28 +26,28 @@
 
 .print-table th {
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 
 .print-detail {
   display: block;
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm);
 }
 
 .print-error {
   display: block;
   color: var(--red);
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   max-width: 420px;
 }
 
 .print-badge {
   display: inline-block;
   padding: 2px 9px;
-  border-radius: 999px;
-  font-size: 12px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -69,7 +69,7 @@
 
 .print-actions .btn {
   padding: 6px 10px;
-  font-size: 12.5px;
+  font-size: var(--text-sm);
 }
 
 .print-toolbar {
@@ -85,7 +85,7 @@
   margin: 12px 0;
   padding: 14px;
   border: 1px solid var(--amber);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--amber-light);
 }
 
@@ -94,9 +94,9 @@
   display: block;
   margin: 8px 0;
   padding: 8px 10px;
-  border-radius: 6px;
-  background: #fff;
-  font-size: 12.5px;
+  border-radius: var(--radius-sm);
+  background: var(--n-0);
+  font-size: var(--text-sm);
   word-break: break-all;
   white-space: pre-wrap;
 }
@@ -116,7 +116,7 @@
   margin: 0 0 12px;
   padding-left: 20px;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-base);
   line-height: 1.6;
 }
 

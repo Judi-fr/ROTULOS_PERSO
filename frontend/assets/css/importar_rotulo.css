@@ -6,7 +6,7 @@
    de .btn de arriba le ganaría el color si no se repite acá. */
 
 .main {
-  max-width: 900px;
+  max-width: var(--page-content);
 }
 
 .empty-state {
@@ -14,13 +14,13 @@
 }
 
 .section-title {
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 700;
   margin: 20px 0 4px;
 }
 
 .field-hint {
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   margin: 4px 0 0;
 }
@@ -31,24 +31,24 @@
 
 input[type="file"] {
   font-family: inherit;
-  font-size: 14px;
+  font-size: var(--text-base);
 }
 
 /* Resumen de la lectura */
 .reading-summary {
   background: var(--bg);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 12px 14px;
 }
 
 .summary-line {
   margin: 0 0 4px;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
 }
 
 .summary-note {
   margin: 8px 0 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   font-style: italic;
 }
@@ -62,17 +62,17 @@ input[type="file"] {
 
 .preview-sheet {
   position: relative;
-  background: #fff;
+  background: var(--n-0);
   border: 1px solid var(--text-dark);
-  border-radius: 2px;
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
 }
 
 .preview-element {
   position: absolute;
   border: 1px solid var(--blue);
   background: var(--blue-light);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--blue);
   display: flex;
@@ -102,7 +102,7 @@ input[type="file"] {
   align-items: flex-start;
   gap: 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 10px 12px;
 }
 
@@ -110,7 +110,7 @@ input[type="file"] {
   background: var(--blue-light);
   color: var(--blue);
   font-weight: 700;
-  font-size: 12px;
+  font-size: var(--text-xs);
   border-radius: 50%;
   width: 22px;
   height: 22px;
@@ -126,29 +126,29 @@ input[type="file"] {
 
 .element-title {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 700;
 }
 
 .element-meta {
   margin: 2px 0 0;
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
 .element-detected {
   margin: 4px 0 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 /* Lo que descartó */
 .discarded-box {
   margin-top: 18px;
   background: var(--amber-light);
-  border: 1px solid #f3dfae;
-  border-radius: 10px;
+  border: 1px solid var(--warning-200);
+  border-radius: var(--radius-md);
   padding: 12px 14px;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
   color: var(--amber);
 }
 
@@ -179,12 +179,12 @@ input[type="file"] {
 .field input,
 .field textarea {
   padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 14px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
   font-family: inherit;
   color: var(--text-dark);
-  background: #fff;
+  background: var(--n-0);
   width: 100%;
   resize: vertical;
 }

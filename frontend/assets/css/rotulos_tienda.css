@@ -4,7 +4,7 @@
    lista (label-item, badges de estado, aviso de plan). */
 
 .main {
-  max-width: 900px;
+  max-width: var(--page-content);
 }
 
 /* Filtros */
@@ -18,11 +18,11 @@
 .status-filter {
   padding: 9px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 14px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
   font-family: inherit;
   color: var(--text-dark);
-  background: #fff;
+  background: var(--n-0);
 }
 
 .status-filter:focus {
@@ -34,10 +34,10 @@
 .plan-warning {
   background: var(--amber-light);
   color: var(--amber);
-  border: 1px solid #f3dfae;
-  border-radius: 10px;
+  border: 1px solid var(--warning-200);
+  border-radius: var(--radius-md);
   padding: 12px 14px;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
   margin-bottom: 16px;
 }
 
@@ -50,7 +50,7 @@
 
 .label-item {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 16px;
   display: flex;
   align-items: flex-start;
@@ -66,19 +66,19 @@
 
 .label-item-title {
   font-weight: 700;
-  font-size: 14.5px;
+  font-size: var(--text-base);
   margin: 0 0 4px;
 }
 
 .label-item-meta {
   margin: 2px 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
 .label-item-error {
   margin: 6px 0 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--red);
 }
 
@@ -87,8 +87,8 @@
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12.5px;
+  border-radius: var(--radius-xl);
+  font-size: var(--text-sm);
   font-weight: 600;
   white-space: nowrap;
   flex-shrink: 0;
@@ -123,7 +123,7 @@
   justify-content: center;
   gap: 12px;
   margin: 14px 0 0;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 

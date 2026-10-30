@@ -34,7 +34,7 @@ let hasNextPage = false;
 function showPrintMsg(text, ok) {
   const el = document.getElementById("printMsg");
   el.textContent = text;
-  el.style.color = ok ? "#16a34a" : "#dc2626";
+  el.style.color = ok ? "var(--success-500)" : "var(--danger-500)";
   el.style.display = "block";
 }
 

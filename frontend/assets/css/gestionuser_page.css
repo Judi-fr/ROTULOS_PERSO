@@ -25,31 +25,12 @@
 }
 
 .users-page .topbar h1 {
-  font-size: 26px;
+  font-size: var(--text-2xl);
   letter-spacing: -0.02em;
 }
 
 .users-page .topbar p {
   max-width: 60ch;
-}
-
-.users-page .btn {
-  transition: background 0.18s, border-color 0.18s, transform 0.12s;
-}
-
-.users-page .btn:active {
-  transform: translateY(1px);
-}
-
-.users-page .btn-quiet {
-  background: transparent;
-  color: var(--text-muted);
-  font-weight: 600;
-}
-
-.users-page .btn-quiet:hover {
-  background: #eef1f6;
-  color: var(--text-dark);
 }
 
 /* --- Resumen: total con su reparto + tres atajos ------------------------- */
@@ -60,8 +41,8 @@
   margin-bottom: 20px;
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: 0 16px 32px -24px rgba(15, 23, 42, 0.25);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
   overflow: hidden;
 }
 
@@ -75,20 +56,20 @@
 }
 
 .pulse-total {
-  background: linear-gradient(180deg, #fffaf5 0%, #ffffff 100%);
+  background: linear-gradient(180deg, var(--accent-50) 0%, var(--n-0) 100%);
 }
 
 .pulse-label {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   font-weight: 700;
   color: var(--text-muted);
 }
 
 .pulse-value {
-  font-size: 30px;
+  font-size: var(--text-2xl);
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.02em;
@@ -104,8 +85,8 @@
   display: flex;
   height: 6px;
   margin-top: 6px;
-  border-radius: 999px;
-  background: #eef1f6;
+  border-radius: var(--radius-full);
+  background: var(--n-100);
   overflow: hidden;
 }
 
@@ -121,13 +102,13 @@
 }
 
 .pulse-bar-inactive {
-  background: #cbd5e1;
+  background: var(--n-300);
 }
 
 .pulse-note,
 .pulse-hint {
-  font-size: 12px;
-  color: #94a3b8;
+  font-size: var(--text-xs);
+  color: var(--n-400);
 }
 
 .pulse-dot {
@@ -138,8 +119,8 @@
 }
 
 .pulse-dot.active { background: var(--green); }
-.pulse-dot.inactive { background: #cbd5e1; }
-.pulse-dot.locked { background: #94a3b8; }
+.pulse-dot.inactive { background: var(--n-300); }
+.pulse-dot.locked { background: var(--n-400); }
 
 .pulse-stat {
   justify-content: space-between;
@@ -153,7 +134,7 @@
 }
 
 .pulse-stat:hover {
-  background: #f8fafc;
+  background: var(--n-50);
 }
 
 .pulse-stat:active .pulse-value {
@@ -185,7 +166,7 @@
 }
 
 .pulse-stat[aria-pressed="true"] .pulse-hint {
-  color: #c2410c;
+  color: var(--accent-600);
 }
 
 /* Con algún bloqueado, el atajo se pinta de rojo para que se note. */
@@ -195,20 +176,20 @@
 /* --- Tabla ------------------------------------------------------------------ */
 
 .users-page .table-card {
-  border-radius: 14px;
-  box-shadow: 0 16px 32px -26px rgba(15, 23, 42, 0.25);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
 }
 
 .users-page .table-toolbar .search-box {
   max-width: 460px;
   padding: 9px 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   transition: border-color 0.18s, box-shadow 0.18s;
 }
 
 .users-page .table-toolbar .search-box:focus-within {
   border-color: var(--blue);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
+  box-shadow: var(--ring);
 }
 
 /* Exportar: un botón con un panel chico (qué usuarios y formato). */
@@ -223,10 +204,10 @@
   z-index: 30;
   width: 300px;
   padding: 14px;
-  background: #ffffff;
+  background: var(--n-0);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: 0 22px 44px -18px rgba(15, 23, 42, 0.35);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
   animation: export-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -250,11 +231,11 @@
 .export-group legend {
   margin-bottom: 8px;
   padding: 0;
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #94a3b8;
+  color: var(--n-400);
 }
 
 .export-option {
@@ -263,7 +244,7 @@
   gap: 10px;
   padding: 9px 10px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
 }
@@ -281,17 +262,17 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
 }
 
 .export-option small {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
 .export-option:has(input:checked) {
   border-color: var(--blue);
-  background: #fffaf5;
+  background: var(--accent-50);
 }
 
 .export-option:has(input:disabled) {
@@ -304,8 +285,8 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   padding: 3px;
-  border-radius: 10px;
-  background: #f1f4f8;
+  border-radius: var(--radius-md);
+  background: var(--n-100);
 }
 
 .export-formats label {
@@ -323,18 +304,18 @@
 .export-formats span {
   display: block;
   padding: 7px 0;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   text-align: center;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
   font-weight: 700;
   color: var(--text-muted);
   transition: background 0.15s, color 0.15s, box-shadow 0.15s;
 }
 
 .export-formats input:checked + span {
-  background: #ffffff;
+  background: var(--n-0);
   color: var(--text-dark);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+  box-shadow: var(--shadow-xs);
 }
 
 .export-formats input:focus-visible + span {
@@ -363,13 +344,13 @@
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: var(--blue);
-  color: #ffffff;
-  font-size: 11px;
+  color: var(--n-0);
+  font-size: var(--text-xs);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -386,11 +367,15 @@
   padding-right: 0;
   text-overflow: clip;
 }
-.users-page th.user-col { width: 30%; }
+/* Con poco ancho los encabezados bajan de renglón en vez de encimarse
+   (table-layout fixed; un contenedor con scroll recortaría el menú de cada fila). */
+.users-page thead th { white-space: normal; overflow: visible; vertical-align: bottom; }
+.users-page thead .th-sort { max-width: 100%; white-space: normal; line-height: 1.2; text-align: left; }
+.users-page th.user-col { width: 27%; }
 .users-page th.role-col { width: 15%; }
 .users-page th.status-col { width: 14%; }
-.users-page th.date-col { width: 12%; }
-.users-page th.num-col { width: 9%; text-align: right; }
+.users-page th.date-col { width: 13%; }
+.users-page th.num-col { width: 10%; text-align: right; }
 /* relative: el "Acciones" oculto (sr-only, absoluto) queda dentro de la tabla;
    si no, en el celular se escapa del scroll de la tabla y ensancha la página. */
 .users-page th.actions-col { width: 64px; position: relative; }
@@ -406,11 +391,11 @@
 }
 
 .users-page thead tr {
-  background: #fafbfc;
+  background: var(--n-50);
 }
 
 .users-page th {
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   letter-spacing: 0.02em;
   padding: 11px 14px;
 }
@@ -435,8 +420,8 @@
 .users-page .user-avatar {
   width: 34px;
   height: 34px;
-  background: #f1f4f8;
-  box-shadow: 0 0 0 2px #ffffff, 0 0 0 3px var(--border);
+  background: var(--n-100);
+  box-shadow: 0 0 0 2px var(--n-0), 0 0 0 3px var(--border);
 }
 
 .user-ident {
@@ -450,7 +435,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -480,11 +465,11 @@
 }
 
 .users-page .status {
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .users-page .status.active .dot {
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
+  box-shadow: var(--ring);
 }
 
 .users-page .table-placeholder .app-empty {
@@ -544,7 +529,7 @@
   }
 
   .pulse-stat .pulse-value {
-    font-size: 22px;
+    font-size: var(--text-xl);
     order: 2;
   }
 

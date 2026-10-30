@@ -35,6 +35,23 @@ function showMessage(text, type = "error") {
 // Todas las tarjetas tienen la misma forma (cabecera, lista de herramientas
 // con lugar para tres, "Abrir" abajo a todo el ancho) para que la grilla
 // quede pareja aunque cada sección tenga distinta cantidad de herramientas.
+// El backend (dashboard_sections.py) nombra los íconos de cada sección con su
+// nombre de Material Design; acá se traducen a Phosphor, el juego de la app.
+const SECTION_ICONS = {
+  "mdi-package-variant": "package",
+  "mdi-printer": "printer",
+  "mdi-view-grid-plus-outline": "squares-four",
+  "mdi-store-outline": "storefront",
+  "mdi-account-group-outline": "users-three",
+  "mdi-lifebuoy": "lifebuoy",
+  "mdi-shield-account-outline": "shield-check",
+};
+
+function sectionIcon(value) {
+  const name = String(value || "").split(/\s+/).find((part) => part.startsWith("mdi-"));
+  return SECTION_ICONS[name] || "squares-four";
+}
+
 function buildSectionCard(section, { wide = false } = {}) {
   const card = document.createElement("article");
   card.className = wide ? "section-card section-card-wide" : "section-card";
@@ -43,7 +60,7 @@ function buildSectionCard(section, { wide = false } = {}) {
   head.className = "section-card-head";
   const icon = document.createElement("span");
   icon.className = "section-card-icon";
-  icon.innerHTML = `<i class="${escapeHtml(section.icon || "mdi mdi-view-grid-outline")}" aria-hidden="true"></i>`;
+  icon.innerHTML = `<i class="ph ph-${escapeHtml(sectionIcon(section.icon))}" aria-hidden="true"></i>`;
   const text = document.createElement("div");
   text.className = "section-card-text";
   const title = document.createElement("h2");
@@ -62,7 +79,7 @@ function buildSectionCard(section, { wide = false } = {}) {
     const item = document.createElement("li");
     const anchor = document.createElement("a");
     anchor.href = link.url;
-    anchor.innerHTML = '<span></span><i class="mdi mdi-chevron-right" aria-hidden="true"></i>';
+    anchor.innerHTML = '<span></span><i class="ph ph-caret-right" aria-hidden="true"></i>';
     anchor.querySelector("span").textContent = link.label;
     item.appendChild(anchor);
     tools.appendChild(item);
@@ -71,7 +88,7 @@ function buildSectionCard(section, { wide = false } = {}) {
   const open = document.createElement("a");
   open.className = "section-btn section-btn-soft section-card-open";
   open.href = section.url;
-  open.innerHTML = `<span></span> <i class="mdi mdi-arrow-right" aria-hidden="true"></i>`;
+  open.innerHTML = `<span></span> <i class="ph ph-arrow-right" aria-hidden="true"></i>`;
   open.querySelector("span").textContent = `Abrir ${section.label}`;
 
   card.append(head, tools, open);
@@ -290,7 +307,7 @@ function buildNotice(notice) {
   const text = document.createElement("span");
   text.className = "notice-text";
   text.textContent = notice.title;
-  item.innerHTML = '<i class="mdi mdi-alert-outline" aria-hidden="true"></i>';
+  item.innerHTML = '<i class="ph ph-warning" aria-hidden="true"></i>';
   item.appendChild(text);
   if (notice.url) {
     const review = document.createElement("a");
@@ -371,8 +388,8 @@ function renderOnboarding(onboarding) {
   onboarding.steps.forEach((step) => {
     const item = document.createElement("li");
     item.className = step.done ? "done" : "";
-    const icon = step.done ? "mdi-check-circle" : "mdi-circle-outline";
-    item.innerHTML = `<i class="mdi ${icon}" aria-hidden="true"></i>`;
+    const icon = step.done ? "check-circle" : "circle";
+    item.innerHTML = `<i class="ph ph-${icon}" aria-hidden="true"></i>`;
     if (step.done) {
       const label = document.createElement("span");
       label.textContent = step.label;

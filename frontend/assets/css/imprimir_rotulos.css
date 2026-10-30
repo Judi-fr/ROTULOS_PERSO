@@ -13,7 +13,7 @@
 }
 
 .selection-count {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--blue);
 }
@@ -25,7 +25,7 @@
   padding: 0 0 10px;
   border-bottom: 1px solid var(--border);
   margin: 0 0 10px;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -43,7 +43,7 @@
   gap: 10px;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   cursor: pointer;
 }
 
@@ -63,11 +63,11 @@
 
 .print-order-title {
   font-weight: 700;
-  font-size: 14px;
+  font-size: var(--text-base);
 }
 
 .print-order-meta {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -77,7 +77,7 @@
   justify-content: center;
   gap: 12px;
   margin: 14px 0 0;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -85,12 +85,12 @@
    fila de filtros (ver .filters-row .field). */
 .filters-row input[type="date"] {
   padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 14px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
   font-family: inherit;
   color: var(--text-dark);
-  background: #fff;
+  background: var(--n-0);
   width: 100%;
 }
 
@@ -101,7 +101,7 @@
 
 .filters-hint {
   margin: 10px 0 0;
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -109,6 +109,6 @@
 .field-hint {
   display: inline-block;
   margin-top: 6px;
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   color: var(--blue);
 }
