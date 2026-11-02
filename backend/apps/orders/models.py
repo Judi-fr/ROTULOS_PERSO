@@ -143,6 +143,9 @@ class Order(models.Model):
     # Por dónde entró el pedido (reportes/depuración): default "web" porque
     # es el único origen que existía antes de esta migración.
     source = models.CharField(max_length=20, choices=Source.choices, default=Source.WEB)
+    # Pedido de ejemplo (sample_views): para que un comercio nuevo pruebe
+    # imprimir sin conectar nada; se borran todos juntos con un botón.
+    is_sample = models.BooleanField(default=False)
 
     # --- Integración con el courier (pendiente hasta tener la API) ---
     carrier = models.CharField(max_length=100, blank=True, default="")

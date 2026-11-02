@@ -749,6 +749,31 @@ Actividad (`team.manage`; their scripts return early without it) and **Estadíst
     `ambiguous` = two stores share the number; `store` breaks the tie. `.../confirm/` `{status, rows}`
     applies only the rows sent back; an order already further along keeps its status and only gets the
     tracking.
+- **Scan to dispatch (2026-11-02)**: `GET /orders/scan/?code=` (`OrderViewSet.scan`, `orders.view`, same scope as
+  the list; logic in `scan.find_orders`) maps what a camera or a handheld scanner reads on the label to orders: the
+  barcode is `{{tracking}}` (carrier number, or our id zero-padded to 6), the QR `{{tracking_url}}` (carrier link, or
+  our signed public link). Order: signed link → exact `tracking_url` → exact `tracking_number` → `external_number`
+  (and the id when ≥ 6 digits); `{matches: [...]}`, more than one = same number in two stores (the screen asks).
+  Screen `escanear.html` + `assets/js/escanear.js` (topbar of Mis pedidos, function search): native `BarcodeDetector`,
+  else `@zxing/browser@0.1.5` from jsDelivr loaded on demand (iPhone Safari); a scanner gun types + Enter into the
+  same field. Mode "despachar" posts `/orders/<id>/ship/` after a 5 s `appUndoable`; repeated reads of the same
+  code are ignored for 4 s; beep + vibration. Tests: `tests/test_order_scan.py`.
+- **Public tracking (2026-11-02)**: the label's QR fallback (no carrier link) used to be
+  `seguimiento.html?codigo=<zero-padded id>` — a page that didn't exist, and with a sequential id anyone could walk
+  every business's orders. Now `public_tracking.public_tracking_url(order)` = `seguimiento.html?t=<signing.dumps(pk)>`
+  (salt `orders.public-tracking`), also exposed as `public_tracking_url` on the order serializer ("Copiar link de
+  seguimiento" in the card's "⋯" menu). `GET /api/v1/tracking/<token>/` (`PublicTrackingView`, AllowAny, no
+  authentication, anon throttle) answers business name/logo, number, status + dated events, carrier, tracking
+  number/URL and the destination city/province — **never the recipient, address or contact**; bad token → 404.
+  Public page `seguimiento.html` + `assets/js/seguimiento.js` (no `auth.js`, `noindex`, `no-referrer`). Listed in
+  `privacidad.html`. Tests: `tests/test_public_tracking.py`.
+- **Sample orders (2026-11-02)**: `Order.is_sample` (migration `orders/0006`). `GET/POST/DELETE /orders/sample/`
+  (`sample_views.SampleOrdersView`; GET `orders.view`, writes `orders.create_manual`): POST creates 4 invented
+  buyers' orders in the current business (idempotent: 200 if there are already), DELETE removes them and their
+  addresses except one that got a carrier shipment (`kept`, a real shipment). The owner's "Primeros pasos" offers
+  "Probar con pedidos de ejemplo" while no store is connected and lands on `imprimir_rotulos.html?rotulo=sin_imprimir`;
+  `renderSampleOrdersNotice` (utils.js) shows "Estás viendo N pedidos de ejemplo · Borrar los ejemplos" on the
+  dashboard and Mis pedidos; cards carry an "Ejemplo" tag. Tests: `tests/test_sample_orders.py`.
 - `ingestion.upsert_store_order(connection, normalized)` is the single store-order creation path: keyed on
   `(store_connection, external_id)`, ignores updates older than `external_updated_at`, and
   `_synced_status()` only ever moves a shipping status forward or cancels (never reactivates a locally
@@ -1869,11 +1894,23 @@ and the email moved under the name (no Email column; email order stays in "Orden
   with `integrations.manage` (that page is admin-only). It is the only way in: `integraciones.html`
   is deliberately not in the dashboard menu (`DashboardView`). Batch printing lands on
   `documentos.html?labels=N[&dispatched=M]`, which confirms it and cleans the URL.
+- **Ctrl+K search (2026-11-02)**: `topbar.js` adds a "Buscar" button (icon only under 960px) and loads
+  `assets/js/command_palette.js` (`window.AppPalette`) next to itself with its same `?v=`. A `<dialog>` that searches
+  the user's functions — `normalizeSearch`/`IN_PAGE_TOOLS`/`collectTools`, moved from `dashboard.js` to `utils.js` so
+  both searches share one index, fed by `GET /auth/users/me/dashboard/` once — and, with `orders.view` and a business,
+  orders via `GET /orders/?search=` (top 5, debounced 250 ms) → `pedidos.html?buscar=<n>` (read by `pedidos.js`).
+- **Undo instead of "¿Seguro?" (2026-11-02)**: `appUndoable(message, action, {seconds})` in `utils.js` shows a dark
+  toast bottom-left with "Deshacer" and a countdown bar, and only runs `action` when it expires (resolves `false` if
+  undone; the browser asks before leaving with one pending). A status change pushes to the store and a cancelled
+  order can't come back, so not sending is the only honest undo. Used by `estado_pedidos.html` (6 s, 10 s to
+  cancel; its confirm is gone), the pickup manifest's "marcar como despachados" and the scan screen.
 - `assets/js/topbar.js` — the shared top bar for the non-admin pages. Since 2026-10-26: "Panel" (home) and the
   business switcher on the left, the page's `data-links` in the middle as light links, and an account menu on the
   right (avatar → Mi cuenta, Mi actividad, Ayuda, Cerrar sesión). A link to `dashboard.html` or to something in the
   account menu is not repeated among the page links. Under 960px the page links move to a second row that scrolls
-  sideways (they used to pile on top of each other). The page declares only
+  sideways (they used to pile on top of each other). Above 960px, when they don't fit in the row (`fitLinks`, a
+  ResizeObserver) the bar gets `is-crowded` and they wrap onto a second row — before, they were cut ("Cola de
+  impresió"). The page declares only
   `<header class="topbar" id="appTopbar" data-links='[{"href":"…","label":"…"}]'></header>`; the script
   fills it from the stored session on load, and a page holding a fresh user calls
   `window.AppTopbar.render(user)`. **The bar logs out by itself** (`logoutBtn` keeps its id, `stopImmediatePropagation`
@@ -2012,7 +2049,10 @@ and the email moved under the name (no Email column; email order stays in "Orden
   and land on `documentos.html` to download. `skip_existing` is on by default; an optional
   "mark as dispatched" runs `POST /orders/<id>/ship/` per order afterwards, and orders that can't be
   shipped are reported without breaking the rest. Linked from `pedidos.html`, from `mis_rotulos.html` and
-  from the `labels_print` menu item (`labels.batch`).
+  from the `labels_print` menu item (`labels.batch`). With something ticked, a dark bar floats at the bottom
+  (`#printDock`, `updatePrintDock`: count, template · format, "Generar rótulos" which clicks the real button) and
+  hides while the real button is on screen (IntersectionObserver); "Seleccionar todos" is half-ticked when only
+  some of the page are (2026-11-02).
   `mis_rotulos.html` used to carry a second, collapsible batch panel of its own (`filters` selector: date
   range + status). It was removed so each page has one function: its date-range capability moved here as
   the `?date_from=`/`?date_to=` list filter, which is strictly better because the store filter keeps

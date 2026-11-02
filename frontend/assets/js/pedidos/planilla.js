@@ -131,19 +131,35 @@ window.OrderManifest = (() => {
         showMessage(`Planilla generada con ${orders.length} pedido(s).`, "success");
         return;
       }
-      button.textContent = "Despachando…";
       const pending = toDispatch();
       const payload = { order_ids: pending.map((order) => order.id), status: "dispatched" };
       if (carrier) payload.carrier = carrier;
-      const shipResponse = await apiFetch(`${API_BASE}/orders/bulk-status/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await shipResponse.json().catch(() => ({}));
-      if (!shipResponse.ok) throw new Error(getErrorMessage(data, "La planilla se generó, pero no se pudieron marcar como despachados."));
-      changed = true;
+      // La planilla ya bajó: se cierra el diálogo y el despacho espera unos
+      // segundos con "Deshacer" (appUndoable, utils.js) antes de mandarse.
       close();
+      const data = await appUndoable(
+        `Planilla lista. ${pending.length === 1 ? "1 pedido se marca" : `${pending.length} pedidos se marcan`} como despachado${pending.length === 1 ? "" : "s"}`,
+        async () => {
+          const shipResponse = await apiFetch(`${API_BASE}/orders/bulk-status/`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const body = await shipResponse.json().catch(() => ({}));
+          if (!shipResponse.ok) throw new Error(getErrorMessage(body, "La planilla se generó, pero no se pudieron marcar como despachados."));
+          return body;
+        }
+      ).catch((err) => {
+        showMessage(err.message);
+        return null;
+      });
+      if (data === null) return;
+      if (data === false) {
+        showMessage("Planilla generada. Deshecho: los pedidos siguen sin despachar.", "info");
+        return;
+      }
+      changed = true;
+      afterClose();
       showMessage(
         data.failed
           ? `Planilla generada. Se despacharon ${data.updated} de ${pending.length} pedido(s).`

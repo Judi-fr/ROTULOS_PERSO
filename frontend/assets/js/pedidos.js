@@ -70,7 +70,7 @@ let storesSignature = "";
 // Lo que se escribió en el buscador (?search= del backend) y el número del
 // último pedido a la API: escribiendo rápido, una respuesta vieja que llega
 // tarde no pisa la lista nueva.
-let orderSearch = "";
+let orderSearch = (new URLSearchParams(location.search).get("buscar") || "").trim();
 let ordersRequest = 0;
 
 const hasSession = () => window.Auth.hasSession();
@@ -250,12 +250,19 @@ function orderItem(order) {
     .join("");
 
   // Despachar, seguimiento y etiqueta los agrega pedidos/envios.js (decorate).
-  const actions = [];
-  if (order.is_cancellable) {
-    actions.push(
-      `<button type="button" class="btn-danger-text order-cancel" data-cancel-order="${escapeHtml(order.id)}">Cancelar pedido</button>`
-    );
+  // "⋯" al final del pie: el link de seguimiento para el comprador y
+  // cancelar el pedido, que al lado de "Cancelar envío" eran dos botones rojos
+  // pegados y fáciles de confundir.
+  const more = [];
+  if (order.public_tracking_url) {
+    more.push(`<button type="button" class="order-more-item" data-copy-tracking="${escapeHtml(order.public_tracking_url)}"><i class="ph ph-link" aria-hidden="true"></i>Copiar link de seguimiento</button>`);
   }
+  if (order.is_cancellable) {
+    more.push(`<button type="button" class="btn-danger-text order-cancel" data-cancel-order="${escapeHtml(order.id)}">Cancelar pedido</button>`);
+  }
+  const actions = more.length
+    ? [`<details class="order-more"><summary title="Más acciones" aria-label="Más acciones"><i class="ph ph-dots-three" aria-hidden="true"></i></summary><div class="order-more-menu">${more.join("")}</div></details>`]
+    : [];
 
   // Pedido de tienda: se muestra el número que ve el comerciante en su
   // tienda (#1001); los manuales, su id propio. De qué tienda viene lo dicen
@@ -268,7 +275,7 @@ function orderItem(order) {
   item.innerHTML = `
     <div class="order-item-header">
       <div class="order-item-main">
-        <div class="order-item-title"><span class="order-number">#${escapeHtml(number)}</span>${order.description ? `<span class="order-desc" title="${escapeHtml(order.description)}">${escapeHtml(order.description)}</span>` : ""}</div>
+        <div class="order-item-title"><span class="order-number">#${escapeHtml(number)}</span>${order.is_sample ? '<span class="order-sample-tag" title="Pedido de ejemplo: se borra desde el aviso de arriba">Ejemplo</span>' : ""}${order.description ? `<span class="order-desc" title="${escapeHtml(order.description)}">${escapeHtml(order.description)}</span>` : ""}</div>
         <p class="order-item-address">${order.address ? escapeHtml([order.address.recipient_name, addressSummary(order.address)].filter(Boolean).join(" · ")) : "Sin dirección"} · ${escapeHtml(formatDate(order.created_at))}</p>
       </div>
       <span class="status-badge ${escapeHtml(statusKey)}"><span class="dot"></span>${escapeHtml(statusLabel)}</span>
@@ -502,6 +509,17 @@ async function cancelOrder(id) {
   }
 }
 
+// El link público (seguimiento.html) para mandarle al comprador. Sin permiso
+// del navegador para el portapapeles, se muestra para copiarlo a mano.
+async function copyTrackingLink(url) {
+  try {
+    await navigator.clipboard.writeText(url);
+    showMessage("Link de seguimiento copiado: pegáselo al comprador. Ve el estado del pedido, no sus datos.", "success");
+  } catch (err) {
+    await appPrompt("Copiá el link de seguimiento para el comprador:", url, { confirmLabel: "Listo" });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Delegación de clicks (los items se re-crean al pintar las listas).
 // ---------------------------------------------------------------------------
@@ -510,6 +528,12 @@ document.addEventListener("click", (e) => {
   if (cancelBtn) {
     cancelOrder(cancelBtn.dataset.cancelOrder);
   }
+  const copyBtn = e.target.closest("[data-copy-tracking]");
+  if (copyBtn) copyTrackingLink(copyBtn.dataset.copyTracking);
+  // Un menú "⋯" abierto se cierra al tocar cualquier otra cosa (o su opción).
+  document.querySelectorAll(".order-more[open]").forEach((menu) => {
+    if (cancelBtn || copyBtn || !menu.contains(e.target)) menu.open = false;
+  });
 });
 
 // Nuevo pedido a mano: las direcciones se leen al abrir el diálogo (pueden
@@ -537,6 +561,8 @@ document.getElementById("orderAddressSelect")?.addEventListener("change", () => 
 renderAddressFields(document.getElementById("newAddressFields"), "newAddr");
 document.getElementById("clearOrderViewBtn")?.addEventListener("click", clearOrderView);
 let orderSearchTimer = null;
+// pedidos.html?buscar=501 (desde escanear.html) llega con la búsqueda hecha.
+if (orderSearch && document.getElementById("orderSearch")) document.getElementById("orderSearch").value = orderSearch;
 document.getElementById("orderSearch")?.addEventListener("input", (event) => {
   clearTimeout(orderSearchTimer);
   orderSearchTimer = setTimeout(() => {
@@ -582,6 +608,7 @@ async function init() {
   // pedidos.html#nuevo (el buscador del panel) abre el diálogo de entrada.
   if (location.hash === "#nuevo") openNewOrder();
   await loadOrders();
+  renderSampleOrdersNotice(document.getElementById("sampleNotice"), { onChange: loadOrders });
 }
 
 if (!hasSession()) {

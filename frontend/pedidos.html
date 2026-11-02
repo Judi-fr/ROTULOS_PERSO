@@ -25,7 +25,7 @@
   <body>
     <div class="layout">
       <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
-      <header class="topbar" id="appTopbar" data-links='[{"href": "importar.html", "label": "Importar planilla", "perm": "orders.import"}, {"href": "exportar_pedidos.html", "label": "Exportar", "perm": "orders.export"}, {"href": "estado_pedidos.html", "label": "Cambiar estado", "perm": "orders.dispatch"}, {"href": "imprimir_rotulos.html", "label": "Imprimir rótulos", "perm": "labels.batch"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+      <header class="topbar" id="appTopbar" data-links='[{"href": "importar.html", "label": "Importar planilla", "perm": "orders.import"}, {"href": "exportar_pedidos.html", "label": "Exportar", "perm": "orders.export"}, {"href": "estado_pedidos.html", "label": "Cambiar estado", "perm": "orders.dispatch"}, {"href": "imprimir_rotulos.html", "label": "Imprimir rótulos", "perm": "labels.batch"}, {"href": "escanear.html", "label": "Escanear", "perm": "orders.dispatch"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
 
       <main class="main orders-main">
         <div class="main-heading">
@@ -68,6 +68,8 @@
                     <button type="button" class="btn-link" id="clearSelectionBtn">Quitar selección</button>
                   </div>
                 </div>
+                <!-- Pedidos de ejemplo cargados (utils.js, renderSampleOrdersNotice). -->
+                <div id="sampleNotice" class="sample-notice" role="status" hidden></div>
                 <!-- Buscador por número, destinatario o seguimiento (pedidos.js). -->
                 <div class="order-search" role="search">
                   <i class="ph ph-magnifying-glass" aria-hidden="true"></i>

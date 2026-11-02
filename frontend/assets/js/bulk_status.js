@@ -22,16 +22,6 @@ async function apply() {
     return;
   }
   const status = document.getElementById("targetStatus").value;
-  // Cancelar no tiene vuelta atrás (un pedido cancelado no se reactiva):
-  // se pide confirmación. Avanzar un estado se puede corregir hacia
-  // adelante, así que no.
-  if (
-    status === "cancelled" &&
-    !await appConfirm(`¿Cancelar ${orderIds.length} pedido(s)? No se puede deshacer.`)
-  ) {
-    return;
-  }
-
   const payload = { order_ids: orderIds, status };
   const carrier = document.getElementById("carrierInput").value.trim();
   if (carrier && status !== "cancelled") payload.carrier = carrier;
@@ -42,15 +32,32 @@ async function apply() {
   const resultBox = document.getElementById("bulkResult");
   resultBox.innerHTML = "";
 
+  // En vez de "¿Seguro?": unos segundos con "Deshacer" antes de mandarlo
+  // (appUndoable, utils.js). El cambio avisa a las tiendas y un pedido
+  // cancelado no se reactiva, así que se manda recién cuando vence el aviso;
+  // cancelar da más tiempo.
+  const count = orderIds.length === 1 ? "1 pedido" : `${orderIds.length} pedidos`;
+  const label = document.getElementById("targetStatus").selectedOptions[0]?.textContent.trim().toLowerCase() || status;
   try {
-    const response = await apiFetch(`${API_BASE}/orders/bulk-status/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(getErrorMessage(data, "No se pudieron actualizar los pedidos."));
+    const data = await appUndoable(
+      status === "cancelled" ? `Se cancelan ${count}` : `${count}: ${label}`,
+      async () => {
+        const response = await apiFetch(`${API_BASE}/orders/bulk-status/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(getErrorMessage(body, "No se pudieron actualizar los pedidos."));
+        }
+        return body;
+      },
+      { seconds: status === "cancelled" ? 10 : 6 }
+    );
+    if (data === false) {
+      showMessage("Deshecho: los pedidos quedaron como estaban.", "info");
+      return;
     }
     renderBulkResult(resultBox, data);
     if (!data.failed) {

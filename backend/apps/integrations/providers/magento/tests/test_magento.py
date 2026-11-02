@@ -172,7 +172,11 @@ class ImportAndReconcileTests(MagentoTestMixin, TestCase):
         self.connection = self._connection(owner=new_business(make_user("comercio@example.com")))
 
     def test_configurar_importa_todas_las_paginas_aunque_magento_repita_la_ultima(self):
-        self.magento.orders = {i: magento_order(i, created_at=f"2026-10-0{i} 10:00:00") for i in (1, 2, 3)}
+        # Fechas relativas a hoy: la importación inicial trae los últimos
+        # INTEGRATIONS_INITIAL_IMPORT_DAYS (30) días, y con fechas fijas el
+        # test dejaba de pasar solo con el correr del calendario.
+        recent = lambda hours: (timezone.now() - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")  # noqa: E731
+        self.magento.orders = {i: magento_order(i, created_at=recent(i)) for i in (1, 2, 3)}
         old = magento_order(4, created_at="2020-01-01 10:00:00")
         self.magento.orders[4] = old
 

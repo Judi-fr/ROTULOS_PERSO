@@ -57,7 +57,7 @@ def build_sections(user):
             [
                 ("Rótulos guardados", "mis_rotulos.html", "labels.view"),
                 ("Desde una foto", "importar_rotulo.html", "processing.import"),
-                ("Editor de diseños", "editor_layout.html", "plantillas.edit"),
+                ("Diseños por elementos", "editor_layout.html", "plantillas.edit"),
             ],
         )
     if can("stores.manage") or can("carriers.manage"):
@@ -67,8 +67,8 @@ def build_sections(user):
             "Tus tiendas, tarifas y transportistas en el checkout.",
             [
                 ("Tarifas", "tarifas_envio.html", "carriers.manage"),
-                ("Checkout", "checkout_transportistas.html", "carriers.manage"),
-                ("Rótulos de la tienda", "rotulos_tienda.html", "orders.view"),
+                ("Precio en el checkout", "checkout_transportistas.html", "carriers.manage"),
+                ("Rótulos pedidos por la tienda", "rotulos_tienda.html", "orders.view"),
             ],
         )
     # Mi comercio (antes "Mi cuenta" con el equipo, 2026-10-30): los datos del

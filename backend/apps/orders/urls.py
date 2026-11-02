@@ -23,6 +23,8 @@ from .import_views import (
     OrderImportUploadView,
     OrderImportValidateView,
 )
+from .public_tracking_views import PublicTrackingView
+from .sample_views import SampleOrdersView
 from .stats_views import BusinessStatsView
 from .summary_views import OrderSummaryView
 from .views import AddressViewSet, AdminOrderListView, ManualOrderCreateView, OrderMetricsView, OrderViewSet
@@ -39,6 +41,9 @@ urlpatterns = [
     path("admin/orders/", AdminOrderListView.as_view(), name="admin-order-list"),
     path("orders/metrics/", OrderMetricsView.as_view(), name="order-metrics"),
     path("orders/summary/", OrderSummaryView.as_view(), name="order-summary"),
+    path("orders/sample/", SampleOrdersView.as_view(), name="order-sample"),
+    # Seguimiento público (seguimiento.html, sin sesión): el link firmado del QR.
+    path("tracking/<str:token>/", PublicTrackingView.as_view(), name="public-tracking"),
     path("orders/stats/", BusinessStatsView.as_view(), name="order-stats"),
     # Carga operativa (story 20): alta manual de un envío a nombre propio o
     # (con orders.create_for_others) de otro usuario.

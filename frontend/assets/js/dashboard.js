@@ -129,70 +129,8 @@ function renderSections(sections) {
 // mayúsculas, por nombre de la función o de su sección. Flechas para moverse,
 // Enter abre, Esc cierra, "/" en cualquier lado lleva al buscador.
 // ---------------------------------------------------------------------------
-function normalizeSearch(text) {
-  return String(text || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
-// Funciones que no son una página sino un botón dentro de otra (Mis pedidos,
-// Mi cuenta, Ayuda): sin esto, buscar "planilla" no encontraba la planilla de
-// retiro. Cada una solo aparece con su permiso; si se renombra el botón,
-// cambiar el texto acá también.
-const IN_PAGE_TOOLS = [
-  { label: "Despachar pedidos", url: "pedidos.html", section: "Pedidos", perm: "orders.dispatch" },
-  { label: "Planilla de retiro (elegí pedidos en Mis pedidos)", url: "pedidos.html", section: "Pedidos", perm: "orders.manifest" },
-  { label: "Cargar seguimientos desde planilla", url: "pedidos.html", section: "Pedidos", perm: "orders.tracking_import" },
-  { label: "Nuevo pedido a mano", url: "pedidos.html#nuevo", section: "Pedidos", perm: "orders.create_manual" },
-  { label: "Mis direcciones", url: "direcciones.html", section: "Pedidos", perm: "addresses.manage" },
-  { label: "Cambiar mi contraseña", url: "organizacion.html#perfil", section: "Mi cuenta", perm: null },
-  { label: "Datos del comercio", url: "equipo.html#datos", section: "Mi comercio", perm: null },
-  { label: "Estadísticas del comercio", url: "equipo.html#estadisticas", section: "Mi comercio", perm: "stats.dispatch" },
-  { label: "Crear o sumarme a otro comercio", url: "comercio_inicio.html", section: "Mi cuenta", perm: null },
-  { label: "Código para sumarse al comercio", url: "equipo.html#miembros", section: "Mi comercio", perm: "team.manage" },
-  { label: "Salir de este comercio", url: "equipo.html#datos", section: "Mi comercio", perm: null },
-  { label: "Dar de baja el comercio", url: "equipo.html#datos", section: "Mi comercio", perm: "team.manage" },
-  { label: "Preguntas frecuentes", url: "ayuda.html#preguntas", section: "Ayuda", perm: null },
-];
-
-function collectTools(sections, menu) {
-  const tools = [];
-  const seen = new Map();
-  const sectionOf = {};
-  // Una página aparece una sola vez: si el menú la llama distinto que la
-  // tarjeta ("Exportar" / "Exportar pedidos"), el otro nombre también sirve
-  // para encontrarla. Las funciones dentro de una página (IN_PAGE_TOOLS)
-  // comparten la URL a propósito: esas van por nombre.
-  const add = (label, url, section, { byName = false } = {}) => {
-    if (!label || !url) return;
-    const key = byName ? `${normalizeSearch(label)}|${url}` : url;
-    const existing = seen.get(key);
-    if (existing) {
-      existing.haystack += ` ${normalizeSearch(label)}`;
-      return;
-    }
-    const tool = { label, url, section: section || "", haystack: normalizeSearch(`${label} ${section || ""}`) };
-    seen.set(key, tool);
-    tools.push(tool);
-  };
-  sections.forEach((section) => {
-    sectionOf[section.url] = section.label;
-    add(section.label, section.url, "Sección");
-    (section.links || []).forEach((link) => {
-      sectionOf[link.url] = section.label;
-      add(link.label, link.url, section.label);
-    });
-  });
-  menu
-    .filter((item) => item.enabled !== false)
-    .forEach((item) => add(item.label, item.url, sectionOf[item.url] || "Otras"));
-  IN_PAGE_TOOLS.filter((tool) => !tool.perm || sessionHasPermission(tool.perm)).forEach((tool) =>
-    add(tool.label, tool.url, tool.section, { byName: true }),
-  );
-  return tools;
-}
-
+// normalizeSearch, IN_PAGE_TOOLS y collectTools están en utils.js: también
+// los usa el buscador de la barra superior (command_palette.js, Ctrl+K).
 function setupToolSearch(sections, menu) {
   const input = document.getElementById("toolSearchInput");
   const list = document.getElementById("toolSearchResults");
@@ -558,15 +496,45 @@ function renderOnboarding(onboarding) {
       label.textContent = step.label;
       item.appendChild(label);
     } else {
-      const button = document.createElement("a");
-      button.className = "section-btn";
-      button.href = step.url;
-      button.textContent = step.label;
-      item.appendChild(button);
+      // Mismo renglón que los hechos (no un botón con borde, que dejaba la
+      // fila despareja): solo el color y la flecha dicen que falta.
+      const link = document.createElement("a");
+      link.className = "onboarding-link";
+      link.href = step.url;
+      link.textContent = step.label;
+      link.insertAdjacentHTML("beforeend", ' <i class="ph ph-arrow-right" aria-hidden="true"></i>');
+      item.appendChild(link);
     }
     list.appendChild(item);
   });
   box.append(head, progress, list);
+  // Sin tienda todavía: probar con pedidos inventados y llegar a imprimir el
+  // primer rótulo en un minuto (POST /orders/sample/, utils.js).
+  const storeStep = onboarding.steps.find((step) => step.key === "store");
+  if (storeStep && !storeStep.done && sessionHasPermission("orders.create_manual")) {
+    const offer = document.createElement("p");
+    offer.className = "onboarding-sample";
+    offer.innerHTML = '<i class="ph ph-flask" aria-hidden="true"></i><span>¿Querés probar antes de conectar tu tienda?</span>';
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn btn-outline btn-small";
+    button.textContent = "Probar con pedidos de ejemplo";
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      button.textContent = "Cargando…";
+      try {
+        await createSampleOrders();
+        window.location.href = "imprimir_rotulos.html?rotulo=sin_imprimir";
+      } catch (err) {
+        if (err.isSessionExpired) return;
+        showMessage(err.message);
+        button.disabled = false;
+        button.textContent = "Probar con pedidos de ejemplo";
+      }
+    });
+    offer.appendChild(button);
+    box.appendChild(offer);
+  }
   box.hidden = false;
 }
 
@@ -642,6 +610,7 @@ async function loadDashboard() {
       return;
     }
     loadToday();
+    renderSampleOrdersNotice(document.getElementById("sampleNotice"), { onChange: () => window.location.reload() });
   } catch (err) {
     if (!err || !err.isSessionExpired) {
       console.error("Error al cargar el dashboard:", err);

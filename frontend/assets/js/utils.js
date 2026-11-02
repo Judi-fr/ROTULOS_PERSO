@@ -1218,3 +1218,206 @@ document.addEventListener("click", (event) => {
   button.setAttribute("aria-pressed", String(show));
   input.focus();
 });
+
+// ---------------------------------------------------------------------------
+// Deshacer (2026-11-02): en vez de "¿Seguro?", la acción se anuncia abajo con
+// un botón "Deshacer" y recién se manda al servidor cuando pasan unos
+// segundos. Cambiar el estado de un pedido avisa a la tienda y no vuelve
+// atrás, así que lo único honesto es no mandarlo hasta que vence el aviso.
+//   const done = await appUndoable("Pedido #501: despachado", () => ship(), { seconds: 5 });
+// Devuelve lo que devuelve la acción, o false si se deshizo. Si se cierra la
+// página con algo pendiente, el navegador pregunta antes de salir.
+// ---------------------------------------------------------------------------
+const appUndoPending = new Set();
+
+window.addEventListener("beforeunload", (event) => {
+  if (!appUndoPending.size) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
+
+function appUndoStack() {
+  let stack = document.getElementById("appUndoStack");
+  if (!stack) {
+    stack = document.createElement("div");
+    stack.id = "appUndoStack";
+    stack.className = "app-undo-stack";
+    stack.setAttribute("role", "status");
+    stack.setAttribute("aria-live", "polite");
+    document.body.appendChild(stack);
+  }
+  return stack;
+}
+
+function appUndoable(message, action, { seconds = 6, undoLabel = "Deshacer" } = {}) {
+  return new Promise((resolve, reject) => {
+    const toast = document.createElement("div");
+    toast.className = "app-undo";
+    toast.style.setProperty("--undo-seconds", `${seconds}s`);
+    const text = document.createElement("span");
+    text.className = "app-undo-text";
+    text.textContent = message;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "app-undo-btn";
+    button.textContent = undoLabel;
+    const bar = document.createElement("span");
+    bar.className = "app-undo-bar";
+    toast.append(text, button, bar);
+    appUndoStack().appendChild(toast);
+
+    const pending = {};
+    appUndoPending.add(pending);
+    const finish = () => {
+      appUndoPending.delete(pending);
+      toast.remove();
+    };
+    const timer = setTimeout(async () => {
+      finish();
+      try {
+        resolve(await action());
+      } catch (err) {
+        reject(err);
+      }
+    }, seconds * 1000);
+    button.addEventListener("click", () => {
+      clearTimeout(timer);
+      finish();
+      resolve(false);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Índice de funciones del usuario: lo usan el buscador del panel
+// (dashboard.js, setupToolSearch) y el de la barra superior
+// (command_palette.js, Ctrl+K). ``sections`` y ``menu`` vienen de
+// GET /auth/users/me/dashboard/, ya filtrados por permiso.
+// ---------------------------------------------------------------------------
+function normalizeSearch(text) {
+  return String(text || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+// Funciones que no son una página sino un botón dentro de otra (Mis pedidos,
+// Mi cuenta, Ayuda): sin esto, buscar "planilla" no encontraba la planilla de
+// retiro. Cada una solo aparece con su permiso; si se renombra el botón,
+// cambiar el texto acá también.
+const IN_PAGE_TOOLS = [
+  { label: "Despachar pedidos", url: "pedidos.html", section: "Pedidos", perm: "orders.dispatch" },
+  { label: "Escanear para despachar (cámara o pistola lectora)", url: "escanear.html", section: "Pedidos", perm: "orders.dispatch" },
+  { label: "Planilla de retiro (elegí pedidos en Mis pedidos)", url: "pedidos.html", section: "Pedidos", perm: "orders.manifest" },
+  { label: "Cargar seguimientos desde planilla", url: "pedidos.html", section: "Pedidos", perm: "orders.tracking_import" },
+  { label: "Nuevo pedido a mano", url: "pedidos.html#nuevo", section: "Pedidos", perm: "orders.create_manual" },
+  { label: "Mis direcciones", url: "direcciones.html", section: "Pedidos", perm: "addresses.manage" },
+  { label: "Cambiar mi contraseña", url: "organizacion.html#perfil", section: "Mi cuenta", perm: null },
+  { label: "Datos del comercio", url: "equipo.html#datos", section: "Mi comercio", perm: null },
+  { label: "Estadísticas del comercio", url: "equipo.html#estadisticas", section: "Mi comercio", perm: "stats.dispatch" },
+  { label: "Crear o sumarme a otro comercio", url: "comercio_inicio.html", section: "Mi cuenta", perm: null },
+  { label: "Código para sumarse al comercio", url: "equipo.html#miembros", section: "Mi comercio", perm: "team.manage" },
+  { label: "Salir de este comercio", url: "equipo.html#datos", section: "Mi comercio", perm: null },
+  { label: "Dar de baja el comercio", url: "equipo.html#datos", section: "Mi comercio", perm: "team.manage" },
+  { label: "Preguntas frecuentes", url: "ayuda.html#preguntas", section: "Ayuda", perm: null },
+];
+
+function collectTools(sections, menu) {
+  const tools = [];
+  const seen = new Map();
+  const sectionOf = {};
+  // Una página aparece una sola vez: si el menú la llama distinto que la
+  // tarjeta ("Exportar" / "Exportar pedidos"), el otro nombre también sirve
+  // para encontrarla. Las funciones dentro de una página (IN_PAGE_TOOLS)
+  // comparten la URL a propósito: esas van por nombre.
+  const add = (label, url, section, { byName = false } = {}) => {
+    if (!label || !url) return;
+    const key = byName ? `${normalizeSearch(label)}|${url}` : url;
+    const existing = seen.get(key);
+    if (existing) {
+      existing.haystack += ` ${normalizeSearch(label)}`;
+      return;
+    }
+    const tool = { label, url, section: section || "", haystack: normalizeSearch(`${label} ${section || ""}`) };
+    seen.set(key, tool);
+    tools.push(tool);
+  };
+  sections.forEach((section) => {
+    sectionOf[section.url] = section.label;
+    add(section.label, section.url, "Sección");
+    (section.links || []).forEach((link) => {
+      sectionOf[link.url] = section.label;
+      add(link.label, link.url, section.label);
+    });
+  });
+  menu
+    .filter((item) => item.enabled !== false)
+    .forEach((item) => add(item.label, item.url, sectionOf[item.url] || "Otras"));
+  IN_PAGE_TOOLS.filter((tool) => !tool.perm || sessionHasPermission(tool.perm)).forEach((tool) =>
+    add(tool.label, tool.url, tool.section, { byName: true }),
+  );
+  return tools;
+}
+
+
+// ---------------------------------------------------------------------------
+// Pedidos de ejemplo (GET/POST/DELETE /orders/sample/): un comercio nuevo
+// prueba imprimir sin conectar su tienda. El aviso "Estás viendo pedidos de
+// ejemplo · Borrarlos" sale en el panel y en Mis pedidos mientras haya.
+// ---------------------------------------------------------------------------
+const SAMPLE_ORDERS_URL = `${window.APP_CONFIG.API_BASE}/orders/sample/`;
+
+async function createSampleOrders() {
+  const response = await window.Auth.apiFetch(SAMPLE_ORDERS_URL, { method: "POST" });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(getErrorMessage(data, "No se pudieron cargar los pedidos de ejemplo."));
+  return data.count;
+}
+
+async function renderSampleOrdersNotice(container, { onChange } = {}) {
+  if (!container) return;
+  container.hidden = true;
+  let count = 0;
+  try {
+    const response = await window.Auth.apiFetch(SAMPLE_ORDERS_URL);
+    if (!response.ok) return;
+    count = (await response.json()).count || 0;
+  } catch (err) {
+    return;
+  }
+  if (!count) return;
+  container.innerHTML = "";
+  const icon = document.createElement("i");
+  icon.className = "ph ph-flask";
+  icon.setAttribute("aria-hidden", "true");
+  const text = document.createElement("span");
+  text.textContent = `Estás viendo ${count === 1 ? "1 pedido de ejemplo" : `${count} pedidos de ejemplo`}: probá imprimir sus rótulos sin miedo. Cuando conectes tu tienda, borralos.`;
+  container.append(icon, text);
+  if (sessionHasPermission("orders.create_manual")) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn btn-outline btn-small";
+    button.textContent = "Borrar los ejemplos";
+    button.addEventListener("click", async () => {
+      if (!(await appConfirm("¿Borrar los pedidos de ejemplo? Tus pedidos reales no se tocan."))) return;
+      button.disabled = true;
+      try {
+        const response = await window.Auth.apiFetch(SAMPLE_ORDERS_URL, { method: "DELETE" });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(getErrorMessage(data, "No se pudieron borrar."));
+        const kept = data.kept
+          ? ` ${data.kept === 1 ? "Quedó 1, que ya tiene un envío creado con un transportista" : `Quedaron ${data.kept}, que ya tienen un envío creado con un transportista`}: cancelá ese envío y volvé a probar.`
+          : "";
+        showMessage(`Listo, se borraron los pedidos de ejemplo.${kept}`, kept ? "warning" : "success");
+        container.hidden = true;
+        if (onChange) onChange();
+      } catch (err) {
+        if (err.isSessionExpired) return;
+        showMessage(err.message);
+        button.disabled = false;
+      }
+    });
+    container.appendChild(button);
+  }
+  container.hidden = false;
+}

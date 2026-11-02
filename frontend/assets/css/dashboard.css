@@ -427,8 +427,27 @@
   color: var(--success-500);
 }
 
-.onboarding-steps li.done span {
+.onboarding-steps li.done span,
+.onboarding-steps .onboarding-link {
   padding: 8px 0;
+}
+
+.onboarding-steps .onboarding-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent-600);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.onboarding-steps .onboarding-link .ph {
+  font-size: var(--text-sm);
+  color: inherit;
+}
+
+.onboarding-steps .onboarding-link:hover {
+  text-decoration: underline;
 }
 
 @media (max-width: 900px) {
@@ -917,4 +936,22 @@
 .week-table th {
   color: var(--muted);
   font-weight: 600;
+}
+
+/* Primeros pasos sin tienda: probar con pedidos de ejemplo. */
+.onboarding-sample {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 12px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+
+.onboarding-sample > .ph {
+  font-size: var(--text-lg);
+  color: var(--accent-600);
 }

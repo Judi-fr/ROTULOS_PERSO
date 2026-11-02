@@ -193,13 +193,56 @@
       if (!account.contains(event.target)) setOpen(false);
     });
     account.append(trigger, menu);
+
+    // "Buscar" (Ctrl+K): una función o un pedido desde cualquier pantalla
+    // (command_palette.js, que se carga una sola vez).
+    const search = document.createElement("button");
+    search.type = "button";
+    search.className = "topbar-search-btn";
+    search.title = "Buscar una función o un pedido (Ctrl+K)";
+    search.setAttribute("aria-label", "Buscar una función o un pedido");
+    search.innerHTML = `<i class="ph ph-magnifying-glass" aria-hidden="true"></i><span>Buscar</span><kbd>${/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl"} K</kbd>`;
+    search.addEventListener("click", () => window.AppPalette && window.AppPalette.open());
+    account.prepend(search);
     node.appendChild(account);
+    loadPalette();
   }
+
+  // El buscador vive en su propio archivo, al lado de este; lleva la misma
+  // marca de versión (?v=) que topbar.js para no quedar viejo en la caché.
+  const SCRIPT_SRC = (document.currentScript && document.currentScript.src) || "";
+  function loadPalette() {
+    if (window.AppPalette || document.getElementById("appPaletteScript") || !SCRIPT_SRC) return;
+    const url = new URL("command_palette.js", SCRIPT_SRC);
+    url.search = new URL(SCRIPT_SRC).search;
+    const script = document.createElement("script");
+    script.id = "appPaletteScript";
+    script.src = url.href;
+    document.body.appendChild(script);
+  }
+
+  // Con muchos links o una ventana mediana, los de la página no entran en la
+  // fila y quedaban cortados ("Cola de impresió"). Entonces la barra pasa al
+  // armado de dos filas, el mismo del celular (is-crowded en ui.css). Se mide
+  // sin la clase, en el mismo cuadro, así no parpadea.
+  function fitLinks(node) {
+    const actions = node.querySelector(".topbar-actions");
+    node.classList.remove("is-crowded");
+    if (!actions || !actions.children.length) return;
+    if (actions.scrollWidth > actions.clientWidth + 1) node.classList.add("is-crowded");
+  }
+
+  let observed = null;
 
   function render(user) {
     const node = container();
     if (!node) return;
     build(node, user || (window.Auth && window.Auth.getCurrentUser()) || {});
+    fitLinks(node);
+    if (observed !== node && window.ResizeObserver) {
+      observed = node;
+      new ResizeObserver(() => fitLinks(node)).observe(node);
+    }
   }
 
   window.AppTopbar = { render };

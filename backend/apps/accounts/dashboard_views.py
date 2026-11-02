@@ -109,7 +109,7 @@ class DashboardView(APIView):
             menu.append(
                 {
                     "key": "store_labels",
-                    "label": "Rótulos de la tienda",
+                    "label": "Rótulos pedidos por la tienda",
                     "url": "rotulos_tienda.html",
                     "enabled": True,
                 }
@@ -221,7 +221,7 @@ class DashboardView(APIView):
             menu.append(
                 {
                     "key": "element_layouts",
-                    "label": "Editor de diseños",
+                    "label": "Diseños por elementos",
                     "url": "editor_layout.html",
                     "enabled": True,
                 }

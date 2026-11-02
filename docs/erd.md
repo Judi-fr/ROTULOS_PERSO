@@ -38,6 +38,7 @@ erDiagram
         auto user_id FK
         positiveinteger failed_attempts
         datetime locked_until
+        positiveinteger lockout_count
     }
     PasswordChangeRequirement {
         bigauto id PK
@@ -400,6 +401,17 @@ erDiagram
         datetime created_at
         datetime updated_at
     }
+    LabelImage {
+        bigauto id PK
+        auto owner_id FK
+        auto created_by_id FK
+        file image
+        positiveinteger width_px
+        positiveinteger height_px
+        char name
+        boolean is_active
+        datetime created_at
+    }
     LabelSequence {
         bigauto id PK
         auto owner_id FK
@@ -427,6 +439,7 @@ erDiagram
         decimal height_cm
         json design
         file preview
+        positivesmallinteger gallery_order
         boolean is_active
         datetime created_at
         datetime updated_at
@@ -531,6 +544,7 @@ erDiagram
         char status
         char external_id
         char source
+        boolean is_sample
         char carrier
         char tracking_number
         char tracking_url
@@ -544,6 +558,7 @@ erDiagram
         json items
         json raw_payload
         datetime external_updated_at
+        datetime labels_printed_at
         datetime created_at
         datetime updated_at
     }
@@ -667,6 +682,7 @@ erDiagram
     UploadedLabelFile ||--o{ LabelImport : "uploaded_file"
     User |o--o{ AuditLog : "actor"
     User |o--o{ ElementLayout : "created_by"
+    User |o--o{ LabelImage : "created_by"
     User |o--o{ LabelImport : "created_by"
     User |o--o{ LabelTemplate : "owner"
     User |o--o{ LabelTemplateVersion : "created_by"
@@ -684,6 +700,7 @@ erDiagram
     User ||--o{ IncomingWebhook : "owner"
     User ||--o{ IntegrationKey : "owner"
     User ||--o{ Label : "user"
+    User ||--o{ LabelImage : "owner"
     User ||--o{ LabelSequence : "owner"
     User ||--o{ MerchantNotice : "owner"
     User ||--o{ Order : "user"

@@ -150,6 +150,18 @@
             </div>
           </div>
         </section>
+        <!-- Lo tildado y "Generar rótulos" a mano mientras se recorre la lista:
+             el botón de verdad queda al fondo (print_labels.js, updatePrintDock). -->
+        <div class="print-dock" id="printDock" hidden>
+          <span class="print-dock-text">
+            <strong id="printDockCount"></strong>
+            <span class="print-dock-hint" id="printDockHint"></span>
+          </span>
+          <span class="print-dock-actions">
+            <button type="button" class="btn-link" id="printDockOptions">Cambiar opciones</button>
+            <button type="button" class="btn btn-primary btn-small" id="printDockBtn">Generar rótulos</button>
+          </span>
+        </div>
       </main>
     </div>
 

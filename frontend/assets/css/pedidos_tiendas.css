@@ -339,11 +339,75 @@
   justify-content: flex-end;
 }
 
-/* Cancelar va primero y apagado: es la acción que no se quiere tocar sin querer. */
-.orders-column .order-cancel {
-  order: -1;
-  margin-right: 4px;
+/* "⋯" al final del pie con "Cancelar pedido" adentro: la acción que no se
+   quiere tocar sin querer, lejos de "Cancelar envío". */
+.order-more {
+  position: relative;
+}
+
+.order-more > summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: var(--text-lg);
+}
+
+.order-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.order-more[open] > summary,
+.order-more > summary:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.order-more-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 5;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+}
+
+.order-more-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.order-more-menu .order-cancel,
+.order-more-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
   font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.order-more-item {
+  color: var(--ink);
+}
+
+.order-more-item:hover {
+  background: var(--surface-2);
 }
 
 .order-history {
@@ -636,14 +700,33 @@
     flex-wrap: wrap;
   }
 
+  /* Que el primer pedido entre en la primera pantalla: "+ Nuevo pedido" al
+     lado del título, la planilla de seguimientos (tarea de escritorio) fuera,
+     y la tira de tiendas solo con los nombres. */
   .profile-card-title:has(> .profile-card-tools) {
-    flex-wrap: wrap;
     gap: 10px;
   }
 
-  .profile-card-tools {
-    width: 100%;
-    justify-content: flex-start;
+  .profile-card-tools #trackingImportBtn {
+    display: none;
+  }
+
+  .orders-layout {
+    gap: 10px;
+  }
+
+  .orders-layout > .store-filter {
+    padding-bottom: 8px;
+  }
+
+  .orders-layout .store-filter-label,
+  .orders-layout .store-chip-hint {
+    display: none;
+  }
+
+  .orders-layout .store-chip {
+    padding-top: 6px;
+    padding-bottom: 6px;
   }
 }
 
@@ -701,4 +784,18 @@
 .order-search input {
   width: 100%;
   padding-left: 36px;
+}
+
+/* "Ejemplo" junto al número de un pedido de ejemplo (Order.is_sample). */
+.order-sample-tag {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border: 1px dashed var(--accent-300);
+  border-radius: var(--radius-full);
+  background: var(--accent-50);
+  color: var(--accent-600);
+  font-size: var(--text-xs);
+  font-weight: 600;
 }

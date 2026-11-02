@@ -31,6 +31,7 @@ from apps.accounts.teams import business_display_name, contact_email, data_owner
 
 from .ingestion import TARGET_FIELDS, create_order_from_data, validate_mapped_row
 from .models import Address, Order
+from .scan import find_orders
 from .serializers import AddressSerializer, AdminOrderSerializer, OrderSerializer, OrderShipSerializer
 from .shipping import apply_cancel, apply_shipping
 
@@ -193,6 +194,19 @@ class OrderViewSet(
             )
         apply_cancel(request, order)
         return Response(self.get_serializer(order).data)
+
+    @action(detail=False, methods=["get"])
+    def scan(self, request):
+        """GET /api/v1/orders/scan/?code=<lo que leyó la cámara o la pistola>
+
+        ``{"matches": [pedido, ...]}``: vacío si no es un pedido de este
+        comercio (o de una tienda que quien escanea no ve), más de uno si el
+        mismo número está en dos tiendas. Ver ``scan.find_orders``."""
+        code = (request.query_params.get("code") or "").strip()
+        if not code:
+            raise ValidationError({"code": "Escaneá o escribí el código del rótulo."})
+        matches = find_orders(self.get_queryset(), code)
+        return Response({"matches": self.get_serializer(matches, many=True).data})
 
     @action(detail=True, methods=["post"])
     def ship(self, request, pk=None):

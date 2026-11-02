@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <title>Escanear para despachar</title>
+    <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
+    <link rel="stylesheet" href="assets/css/ui.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css" />
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/base.css" />
+    <link rel="stylesheet" href="assets/css/app.css" />
+    <link rel="stylesheet" href="assets/css/escanear.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar" id="appTopbar" data-links='[{"href": "pedidos.html", "label": "Mis pedidos"}, {"href": "imprimir_rotulos.html", "label": "Imprimir rótulos", "perm": "labels.batch"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
+
+      <main class="main">
+        <div class="main-heading">
+          <h1>Escanear para despachar</h1>
+          <p>Leé el código del rótulo con la cámara o con una pistola lectora y el pedido queda despachado.</p>
+        </div>
+
+        <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
+
+        <section class="profile-card">
+          <div class="profile-card-body scan-body">
+            <div class="scan-camera" id="scanCamera">
+              <video id="scanVideo" playsinline muted hidden></video>
+              <div class="scan-frame" id="scanFrame" hidden aria-hidden="true"></div>
+              <div class="scan-camera-idle" id="scanIdle">
+                <i class="ph ph-barcode" aria-hidden="true"></i>
+                <button type="button" class="btn btn-primary" id="startCameraBtn">Usar la cámara</button>
+                <p class="scan-hint" id="cameraHint">Apuntá al código de barras o al QR del rótulo.</p>
+              </div>
+            </div>
+            <button type="button" class="btn btn-outline btn-small" id="stopCameraBtn" hidden>Apagar la cámara</button>
+
+            <form class="scan-manual" id="scanForm" autocomplete="off">
+              <label for="scanInput">Con una pistola lectora, o escribiendo el número</label>
+              <div class="scan-manual-row">
+                <input type="text" id="scanInput" inputmode="text" placeholder="Número de seguimiento o de pedido" />
+                <button type="submit" class="btn btn-outline">Buscar</button>
+              </div>
+            </form>
+
+            <fieldset class="scan-mode">
+              <legend>Al leer un rótulo</legend>
+              <label><input type="radio" name="scanMode" value="dispatch" checked /> Marcar el pedido como despachado</label>
+              <label><input type="radio" name="scanMode" value="find" /> Solo mostrar el pedido</label>
+            </fieldset>
+          </div>
+        </section>
+
+        <section class="profile-card">
+          <div class="profile-card-title">
+            <span>Leídos ahora</span>
+            <span class="scan-count" id="scanCount"></span>
+          </div>
+          <div class="profile-card-body">
+            <ol class="scan-results" id="scanResults"></ol>
+            <p class="scan-empty" id="scanEmpty">Todavía no leíste ningún rótulo.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/topbar.js"></script>
+    <script src="assets/js/escanear.js"></script>
+  </body>
+</html>

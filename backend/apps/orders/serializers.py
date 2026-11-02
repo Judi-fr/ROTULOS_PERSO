@@ -6,6 +6,7 @@ from apps.accounts.teams import contact_email as owner_contact_email
 from apps.accounts.teams import data_owner
 
 from .models import Address, ImportMapping, Order, OrderImport, OrderStatusEvent
+from .public_tracking import public_tracking_url
 
 
 class AddressSerializer(serializers.ModelSerializer):
@@ -57,6 +58,12 @@ class OrderSerializer(serializers.ModelSerializer):
     status_events = OrderStatusEventSerializer(many=True, read_only=True)
     store_platform = serializers.CharField(source="store_connection.platform", read_only=True, default=None)
     store_name = serializers.CharField(source="store_connection.name", read_only=True, default=None)
+    # El link de seguimiento para mandarle al comprador ("Copiar link de
+    # seguimiento" en Mis pedidos): el mismo que lleva el QR del rótulo.
+    public_tracking_url = serializers.SerializerMethodField()
+
+    def get_public_tracking_url(self, order):
+        return public_tracking_url(order) if order.pk else None
 
     class Meta:
         model = Order
@@ -86,11 +93,14 @@ class OrderSerializer(serializers.ModelSerializer):
             "items",
             "status_events",
             "labels_printed_at",
+            "is_sample",
+            "public_tracking_url",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
             "id",
+            "is_sample",
             "status",
             "carrier",
             "tracking_number",

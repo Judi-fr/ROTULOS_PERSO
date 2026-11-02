@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <meta name="referrer" content="no-referrer" />
+
+    <title>Seguimiento de tu pedido</title>
+    <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
+    <link rel="stylesheet" href="assets/css/ui.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css" />
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/seguimiento.css" />
+  </head>
+  <body class="tracking-page">
+    <!-- Página PÚBLICA: la abre el comprador desde el QR del rótulo o desde el
+         link que le manda el comercio (?t=<valor firmado>). Sin sesión: no
+         carga auth.js. Muestra el estado del pedido, nunca quién recibe ni la
+         dirección (apps/orders/public_tracking.py). -->
+    <main class="tracking-main">
+      <article class="tracking-card" id="trackingCard" aria-busy="true">
+        <header class="tracking-head">
+          <img id="businessLogo" class="tracking-logo" alt="" hidden />
+          <div>
+            <p class="tracking-business" id="businessName"></p>
+            <h1 id="orderTitle">Seguimiento de tu pedido</h1>
+          </div>
+        </header>
+
+        <div id="trackingBody">
+          <span class="app-skeleton" role="status" aria-label="Cargando…"><span></span><span></span><span></span></span>
+        </div>
+      </article>
+
+      <footer class="tracking-foot">
+        <img src="assets/images/favicon.svg" alt="" width="18" height="18" />
+        <span>Seguimiento con Rótulos · Human Log</span>
+        <a href="privacidad.html">Privacidad</a>
+      </footer>
+    </main>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/seguimiento.js"></script>
+  </body>
+</html>

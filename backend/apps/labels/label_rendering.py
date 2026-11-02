@@ -336,9 +336,12 @@ def build_label_context(order=None, label=None):
     # izquierda: es una referencia interna nuestra, no la de un courier,
     # y la app es multi-cliente (ningún prefijo de cliente acá).
     tracking = order.tracking_number or f"{order.pk:06d}"
-    tracking_url = order.tracking_url or (
-        f"{str(settings.FRONTEND_URL).rstrip('/')}/seguimiento.html?codigo={tracking}"
-    )
+    # Sin el link del transportista, el QR abre nuestra página pública de
+    # seguimiento con un valor firmado (no el id: se podrían recorrer los
+    # pedidos de todos los comercios). Ver apps.orders.public_tracking.
+    from apps.orders.public_tracking import public_tracking_url
+
+    tracking_url = order.tracking_url or public_tracking_url(order)
     context = {
         "remitente": sender_name,
         # Domicilio/teléfono de quien despacha: los de la tienda, o los de la

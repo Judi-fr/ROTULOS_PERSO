@@ -42,6 +42,39 @@ function updateSelectionCount() {
   const count = selectedIds.size;
   document.getElementById("selectionCount").textContent =
     count === 1 ? "1 seleccionado" : `${count} seleccionados`;
+  syncSelectAll();
+  updatePrintDock();
+}
+
+// "Seleccionar todos los de esta página" refleja lo tildado: marcado si están
+// todos, a medias si hay algunos.
+function syncSelectAll() {
+  const boxes = [...document.querySelectorAll("#orderList input[type=checkbox]")];
+  const checked = boxes.filter((box) => box.checked).length;
+  const selectAll = document.getElementById("selectAll");
+  selectAll.checked = boxes.length > 0 && checked === boxes.length;
+  selectAll.indeterminate = checked > 0 && checked < boxes.length;
+}
+
+// Barra flotante abajo con lo tildado y "Generar rótulos": el botón de verdad
+// está al fondo de la página, debajo de los filtros y la lista. Se esconde
+// cuando ese botón ya se ve, para no tener dos iguales a la vista.
+let printActionsVisible = false;
+
+function selectedText(id) {
+  const select = document.getElementById(id);
+  return select?.selectedOptions[0]?.textContent.trim() || "";
+}
+
+function updatePrintDock() {
+  const dock = document.getElementById("printDock");
+  const count = selectedIds.size;
+  dock.hidden = count === 0 || printActionsVisible;
+  if (dock.hidden) return;
+  document.getElementById("printDockCount").textContent =
+    count === 1 ? "1 pedido" : `${count} pedidos`;
+  document.getElementById("printDockHint").textContent =
+    [selectedText("templateSelect"), selectedText("pageLayoutSelect")].filter(Boolean).join(" · ");
 }
 
 // Todo lo que viene de una tienda es texto de terceros: se escapa siempre.
@@ -115,7 +148,7 @@ async function loadOrders() {
     }
     renderOrders(extractResults(data));
     renderPager(data);
-    document.getElementById("selectAll").checked = false;
+    syncSelectAll();
   } catch (err) {
     if (err.isSessionExpired) return;
     container.innerHTML = `<p class="empty-state">${escapeHtml(err.message)}</p>`;
@@ -352,6 +385,19 @@ async function selectAllPending() {
     );
   }
 }
+document.getElementById("printDockBtn").addEventListener("click", () => {
+  document.getElementById("printBtn").click();
+});
+document.getElementById("printDockOptions").addEventListener("click", () => {
+  document.getElementById("templateSelect").scrollIntoView({ behavior: "smooth", block: "center" });
+});
+["templateSelect", "pageLayoutSelect"].forEach((id) => {
+  document.getElementById(id).addEventListener("change", updatePrintDock);
+});
+new IntersectionObserver(([entry]) => {
+  printActionsVisible = entry.isIntersecting;
+  updatePrintDock();
+}).observe(document.getElementById("printBtn"));
 document.getElementById("selectAll").addEventListener("change", (event) => {
   document.querySelectorAll("#orderList input[type=checkbox]").forEach((checkbox) => {
     checkbox.checked = event.target.checked;
