@@ -27,6 +27,7 @@ import requests
 from django.conf import settings
 from django.utils import timezone
 
+from ..common import unreachable_message
 from ..base import CarrierAuthError, CarrierError, CarrierRejectedError
 
 logger = logging.getLogger(__name__)
@@ -102,7 +103,7 @@ class PaqarClient:
                 method, f"{self.base}/{path.lstrip('/')}", params=params or None, json=json_body, headers=headers, timeout=self.timeout
             )
         except requests.RequestException as exc:
-            raise CorreoError(f"No se pudo contactar a Correo Argentino: {exc.__class__.__name__}.") from exc
+            raise CorreoError(unreachable_message("Correo Argentino", exc)) from exc
         return _check(response, f"{method} /{path.lstrip('/')}", self.API)
 
     def check_credentials(self):
@@ -178,7 +179,7 @@ class MiCorreoClient:
         try:
             response = requests.post(f"{self.base}/token", auth=(user, password), timeout=self.timeout)
         except requests.RequestException as exc:
-            raise CorreoError(f"No se pudo contactar a MiCorreo: {exc.__class__.__name__}.") from exc
+            raise CorreoError(unreachable_message("MiCorreo", exc)) from exc
         data = _json(_check(response, "POST /token", self.API))
         token = data.get("token") if isinstance(data, dict) else ""
         if not token:
@@ -213,7 +214,7 @@ class MiCorreoClient:
                 timeout=self.timeout,
             )
         except requests.RequestException as exc:
-            raise CorreoError(f"No se pudo contactar a MiCorreo: {exc.__class__.__name__}.") from exc
+            raise CorreoError(unreachable_message("MiCorreo", exc)) from exc
         if response.status_code == 401 and retry:
             self.login()
             return self.rates(payload, retry=False)

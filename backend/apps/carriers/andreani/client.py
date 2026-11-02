@@ -25,6 +25,7 @@ import requests
 from django.conf import settings
 from django.utils import timezone
 
+from ..common import unreachable_message
 from ..base import CarrierAuthError, CarrierError, CarrierRejectedError
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,7 @@ class AndreaniClient:
                 timeout=self.timeout,
             )
         except requests.RequestException as exc:
-            raise AndreaniError(f"No se pudo contactar a Andreani: {exc.__class__.__name__}.") from exc
+            raise AndreaniError(unreachable_message("Andreani", exc)) from exc
         if response.status_code in (401, 403):
             raise AndreaniAuthError("Andreani rechazó el usuario o la contraseña.")
         if response.status_code >= 400:
@@ -135,7 +136,7 @@ class AndreaniClient:
                 timeout=self.timeout,
             )
         except requests.RequestException as exc:
-            raise AndreaniError(f"No se pudo contactar a Andreani: {exc.__class__.__name__}.") from exc
+            raise AndreaniError(unreachable_message("Andreani", exc)) from exc
         if response.status_code == 401 and auth and retry:
             # Token vencido antes de tiempo o revocado: uno nuevo y otra vez.
             self.login()

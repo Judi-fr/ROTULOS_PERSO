@@ -67,6 +67,11 @@ const STORE_COLOR_COUNT = 6;
 // Firma de la lista de tiendas ya dibujada, para no rearmar los botones si
 // no cambió nada al volver a la pestaña.
 let storesSignature = "";
+// Lo que se escribió en el buscador (?search= del backend) y el número del
+// último pedido a la API: escribiendo rápido, una respuesta vieja que llega
+// tarde no pisa la lista nueva.
+let orderSearch = "";
+let ordersRequest = 0;
 
 const hasSession = () => window.Auth.hasSession();
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
@@ -162,6 +167,9 @@ function renderOrderList(orders) {
     if (selectedStore === "manual") empty = { icon: "box", title: "No hay pedidos cargados a mano" };
     else if (selectedStore) empty = { icon: "box", title: "No hay pedidos de esta tienda" };
     if (orderView) empty = { icon: "check-circle", title: ORDER_VIEWS[orderView].empty };
+    if (orderSearch) {
+      empty = { icon: "search", title: `Ningún pedido coincide con «${orderSearch}»`, text: "Probá con el número del pedido, el nombre de quien lo recibe o el número de seguimiento." };
+    }
     container.innerHTML = appEmptyState(empty);
     return;
   }
@@ -286,9 +294,11 @@ function renderOrdersPager(data) {
 }
 
 async function loadOrders() {
+  const request = ++ordersRequest;
   try {
     const params = new URLSearchParams({ page: String(ordersPage) });
     if (selectedStore) params.set("store", selectedStore);
+    if (orderSearch) params.set("search", orderSearch);
     if (orderView) Object.entries(ORDER_VIEWS[orderView].params).forEach(([key, value]) => params.set(key, value));
     renderOrderViewNotice();
     const response = await apiFetch(`${ORDERS_URL}?${params.toString()}`);
@@ -297,6 +307,7 @@ async function loadOrders() {
     const orders = extractResults(data);
     // El envío de cada pedido (Andreani) se pide antes de dibujar la lista.
     await window.OrderShipping.prepare(orders);
+    if (request !== ordersRequest) return;
     renderOrderList(orders);
     renderOrdersPager(data);
   } catch (err) {
@@ -525,6 +536,17 @@ document.getElementById("orderAddressSelect")?.addEventListener("change", () => 
 });
 renderAddressFields(document.getElementById("newAddressFields"), "newAddr");
 document.getElementById("clearOrderViewBtn")?.addEventListener("click", clearOrderView);
+let orderSearchTimer = null;
+document.getElementById("orderSearch")?.addEventListener("input", (event) => {
+  clearTimeout(orderSearchTimer);
+  orderSearchTimer = setTimeout(() => {
+    const value = event.target.value.trim();
+    if (value === orderSearch) return;
+    orderSearch = value;
+    ordersPage = 1;
+    loadOrders();
+  }, 300);
+});
 document.getElementById("ordersPrevBtn")?.addEventListener("click", () => {
   if (ordersPage > 1) {
     ordersPage -= 1;

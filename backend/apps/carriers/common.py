@@ -8,6 +8,8 @@ import re
 import unicodedata
 from decimal import Decimal, InvalidOperation
 
+import requests
+
 # Códigos de provincia de Argentina (ISO 3166-2:AR): los mismos que piden
 # Correo Argentino (Paq.ar y MiCorreo) y que lleva la primera letra de un CPA.
 PROVINCES = {
@@ -129,3 +131,11 @@ def decimal_or_none(value):
     except (InvalidOperation, TypeError, ValueError):
         return None
     return number if number.is_finite() else None
+
+
+def unreachable_message(carrier_name, exc):
+    """Lo que ve el comerciante cuando la API del transportista no contesta:
+    en sus palabras, sin el nombre de la excepción (que queda en el log)."""
+    if isinstance(exc, requests.Timeout):
+        return f"{carrier_name} tardó demasiado en responder. Suele ser un corte momentáneo de su sistema."
+    return f"No pudimos comunicarnos con {carrier_name}. Suele ser un corte momentáneo de su sistema o de la conexión."

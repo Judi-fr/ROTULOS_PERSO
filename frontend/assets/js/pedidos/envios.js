@@ -201,14 +201,45 @@ window.OrderShipping = (() => {
       state.className = `shipment-state ${shipment.status}`;
       state.textContent = shipment.carrier_status ? `${shipment.status_label} — ${shipment.carrier_status}` : shipment.status_label;
       line.append(" ", state);
-      if (shipment.last_error) {
-        const error = document.createElement("small");
-        error.className = "shipment-error";
-        error.textContent = shipment.last_error;
-        line.append(" ", error);
-      }
     }
     return line;
+  }
+
+  // Avisos debajo de la línea del envío, en palabras del comerciante:
+  // - el pedido figura despachado (lo marcó la tienda, una planilla o
+  //   "Cambiar estado") pero el transportista todavía no recibió el paquete;
+  // - el último intento de actualizar el seguimiento falló. El worker lo
+  //   vuelve a intentar solo, así que va en gris y no como error.
+  const OUT_STATUSES = ["dispatched", "in_transit", "delivered"];
+
+  function shippingNotes(order, shipment) {
+    const notes = [];
+    const carrierName = shipment.carrier_name || order.carrier || "El transportista";
+    if (shipment.status === "pending" && OUT_STATUSES.includes(order.status)) {
+      notes.push({
+        kind: "warning",
+        icon: "warning",
+        text: `Figura como despachado, pero ${carrierName} todavía no recibió el paquete. Cuando lo retire o lo lleves a la sucursal, se actualiza solo.`,
+      });
+    }
+    if (shipment.last_error) {
+      notes.push({
+        kind: "retry",
+        icon: "arrows-clockwise",
+        text: `No se pudo actualizar el seguimiento: ${shipment.last_error} Lo volvemos a intentar solo.`,
+      });
+    }
+    return notes.map(({ kind, icon, text }) => {
+      const note = document.createElement("p");
+      note.className = `shipment-note ${kind}`;
+      const glyph = document.createElement("i");
+      glyph.className = `ph ph-${icon}`;
+      glyph.setAttribute("aria-hidden", "true");
+      const span = document.createElement("span");
+      span.textContent = text;
+      note.append(glyph, span);
+      return note;
+    });
   }
 
   function decorate(order, item) {
@@ -229,7 +260,9 @@ window.OrderShipping = (() => {
       item.querySelector(".order-item-header").prepend(checkbox);
     }
     if (order.carrier || order.tracking_number || shipment) {
-      item.querySelector(".order-item-header").after(shippingLine(order, shipment));
+      const line = shippingLine(order, shipment);
+      item.querySelector(".order-item-header").after(line);
+      if (shipment) line.after(...shippingNotes(order, shipment));
     }
 
     const footer = item.querySelector(".order-item-footer");

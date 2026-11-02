@@ -27,6 +27,7 @@ import xml.etree.ElementTree as ET
 import requests
 from django.conf import settings
 
+from ..common import unreachable_message
 from ..base import CarrierAuthError, CarrierError, CarrierRejectedError
 
 logger = logging.getLogger(__name__)
@@ -105,7 +106,7 @@ class OcaClient:
         try:
             response = requests.post(f"{self.base}/{method}", data=data, timeout=self.timeout)
         except requests.RequestException as exc:
-            raise OcaError(f"No se pudo contactar a OCA: {exc.__class__.__name__}.") from exc
+            raise OcaError(unreachable_message("OCA", exc)) from exc
         if response.status_code >= 500:
             # El web service de .NET contesta 500 con el detalle en texto ("Missing parameter...").
             detail = response.text[:200].strip() if response.text else ""

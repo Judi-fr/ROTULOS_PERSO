@@ -805,6 +805,7 @@ const APP_EMPTY_ICONS = {
   doc: "file-text",
   check: "check-circle",
   list: "list-bullets",
+  search: "magnifying-glass",
 };
 
 function appEmptyState({ icon = "list", title, text = "", actionLabel = "", actionHref = "" } = {}) {

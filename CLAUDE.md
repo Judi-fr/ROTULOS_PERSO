@@ -259,8 +259,9 @@ and `/static` → 8000 and `/` → 8001 under one domain, so someone else's brow
 - `api/v1/` → `apps.accounts.user_admin_urls` (`users/`, admin CRUD) and `apps.accounts.support_admin_urls`
   (`support-messages/`, admin inbox)
 - `api/v1/` → `apps.orders.urls` (`addresses/`, `orders/` — list filters `?store=<id>|manual`,
-  `?status=created,preparing` and `?date_from=`/`?date_to=` (YYYY-MM-DD, both inclusive, by creation
-  date) —, `admin/orders/`, `orders/metrics/`, `orders/summary/` (the dashboard's "Hoy"),
+  `?status=created,preparing`, `?date_from=`/`?date_to=` (YYYY-MM-DD, both inclusive, by creation
+  date) and `?search=` (Mis pedidos' search box: every word must match the order number with or without
+  "#", our id, the recipient or the tracking number) —, `admin/orders/`, `orders/metrics/`, `orders/summary/` (the dashboard's "Hoy"),
   `orders/manual/`, `orders/imports/...`, `orders/import-mappings/`)
 - `api/v1/audit/` → `apps.audit.urls` (`logs/`, `actions/`, `metrics/`)
 - `api/v1/documents/` → `apps.documents.urls` (generated batch output)

@@ -67,8 +67,24 @@
   color: var(--red);
 }
 
-.shipment-error {
-  color: var(--red);
+/* Avisos del envío (pedidos/envios.js, shippingNotes). */
+.shipment-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.shipment-note .ph {
+  flex: none;
+  margin-top: 2px;
+}
+
+.shipment-note.warning {
+  color: var(--warning-700);
 }
 
 /* Cuenta del transportista, arriba de la lista. */

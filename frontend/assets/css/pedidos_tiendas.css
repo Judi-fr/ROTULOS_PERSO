@@ -682,3 +682,23 @@
   font-size: var(--text-xs);
   white-space: nowrap;
 }
+
+/* Buscador de Mis pedidos, arriba de la lista. */
+.order-search {
+  position: relative;
+  margin-bottom: 14px;
+}
+
+.order-search .ph {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.order-search input {
+  width: 100%;
+  padding-left: 36px;
+}

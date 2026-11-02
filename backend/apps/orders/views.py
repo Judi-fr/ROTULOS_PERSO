@@ -81,6 +81,21 @@ def filter_orders(queryset, params):
         if not older.isdigit():
             raise ValidationError({"older_than_days": "Debe ser un número de días."})
         queryset = queryset.filter(created_at__lt=created_before(int(older)))
+    # ?search= — el buscador de Mis pedidos: número del pedido (con o sin
+    # "#"), destinatario o número de seguimiento. Cada palabra tiene que
+    # aparecer en alguno de esos campos.
+    search = (params.get("search") or "").strip()
+    if search:
+        for word in search.lstrip("#").split()[:5]:
+            word_q = (
+                Q(external_number__icontains=word)
+                | Q(external_id__iexact=word)
+                | Q(address__recipient_name__icontains=word)
+                | Q(tracking_number__icontains=word)
+            )
+            if word.isdigit():
+                word_q |= Q(pk=int(word))
+            queryset = queryset.filter(word_q)
     # ?date_from=/&date_to= (YYYY-MM-DD, inclusive los dos) acota por
     # fecha de alta. Lo usa la pantalla de impresión para juntar "los
     # pedidos de esta semana" sin tener que tildarlos de a uno.
