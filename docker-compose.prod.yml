@@ -1,9 +1,8 @@
 # Despliegue de ROTULOS_PERSO en un servidor.
 #
-# Se levanta A MANO, con `docker compose -f docker-compose.prod.yml up -d`.
-# No hay pipeline y no hace falta: desplegar y automatizar el despliegue son
-# dos cosas distintas, y la segunda recién tiene sentido cuando la primera se
-# hizo unas cuantas veces.
+# A mano: `docker compose -f docker-compose.prod.yml up -d`.
+# Automático: azure-pipelines-deploy.yml + scripts/deploy.sh (preparado el
+# 2026-11-04, sin servidor todavía; ver docs/despliegue.md).
 #
 # Diferencias con backend/docker-compose.yml (que es el de desarrollo):
 #   - settings de prod (DEBUG=False, hosts explícitos, cookies seguras)
@@ -46,6 +45,10 @@ services:
 
   api:
     build: ./backend
+    # Etiqueta por versión: el despliegue automático (scripts/deploy.sh) la
+    # fija con el commit y así un rollback tiene la imagen anterior a mano. A
+    # mano queda "local".
+    image: rotulos-api:${RELEASE_TAG:-local}
     env_file: .env
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
@@ -88,6 +91,7 @@ services:
   # IntegrationEvent y es el worker quien los procesa (ver CLAUDE.md).
   worker:
     build: ./backend
+    image: rotulos-api:${RELEASE_TAG:-local}
     env_file: .env
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
@@ -111,6 +115,7 @@ services:
   # .env; MONITORING_ALERT_EMAILS para avisar a otras direcciones.
   monitor:
     build: ./backend
+    image: rotulos-api:${RELEASE_TAG:-local}
     env_file: .env
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
@@ -127,6 +132,7 @@ services:
 
   web:
     build: ./frontend
+    image: rotulos-web:${RELEASE_TAG:-local}
     environment:
       # Lo que termina dentro de config.js al arrancar el contenedor.
       API_BASE: https://${DOMINIO:?definir DOMINIO en .env}/api/v1

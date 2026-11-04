@@ -157,9 +157,15 @@ uses real SMTP**: a local `run_monitor` mails real owners of the local DB — se
 
 ### Deploying (`docker-compose.prod.yml` + `Caddyfile`, repo root)
 
-Brought up **by hand** — there is CI but no deploy pipeline (decided again 2026-10-19: no server yet; the
-plan for T#181-185 is in `docs/despliegue.md`); deploying and automating the deploy are different things,
-and the second only earns its keep after doing the first a few times. Six
+Brought up **by hand** for now. **Automatic deploy is written but has NEVER run** (2026-11-04, T#181-184, no
+server yet): `azure-pipelines-deploy.yml` (repo root, separate from the CI pipelines, inert until registered in
+Azure DevOps; environment `prod` with approval, variable group `rotulos-prod`, secure files `rotulos-prod.env` and
+`rotulos-deploy-key`) ships `git archive` of the commit over SSH and runs `scripts/deploy.sh <commit>` on the server:
+layout `releases/<commit>/` + `shared/.env` + `shared/backups/` + `current`/`previous`; backup → `compose build`
+(images `rotulos-api:<commit>`/`rotulos-web:<commit>`, `RELEASE_TAG` in the compose, `local` by hand) → `migrate` as
+its own step → `up -d` → wait for the API healthy and `health/system/` 200 through Caddy → else back to the previous
+release automatically; `--rollback` by hand; keeps 5 releases. Checked only with a fake `docker`/`curl`; the setup
+checklist is in `docs/despliegue.md`, "Despliegue automático: puesta en marcha". Six
 services: Postgres, the API (migrations + `collectstatic` + `generate_template_thumbnails` then gunicorn;
 API and worker log in JSON, `LOG_FORMAT=text` in `.env` to read them by eye), the integrations worker, the alert
 monitor (`run_monitor`), the frontend, and Caddy, which terminates TLS with an automatic Let's Encrypt certificate — Tiendanube
@@ -929,10 +935,12 @@ change in `label_rendering.py`, change them in the editor too.** `renderDecorati
   `generate_template_thumbnails`. `tests/test_gallery.py`: order, validation, only label markers, every data field placed, PDF
   and ZPL (8/12 dpmm) without code warnings, QR + Code128 read at 203 dpi. **A design without a `logo` key now opens without
   the old logo field** (`applyFields` hides `#logoField`, `collectFields` skips it; "Subir logo" shows it again): saving
-  used to add it at its default spot and the gallery's logo printed twice. **Known, not fixed:** ZPL encodes Code128 as
-  subset B (`^BCN,...,N,N`), so a 19-digit tracking prints ~6 cm wide in a Zebra vs ~4.4 cm in the PDF and can spill out of
-  its box — "Celdas" gives the barcode a full-width row for that; switching to `^BC` mode A changes every existing ZPL (the
-  pinned hash tests), so it is a separate decision.
+  used to add it at its default spot and the gallery's logo printed twice. **Code128 in ZPL uses mode A (2026-11-04, user's
+  go-ahead)**: `^BCN,...,N,N,A` lets the printer pack digit pairs in subset C, like ReportLab in the PDF. Before, everything
+  went in subset B and a 19-digit tracking printed ~6 cm wide at 203 dpi and spilled out of its box; now ~3.9 cm (checked
+  in Labelary at 8 and 12 dpmm, decoded with zxing). The module count for `^BY` comes from ReportLab's own encoding
+  (`zpl._barcode_module_count`). It changed every template's ZPL in those two commands only; the pinned hashes in
+  `test_shapes_zpl.py` were retaken.
 - The **field properties panel** (`fieldPropsGroup`) edits those per-field styles: click a text field on
   the canvas and set `font_size`, `bold`, `align`, `width`, `hide_if_empty`, `shrink_to_fit`. It follows
   the same select-then-configure pattern as the QR/barcode panel beside it. An empty or unchecked control

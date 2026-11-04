@@ -1,10 +1,65 @@
 # Despliegue automatizado: plan (T#181-185)
 
-**Estado (2026-10-19): planeado, sin código.** Se decidió dejar solo el CI
-(`backend/azure-pipelines.yml` y `frontend/azure-pipelines.yml`) hasta que
-exista un servidor. Hoy el despliegue se hace a mano con
-`docker-compose.prod.yml` (ver CLAUDE.md, "Deploying"). Este documento dice qué
-hay que crear y cómo quedaría el pipeline el día que se haga.
+**Estado (2026-11-04): escrito, NUNCA corrido.** Ya está el pipeline
+(`azure-pipelines-deploy.yml`, en la raíz) y el script que corre en el servidor
+(`scripts/deploy.sh`), pero todavía no hay servidor: solo se validó la sintaxis
+y se probó `deploy.sh` con un `docker` simulado. La primera corrida de verdad
+seguro pide algún ajuste. Mientras tanto se despliega a mano con
+`docker-compose.prod.yml` (ver CLAUDE.md, "Deploying").
+
+## Despliegue automático: puesta en marcha
+
+Una sola vez, cuando exista el servidor. Un solo entorno, `prod`: con un
+servidor no hay dónde poner un `stage` (se suma copiando la etapa del pipeline
+con su propio entorno, grupo y `.env`).
+
+**En el servidor**
+1. Docker con Compose v2 (`docker compose`, sin guion) y `curl`.
+2. Un usuario para desplegar (p. ej. `deploy`) en el grupo `docker`, con una
+   clave SSH nueva solo para esto: la pública en su `~/.ssh/authorized_keys`.
+3. La carpeta de despliegue (p. ej. `/srv/rotulos`), de ese usuario. El
+   pipeline crea adentro `shared/` (el `.env` y los backups) y `releases/`.
+4. Si antes se desplegó a mano: copiar ese `.env` a `shared/.env`. Los
+   volúmenes (base, media, certificados) son los mismos porque el proyecto de
+   Compose se llama igual (`rotulos-perso-prod`).
+5. El cron de backups (más abajo), apuntando a la versión activa:
+   `0 4 * * * cd /srv/rotulos/releases/$(cat /srv/rotulos/current) && BACKUP_DIR=/srv/rotulos/shared/backups scripts/backup.sh >> /srv/rotulos/shared/backups/backup.log 2>&1`
+
+**En Azure DevOps** (proyecto ROTULOS_PERSO)
+1. **Pipelines → Environments → `prod`** (T#182) → Approvals and checks →
+   Approvals: quién aprueba cada pase a producción.
+2. **Pipelines → Library → Secure files** (T#184):
+   - `rotulos-prod.env`: el `.env` de producción completo (lista de claves en la
+     cabecera de `docker-compose.prod.yml` y en `backend/.env.example`).
+   - `rotulos-deploy-key`: la clave SSH **privada** del usuario `deploy`.
+   Las dos con "Authorize for use in all pipelines" o autorizadas en la primera
+   corrida.
+3. **Pipelines → Library → Variable groups → `rotulos-prod`** (T#184), nada
+   secreto de la app:
+
+   | Variable | Ejemplo |
+   |---|---|
+   | `DEPLOY_HOST` | `rotulos.tudominio.com` o la IP |
+   | `DEPLOY_USER` | `deploy` |
+   | `DEPLOY_SSH_PORT` | `22` |
+   | `DEPLOY_PATH` | `/srv/rotulos` |
+   | `DEPLOY_KNOWN_HOSTS` | la línea de `ssh-keyscan -t ed25519 <host>` (así el agente sabe que el servidor es el correcto) |
+
+4. **Pipelines → New pipeline** → GitHub → el repo → "Existing Azure Pipelines
+   YAML file" → `/azure-pipelines-deploy.yml`.
+
+**Qué pasa en cada corrida** (T#183, `scripts/deploy.sh`): empaqueta el
+commit, lo copia a `releases/<commit>/`, escribe `shared/.env` (600), y en el
+servidor: backup (`antes-de-<commit>`) → `docker compose build` (imágenes
+`rotulos-api:<commit>` y `rotulos-web:<commit>`) → `migrate` en un paso aparte
+(si falla, se corta y sigue la versión anterior) → `up -d` → espera a que la API
+esté sana y `https://<DOMINIO>/api/v1/health/system/` dé 200 (180 s) → si no,
+vuelve sola a la versión anterior y el pipeline falla. Guarda `current` y
+`previous` y deja las últimas 5 versiones.
+
+**Rollback a mano**: en el servidor, `cd /srv/rotulos/releases/$(cat
+/srv/rotulos/current) && scripts/deploy.sh --rollback` (no toca la base), o
+volver a correr el pipeline sobre el commit anterior.
 
 ## Lo que hace falta antes (decisiones y cuentas)
 

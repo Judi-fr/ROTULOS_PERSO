@@ -1,0 +1,96 @@
+# Despliegue automático a producción (T#181-184). PREPARADO SIN SERVIDOR
+# (2026-11-04): nunca corrió de verdad. No hace nada hasta darlo de alta en
+# Azure DevOps (Pipelines → New pipeline → GitHub → el repo → "Existing Azure
+# Pipelines YAML file" → /azure-pipelines-deploy.yml), y para eso antes hay
+# que crear lo que pide docs/despliegue.md, "Despliegue automático: puesta en
+# marcha".
+#
+# Qué hace: empaqueta el código del commit (git archive), lo copia al servidor
+# por SSH y corre ahí scripts/deploy.sh, que hace backup, build, migraciones,
+# levanta, chequea la salud y vuelve a la versión anterior si algo falla. Las
+# imágenes se construyen en el servidor: no hace falta un registro.
+#
+# Los pipelines de CI (backend/ y frontend/azure-pipelines.yml) siguen igual;
+# este no repite los tests: se corre sobre commits que ya pasaron el CI.
+
+# Automático con cada push a master que toque algo que se despliega. Desde
+# cualquier otra rama, solo a mano ("Run pipeline" eligiendo la rama). Siempre
+# frena en la aprobación del entorno "prod".
+trigger:
+  branches:
+    include: [master]
+  paths:
+    include:
+      - backend/*
+      - frontend/*
+      - docker-compose.prod.yml
+      - Caddyfile
+      - scripts/*
+
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  # Pipelines → Library → Variable groups → "rotulos-prod" (lista en
+  # docs/despliegue.md). Nada secreto de la app va acá: el .env entero es el
+  # archivo seguro "rotulos-prod.env".
+  - group: rotulos-prod
+  - name: RELEASE
+    value: $(Build.SourceVersion)
+
+stages:
+  - stage: Deploy
+    displayName: Desplegar en producción
+    jobs:
+      - deployment: prod
+        displayName: Producción
+        # Pipelines → Environments → "prod", con la aprobación de una persona
+        # (Approvals and checks). El historial de qué se desplegó y quién lo
+        # aprobó queda ahí.
+        environment: prod
+        timeoutInMinutes: 45
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                # Un job de deployment no baja el repo solo.
+                - checkout: self
+                  fetchDepth: 1
+
+                - task: DownloadSecureFile@1
+                  name: dotenv
+                  inputs:
+                    secureFile: rotulos-prod.env
+                  displayName: Traer el .env de producción
+
+                - task: InstallSSHKey@0
+                  inputs:
+                    knownHostsEntry: $(DEPLOY_KNOWN_HOSTS)
+                    sshKeySecureFile: rotulos-deploy-key
+                  displayName: Clave SSH del servidor
+
+                - script: |
+                    set -euo pipefail
+                    git archive --format=tar.gz -o "$(Agent.TempDirectory)/release.tar.gz" HEAD
+                    ls -lh "$(Agent.TempDirectory)/release.tar.gz"
+                  displayName: Empaquetar el commit
+
+                # Copia el código y el .env, y corre el despliegue en el
+                # servidor. El .env va con permisos 600 y nunca pasa por el log.
+                - script: |
+                    set -euo pipefail
+                    target="$(DEPLOY_USER)@$(DEPLOY_HOST)"
+                    ssh_opts=(-p "$(DEPLOY_SSH_PORT)" -o BatchMode=yes)
+                    base="$(DEPLOY_PATH)"
+                    dir="$base/releases/$(RELEASE)"
+                    ssh "${ssh_opts[@]}" "$target" "mkdir -p '$base/shared' '$base/releases' && rm -rf '$dir.tmp' && mkdir -p '$dir.tmp'"
+                    scp -P "$(DEPLOY_SSH_PORT)" -o BatchMode=yes "$(Agent.TempDirectory)/release.tar.gz" "$target:$dir.tmp/release.tar.gz"
+                    scp -P "$(DEPLOY_SSH_PORT)" -o BatchMode=yes "$(dotenv.secureFilePath)" "$target:$base/shared/.env.new"
+                    ssh "${ssh_opts[@]}" "$target" "set -e
+                      install -m 600 '$base/shared/.env.new' '$base/shared/.env' && rm -f '$base/shared/.env.new'
+                      tar -xzf '$dir.tmp/release.tar.gz' -C '$dir.tmp' && rm '$dir.tmp/release.tar.gz'
+                      rm -rf '$dir' && mv '$dir.tmp' '$dir'
+                      cd '$dir' && DEPLOY_PATH='$base' scripts/deploy.sh '$(RELEASE)'"
+                  displayName: Desplegar en el servidor

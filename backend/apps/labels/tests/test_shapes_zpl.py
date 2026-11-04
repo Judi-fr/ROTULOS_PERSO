@@ -13,10 +13,13 @@ from ..label_rendering import SAMPLE_LABEL_CONTEXT
 from ..zpl import render_label_zpl
 
 # Huellas del ZPL de la "Etiqueta de envío estándar" con SAMPLE_LABEL_CONTEXT,
-# tomadas ANTES de sumar las formas (2026-10-28).
+# tomadas ANTES de sumar las formas (2026-10-28) y vueltas a tomar el
+# 2026-11-04 por un cambio buscado: el Code128 pasó a modo automático
+# (``^BC...,A``) y su módulo se recalculó; lo demás del ZPL quedó igual
+# (comparado línea por línea).
 STANDARD_TEMPLATE_ZPL_SHA256 = {
-    8: "6d13f25936a3238b512a7b321381302ff38f7b7c928c9a4a990370d4fd3831bb",
-    12: "4cb51952614ffdb2bf887346cd4a1dec1a889c86e5686d5dbd35587c544ccfe4",
+    8: "c82c4d20b5e1c9121200f50b9baee123391350e43c80e1497faa7a13ce116407",
+    12: "c36efa79b34e7c0fa0c199fbaf3110ab7e518577f2a1642bc58a4b9eacaf964f",
 }
 
 

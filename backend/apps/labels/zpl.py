@@ -544,7 +544,7 @@ def _barcode_commands(entry, context, computed, width_cm, height_cm, dpmm, clear
 
     commands = []
     if clear_background is not None:
-        modules = 95 if symbology == "ean13" else 11 * (len(data) + 3) + 2
+        modules = _barcode_module_count(data, symbology)
         box_w = modules * module_dots
         box_h = height_dots + (cm_to_dots(BARCODE_TEXT_LINE_CM, dpmm) if show_text == "Y" else 0)
         w_pct = box_w / (cm_to_dots(width_cm, dpmm) or 1) * 100
@@ -557,7 +557,11 @@ def _barcode_commands(entry, context, computed, width_cm, height_cm, dpmm, clear
     if symbology == "ean13":
         commands.append(f"^BEN,{height_dots},{show_text},N")
     else:
-        commands.append(f"^BCN,{height_dots},{show_text},N,N")
+        # Modo A (automático): la impresora empaqueta los dígitos de a pares
+        # (subconjunto C), como ReportLab en el PDF. Con el modo N quedaba
+        # todo en subconjunto B y un seguimiento de 19 dígitos salía ~6 cm en
+        # vez de ~4,4 cm, saliéndose de su caja.
+        commands.append(f"^BCN,{height_dots},{show_text},N,N,A")
     commands.append("^FH\\")
     commands.append(f"^FD{escape_field_data(data)}^FS")
     return commands
@@ -571,11 +575,31 @@ def _barcode_module_width(data, symbology, width_dots):
     95. Si no llega ni con 2 dots por módulo, queda en 2 y el código sale más
     ancho de lo pedido — preferible a uno tan angosto que no se lea.
     """
+    return _clamp(width_dots // _barcode_module_count(data, symbology), *BARCODE_MODULE_RANGE)
+
+
+def _barcode_module_count(data, symbology):
+    """Módulos que ocupa el código, zona de silencio aparte.
+
+    EAN-13 son siempre 95. Code128 en modo automático gasta 11 por símbolo
+    (arranque, datos, cambios de subconjunto, control) más 13 del cierre; la
+    cuenta de símbolos sale de la misma codificación que usa el PDF
+    (ReportLab), que pone los pares de dígitos en el subconjunto C igual que
+    el modo A de la impresora.
+    """
     if symbology == "ean13":
-        modules = 95
-    else:
-        modules = 11 * (len(data) + 3) + 2
-    return _clamp(width_dots // modules, *BARCODE_MODULE_RANGE)
+        return 95
+    try:
+        from reportlab.graphics.barcode.code128 import Code128
+
+        code = Code128(data)
+        code.validate()
+        code.encode()
+        return 11 * len(code.encoded) + 2
+    except Exception:
+        # Sin poder codificarlo se cuenta todo en subconjunto B: el código
+        # puede salir más angosto que su caja, nunca más ancho.
+        return 11 * (len(data) + 3) + 2
 
 
 # ---------------------------------------------------------------------------
