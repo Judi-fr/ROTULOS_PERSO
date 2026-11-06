@@ -612,11 +612,8 @@ class RolePermissionSystemTests(AuthTestCase):
         "labels.template_create",
         "documents.view",
         "documents.delete",
-        # Plantillas por elementos / catálogo / archivos fuente / importación
+        # Archivos fuente / importación
         # (self-service; integradas desde backend_echu).
-        "plantillas.view",
-        "plantillas.edit",
-        "variables.view",
         "documents.upload",
         "processing.import",
         # Exclusivos del admin (ver 0014_seed_admin_only_permissions,
@@ -638,7 +635,6 @@ class RolePermissionSystemTests(AuthTestCase):
         "printers.manage",
         "account.manage",
         "team.manage",
-        "variables.manage",
         "documents.view_all",
         "orders.create_for_others",
         "integrations.manage",
@@ -678,9 +674,6 @@ class RolePermissionSystemTests(AuthTestCase):
         "labels.render",
         "labels.batch",
         "labels.template_create",
-        "plantillas.view",
-        "plantillas.edit",
-        "variables.view",
         "documents.upload",
         "processing.import",
         "documents.view",

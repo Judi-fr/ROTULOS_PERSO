@@ -59,7 +59,7 @@ class TeamPermissionTests(APITestCase):
         self.assertTrue(user_has_permission(employee, "labels.batch"))
         self.assertTrue(user_has_permission(employee, "orders.dispatch"))
         self.assertTrue(user_has_permission(employee, "orders.view"))
-        for key in ("stores.manage", "orders.cancel", "team.manage", "plantillas.edit", "orders.import"):
+        for key in ("stores.manage", "orders.cancel", "team.manage", "labels.template_edit", "orders.import"):
             self.assertFalse(user_has_permission(employee, key), key)
 
     def test_profile_change_applies_to_its_members(self):

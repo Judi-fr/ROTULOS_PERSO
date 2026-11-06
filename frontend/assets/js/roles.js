@@ -62,14 +62,11 @@ const CATEGORY_ORDER = [
 ];
 
 // Algunos permisos comparten categoría en el backend pero son otra cosa para
-// quien los asigna: el perfil propio no es administrar usuarios, y las
-// plantillas no son los rótulos. Se reagrupan por prefijo de la clave, que es
+// quien los asigna: el perfil propio no es administrar usuarios. Se reagrupan por prefijo de la clave, que es
 // un dato y no una lista de permisos, así que sigue sin haber nada que
 // actualizar cuando se agrega uno.
 const CATEGORY_BY_PREFIX = [
   ["users.me.", "perfil"],
-  ["plantillas.", "plantillas"],
-  ["variables.", "plantillas"],
   ["stats.", "stats"],
 ];
 

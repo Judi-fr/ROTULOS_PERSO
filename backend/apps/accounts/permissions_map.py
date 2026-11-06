@@ -117,11 +117,8 @@ PERMISSIONS = frozenset(
         "labels.render",
         "labels.batch",
         "labels.template_create",
-        # Plantillas por elementos / catálogo de variables y archivos fuente
+        # Archivos fuente e importación de fotos
         # (funcionalidades integradas desde backend_echu).
-        "plantillas.view",
-        "plantillas.edit",
-        "variables.view",
         "documents.upload",
         "processing.import",
         # Documentos generados (hoy: lotes de rótulos) propios
@@ -142,7 +139,6 @@ PERMISSIONS = frozenset(
         "catalogs.manage",
         # Estado del sistema y alertas de disponibilidad (apps.monitoring).
         "monitoring.view",
-        "variables.manage",
         "documents.view_all",
         # Dar de alta un pedido a nombre de OTRO usuario (0020): exclusivo
         # admin, ni siquiera operator lo tiene (ver ManualOrderCreateView).
@@ -199,9 +195,6 @@ _SELF_SERVICE_PERMISSIONS = {
     "labels.render",
     "labels.batch",
     "labels.template_create",
-    "plantillas.view",
-    "plantillas.edit",
-    "variables.view",
     "documents.upload",
     "processing.import",
     "documents.view",
@@ -286,9 +279,6 @@ TEAM_SCOPED_PERMISSIONS = {
     "labels.template_create": "templates",
     "labels.template_edit": "templates",
     "labels.template_delete": "templates",
-    "plantillas.view": "templates",
-    "plantillas.edit": "templates",
-    "variables.view": "templates",
     "documents.upload": "templates",
     "processing.import": "templates",
     "stores.manage": "stores",
