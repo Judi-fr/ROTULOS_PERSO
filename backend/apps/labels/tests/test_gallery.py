@@ -130,3 +130,18 @@ class EditorDefaultsTests(SimpleTestCase):
             self.assertNotIn(invented, canvas)
         for marker in ("remitente", "destinatario", "domicilio", "cp", "localidad", "pedido"):
             self.assertIn("{{%s}}" % marker, canvas)
+
+
+class SampleTextMigrationTests(SimpleTestCase):
+    def replace(self):
+        return import_module("apps.labels.migrations.0017_replace_sample_text_in_templates").replace_sample_texts
+
+    def test_cambia_el_texto_de_ejemplo_exacto(self):
+        design = {"destinatario": {"left": 6, "top": 38, "text": "Destinatario: María Gómez"}}
+        self.assertTrue(self.replace()(design))
+        self.assertEqual(design["destinatario"], {"left": 6, "top": 38, "text": "Destinatario: {{destinatario}}"})
+
+    def test_no_toca_lo_que_se_escribio_a_mano(self):
+        design = {"destinatario": {"text": "Destinatario: María Gómez (tía)"}, "cp": {"text": "CP: {{cp}}"}}
+        self.assertFalse(self.replace()(design))
+        self.assertEqual(design["destinatario"]["text"], "Destinatario: María Gómez (tía)")
