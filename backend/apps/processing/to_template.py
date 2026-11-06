@@ -1,9 +1,7 @@
 """Traduce lo que Claude leyó de un rótulo al ``design`` de una plantilla.
 
-La lectura de la foto (``agent.build_proposal``) queda en el formato de los
-diseños por elementos (Sistema 2: milímetros, ``LayoutElement``), que ningún
-flujo de impresión de pedidos usa. Esto la pasa al formato de
-``LabelTemplate`` (Sistema 1: porcentajes del rótulo), para abrirla en
+La lectura de la foto (``agent.build_proposal``) queda en milímetros. Esto la
+pasa al formato de ``LabelTemplate`` (porcentajes del rótulo), para abrirla en
 editor_rotulos.html como una plantilla nueva (2026-10-30, plan
 docs/superpowers/plans/2026-10-30-foto-a-plantilla.md).
 

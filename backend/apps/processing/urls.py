@@ -11,7 +11,7 @@ El flujo completo de importar un rótulo son tres pasos:
 
     1. POST /api/v1/documents/documentos/        (sube la foto)
     2. POST /api/v1/processing/label-imports/     (la lee -> propuesta)
-    3. POST /api/v1/labels/element-layouts/       (el usuario guarda lo revisado)
+    3. GET  /api/v1/processing/label-imports/<id>/template/  (se abre en el editor y el usuario guarda)
 """
 
 from rest_framework.routers import SimpleRouter

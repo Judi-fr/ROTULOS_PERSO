@@ -215,17 +215,6 @@ class DashboardView(APIView):
                     "enabled": True,
                 }
             )
-        # Editor de los diseños por elementos (ElementLayout): lo que produce
-        # la importación se puede corregir a mano acá.
-        if user_has_permission(user, "plantillas.edit"):
-            menu.append(
-                {
-                    "key": "element_layouts",
-                    "label": "Diseños por elementos",
-                    "url": "editor_layout.html",
-                    "enabled": True,
-                }
-            )
         # El equipo del comercio y lo que hizo cada uno (apps/accounts/teams.py).
         if user_has_permission(user, "team.manage"):
             menu.append({"key": "team", "label": "Mi comercio", "url": "equipo.html", "enabled": True})

@@ -35,8 +35,7 @@ class LabelImportViewSet(
 
     ``POST`` con ``{"uploaded_file": <id>}`` procesa el archivo y devuelve la
     plantilla **propuesta**. No la guarda: el usuario la revisa y la abre en
-    el editor de rótulos (``GET <id>/template/``, una plantilla nueva) o la
-    manda él mismo a ``POST /api/v1/labels/element-layouts/``.
+    el editor de rótulos (``GET <id>/template/``, una plantilla nueva).
 
     No hay ``update`` ni ``destroy``: una lectura es un hecho registrado, no
     algo que se edite.

@@ -12,14 +12,11 @@ from .catalog_views import LabelSizeViewSet
 from .batch_views import LabelBatchView
 from .views import (
     AdminLabelListView,
-    AvailableFontsView,
     BarcodeImageView,
-    ElementLayoutViewSet,
     LabelImageViewSet,
     LabelSequenceView,
     LabelTemplateViewSet,
     LabelViewSet,
-    LayoutVariableViewSet,
     PreviewContextView,
     PreviewLabelView,
     RenderLabelView,
@@ -28,8 +25,6 @@ from .views import (
 router = SimpleRouter()
 router.register(r"labels", LabelViewSet, basename="label")
 router.register(r"templates", LabelTemplateViewSet, basename="label-template")
-router.register(r"element-layouts", ElementLayoutViewSet, basename="element-layout")
-router.register(r"layout-variables", LayoutVariableViewSet, basename="layout-variable")
 router.register(r"images", LabelImageViewSet, basename="label-image")
 router.register(r"sizes", LabelSizeViewSet, basename="label-size")
 
@@ -48,9 +43,6 @@ urlpatterns = [
     path("barcode/", BarcodeImageView.as_view(), name="label-barcode"),
     # Generación por lote: muchos rótulos -> un Document (apps.documents).
     path("batch/", LabelBatchView.as_view(), name="label-batch"),
-    # Familias tipográficas para el editor de plantillas de ElementLayout (no
-    # es un recurso con CRUD, va como vista suelta).
-    path("fonts/", AvailableFontsView.as_view(), name="fonts"),
     # Numeración de {{secuencia}}: prefijo, ceros y próximo número (editor).
     path("sequence/", LabelSequenceView.as_view(), name="label-sequence"),
 ] + router.urls

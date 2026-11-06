@@ -7,8 +7,7 @@
 //   1. POST /documents/documentos/      sube la foto
 //   2. POST /processing/label-imports/  el modelo la lee -> propuesta
 //   3. abrirla en el editor de rótulos (GET label-imports/<id>/template/,
-//      lo pide editor_rotulos.html?importacion=<id>) o guardarla como diseño
-//      por elementos (POST /labels/element-layouts/)
+//      lo pide editor_rotulos.html?importacion=<id>), donde se guarda
 //
 // El paso 2 NO guarda ninguna plantilla: devuelve una propuesta y nada más.
 // Que el paso 3 sea una acción explícita del usuario es la garantía de que
@@ -21,7 +20,6 @@ const API_BASE = window.APP_CONFIG.API_BASE;
 const ME_URL = `${API_BASE}/auth/me/`;
 const UPLOAD_URL = `${API_BASE}/documents/documentos/`;
 const IMPORTS_URL = `${API_BASE}/processing/label-imports/`;
-const LAYOUTS_URL = `${API_BASE}/labels/element-layouts/`;
 
 const apiFetch = (url, options) => window.Auth.apiFetch(url, options);
 
@@ -35,10 +33,7 @@ const previewEl = document.getElementById("preview");
 const elementListEl = document.getElementById("elementList");
 const discardedBox = document.getElementById("discardedBox");
 const saveForm = document.getElementById("saveForm");
-const saveBtn = document.getElementById("saveBtn");
 const startOverBtn = document.getElementById("startOverBtn");
-const nameInput = document.getElementById("layoutName");
-const descriptionInput = document.getElementById("layoutDescription");
 const widthInput = document.getElementById("layoutWidth");
 const heightInput = document.getElementById("layoutHeight");
 
@@ -241,8 +236,6 @@ function showProposal(labelImport) {
     showMessage("La lectura no devolvió ninguna propuesta.");
     return;
   }
-  nameInput.value = proposal.name || "";
-  descriptionInput.value = proposal.description || "";
   widthInput.value = proposal.width_mm;
   heightInput.value = proposal.height_mm;
 
@@ -259,47 +252,11 @@ function showProposal(labelImport) {
 widthInput.addEventListener("input", () => proposal && renderPreview());
 heightInput.addEventListener("input", () => proposal && renderPreview());
 
-// ---------------------------------------------------------------------------
-// Paso 3: guardar
-// ---------------------------------------------------------------------------
-saveForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (!proposal) return;
-
-  // "_revision" es para que el usuario controle la lectura; el serializer de
-  // plantillas no lo acepta, así que no viaja.
-  const { _revision, ...body } = proposal;
-  body.name = nameInput.value.trim();
-  body.description = descriptionInput.value.trim();
-  body.width_mm = Number(widthInput.value);
-  body.height_mm = Number(heightInput.value);
-
-  saveBtn.disabled = true;
-  try {
-    const response = await apiFetch(LAYOUTS_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(getErrorMessage(data, "No se pudo guardar la plantilla."));
-    }
-    showMessage("Diseño por elementos guardado: lo encontrás en el editor de diseños.", "success");
-    resetAll();
-  } catch (err) {
-    if (err.isSessionExpired) return;
-    console.error("Error al guardar la plantilla:", err);
-    showMessage(err.message || "No se pudo guardar la plantilla.");
-  } finally {
-    saveBtn.disabled = false;
-  }
-});
-
 // "Abrir en el editor de rótulos": el editor pide la lectura traducida a
 // plantilla (GET label-imports/<id>/template/) y la abre como plantilla nueva.
 // Las medidas corregidas acá viajan en la URL (en cm, como las usa el editor).
-document.getElementById("openEditorBtn").addEventListener("click", () => {
+saveForm.addEventListener("submit", (event) => {
+  event.preventDefault();
   if (!proposal || !importId) return;
   const params = new URLSearchParams({ nueva: "plantilla", importacion: String(importId) });
   const width = Number(widthInput.value);
@@ -339,8 +296,7 @@ async function init() {
     if (response.ok) {
       const user = await response.json();
       window.AppTopbar.render(user);
-      // Gateo de UI nada más: el backend revalida processing.import y
-      // plantillas.edit en cada llamada.
+      // Gateo de UI nada más: el backend revalida processing.import.
       const permissions = user.permissions || [];
       if (!permissions.includes("processing.import")) {
         window.location.replace("dashboard.html");

@@ -19,7 +19,6 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from PIL import Image
 
-from ..element_layout_render import render_element_layout_png
 from ..label_rendering import barcode_min_width_cm, build_label_context, render_label_pdf
 from ..models import ElementLayout, LabelTemplate, LayoutElement, LayoutVariable
 
@@ -162,29 +161,3 @@ class LabelScanTests(TestCase):
     def test_also_at_300_dpi(self):
         found = self.scan(self.design(), dpi=300)
         self.assertEqual(len(found), 2)
-
-
-@unittest.skipIf(zxingcpp is None, "zxing-cpp no está instalado (pip install -r requirements-dev.txt)")
-class ElementLayoutScanTests(TestCase):
-    """Sistema 2: los diseños por elementos (render_element_layout_png)."""
-
-    def test_qr_and_barcode_variables_read_back(self):
-        user = User.objects.create_user(username="ana@example.com", email="ana@example.com", password="x")
-        layout = ElementLayout.objects.create(
-            name="Escaneo", width_mm=Decimal("100"), height_mm=Decimal("150"), dpi=THERMAL_DPI, created_by=user
-        )
-        qr = LayoutVariable.objects.get(code="qr")
-        barcode = LayoutVariable.objects.create(code="codigo_envio", label="Código de envío", data_type="codigo_barras")
-        LayoutElement.objects.create(
-            layout=layout, element_type="variable", variable=qr,
-            x_mm=Decimal("60"), y_mm=Decimal("10"), width_mm=Decimal("30"), height_mm=Decimal("30"),
-        )
-        LayoutElement.objects.create(
-            layout=layout, element_type="variable", variable=barcode,
-            x_mm=Decimal("10"), y_mm=Decimal("100"), width_mm=Decimal("80"), height_mm=Decimal("20"),
-        )
-        png, _report = render_element_layout_png(layout, {"qr": "AR-2026-0001", "codigo_envio": TRACKING}, user=user)
-        image = Image.open(BytesIO(png)).convert("L")
-        found = decode(image)
-        self.assertIn(("QRCode", "AR-2026-0001"), found)
-        self.assertIn(("Code128", TRACKING), found)

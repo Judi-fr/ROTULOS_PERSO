@@ -7,14 +7,14 @@ Flujo completo:
 2. Se le manda la imagen (o el PDF) a Claude con *structured outputs*, que
    obliga a la respuesta a validar contra ese esquema. No hace falta parsear
    texto libre ni rezar para que el JSON venga bien formado.
-3. Se convierte el resultado —que viene en porcentajes— al formato exacto que
-   espera ``ElementLayoutSerializer``, en milímetros.
+3. Se convierte el resultado —que viene en porcentajes— a una propuesta en
+   milímetros, que ``to_template`` lleva después al diseño de una plantilla.
 
 El paso 3 no es un detalle: la conversión también **descarta** los elementos
 que violarían las reglas del modelo de datos (un texto estático sin texto, una
 variable sin variable). Es preferible entregar una propuesta con un elemento
-de menos, que el usuario agrega a mano, que una que el POST a
-``/element-layouts/`` va a rechazar entera.
+de menos, que el usuario agrega a mano en el editor, que una que no se puede
+abrir.
 """
 
 import base64
@@ -244,12 +244,12 @@ def _mark_error(label_import, message):
 
 # ---------------------------------------------------------------------------
 # Conversión: de lo que devuelve el modelo (porcentajes) al formato de la API
-# de element-layouts (milímetros).
+# (milímetros).
 # ---------------------------------------------------------------------------
 
 
 def build_proposal(response, document):
-    """Convierte la respuesta del modelo en un cuerpo para ``POST /element-layouts/``.
+    """Convierte la respuesta del modelo en la propuesta que se revisa.
 
     El resultado se puede mandar tal cual a la API de layouts. Se agrega
     ``_revision`` con lo que el usuario necesita para controlar la lectura

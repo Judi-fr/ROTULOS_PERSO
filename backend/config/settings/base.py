@@ -211,16 +211,9 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = (*default_cors_headers, "x-auth-mode", "x-team-id")
 
 # El navegador solo le deja leer al JavaScript de otro origen un puñado de
-# cabeceras estándar. Sin esta lista, el frontend (otro puerto que la API)
-# recibe el rótulo impreso pero no se entera de que a un campo le faltó el
-# dato, de que un domicilio se cortó o de que el QR quedó ilegible: el render
-# de ElementLayout informa eso en estas cabeceras (ver
-# ElementLayoutViewSet.render). Un domicilio recortado en silencio termina en
-# un paquete que no llega.
+# cabeceras estándar: las que el frontend (otro puerto que la API) necesita
+# leer van en esta lista.
 CORS_EXPOSE_HEADERS = [
-    "X-Layout-Missing",
-    "X-Layout-Truncated",
-    "X-Layout-Warnings",
     # Vista previa del editor de rótulos (PreviewLabelView): código de
     # barras que no entra legible.
     "X-Label-Warnings",

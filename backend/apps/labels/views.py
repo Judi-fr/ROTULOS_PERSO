@@ -11,14 +11,14 @@ from __future__ import annotations
 import re
 
 from django.core.files.base import ContentFile
-from django.db.models import Max, Prefetch, ProtectedError, Q
+from django.db.models import Max, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.generics import ListAPIView
-from rest_framework.permissions import IsAuthenticated, SAFE_METHODS
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -30,7 +30,7 @@ from apps.common.date_filters import date_range_q
 from apps.orders.models import Order
 from apps.accounts.teams import NoTeam, data_owner, order_scope_q
 
-from .models import ElementLayout, Label, LabelImage, LabelSequence, LabelTemplate, LayoutElement, LayoutVariable
+from .models import Label, LabelImage, LabelSequence, LabelTemplate
 from .label_rendering import (
     BARCODE_HEIGHT_RANGE_CM,
     BARCODE_WIDTH_RANGE_CM,
@@ -52,17 +52,12 @@ from . import label_images
 from .template_versions import record_version, restore_version
 from .thumbnails import refresh_template_thumbnail
 from .zpl import DEFAULT_DPMM, SUPPORTED_DPMM, render_label_zpl
-from .element_layout_render import render_element_layout_pdf, render_element_layout_png
-from .element_layout_render.fonts import FontNotAvailable, available_font_families
 from .serializers import (
     AdminLabelSerializer,
-    ElementLayoutSerializer,
     LabelImageSerializer,
     LabelSerializer,
     LabelTemplateSerializer,
     LabelTemplateVersionSerializer,
-    LayoutVariableSerializer,
-    RenderElementLayoutSerializer,
 )
 
 ID_RE = re.compile(r"[0-9]{1,18}")
@@ -984,220 +979,3 @@ class BarcodeImageView(APIView):
 
         svg = render_code_svg(drawing)
         return HttpResponse(svg, content_type="image/svg+xml")
-
-# ---------------------------------------------------------------------------
-# ElementLayout/LayoutElement/LayoutVariable: plantillas por elementos +
-# catálogo de variables, adaptadas al sistema de roles/permisos del backend.
-# ---------------------------------------------------------------------------
-
-
-class AvailableFontsView(APIView):
-    """GET /api/v1/labels/fonts/
-
-    Familias tipográficas que el editor puede ofrecer. La disponibilidad
-    depende de la máquina: el PDF sale siempre, pero el PNG necesita un
-    ``.ttf`` instalado.
-    """
-
-    def get_permissions(self):
-        return [IsAuthenticated(), HasRolePermission("plantillas.view")]
-
-    def get(self, request):
-        return Response(available_font_families())
-
-
-class LayoutVariableViewSet(viewsets.ModelViewSet):
-    """CRUD del catálogo de variables que puede contener un rótulo.
-
-    Leer el catálogo lo puede hacer cualquier usuario autenticado (el editor
-    lo necesita para armar sus selectores); modificarlo queda reservado a
-    administradores (``variables.manage``), porque es un recurso compartido
-    por todas las plantillas.
-    """
-
-    serializer_class = LayoutVariableSerializer
-    pagination_class = None
-
-    def get_permissions(self):
-        if self.request.method in SAFE_METHODS:
-            return [IsAuthenticated(), HasRolePermission("variables.view")]
-        return [IsAuthenticated(), HasRolePermission("variables.manage")]
-
-    def get_queryset(self):
-        queryset = LayoutVariable.objects.select_related("created_by")
-        if self.action == "list":
-            include_inactive = self.request.query_params.get("incluir_inactivas")
-            if include_inactive not in ("1", "true", "True"):
-                queryset = queryset.filter(is_active=True)
-        return queryset
-
-    def perform_create(self, serializer):
-        variable = serializer.save(created_by=self.request.user)
-        record(
-            self.request,
-            category="labels",
-            action="variable_rotulo.create",
-            target=variable,
-            target_type="variablerotulo",
-            target_repr=str(variable),
-        )
-
-    def perform_update(self, serializer):
-        variable = serializer.save()
-        record(
-            self.request,
-            category="labels",
-            action="variable_rotulo.update",
-            target=variable,
-            target_type="variablerotulo",
-            target_repr=str(variable),
-        )
-
-    def destroy(self, request, *args, **kwargs):
-        """Elimina una variable, salvo que sea del sistema o esté en uso."""
-        variable = self.get_object()
-
-        if variable.is_system:
-            return Response(
-                {
-                    "detail": "Las variables del sistema no se pueden eliminar. "
-                    "Si no se usa, marcala como inactiva."
-                },
-                status=status.HTTP_409_CONFLICT,
-            )
-
-        # Se captura antes de borrar: tras el delete(), la instancia pierde
-        # su pk y ya no sirve como ``target`` de record().
-        target_id = str(variable.pk)
-        target_repr = str(variable)
-
-        try:
-            variable.delete()
-        except ProtectedError:
-            return Response(
-                {
-                    "detail": "La variable está en uso en alguna plantilla. "
-                    "Marcala como inactiva en lugar de eliminarla."
-                },
-                status=status.HTTP_409_CONFLICT,
-            )
-
-        record(
-            request,
-            category="labels",
-            action="variable_rotulo.delete",
-            target_type="variablerotulo",
-            target_id=target_id,
-            target_repr=target_repr,
-        )
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-class ElementLayoutViewSet(viewsets.ModelViewSet):
-    """CRUD de plantillas de rótulos por elementos.
-
-    Self-service: cada usuario opera sobre SUS propias plantillas
-    (``created_by``). Leer/renderizar exige ``plantillas.view``; escribir
-    exige ``plantillas.edit``.
-    """
-
-    serializer_class = ElementLayoutSerializer
-
-    def get_permissions(self):
-        if self.action in ("list", "retrieve", "render"):
-            return [IsAuthenticated(), HasRolePermission("plantillas.view")]
-        return [IsAuthenticated(), HasRolePermission("plantillas.edit")]
-
-    def get_queryset(self):
-        return (
-            ElementLayout.objects.filter(created_by=self.request.user)
-            .select_related("created_by")
-            .prefetch_related(
-                Prefetch(
-                    "elements",
-                    queryset=LayoutElement.objects.select_related("variable"),
-                )
-            )
-        )
-
-    def perform_create(self, serializer):
-        layout = serializer.save(created_by=self.request.user)
-        record(
-            self.request,
-            category="labels",
-            action="plantilla.create",
-            target=layout,
-            target_type="plantilla",
-            target_repr=str(layout),
-        )
-
-    def perform_update(self, serializer):
-        layout = serializer.save()
-        record(
-            self.request,
-            category="labels",
-            action="plantilla.update",
-            target=layout,
-            target_type="plantilla",
-            target_repr=str(layout),
-        )
-
-    def perform_destroy(self, instance):
-        # Se captura antes de borrar: tras el delete(), la instancia pierde
-        # su pk y ya no sirve como ``target`` de record().
-        target_id = str(instance.pk)
-        target_repr = str(instance)
-        instance.delete()
-        record(
-            self.request,
-            category="labels",
-            action="plantilla.delete",
-            target_type="plantilla",
-            target_id=target_id,
-            target_repr=target_repr,
-        )
-
-    @action(detail=True, methods=["post"])
-    def render(self, request, pk=None):
-        """POST /api/v1/labels/element-layouts/<id>/render/
-
-        Convierte un diseño guardado en algo que se pega en un paquete:
-        ``{"datos": {...}}`` un rótulo, ``{}`` vista previa, o
-        ``{"lote": [{...}, ...]}`` un PDF de varias páginas.
-        """
-        layout = self.get_object()
-        input_serializer = RenderElementLayoutSerializer(data=request.data)
-        input_serializer.is_valid(raise_exception=True)
-        options = input_serializer.validated_data
-
-        try:
-            if options["format"] == "png":
-                content, report = render_element_layout_png(
-                    layout,
-                    data=options.get("data"),
-                    user=request.user,
-                    dpi=options.get("dpi"),
-                )
-                content_type, extension = "image/png", "png"
-            else:
-                content, report = render_element_layout_pdf(
-                    layout,
-                    data=options.get("data"),
-                    user=request.user,
-                    batch=options.get("batch"),
-                )
-                content_type, extension = "application/pdf", "pdf"
-        except FontNotAvailable as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_501_NOT_IMPLEMENTED)
-
-        response = HttpResponse(content, content_type=content_type)
-        response["Content-Disposition"] = (
-            f'attachment; filename="rotulo-{layout.pk}.{extension}"'
-        )
-        if report["missing"]:
-            response["X-Layout-Missing"] = ",".join(report["missing"])
-        if report["truncated"]:
-            response["X-Layout-Truncated"] = ",".join(report["truncated"])
-        if report["warnings"]:
-            response["X-Layout-Warnings"] = ",".join(report["warnings"])
-        return response

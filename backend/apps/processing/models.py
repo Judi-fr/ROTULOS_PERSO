@@ -2,8 +2,8 @@
 
 Un ``LabelImport`` es el registro de haberle pedido a Claude que interprete
 un ``UploadedLabelFile`` (archivo subido). La importación **no crea la
-plantilla**: devuelve una *propuesta* que el usuario revisa y guarda como
-``apps.labels.ElementLayout`` en un paso posterior.
+plantilla**: devuelve una *propuesta* que el usuario revisa y abre en el editor
+de rótulos, donde la guarda como plantilla.
 """
 
 from django.conf import settings
@@ -37,13 +37,12 @@ class LabelImport(models.Model):
 
     model_name = models.CharField("modelo", max_length=60, blank=True, default="")
 
-    # JSONField con el cuerpo que acepta ElementLayoutSerializer: sus claves
+    # JSONField con la lectura en milímetros: sus claves
     # de nivel superior (name, description, width_mm, height_mm, dpi,
     # orientation, elements...) son las del modelo, en inglés. Lo que va
     # dentro de cada "style" queda en español a propósito (ver
-    # apps.labels.styles). Se manda tal cual a
-    # POST /api/v1/labels/element-layouts/ una vez revisada, salvo la clave
-    # "_revision", que es solo para que el usuario controle la lectura.
+    # apps.labels.styles). La clave "_revision" es solo para que el usuario
+    # controle la lectura. La traduce a plantilla processing/to_template.py.
     proposal = models.JSONField("propuesta", blank=True, null=True)
 
     raw_response = models.JSONField(

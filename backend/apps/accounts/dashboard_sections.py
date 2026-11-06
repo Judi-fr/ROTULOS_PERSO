@@ -56,8 +56,6 @@ def build_sections(user):
             "Tus plantillas y cómo sale cada rótulo.",
             [
                 # Lo principal es la plantilla: es con lo que se imprimen los pedidos.
-                # Rótulos guardados y Diseños por elementos no están acá para no
-                # sumar conceptos; siguen en el buscador de funciones (``menu``).
                 ("Nueva plantilla", "galeria_plantillas.html", "labels.template_create"),
                 ("Desde una foto", "importar_rotulo.html", "processing.import"),
             ],
