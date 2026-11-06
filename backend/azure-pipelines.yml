@@ -63,27 +63,27 @@ stages:
             displayName: Lint (flake8)
 
           # Un modelo cambiado sin su migración rompe el deploy, no los tests.
-          # SECRET_KEY va en cada paso (`env`): como variable del pipeline no
-          # llegó al proceso en la primera corrida real (KeyError). Es lo único
-          # obligatorio de los settings sin .env y solo sirve para estos pasos:
-          # nada de esto llega a un servidor.
-          - script: python manage.py makemigrations --check --dry-run
+          # SECRET_KEY se exporta dentro del script: tanto en `variables:` como en
+          # el `env:` del paso no llegó al proceso (KeyError, corridas 1 y 3 en
+          # Azure DevOps). Es lo único obligatorio de los settings sin .env y solo
+          # sirve para estos pasos: nada de esto llega a un servidor.
+          - script: |
+              set -euo pipefail
+              export SECRET_KEY=ci-solo-para-tests-no-es-un-secreto
+              python manage.py makemigrations --check --dry-run
             workingDirectory: backend
             displayName: Migraciones al día
-            env:
-              SECRET_KEY: ci-solo-para-tests-no-es-un-secreto
 
           # set -e: un paso de script termina con el código del ÚLTIMO
           # comando, y sin esto un test fallido quedaba tapado por el echo.
           - script: |
               set -euo pipefail
+              export SECRET_KEY=ci-solo-para-tests-no-es-un-secreto
               coverage run manage.py test --noinput
               coverage xml -o coverage.xml
               echo "Cobertura total: $(coverage report --format=total)%"
             workingDirectory: backend
             displayName: Tests con cobertura
-            env:
-              SECRET_KEY: ci-solo-para-tests-no-es-un-secreto
 
           - task: PublishCodeCoverageResults@2
             condition: succeededOrFailed()
