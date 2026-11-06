@@ -52,10 +52,14 @@
       };
 
       // Con la sesión abierta no hace falta volver a entrar.
-      if (localStorage.getItem("user")) {
-        const next = document.getElementById("verifyNext");
-        next.href = "dashboard.html";
-        next.textContent = "Ir al panel";
+      try {
+        if (localStorage.getItem("user")) {
+          const next = document.getElementById("verifyNext");
+          next.href = "dashboard.html";
+          next.textContent = "Ir al panel";
+        }
+      } catch (err) {
+        /* sin almacenamiento: queda "Ir al login" */
       }
 
       const token = new URLSearchParams(window.location.search).get("token") || "";

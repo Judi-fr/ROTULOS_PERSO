@@ -236,7 +236,10 @@ access on the repo authorizes the connection or installs the Azure Pipelines Git
 - **Lint = real errors only** (`.flake8`: `E9` + pyflakes `F`, tests may keep unused imports/locals). Not
   black/pycodestyle: the code never followed a formatter and enforcing one would rewrite ~300 files at once.
 - `frontend/azure-pipelines.yml`: `tools/check_frontend.mjs` (no dependencies: every `assets/**/*.js` and
-  every inline `<script>` must pass `node --check`, and every relative `src`/`href` in a page must exist;
+  every inline `<script>` must pass `node --check`, every relative `src`/`href` in a page must exist, and a page's own
+  scripts can't use directly (`getElementById("x").y`, `querySelector`/`closest(".x").y`) an element it doesn't have:
+  that is how "Recuperar contraseña" showed "Error de red" after succeeding. Permission keys named by the frontend are
+  checked in `accounts/tests/test_frontend_contracts.py`;
   skips `assets/apis/` and `index_test.html`), then the static files (what goes in the image, ~1.6 MB) and
   the nginx image as artifacts.
 - The backend `.dockerignore` excluded `.venv/` but the virtualenv is `venv/`: the API image was carrying

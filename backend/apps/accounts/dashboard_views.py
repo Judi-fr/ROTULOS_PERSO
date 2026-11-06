@@ -85,7 +85,7 @@ class DashboardView(APIView):
             menu.append(
                 {
                     "key": "orders_ingestion",
-                    "label": "Carga e importación de pedidos",
+                    "label": "Importar pedidos",
                     "url": "importar.html",
                     "enabled": True,
                 }
