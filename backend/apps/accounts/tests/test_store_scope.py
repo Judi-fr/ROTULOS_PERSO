@@ -89,14 +89,3 @@ class StoreScopeTests(APITestCase):
             f"/api/v1/integrations/stores/{self.t2.id}/settings/", {"sender_name": "X"}, format="json", **bearer(self.limited)
         )
         self.assertEqual(response.status_code, 404)
-
-    def test_saved_labels_follow_the_order_store(self):
-        from apps.labels.models import Label
-
-        template = LabelTemplate.objects.get(name="P", owner=self.biz)
-        size = {"width_cm": 10, "height_cm": 15}
-        own = Label.objects.create(user=self.biz, template=template, name="T1", order=self.o1, **size)
-        Label.objects.create(user=self.biz, template=template, name="T2", order=self.o2, **size)
-        loose = Label.objects.create(user=self.biz, template=template, name="Suelto", **size)
-        self.assertEqual(self.ids("/api/v1/labels/labels/"), {own.id, loose.id})
-        self.assertEqual(len(self.ids("/api/v1/labels/labels/", self.everything)), 3)

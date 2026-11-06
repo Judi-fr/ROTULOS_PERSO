@@ -1,9 +1,7 @@
 """Vistas de plantillas y rótulos.
 
-Mismo criterio que ``apps.orders``: el CRUD propio (``LabelViewSet``) se
-recorta siempre a ``request.user`` y nunca confía en un id que mande el
-cliente; el listado de TODOS los rótulos (``AdminLabelListView``) es un
-endpoint aparte, de solo lectura, con su propio permiso (``labels.view_all``).
+Mismo criterio que ``apps.orders``: todo se recorta siempre al comercio actual y
+nunca confía en un id que mande el cliente.
 """
 
 from __future__ import annotations
@@ -17,20 +15,17 @@ from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
-from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.pagination import UserAdminPagination
 from apps.accounts.permissions_map import user_has_permission
 from apps.accounts.role_permissions import HasRolePermission
 from apps.audit.services import record
-from apps.common.date_filters import date_range_q
 from apps.orders.models import Order
 from apps.accounts.teams import NoTeam, data_owner, order_scope_q
 
-from .models import Label, LabelImage, LabelSequence, LabelTemplate
+from .models import LabelImage, LabelSequence, LabelTemplate
 from .label_rendering import (
     BARCODE_HEIGHT_RANGE_CM,
     BARCODE_WIDTH_RANGE_CM,
@@ -53,9 +48,7 @@ from .template_versions import record_version, restore_version
 from .thumbnails import refresh_template_thumbnail
 from .zpl import DEFAULT_DPMM, SUPPORTED_DPMM, render_label_zpl
 from .serializers import (
-    AdminLabelSerializer,
     LabelImageSerializer,
-    LabelSerializer,
     LabelTemplateSerializer,
     LabelTemplateVersionSerializer,
 )
@@ -138,159 +131,6 @@ class LabelImageViewSet(viewsets.ModelViewSet):
         # Se oculta, el archivo queda: lo que ya la usa sigue imprimiéndola.
         instance.is_active = False
         instance.save(update_fields=["is_active"])
-
-
-class LabelViewSet(viewsets.ModelViewSet):
-    """CRUD de los rótulos propios del usuario autenticado.
-
-    El borrado es soft-delete (``is_active=False``): un rótulo nunca se
-    destruye de forma permanente, igual que el resto del sistema.
-    """
-
-    serializer_class = LabelSerializer
-
-    def get_permissions(self):
-        if self.action == "create":
-            permission = "labels.create"
-        elif self.action == "destroy":
-            permission = "labels.delete"
-        elif self.action in ("update", "partial_update"):
-            permission = "labels.edit"
-        elif self.action == "duplicate":
-            # Duplicar no modifica el original: crea uno nuevo a partir de él.
-            permission = "labels.create"
-        else:
-            permission = "labels.view"
-        return [IsAuthenticated(), HasRolePermission(permission)]
-
-    def get_queryset(self):
-        queryset = Label.objects.filter(user=data_owner(self.request.user), is_active=True)
-        # Un empleado limitado a algunas tiendas: los rótulos sueltos y los de
-        # pedidos de sus tiendas. Ojo: ``Q(...) | Q()`` da el primer filtro
-        # solo, así que sin límite (scope vacío) no se filtra nada.
-        scope = order_scope_q(self.request.user, "order__")
-        if scope:
-            queryset = queryset.filter(Q(order__isnull=True) | scope)
-        queryset = queryset.select_related(
-            "template", "order"
-        )
-        # ?search= filtra por nombre o destinatario (frontend/mis_rotulos.html).
-        search = self.request.query_params.get("search", "").strip()
-        if search:
-            queryset = queryset.filter(Q(name__icontains=search) | Q(client__icontains=search))
-        return queryset
-
-    def perform_create(self, serializer):
-        label = serializer.save(user=data_owner(self.request.user))
-        record(
-            self.request,
-            category="labels",
-            action="label.create",
-            target=label,
-            target_type="label",
-            target_repr=str(label),
-        )
-
-    def perform_update(self, serializer):
-        label = serializer.save()
-        record(
-            self.request,
-            category="labels",
-            action="label.update",
-            target=label,
-            target_type="label",
-            target_repr=str(label),
-        )
-
-    def destroy(self, request, *args, **kwargs):
-        label = self.get_object()
-        label.is_active = False
-        label.save(update_fields=["is_active", "updated_at"])
-        record(
-            request,
-            category="labels",
-            action="label.delete",
-            target=label,
-            target_type="label",
-            target_repr=str(label),
-        )
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-    @action(detail=True, methods=["post"])
-    def duplicate(self, request, pk=None):
-        """POST /api/v1/labels/labels/<id>/duplicate/
-
-        Clona el rótulo propio (nueva fila independiente, ``name + " (copia)"``):
-        la forma de "partir de uno anterior" sin perder el original.
-        """
-        original = self.get_object()
-        copy = Label.objects.create(
-            user=original.user,
-            template=original.template,
-            name=f"{original.name} (copia)",
-            client=original.client,
-            order=original.order,
-            width_cm=original.width_cm,
-            height_cm=original.height_cm,
-            design=original.design,
-        )
-        if original.logo:
-            copy.logo.save(
-                original.logo.name.rsplit("/", 1)[-1],
-                ContentFile(original.logo.read()),
-                save=False,
-            )
-        if original.thumbnail:
-            copy.thumbnail.save(
-                original.thumbnail.name.rsplit("/", 1)[-1],
-                ContentFile(original.thumbnail.read()),
-                save=False,
-            )
-        copy.save()
-        record(
-            request,
-            category="labels",
-            action="label.create",
-            target=copy,
-            target_type="label",
-            target_repr=str(copy),
-            changes={"duplicated_from": {"from": None, "to": original.pk}},
-        )
-        return Response(
-            self.get_serializer(copy).data, status=status.HTTP_201_CREATED
-        )
-
-    @action(detail=True, methods=["get"])
-    def pdf(self, request, pk=None):
-        """GET /api/v1/labels/labels/<id>/pdf/
-
-        Rótulo definitivo (el que va a imprenta), armado en el servidor con
-        ``apps.labels.label_rendering`` en vez del PNG/PDF del navegador. Si el
-        rótulo tiene ``order``, los marcadores ``{{clave}}`` del diseño se
-        resuelven con los datos de ese envío.
-        """
-        label = self.get_object()
-        context = build_label_context(order=label.order, label=label)
-        computed = build_computed_context(owner=label.user)
-        pdf_bytes = render_label_pdf(
-            design=label.design,
-            width_cm=label.width_cm,
-            height_cm=label.height_cm,
-            context=context,
-            logo_file=label.logo if label.logo else None,
-            computed=computed,
-        )
-        record(
-            request,
-            category="labels",
-            action="label.render",
-            target=label,
-            target_type="label",
-            target_repr=str(label),
-        )
-        response = HttpResponse(pdf_bytes, content_type="application/pdf")
-        response["Content-Disposition"] = f'attachment; filename="rotulo-{label.pk}.pdf"'
-        return response
 
 
 class LabelTemplateViewSet(viewsets.ModelViewSet):
@@ -544,60 +384,6 @@ class LabelTemplateViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(template).data)
 
 
-class AdminLabelPagination(UserAdminPagination):
-    page_size = 20
-
-
-class AdminLabelListView(ListAPIView):
-    """GET /api/v1/labels/admin/
-
-    Rótulos de TODOS los usuarios para el panel admin (``labels.view_all``).
-    Solo lectura: el queryset de ``LabelViewSet`` (self-service) no cambia,
-    este es un endpoint aparte, igual criterio que ``AdminOrderListView``.
-    """
-
-    serializer_class = AdminLabelSerializer
-    pagination_class = AdminLabelPagination
-
-    def get_permissions(self):
-        return [IsAuthenticated(), HasRolePermission("labels.view_all")]
-
-    def get_queryset(self):
-        queryset = Label.objects.select_related("user", "template", "order").all()
-        params = self.request.query_params
-
-        search = params.get("search", "").strip()
-        if search:
-            queryset = queryset.filter(
-                Q(name__icontains=search)
-                | Q(client__icontains=search)
-                | Q(user__email__icontains=search)
-            )
-
-        user_param = params.get("user", "").strip()
-        if user_param:
-            if user_param.isdigit():
-                queryset = queryset.filter(user_id=int(user_param))
-            else:
-                queryset = queryset.filter(user__email__icontains=user_param)
-
-        template_param = params.get("template", "").strip()
-        if template_param.isdigit():
-            queryset = queryset.filter(template_id=int(template_param))
-
-        is_active_param = params.get("is_active", "").strip().lower()
-        if is_active_param in ("true", "1"):
-            queryset = queryset.filter(is_active=True)
-        elif is_active_param in ("false", "0"):
-            queryset = queryset.filter(is_active=False)
-
-        queryset = queryset.filter(date_range_q(params))
-
-        return queryset.order_by("-created_at")
-
-
-# Tope del prefijo y de los ceros de {{secuencia}}: los mismos límites que el
-# modelo (prefix max_length=20) y un número que entre en un rótulo.
 SEQUENCE_PADDING_MAX = 12
 
 

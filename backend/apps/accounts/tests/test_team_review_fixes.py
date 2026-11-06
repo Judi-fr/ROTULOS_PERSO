@@ -56,15 +56,6 @@ class ReviewFixesTests(APITestCase):
         self.assertEqual([row["state"] for row in response.data["rows"]], ["not_found", "ok"])
         self.assertNotIn("Compradora T2", str(response.data["rows"][0]))
 
-    def test_employee_can_attach_label_to_business_order(self):
-        everything, _ = add_employee(self.owner, "todo@example.com", profile="Todo")
-        payload = {"name": "R", "width_cm": "10", "height_cm": "15", "design": DESIGN, "order": self.o1.id}
-        response = self.client.post("/api/v1/labels/labels/", payload, format="json", **bearer(everything))
-        self.assertEqual(response.status_code, 201, response.data)
-        payload["order"] = self.o2.id
-        response = self.client.post("/api/v1/labels/labels/", payload, format="json", **bearer(self.limited))
-        self.assertEqual(response.status_code, 400)
-
     def test_employee_sets_business_private_template_as_default(self):
         response = self.client.patch(
             "/api/v1/auth/me/account/", {"default_template": self.template.id}, format="json", **bearer(self.limited)

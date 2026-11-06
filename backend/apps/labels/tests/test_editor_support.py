@@ -10,7 +10,7 @@ from rest_framework.test import APITestCase
 from apps.audit.models import AuditLog
 
 from ..label_rendering import apply_design_rules, render_label_pdf
-from ..models import Label, LabelSequence
+from ..models import LabelSequence, LabelTemplate
 from ..zpl import render_label_zpl
 from .test_labels import VALID_DESIGN, auth_headers_for
 from apps.accounts.tests.team_helpers import new_business
@@ -85,8 +85,8 @@ class LockedDesignTests(APITestCase):
 
     def _create(self, design):
         return self.client.post(
-            "/api/v1/labels/labels/",
-            {"name": "Bloqueos", "client": "María", "width_cm": "10", "height_cm": "15", "design": design},
+            "/api/v1/labels/templates/",
+            {"name": "Bloqueos", "width_cm": "10", "height_cm": "15", "design": design},
             format="json",
             **self.headers,
         )
@@ -100,7 +100,7 @@ class LockedDesignTests(APITestCase):
         )
         resp = self._create(design)
         self.assertEqual(resp.status_code, 201, resp.data)
-        saved = Label.objects.get(pk=resp.data["id"]).design
+        saved = LabelTemplate.objects.get(pk=resp.data["id"]).design
         self.assertEqual(saved["locked"], ["logo", "qr", "destinatario"])
         self.assertTrue(saved["lines"][0]["locked"])
 

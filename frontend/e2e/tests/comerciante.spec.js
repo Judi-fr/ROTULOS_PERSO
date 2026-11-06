@@ -58,7 +58,8 @@ test("una plantilla en blanco guarda marcadores, no datos de ejemplo, y no se du
   await page.locator("dialog[open] button").last().click();
   await page.waitForURL(/template=\d+/);
   await expect(page.locator("h1")).toContainText(name);
-  await expect(page.locator("#saveBtn")).toBeHidden();
+  await expect(page.locator("#saveNewTemplateBtn")).toBeHidden();
+  await expect(page.locator("#saveTemplateVersionBtn")).toBeVisible();
   const design = await page.evaluate(async (wanted) => {
     const data = await window.Auth.apiFetch(`${window.APP_CONFIG.API_BASE}/labels/templates/`).then((r) => r.json());
     return (data.results || data).find((t) => t.name === wanted).design;
@@ -96,4 +97,10 @@ test("elegir la plataforma mientras carga la lista no cierra la tarjeta", async 
   await page.click('[data-platform-pick="shopify"]');
   await page.waitForTimeout(2500);
   await expect(page.locator("#connectShopifyBtn")).toBeVisible();
+});
+
+test("una dirección vieja del editor de rótulos abre una plantilla nueva", async ({ page }) => {
+  await page.goto("/editor_rotulos.html?id=1");
+  await page.waitForURL(/nueva=plantilla/);
+  await expect(page.locator("h1")).toHaveText("Nueva plantilla");
 });

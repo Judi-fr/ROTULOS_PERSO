@@ -41,187 +41,6 @@ def auth_headers_for(user):
     return {"HTTP_AUTHORIZATION": f"Bearer {token.access_token}"}
 
 
-class LabelsSelfServiceTests(APITestCase):
-    def setUp(self):
-        subscriber_group, _ = Group.objects.get_or_create(name="subscriber")
-
-        self.user = User.objects.create_user(
-            username="disenador1@example.com",
-            email="disenador1@example.com",
-            password="Clave123!",
-        )
-        self.user.groups.add(subscriber_group)
-
-        new_business(self.user)
-
-        self.biz = new_business(self.user)
-
-        self.other_user = User.objects.create_user(
-            username="disenador2@example.com",
-            email="disenador2@example.com",
-            password="Clave123!",
-        )
-        self.other_user.groups.add(subscriber_group)
-
-        self.other_user_biz = new_business(self.other_user)
-
-        self.other_user_biz = new_business(self.other_user)
-
-        self.address = Address.objects.create(
-            user=self.biz, street="Av. Siempre Viva", number="742", city="CABA", is_default=True
-        )
-        self.order = Order.objects.create(user=self.biz, address=self.address)
-
-        self.other_address = Address.objects.create(
-            user=self.other_user_biz, street="Otra calle", city="Rosario", is_default=True
-        )
-        self.other_order = Order.objects.create(user=self.other_user_biz, address=self.other_address)
-
-    def _create_label(self, user=None, **overrides):
-        payload = {
-            "name": "Encomienda Juan",
-            "client": "María Gómez",
-            "width_cm": "10",
-            "height_cm": "15",
-            "design": VALID_DESIGN,
-        }
-        payload.update(overrides)
-        return self.client.post(
-            "/api/v1/labels/labels/", payload, format="json", **auth_headers_for(user or self.user)
-        )
-
-    # --- CRUD básico -----------------------------------------------------
-
-    def test_create_label_valid_design(self):
-        response = self._create_label()
-        self.assertEqual(response.status_code, 201, response.data)
-        label = Label.objects.get(pk=response.data["id"])
-        self.assertEqual(label.user, self.biz)
-        self.assertEqual(label.design["remitente"]["text"], "Remitente: Juan Pérez")
-
-    def test_create_label_invalid_design_returns_400(self):
-        response = self._create_label(design={"campo_inventado": {"left": 1, "top": 1}})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("design", response.data)
-
-    def test_create_label_design_left_top_out_of_range_returns_400(self):
-        response = self._create_label(design={"remitente": {"left": 150, "top": 5}})
-        self.assertEqual(response.status_code, 400)
-
-    def test_create_label_width_out_of_range_returns_400(self):
-        response = self._create_label(width_cm="100")
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("width_cm", response.data)
-
-    def test_list_labels_returns_only_own(self):
-        self._create_label()
-        self._create_label(user=self.other_user)
-
-        response = self.client.get("/api/v1/labels/labels/", **auth_headers_for(self.user))
-        self.assertEqual(response.status_code, 200)
-        results = response.data["results"] if "results" in response.data else response.data
-        self.assertEqual(len(results), 1)
-
-    def test_retrieve_foreign_label_returns_404(self):
-        created = self._create_label(user=self.other_user)
-        label_id = created.data["id"]
-
-        response = self.client.get(
-            f"/api/v1/labels/labels/{label_id}/", **auth_headers_for(self.user)
-        )
-        self.assertEqual(response.status_code, 404)
-
-    def test_update_own_label(self):
-        created = self._create_label()
-        label_id = created.data["id"]
-
-        response = self.client.patch(
-            f"/api/v1/labels/labels/{label_id}/",
-            {"name": "Encomienda Juan (editado)"},
-            format="json",
-            **auth_headers_for(self.user),
-        )
-        self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data["name"], "Encomienda Juan (editado)")
-
-    def test_delete_is_soft_delete(self):
-        created = self._create_label()
-        label_id = created.data["id"]
-
-        response = self.client.delete(
-            f"/api/v1/labels/labels/{label_id}/", **auth_headers_for(self.user)
-        )
-        self.assertEqual(response.status_code, 204)
-
-        label = Label.objects.get(pk=label_id)
-        self.assertFalse(label.is_active)
-
-        list_response = self.client.get("/api/v1/labels/labels/", **auth_headers_for(self.user))
-        results = (
-            list_response.data["results"]
-            if "results" in list_response.data
-            else list_response.data
-        )
-        self.assertEqual(len(results), 0)
-
-    def test_cannot_associate_label_with_foreign_order(self):
-        response = self._create_label(order=self.other_order.pk)
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("order", response.data)
-
-    def test_can_associate_label_with_own_order(self):
-        response = self._create_label(order=self.order.pk)
-        self.assertEqual(response.status_code, 201, response.data)
-        self.assertEqual(response.data["order"], self.order.pk)
-
-    def test_duplicate_creates_independent_copy(self):
-        created = self._create_label(order=self.order.pk)
-        label_id = created.data["id"]
-
-        response = self.client.post(
-            f"/api/v1/labels/labels/{label_id}/duplicate/", **auth_headers_for(self.user)
-        )
-        self.assertEqual(response.status_code, 201, response.data)
-        self.assertNotEqual(response.data["id"], label_id)
-        self.assertEqual(response.data["name"], "Encomienda Juan (copia)")
-
-        original = Label.objects.get(pk=label_id)
-        copy = Label.objects.get(pk=response.data["id"])
-        self.assertEqual(original.name, "Encomienda Juan")
-        self.assertEqual(copy.design, original.design)
-        self.assertEqual(copy.order_id, original.order_id)
-
-    def test_logo_as_data_url_is_decoded_to_image_field(self):
-        response = self._create_label(logo=TINY_PNG_DATA_URL)
-        self.assertEqual(response.status_code, 201, response.data)
-        label = Label.objects.get(pk=response.data["id"])
-        self.assertTrue(bool(label.logo))
-        self.assertTrue(response.data["logo"].startswith("http"))
-
-    def test_invalid_data_url_logo_returns_400(self):
-        response = self._create_label(logo="data:image/png;base64,esto-no-es-base64-valido")
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("logo", response.data)
-
-    def test_labels_require_authentication(self):
-        response = self.client.get("/api/v1/labels/labels/")
-        self.assertEqual(response.status_code, 401)
-
-    def test_create_label_with_unknown_rule_op_returns_400(self):
-        # Historia 28: design["rules"] se valida igual que el resto del
-        # design — un op inventado corta en seco, nunca llega al render.
-        design = dict(VALID_DESIGN)
-        design["rules"] = [
-            {
-                "when": {"field": "localidad", "op": "es_igual_a", "value": "CABA"},
-                "then": {"action": "hide", "target": "qr"},
-            }
-        ]
-        response = self._create_label(design=design)
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("design", response.data)
-
-
 class LabelTemplatesTests(APITestCase):
     def setUp(self):
         subscriber_group, _ = Group.objects.get_or_create(name="subscriber")
@@ -312,86 +131,52 @@ class LabelTemplatesTests(APITestCase):
         self.assertIn("Plantilla pública", [t["name"] for t in results])
 
 
-class AdminLabelsTests(APITestCase):
-    """Rótulos de todos los usuarios (panel admin, labels.view_all) y el
-    rastro de auditoría que deja crear/editar/borrar un rótulo."""
+class TemplateDesignValidationTests(APITestCase):
+    """El diseño se valida al guardar la plantilla: lo que no se puede dibujar no
+    llega al render."""
 
     def setUp(self):
-        subscriber_group, _ = Group.objects.get_or_create(name="subscriber")
-        admin_group, _ = Group.objects.get_or_create(name="admin")
-
-        self.admin_user = User.objects.create_user(
-            username="admin_labels2@example.com",
-            email="admin_labels2@example.com",
-            password="Clave123!",
-            is_staff=True,
-        )
-        self.admin_user.groups.add(admin_group)
-
-        new_business(self.admin_user)
-
-        new_business(self.admin_user)
-
+        group, _ = Group.objects.get_or_create(name="subscriber")
         self.user = User.objects.create_user(
-            username="disenador4@example.com",
-            email="disenador4@example.com",
-            password="Clave123!",
+            username="diseno@example.com", email="diseno@example.com", password="Clave123!"
         )
-        self.user.groups.add(subscriber_group)
-
+        self.user.groups.add(group)
         new_business(self.user)
 
-        self.biz = new_business(self.user)
-
-        self.label = Label.objects.create(
-            user=self.biz,
-            name="Encomienda X",
-            client="Cliente X",
-            width_cm=10,
-            height_cm=15,
-            design=VALID_DESIGN,
+    def _create(self, **overrides):
+        payload = {"name": "Diseño", "width_cm": "10", "height_cm": "15", "design": VALID_DESIGN}
+        payload.update(overrides)
+        return self.client.post(
+            "/api/v1/labels/templates/", payload, format="json", **auth_headers_for(self.user)
         )
 
-    def test_non_admin_receives_403_on_admin_listing(self):
-        response = self.client.get("/api/v1/labels/admin/", **auth_headers_for(self.user))
-        self.assertEqual(response.status_code, 403)
+    def test_valid_design_is_saved(self):
+        self.assertEqual(self._create().status_code, 201)
 
-    def test_admin_receives_200_with_all_labels(self):
-        response = self.client.get("/api/v1/labels/admin/", **auth_headers_for(self.admin_user))
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["pagination"]["count"], 1)
-        self.assertEqual(response.data["results"][0]["user_email"], self.user.email)
+    def test_unknown_field_returns_400(self):
+        response = self._create(design={"campo_inventado": {"left": 1, "top": 1}})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("design", response.data)
 
-    def test_create_label_leaves_auditlog(self):
-        from apps.audit.models import AuditLog
+    def test_left_top_out_of_range_returns_400(self):
+        self.assertEqual(self._create(design={"remitente": {"left": 150, "top": 5}}).status_code, 400)
 
-        response = self.client.post(
-            "/api/v1/labels/labels/",
+    def test_width_out_of_range_returns_400(self):
+        response = self._create(width_cm="100")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("width_cm", response.data)
+
+    def test_unknown_rule_op_returns_400(self):
+        design = dict(VALID_DESIGN)
+        design["rules"] = [
             {
-                "name": "Encomienda Y",
-                "client": "Cliente Y",
-                "width_cm": "10",
-                "height_cm": "15",
-                "design": VALID_DESIGN,
-            },
-            format="json",
-            **auth_headers_for(self.user),
-        )
-        self.assertEqual(response.status_code, 201, response.data)
-        log = AuditLog.objects.filter(action="label.create").latest("created_at")
-        self.assertEqual(log.actor_id, self.user.id)
-
-    def test_delete_label_leaves_auditlog(self):
-        from apps.audit.models import AuditLog
-
-        response = self.client.delete(
-            f"/api/v1/labels/labels/{self.label.pk}/", **auth_headers_for(self.user)
-        )
-        self.assertEqual(response.status_code, 204)
-        log = AuditLog.objects.filter(
-            action="label.delete", target_id=str(self.label.pk)
-        ).latest("created_at")
-        self.assertEqual(log.actor_id, self.user.id)
+                "when": {"field": "localidad", "op": "es_igual_a", "value": "CABA"},
+                "then": {"action": "hide", "target": "qr"},
+            }
+        ]
+        response = self._create(design=design)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("design", response.data)
 
 
 class PercentToCanvasXyTests(SimpleTestCase):

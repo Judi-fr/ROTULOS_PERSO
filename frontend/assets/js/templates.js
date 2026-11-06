@@ -4,7 +4,7 @@
 // cargado) y acciones Usar/Duplicar/Editar/Archivar. El CRUD de plantillas
 // vive en frontend/assets/js/labels_api.js (única fuente de verdad,
 // compartida con el editor): import dinámico porque este script es
-// clásico, igual patrón que assets/js/saved_labels.js. Sesión y logout salen de
+// clásico. Sesión y logout salen de
 // assets/js/auth.js (window.Auth).
 
 const EDITOR_URL = "editor_rotulos.html";
@@ -284,7 +284,7 @@ document.getElementById("searchInput")?.addEventListener("input", (e) => {
 });
 
 // ---------------------------------------------------------------------------
-// Logout: misma lógica que saved_labels.js/documentos.js (window.Auth.logout).
+// Logout: misma lógica que documentos.js (window.Auth.logout).
 // ---------------------------------------------------------------------------
 const logoutBtn = document.getElementById("logoutBtn");
 if (logoutBtn) {
@@ -295,7 +295,7 @@ async function init() {
   // frontend/assets/js/labels_api.js es la única fuente de verdad del CRUD
   // de plantillas (import dinámico: este script no es un módulo). Ruta
   // relativa a ESTE archivo (assets/js/templates.js), no a la página que
-  // lo carga — mismo criterio que assets/js/saved_labels.js.
+  // lo carga.
   templatesApi = await import("./labels_api.js");
   window.AppTopbar.render();
   await loadTemplates();

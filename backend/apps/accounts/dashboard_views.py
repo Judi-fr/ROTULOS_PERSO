@@ -184,7 +184,6 @@ class DashboardView(APIView):
         if user_has_permission(user, "labels.view"):
             menu.extend(
                 [
-                    {"key": "labels", "label": "Mis rótulos", "url": "mis_rotulos.html", "enabled": True},
                     {
                         "key": "templates",
                         "label": "Plantillas",
@@ -203,9 +202,7 @@ class DashboardView(APIView):
                 }
             )
         # Leer un rótulo de papel con el modelo y proponer la plantilla
-        # (apps.processing). Se llamaba "Generar rótulo", que describía otra
-        # cosa —generar rótulos ya se hace en mis_rotulos.html— y encima
-        # estaba deshabilitado teniendo el backend listo.
+        # (apps.processing).
         if user_has_permission(user, "processing.import"):
             menu.append(
                 {

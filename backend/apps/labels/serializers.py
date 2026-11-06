@@ -17,18 +17,16 @@ from decimal import Decimal
 from io import BytesIO
 
 from django.core.files.base import ContentFile
-from django.db.models import Q
 from PIL import Image, UnidentifiedImageError
 from rest_framework import serializers
 
-from apps.accounts.permissions_map import get_effective_role, user_has_permission
+from apps.accounts.permissions_map import user_has_permission
 from apps.accounts.teams import contact_email as owner_contact_email
-from apps.orders.models import Order
-from apps.accounts.teams import data_owner, order_scope_q
+from apps.accounts.teams import data_owner
 
 from .design_shapes import image_ids, shape_targets, validate_palette, validate_shapes
 from .text_style import validate_text_typography
-from .models import Label, LabelImage, LabelTemplate, LabelTemplateVersion
+from .models import LabelImage, LabelTemplate, LabelTemplateVersion
 from . import label_images
 
 # Campos de texto simple del diseño: solo left/top + un "text" opcional.
@@ -555,100 +553,6 @@ class LabelTemplateVersionSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-
-class LabelSerializer(serializers.ModelSerializer):
-    """CRUD del rótulo propio del usuario autenticado.
-
-    ``template``/``order`` solo se pueden elegir entre los propios (o
-    públicos, para plantillas) salvo que el usuario sea admin.
-    """
-
-    logo = ImageOrDataUrlField(
-        required=False, allow_null=True, max_bytes=2 * 1024 * 1024, field_label="Logo"
-    )
-    thumbnail = ImageOrDataUrlField(
-        required=False, allow_null=True, max_bytes=300 * 1024, field_label="Miniatura"
-    )
-
-    class Meta:
-        model = Label
-        fields = [
-            "id",
-            "template",
-            "name",
-            "client",
-            "order",
-            "width_cm",
-            "height_cm",
-            "design",
-            "logo",
-            "thumbnail",
-            "is_active",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = ["id", "is_active", "created_at", "updated_at"]
-        extra_kwargs = {
-            "width_cm": {"min_value": Decimal("5"), "max_value": Decimal("30")},
-            "height_cm": {"min_value": Decimal("5"), "max_value": Decimal("40")},
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        request = self.context.get("request")
-        user = getattr(request, "user", None) if request is not None else None
-        if user is not None and user.is_authenticated:
-            # Un usuario solo puede elegir plantillas propias o públicas,
-            # y solo si siguen activas (una archivada no se puede volver a
-            # usar en un rótulo nuevo, aunque los ya creados con ella la
-            # sigan referenciando).
-            self.fields["template"].queryset = LabelTemplate.objects.filter(
-                Q(is_public=True) | Q(owner=data_owner(user)), is_active=True
-            )
-            # Un usuario solo puede colgar el rótulo de un pedido PROPIO; el
-            # admin puede saltarse esa restricción.
-            if get_effective_role(user) == "admin":
-                self.fields["order"].queryset = Order.objects.all()
-            else:
-                self.fields["order"].queryset = Order.objects.filter(order_scope_q(user), user=data_owner(user))
-
-    def validate_design(self, value):
-        extra = [self.instance.design] if self.instance is not None else []
-        return check_design_images(validate_design(value), self, extra)
-
-
-class AdminLabelSerializer(serializers.ModelSerializer):
-    """Lectura de rótulos de TODOS los usuarios (panel admin, ``labels.view_all``).
-    Solo lectura, igual criterio que ``AdminOrderSerializer``."""
-
-    # El mail de la persona dueña del comercio (los datos cuelgan de su
-    # usuario de datos, que no es una persona).
-    user_email = serializers.SerializerMethodField()
-    template_name = serializers.CharField(source="template.name", read_only=True, default=None)
-
-    class Meta:
-        model = Label
-        fields = [
-            "id",
-            "user",
-            "user_email",
-            "template",
-            "template_name",
-            "name",
-            "client",
-            "order",
-            "width_cm",
-            "height_cm",
-            "logo",
-            "thumbnail",
-            "is_active",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = fields
-
-    def get_user_email(self, obj):
-        return owner_contact_email(getattr(obj, "user", None)) or None
 
 class LabelImageSerializer(serializers.ModelSerializer):
     """Lo que ve el editor de una imagen de la biblioteca. La subida acepta

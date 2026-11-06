@@ -2533,14 +2533,6 @@ class DashboardTests(AuthTestCase):
         self.assertTrue(by_key["support"]["enabled"])
         self.assertEqual(by_key["support"]["url"], "ayuda.html")
 
-    def test_labels_habilitado(self):
-        # apps.labels ya tiene CRUD y pantalla propia (mis_rotulos.html).
-        self.client.force_authenticate(user=self.subscriber)
-        resp = self.client.get(self.URL)
-        by_key = {item["key"]: item for item in resp.data["menu"]}
-        self.assertTrue(by_key["labels"]["enabled"])
-        self.assertEqual(by_key["labels"]["url"], "mis_rotulos.html")
-
     def test_documents_habilitado(self):
         # apps.documents ya tiene CRUD y pantalla propia (documentos.html).
         self.client.force_authenticate(user=self.subscriber)
@@ -2552,8 +2544,7 @@ class DashboardTests(AuthTestCase):
     def test_importar_rotulo_desde_una_foto_habilitado(self):
         # Ya tiene pantalla (importar_rotulo.html) sobre el backend de
         # apps.processing, que estaba hecho. Antes figuraba deshabilitado y
-        # con el nombre "Generar rótulo", que describía otra cosa: generar
-        # rótulos es lo que hace mis_rotulos.html.
+        # con el nombre "Generar rótulo", que describía otra cosa.
         self.client.force_authenticate(user=self.subscriber)
         resp = self.client.get(self.URL)
         by_key = {item["key"]: item for item in resp.data["menu"]}

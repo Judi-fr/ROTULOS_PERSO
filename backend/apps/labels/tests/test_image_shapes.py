@@ -199,17 +199,6 @@ class OwnershipTests(APITestCase):
         self.mine.save()
         self.assertEqual(self.post(self.mine.pk).status_code, 201)
 
-    def test_saved_label_serializer_checks_too(self):
-        response = self.client.post(
-            "/api/v1/labels/labels/",
-            {"name": "L", "width_cm": "10", "height_cm": "15",
-             "design": {"shapes": [{"id": "im", "kind": "image", "image": self.theirs.pk, "left": 0, "top": 0,
-                                    "width": 10, "height": 10}]}},
-            format="json", **auth_headers_for(self.user),
-        )
-        self.assertEqual(response.status_code, 400, response.data)
-        self.assertIn("design", response.data)
-
 
 def image_design(image_id):
     return {"shapes": [{"id": "im", "kind": "image", "image": image_id, "left": 0, "top": 0,

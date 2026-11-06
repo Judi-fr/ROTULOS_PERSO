@@ -55,7 +55,7 @@ from .label_rendering import (
 
 VALID_OUTPUTS = {"pdf", "zip", "zpl"}
 VALID_PAGE_LAYOUTS = {"label", "a4"}
-SELECTOR_KEYS = ("order_ids", "label_ids", "filters")
+SELECTOR_KEYS = ("order_ids", "filters")
 
 
 def _as_int_list(value, field_label):
@@ -68,15 +68,9 @@ def _as_int_list(value, field_label):
 
 
 def _render_params_for_item(item, template):
-    """Datos de dibujo para UN ítem del lote (``Label`` u ``Order``), y un
-    nombre legible para identificarlo en el ZIP / en los mensajes de
-    ítems omitidos. Mismo criterio que ``views.LabelViewSet.pdf`` (rótulo
-    propio) y ``views.RenderLabelView`` (plantilla + pedido)."""
-    if isinstance(item, Label):
-        context = build_label_context(order=item.order, label=item) if item.order else {}
-        name_hint = context.get("tracking") or f"rotulo-{item.pk}"
-        return item.design, item.width_cm, item.height_cm, context, (item.logo or None), name_hint
-
+    """Datos de dibujo para UN pedido del lote, y un nombre legible para
+    identificarlo en el ZIP / en los mensajes de ítems omitidos. Mismo criterio
+    que ``views.RenderLabelView`` (plantilla + pedido)."""
     # Order: el diseño sale de la plantilla del lote. El logo, de la tienda
     # del pedido si la cargó (cada tienda imprime el suyo), si no el de la
     # cuenta; sin ninguno de los dos sale sin logo.
@@ -351,8 +345,7 @@ class LabelBatchView(APIView):
     """POST /api/v1/labels/batch/
 
     ``{"template_id": N, "order_ids": [...], "output": "pdf"}`` (o
-    ``label_ids``/``filters`` en vez de ``order_ids`` — exactamente una de
-    las tres). Devuelve 202 con el ``Document`` recién creado.
+    ``filters`` en vez de ``order_ids`` — exactamente una de las dos). Devuelve 202 con el ``Document`` recién creado.
 
     ``output``: ``"pdf"`` (uno solo, una página por rótulo), ``"zip"`` (un
     PDF por rótulo) o ``"zpl"`` (un archivo para mandarle crudo a una
@@ -401,35 +394,28 @@ class LabelBatchView(APIView):
                 {
                     "detail": (
                         "Elegí exactamente una forma de seleccionar qué imprimir: "
-                        "'order_ids', 'label_ids' o 'filters'."
+                        "'order_ids' o 'filters'."
                     )
                 }
             )
         selector = present[0]
         can_view_all = user_has_permission(request.user, "labels.view_all")
 
-        template = None
-        skipped_existing_count = 0
-        if selector == "label_ids":
-            items = self._resolve_labels(data_owner(request.user), data["label_ids"], can_view_all)
+        if selector == "order_ids":
+            items, skipped_existing_count = self._resolve_orders(
+                data_owner(request.user), data["order_ids"], can_view_all, skip_existing
+            )
         else:
-            if selector == "order_ids":
-                items, skipped_existing_count = self._resolve_orders(
-                    data_owner(request.user), data["order_ids"], can_view_all, skip_existing
-                )
-            else:
-                items, skipped_existing_count = self._resolve_orders_by_filters(
-                    data_owner(request.user), data["filters"], can_view_all, skip_existing
-                )
-            # Después de los pedidos: sin template_id, la plantilla puede
-            # salir de la tienda de esos pedidos (ver _resolve_template).
-            template = self._resolve_template(data_owner(request.user), data.get("template_id"), items)
+            items, skipped_existing_count = self._resolve_orders_by_filters(
+                data_owner(request.user), data["filters"], can_view_all, skip_existing
+            )
+        # Después de los pedidos: sin template_id, la plantilla puede
+        # salir de la tienda de esos pedidos (ver _resolve_template).
+        template = self._resolve_template(data_owner(request.user), data.get("template_id"), items)
 
         # Un empleado limitado a algunas tiendas no imprime pedidos de otra,
         # ni pidiéndolos por id (apps/accounts/teams.py).
-        batch_orders = [item if isinstance(item, Order) else item.order for item in items]
-        batch_orders = [order for order in batch_orders if order is not None]
-        if not can_view_all and orders_outside_scope(request.user, batch_orders):
+        if not can_view_all and orders_outside_scope(request.user, items):
             raise ValidationError({"detail": OUTSIDE_SCOPE_MESSAGE})
 
         if not items:
@@ -464,7 +450,7 @@ class LabelBatchView(APIView):
             name=f"Rótulos {timezone.localdate().strftime('%d/%m')} ({len(items)} {'envío' if len(items) == 1 else 'envíos'})",
             kind=Document.Kind.LABELS_BATCH,
             status=Document.Status.PROCESSING,
-            store_ids=sorted({order.store_connection_id for order in batch_orders if order.store_connection_id}),
+            store_ids=sorted({order.store_connection_id for order in items if order.store_connection_id}),
         )
         record(
             request,
@@ -611,23 +597,6 @@ class LabelBatchView(APIView):
             raise ValidationError(
                 {"template_id": f"La plantilla {template_id!r} no existe o no es tuya."}
             )
-
-    def _resolve_labels(self, user, label_ids, can_view_all):
-        label_ids = _as_int_list(label_ids, "label_ids")
-        queryset = Label.objects.filter(pk__in=label_ids, is_active=True)
-        if not can_view_all:
-            queryset = queryset.filter(user=user)
-        found = {label.pk: label for label in queryset}
-        missing = [str(i) for i in label_ids if i not in found]
-        if missing:
-            raise ValidationError(
-                {
-                    "label_ids": (
-                        f"Los siguientes rótulos no existen o no son tuyos: {', '.join(missing)}."
-                    )
-                }
-            )
-        return [found[i] for i in label_ids]
 
     def _filter_skip_existing(self, orders, skip_existing):
         """Si ``skip_existing``, saca de ``orders`` los que ya tienen un

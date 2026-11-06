@@ -1,6 +1,5 @@
 """Rutas de rótulos y plantillas. Se montan bajo ``/api/v1/labels/``
-(ver config/urls.py), dando URLs como ``/api/v1/labels/labels/`` y
-``/api/v1/labels/templates/``. SimpleRouter porque la API es JSON pura,
+(ver config/urls.py), dando URLs como ``/api/v1/labels/templates/``. SimpleRouter porque la API es JSON pura,
 mismo patrón que ``apps.orders.urls``.
 """
 
@@ -11,28 +10,21 @@ from .catalog_views import LabelSizeViewSet
 
 from .batch_views import LabelBatchView
 from .views import (
-    AdminLabelListView,
     BarcodeImageView,
     LabelImageViewSet,
     LabelSequenceView,
     LabelTemplateViewSet,
-    LabelViewSet,
     PreviewContextView,
     PreviewLabelView,
     RenderLabelView,
 )
 
 router = SimpleRouter()
-router.register(r"labels", LabelViewSet, basename="label")
 router.register(r"templates", LabelTemplateViewSet, basename="label-template")
 router.register(r"images", LabelImageViewSet, basename="label-image")
 router.register(r"sizes", LabelSizeViewSet, basename="label-size")
 
 urlpatterns = [
-    # Rótulos de TODOS los usuarios (panel admin, labels.view_all). Path
-    # explícito (antes del router) por consistencia con admin/orders/,
-    # aunque acá no choca con ningún path del router.
-    path("admin/", AdminLabelListView.as_view(), name="admin-label-list"),
     # Render sin persistir (plantilla + pedido -> PDF), semilla del lote.
     path("render/", RenderLabelView.as_view(), name="label-render"),
     # Vista previa de un diseño sin guardar, con datos de muestra: es lo que

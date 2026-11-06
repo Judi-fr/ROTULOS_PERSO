@@ -18,7 +18,6 @@
     <script src="assets/js/config.js"></script>
     <script src="assets/js/auth.js"></script>
     <script src="assets/js/utils.js"></script>
-    <script src="assets/js/print.js"></script>
     <!-- Partes del editor que viven en su propio archivo: datos insertables y
          numeración, reglas condicionales, imán al arrastrar y medidas. -->
     <script src="assets/js/label_editor_markers.js"></script>
@@ -1142,17 +1141,9 @@
       }
     </style>
   </head>
-  <body data-requires="labels.create,labels.template_create">
+  <body data-requires="labels.template_create,labels.template_edit">
     <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
-    <header class="topbar" id="appTopbar" data-links='[{"href": "mis_rotulos.html", "label": "Volver a mis rótulos"}]'></header>
-    <!-- Armando o cambiando una plantilla, se vuelve a las plantillas. -->
-    <script>
-      if (/[?&](nueva|template)=/.test(location.search)) {
-        document.getElementById("appTopbar").dataset.links = JSON.stringify([
-          { href: "mis_plantillas.html", label: "Volver a mis plantillas" },
-        ]);
-      }
-    </script>
+    <header class="topbar" id="appTopbar" data-links='[{"href": "mis_plantillas.html", "label": "Volver a mis plantillas"}]'></header>
     <!-- Después del <header>: topbar.js lo dibuja apenas carga, y en el
          <head> todavía no existía (la barra quedaba vacía, sin "Cerrar
          sesión"). -->
@@ -1160,7 +1151,7 @@
 
     <script>
       // Header común (avatar/nombre/email desde localStorage.user + logout),
-      // igual patrón que el resto del frontend (ver saved_labels.js/ayuda.js).
+      // igual patrón que el resto del frontend (ver ayuda.js).
       // Sesión y logout salen de assets/js/auth.js (window.Auth). Guard de
       // sesión antes de pintar nada más.
       (function () {
@@ -1207,7 +1198,7 @@
                con ?template=<id>: guarda el diseño en ESA plantilla como una
                versión nueva de su historial (versiones_plantilla.html). -->
           <button id="saveTemplateVersionBtn" style="display: none">Guardar cambios en la plantilla</button>
-          <button id="saveBtn" class="primary">Guardar rótulo</button>
+          <button id="saveNewTemplateBtn" class="primary">Guardar plantilla</button>
         </div>
       </div>
       <p id="saveStatus" class="hint save-status" style="display: none"></p>
@@ -1593,7 +1584,7 @@
                 <input
                   type="text"
                   id="nombreInput"
-                  placeholder="Rótulo sin nombre"
+                  placeholder="Plantilla sin nombre"
              
               /></label>
             </div>
@@ -1690,16 +1681,8 @@
           </section>
 
           <section class="panel">
-            <h2 class="panel-title">Guardar y exportar</h2>
-            <div class="tool-group button-stack">
-            <button id="saveAsTemplateBtn">Guardar como plantilla</button>
-            <!-- El rótulo definitivo lo arma el backend a partir de los datos
-                 guardados: por eso estos dos solo aparecen con el rótulo ya
-                 guardado (necesitan un id). -->
-            <button id="exportServerPdfBtn">Descargar PDF</button>
-            <button id="printBtn">Imprimir</button>
-            </div>
-            <p class="hint" id="outputHint" hidden></p>
+            <h2 class="panel-title">Exportar</h2>
+            <p class="hint" id="outputHint"></p>
             <!-- Una imagen del diseño tal como se ve, con los marcadores: no es el
                  rótulo de un pedido. -->
             <details class="design-exports">
@@ -2483,11 +2466,6 @@
 
     <script type="module">
       import {
-        getRotulo,
-        createRotulo,
-        updateRotulo,
-        getOrderInfo,
-        downloadRotuloPdfServer,
         fetchCodePreview,
         getTemplate,
         createTemplate,
@@ -2495,68 +2473,27 @@
       } from "./assets/js/labels_api.js";
 
       const params = new URLSearchParams(window.location.search);
-      const editingId = params.get("id");
+      // Es el editor de plantillas: sin plantilla ni foto que abrir, arranca una
+      // nueva (también las direcciones viejas de un rótulo suelto, ?id= u ?order=).
+      if (!params.get("template") && !params.get("nueva") && !params.get("importacion")) {
+        window.location.replace("editor_rotulos.html?nueva=plantilla");
+      }
       const nombreInput = document.getElementById("nombreInput");
       const saveStatus = document.getElementById("saveStatus");
-      const exportServerPdfBtn = document.getElementById("exportServerPdfBtn");
-      const printBtn = document.getElementById("printBtn");
-      const saveAsTemplateBtn = document.getElementById("saveAsTemplateBtn");
-      // El PDF del servidor (y la impresión, que lo reusa) lee el rótulo
-      // YA guardado (necesita un id): solo se habilitan editando uno
-      // existente, nunca antes del primer guardado.
-      exportServerPdfBtn.hidden = !editingId;
-      printBtn.hidden = !editingId;
-      const outputHint = document.getElementById("outputHint");
-      if (!editingId) {
-        outputHint.hidden = false;
-        outputHint.textContent = params.get("nueva") === "plantilla"
-          ? "Para imprimir con esta plantilla, guardala y elegila en Imprimir rótulos."
-          : params.get("template")
-            ? "Para imprimir con esta plantilla, elegila en Imprimir rótulos."
-            : "Guardá el rótulo para poder descargarlo o imprimirlo.";
-      }
+      const saveNewTemplateBtn = document.getElementById("saveNewTemplateBtn");
+      document.getElementById("outputHint").textContent =
+        "Para imprimir con esta plantilla, guardala y elegila en Imprimir rótulos.";
 
-      exportServerPdfBtn.addEventListener("click", async () => {
-        if (!editingId) return;
-        exportServerPdfBtn.disabled = true;
-        try {
-          const blob = await downloadRotuloPdfServer(editingId);
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = `rotulo-${editingId}.pdf`;
-          link.click();
-          URL.revokeObjectURL(url);
-        } catch (err) {
-          if (err.isSessionExpired) return;
-          showStatus(err.message || "No se pudo generar el PDF del servidor.");
-        } finally {
-          exportServerPdfBtn.disabled = false;
-        }
-      });
-
-      printBtn.addEventListener("click", () => {
-        if (!editingId) return;
-        window.PrintHelper.printFromBlobFn(() => downloadRotuloPdfServer(editingId), printBtn);
-      });
-
-      // Vínculo opcional con un pedido: si venimos con ?order=<id> (rótulo
-      // nuevo a partir de un envío concreto) o el rótulo cargado ya tenía
-      // uno asociado, se manda en el payload. El usuario puede seguir
-      // editando los campos autocompletados en el diseño.
-      let currentOrderId = params.get("order") ? Number(params.get("order")) : null;
-      // Vínculo opcional con la plantilla de origen (?template=<id>, o la
-      // que ya traía el rótulo cargado): se manda en el payload para que
-      // Label.template quede completo (ver api.js/toApiPayload).
+      // La plantilla que se abrió (?template=<id>).
       let currentTemplateId = params.get("template") ? Number(params.get("template")) : null;
 
-      // --- Guardar como plantilla propia (privada) ------------------------
-      saveAsTemplateBtn.addEventListener("click", async () => {
+      // --- Guardar como plantilla nueva del comercio ------------------------
+      saveNewTemplateBtn.addEventListener("click", async () => {
         if (!(await confirmIncompleteRules())) return;
         const suggestedName = nombreInput.value.trim() || "Plantilla sin nombre";
         const name = await appPrompt("Nombre de la plantilla:", suggestedName);
         if (!name) return;
-        saveAsTemplateBtn.disabled = true;
+        saveNewTemplateBtn.disabled = true;
         try {
           const created = await createTemplate({
             nombre: name.trim(),
@@ -2566,37 +2503,20 @@
             },
             fields: collectFields(),
           });
-          // Armando una plantilla nueva, seguir acá y volver a guardar creaba una
-          // copia: se pasa a editar la que se acaba de crear.
-          if (params.get("nueva") === "plantilla" && created?.id) {
-            window.location.replace(`editor_rotulos.html?template=${created.id}&guardada=1`);
-            return;
-          }
-          showStatus(`Plantilla "${name.trim()}" guardada.`);
+          // Seguir acá y volver a guardar creaba una copia: se pasa a editar la
+          // que se acaba de crear.
+          window.location.replace(`editor_rotulos.html?template=${created.id}&guardada=1`);
         } catch (err) {
           if (err.isSessionExpired) return;
           showStatus(err.message || "No se pudo guardar la plantilla.");
         } finally {
-          saveAsTemplateBtn.disabled = false;
+          saveNewTemplateBtn.disabled = false;
         }
       });
 
-      // Llegando desde "+ Nueva plantilla" (Mis plantillas) se está armando
-      // una plantilla, no un rótulo: el título y el botón principal lo dicen,
-      // y el botón guarda la plantilla (el mismo camino que "Guardar como
-      // plantilla"); "Guardar rótulo" queda escondido.
       if (params.get("nueva") === "plantilla") {
         document.querySelector(".editor-heading h1").textContent = "Nueva plantilla";
         document.title = "Nueva plantilla · Human Log Rótulos";
-        const labelSaveBtn = document.getElementById("saveBtn");
-        const templateSaveBtn = document.createElement("button");
-        templateSaveBtn.id = "saveNewTemplateBtn";
-        templateSaveBtn.className = "primary";
-        templateSaveBtn.textContent = "Guardar plantilla";
-        templateSaveBtn.addEventListener("click", () => saveAsTemplateBtn.click());
-        labelSaveBtn.after(templateSaveBtn);
-        labelSaveBtn.style.display = "none";
-        saveAsTemplateBtn.style.display = "none";
       }
 
       if (params.get("guardada")) {
@@ -2614,17 +2534,13 @@
         saveTemplateVersionBtn.textContent = `Guardar cambios en «${template.nombre}»`;
         saveTemplateVersionBtn.title = `Queda como versión ${(template.currentVersion || 0) + 1}; las anteriores se pueden ver y restaurar desde Mis plantillas.`;
         saveTemplateVersionBtn.style.display = "";
-        // Cambiando una plantilla propia hay una sola forma de guardar: "Guardar
-        // rótulo" creaba otra cosa. Con ?order= sí se está armando un rótulo.
-        if (!currentOrderId) {
-          document.getElementById("saveBtn").style.display = "none";
-          saveTemplateVersionBtn.className = "primary";
-          document.querySelector(".editor-heading h1").textContent = `Plantilla «${template.nombre}»`;
-          // Este campo es el nombre de un rótulo: guardando la plantilla no se usaba.
-          nombreInput.value = template.nombre;
-          nombreInput.readOnly = true;
-          nombreInput.title = "El nombre se cambia con «Renombrar», en Mis plantillas.";
-        }
+        // Cambiando una plantilla propia hay una sola forma de guardar.
+        saveNewTemplateBtn.style.display = "none";
+        saveTemplateVersionBtn.className = "primary";
+        document.querySelector(".editor-heading h1").textContent = `Plantilla «${template.nombre}»`;
+        nombreInput.value = template.nombre;
+        nombreInput.readOnly = true;
+        nombreInput.title = "El nombre se cambia con «Renombrar», en Mis plantillas.";
       }
 
       saveTemplateVersionBtn.addEventListener("click", async () => {
@@ -3138,27 +3054,8 @@
       // --- Autocompletar destinatario y dirección desde el pedido
       // (?order=<id>). El remitente y el número quedan como marcadores: se
       // resuelven al imprimir, porque el rótulo guarda su vínculo al pedido.
-      async function prefillFromOrder(orderId) {
-        const order = await getOrderInfo(orderId);
-        const addr = order?.address;
-        if (!addr) return;
-        const setText = (field, text) => {
-          const el = document.querySelector(`.field[data-field="${field}"]`);
-          if (el) window.LabelEditorMarkers.setFieldText(el, text);
-        };
-        if (addr.recipient_name) setText("destinatario", `Destinatario: ${addr.recipient_name}`);
-        setText("domicilio", `Domicilio: ${[addr.street, addr.number].filter(Boolean).join(" ")}`);
-        setText("cp", `CP: ${addr.postal_code || ""}`);
-        setText(
-          "localidad",
-          `Localidad/Provincia: ${[addr.city, addr.state].filter(Boolean).join(", ")}`,
-        );
-      }
-
-      // Aplica un bloque design/fields (de un rótulo o de una plantilla) al
-      // canvas: posiciones + textos de los campos de texto, y la config de
-      // qr/barcode. Compartido entre "cargar rótulo existente" y "cargar
-      // plantilla" para no duplicar el mismo mapeo dos veces.
+      // Aplica un bloque design/fields al canvas: posiciones + textos de los
+      // campos de texto, y la config de qr/barcode.
       // Datos que una lectura de foto puede no traer: se ocultan en vez de
       // quedar encimados en su lugar por defecto, y no se guardan mientras
       // estén ocultos (collectFields). "Mostrar los datos ocultos" los trae.
@@ -3283,58 +3180,14 @@
         }
       }
 
-      // --- Cargar rótulo existente si venimos con ?id= ---
       async function loadExisting() {
-        if (!editingId) {
-          if (params.get("importacion")) await loadFromImport(params.get("importacion"));
-          if (currentTemplateId) await loadFromTemplate(currentTemplateId);
-          if (currentOrderId) await prefillFromOrder(currentOrderId);
-        } else {
-          const r = await getRotulo(editingId);
-          if (!r) {
-            showStatus("No se encontró ese rótulo. Empezando uno nuevo.");
-          } else {
-            currentOrderId = r.order || currentOrderId;
-            currentTemplateId = r.template || currentTemplateId;
-            nombreInput.value = r.nombre || "";
-            if (r.size) {
-              document.getElementById("widthCm").value = r.size.widthCm;
-              document.getElementById("heightCm").value = r.size.heightCm;
-              updateLabelSize();
-            }
-            if (r.logo) {
-              document.getElementById("logoImg").src = r.logo;
-              document.getElementById("logoImg").style.display = "block";
-              document.getElementById("logoPlaceholder").style.display = "none";
-            }
-            applyFields(r.fields);
-          }
-        }
+        if (params.get("importacion")) await loadFromImport(params.get("importacion"));
+        if (currentTemplateId) await loadFromTemplate(currentTemplateId);
         // Vista previa inicial de ambos códigos, con la config que haya
-        // quedado (la del rótulo/plantilla cargados, o los defaults de uno
-        // nuevo en blanco).
+        // quedado (la de la plantilla cargada, o los defaults de una
+        // nueva en blanco).
         refreshCodePreview("qr");
         refreshCodePreview("barcode");
-      }
-
-      // --- Generar una miniatura liviana (JPEG) para la lista del dashboard ---
-      async function generateThumbnail() {
-        label.classList.add("exporting");
-        const canvas = await html2canvas(label, {
-          scale: 1.5 / zoom,
-          backgroundColor: "#ffffff",
-        });
-        label.classList.remove("exporting");
-
-        const maxWidth = 320;
-        const ratio = maxWidth / canvas.width;
-        const small = document.createElement("canvas");
-        small.width = maxWidth;
-        small.height = canvas.height * ratio;
-        small
-          .getContext("2d")
-          .drawImage(canvas, 0, 0, small.width, small.height);
-        return small.toDataURL("image/jpeg", 0.75);
       }
 
       // Posición actual (left/top en %) de un campo del canvas.
@@ -3515,44 +3368,6 @@
             "Si seguís, no se guardan. ¿Seguir?",
         );
       }
-
-      document.getElementById("saveBtn").addEventListener("click", async () => {
-        if (!(await confirmIncompleteRules())) return;
-        const thumbnail = await window.LabelEditorMarkers.withoutSamples(
-          generateThumbnail,
-          () => applyRenderMetrics(),
-        );
-        const payload = {
-          nombre: nombreInput.value.trim() || "Rótulo sin nombre",
-          // Con el marcador todavía puesto no hay un nombre que mostrar en Mis rótulos.
-          cliente: (() => {
-            const text = window.LabelEditorMarkers.rawText(
-              document.querySelector('.field[data-field="destinatario"]'),
-            ).trim();
-            return text.includes("{{") ? "" : text;
-          })(),
-          thumbnail,
-          size: {
-            widthCm: parseFloat(document.getElementById("widthCm").value) || 10,
-            heightCm:
-              parseFloat(document.getElementById("heightCm").value) || 15,
-          },
-          logo:
-            document.getElementById("logoImg").style.display !== "none"
-              ? document.getElementById("logoImg").src
-              : null,
-          fields: collectFields(),
-          order: currentOrderId,
-          template: currentTemplateId,
-        };
-
-        if (editingId) {
-          await updateRotulo(editingId, payload);
-        } else {
-          await createRotulo(payload);
-        }
-        window.location.href = "mis_rotulos.html";
-      });
 
       window.LabelEditorRules.init(document.getElementById("rulesPanel"));
       window.LabelEditorMarkers.initSamplesToggle(

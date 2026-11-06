@@ -27,7 +27,7 @@ from django.utils.dateparse import parse_datetime
 
 from apps.documents.models import Document
 
-from .models import Label, LabelTemplate
+from .models import LabelTemplate
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +43,7 @@ def queue_batch(
     "processing"). ``view_all``: quien lo pidió puede ver los pedidos de
     todos (el documento cuelga del usuario de datos del comercio, que no es
     quien lo pidió)."""
-    kind = "labels" if items and isinstance(items[0], Label) else "orders"
     document.job = {
-        "kind": kind,
         "ids": [item.pk for item in items],
         "template_id": template.pk if template is not None else None,
         "output": output,
@@ -85,20 +83,14 @@ def _is_due(job, now):
 
 def _load_items(document, job):
     ids = [int(pk) for pk in job.get("ids") or []]
-    if job.get("kind") == "labels":
-        queryset = Label.objects.select_related("order", "order__address", "order__user").filter(
-            pk__in=ids, user=document.user
-        )
-    else:
-        from apps.orders.models import Order
+    from apps.accounts.permissions_map import user_has_permission
+    from apps.orders.models import Order
 
-        queryset = Order.objects.select_related("address", "user", "store_connection").filter(pk__in=ids)
-        # Mismo criterio que el request: lo de otro usuario solo si podía verlo todo.
-        from apps.accounts.permissions_map import user_has_permission
-
-        view_all = job["view_all"] if "view_all" in job else user_has_permission(document.user, "labels.view_all")
-        if not view_all:
-            queryset = queryset.filter(user=document.user)
+    queryset = Order.objects.select_related("address", "user", "store_connection").filter(pk__in=ids)
+    # Mismo criterio que el request: lo de otro usuario solo si podía verlo todo.
+    view_all = job["view_all"] if "view_all" in job else user_has_permission(document.user, "labels.view_all")
+    if not view_all:
+        queryset = queryset.filter(user=document.user)
     found = {item.pk: item for item in queryset}
     return [found[pk] for pk in ids if pk in found], len(ids) - len(found)
 
@@ -113,7 +105,7 @@ def run_batch_job(document):
     job = document.job
     items, missing = _load_items(document, job)
     template = LabelTemplate.objects.filter(pk=job.get("template_id")).first() if job.get("template_id") else None
-    if not items or (job.get("kind") != "labels" and template is None):
+    if not items or (template is None):
         document.status = Document.Status.FAILED
         document.error_message = "Los pedidos o la plantilla de este lote ya no existen."
     else:

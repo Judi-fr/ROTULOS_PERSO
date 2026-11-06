@@ -13,8 +13,8 @@ recipient (the buyer), address, postal code, city/province, order number, QR and
 
 Backend: Django REST API (`backend/`), all routes under `/api/v1/` (`backend/config/urls.py`). Apps:
 `accounts` (auth, user admin, roles/permissions, support inbox), `orders` (addresses/orders, manual
-creation, CSV/Excel import, store sync, dispatch), `audit` (read-only trail), `labels` (two independent
-label-rendering systems, see below), `integrations` (store connections, webhooks, event queue),
+creation, CSV/Excel import, store sync, dispatch), `audit` (read-only trail), `labels` (templates and
+label rendering, see below), `integrations` (store connections, webhooks, event queue),
 `documents` (generated batch output + uploaded source files), `processing` (Claude vision agent that
 reads a photographed label), `printing` (printers, print agent and job queue), `monitoring` (system status
 and availability alerts by email) and `carriers` (shipping companies the clients dispatch with: Andreani, Correo Argentino, OCA). Frontend: static multi-page app (`frontend/`), plain HTML/CSS/JS, no build
@@ -55,6 +55,10 @@ source venv/bin/activate
 - ERD: `python manage.py erd_mermaid --output ../docs/erd.md` (`apps/accounts/management/commands/`) — the
   Mermaid `erDiagram` of every `apps.*` model, generated from the loaded models so it can't drift; the Django
   models they point to (`User`, `Group`) appear with only their PK. Regenerate it when models change.
+- Browser tests (`frontend/e2e/`, Playwright): `cd frontend/e2e && npm ci && npx playwright install chromium && npm test`
+  (or `E2E_CHROME=/path/to/chrome` for an installed one; needs ports 8000/8001 free). They bring up the API on their own
+  SQLite (`seed_demo` + `seed_e2e.py`), mail to the console, log in `backend.log`. Each test is something that broke or
+  that the API can't show; stage `Browser` of the frontend pipeline runs them.
 - Template thumbnails: `python manage.py generate_template_thumbnails [--all]` — fills `LabelTemplate.preview`
   for active templates that lack one (see "Template thumbnails" under Labels).
 - Lint: `flake8` (config in `backend/.flake8`). Frontend check: `node frontend/tools/check_frontend.mjs`.
@@ -286,8 +290,8 @@ and `/static` → 8000 and `/` → 8001 under one domain, so someone else's brow
 - `api/v1/audit/` → `apps.audit.urls` (`logs/`, `actions/`, `metrics/`)
 - `api/v1/documents/` → `apps.documents.urls` (generated batch output)
 - `api/v1/processing/` → `apps.processing.urls` (photo → label-layout agent)
-- `api/v1/labels/` → `apps.labels.urls` (`labels/`, `templates/`, `element-layouts/`, `layout-variables/`,
-  `admin/`, `render/`, `preview/`, `barcode/`, `batch/`, `fonts/`, `sequence/`)
+- `api/v1/labels/` → `apps.labels.urls` (`templates/`, `images/`, `sizes/`, `render/`,
+  `preview/`, `barcode/`, `batch/`, `sequence/`)
 - `api/v1/integrations/` → `apps.integrations.urls` (admin ABM + store connections, plus
   `<platform>/install-url|callback|webhooks/` per provider and `shopify/launch/`)
 - `api/v1/monitoring/` → `apps.monitoring.urls` (`status/`, `test-mail/`, admin; see "Monitoring and alerts")
@@ -537,7 +541,7 @@ a store between businesses was considered as a stage 2 and dropped (2026-10-23, 
   reads or creates business data uses **`teams.data_owner(request.user)`** = the data user of the CURRENT
   business. What stays `request.user`: permission checks, the audit actor, authorship fields (`created_by`,
   `uploaded_by`, template versions), support messages, profile and session. Models keyed only by authorship
-  stay personal (photo imports `LabelImport`/`UploadedLabelFile`, System 2 `ElementLayout`/`LayoutVariable`).
+  stay personal (photo imports `LabelImport`/`UploadedLabelFile`).
   The OAuth `state` and the Tiendanube share link carry the data user (= the business), so a store connected by
   an employee belongs to the business; `read_oauth_state`/`read_share_token` and print agents accept it via
   `teams.live_data_owner_q` (an active person OR the data user of an OPEN business) instead of `is_active`.
@@ -800,9 +804,17 @@ Actividad (`team.manage`; their scripts return early without it) and **Estadíst
   cancelled order) — sets `_skip_store_notification` so the change isn't pushed back to the store that
   reported it.
 
-### Labels — two independent systems (`apps/labels`)
+### Labels (`apps/labels`)
 
-**System 1 — `LabelTemplate`/`Label` + `label_rendering.py`.** The one with a frontend: the editor
+**Saved labels and element designs were removed (2026-11-06, the user's call: nothing printed with them).** Gone: the
+`Label` CRUD (`labels/`, `labels/admin/`, batch's `label_ids`, `mis_rotulos.html`), the editor's loose-label mode (`?id=`,
+`?order=` now open a new template) and all of `ElementLayout` (`element-layouts/`, `layout-variables/`, `fonts/`,
+`element_layout_render/`, `editor_layout.html`). **The models and tables stay, unused, so no data was lost**; dropping them
+is a separate migration. `Label` is still read by the batch's `skip_existing` (old rows count as printed), and
+`LayoutVariable` is the catalog the photo reading builds its schema from. The permission keys `plantillas.*`/`variables.*`
+gate nothing now but are still in the catalog.
+
+**`LabelTemplate` + `label_rendering.py`.** The editor
 (`editor_rotulos.html`) defines the design, the backend validates and renders it.
 
 **The editor canvas mirrors the renderer, and the renderer has the last word.** The canvas used to be CSS
@@ -1006,9 +1018,8 @@ Styled extras: `font_size`, `bold`, `align`, `width`,
 `localidad`, `cp`, `pais`, `pedido`, `fecha_pedido`, `envio`, `tracking`, `tracking_url`. **A label is stuck
 outside the parcel: never print products, prices, payment, or buyer email/phone on it** — only what's
 needed to deliver the package. `LabelTemplate` (`owner=None` = system template, `is_public`, `width_cm`/
-`height_cm`) and `Label` (`user`, `template`, `order` FK, `client` = recipient, `is_active` soft-delete) are
-both served under `/api/v1/labels/` (`labels/`, `templates/`, `admin/` for `labels.view_all`, `render/` for
-a one-off PDF, `batch/` for many labels → one `apps.documents.Document`).
+`height_cm`) is served under `/api/v1/labels/` (`templates/`, `render/` for a one-off PDF, `batch/` for many
+labels → one `apps.documents.Document`).
 
 **Template versions (`template_versions.py`, `LabelTemplateVersion`, T#254-256).** A version is what a template
 draws — `name`, `width_cm`, `height_cm`, `design` — plus an optional `note`, `created_by` and `restored_from`. v1
@@ -1103,13 +1114,6 @@ doesn't cover prints the PDF and nobody is left unable to ship.
   api.labelary.com at both densities, and is skipped unless `ZPL_LABELARY_TESTS=1` — the suite can't
   depend on someone else's service, but it means a printer isn't needed to check the output.
 
-**System 2 — `ElementLayout`/`LayoutElement`/`LayoutVariable` + `element_layout_render/`.** A separate,
-non-overlapping concept (same file, `models.py`, clearly banner-separated): positions in **millimeters**
-(`width_mm`/`x_mm`/...) against a `LayoutVariable` catalog, with its own render pipeline
-(`element_layout_render/pdf.py`, `png.py`, `fonts.py`, ...) and its own full CRUD+render API
-(`/api/v1/labels/element-layouts/`, `/layout-variables/`) — but **no frontend screen yet**. It exists to
-receive the output of the photo-import pipeline below.
-
 ### Direct printing (`apps/printing`, T#322-T#328)
 
 Printing straight to the merchant's printers instead of downloading the file. Our server can't reach a
@@ -1169,10 +1173,10 @@ Three-step flow (`apps/processing/urls.py` docstring):
    /label-imports/<id>/retry/` re-reads the same file).
 3. The user reviews the proposal and then, **primary since 2026-10-30, "Abrir en el editor de rótulos"**:
    `GET /api/v1/processing/label-imports/<id>/template/` (`LabelImportViewSet.template`, no import throttle, 400
-   without a proposal) translates it with `processing/to_template.proposal_to_template` into a System 1
+   without a proposal) translates it with `processing/to_template.proposal_to_template` into a
    `LabelTemplate` design `{name, width_cm, height_cm, design, omitted}`, and `editor_rotulos.html?nueva=plantilla
    &importacion=<id>[&ancho=&alto=]` (cm, the sizes corrected in the review win) opens it as a new template, saved
-   with "Guardar plantilla" in the current business. Before this, an imported label ended as an `ElementLayout`,
+   with "Guardar plantilla" in the current business. Before this, an imported label ended as an element design,
    which no order-printing flow uses. Mapping: text variables → their field with `"text": "{{field}}"` (only the
    datum: the photo's own labels come as fixed texts), `codigo_postal`→`cp`, `localidad_provincia`→`localidad`,
    `numero_pedido`→`pedido`; `numero_seguimiento` → a fixed text `{{tracking}}`; `texto_estatico` → `texts`;
@@ -1182,8 +1186,7 @@ Three-step flow (`apps/processing/urls.py` docstring):
    the data fields the photo didn't have are **hidden** (`applyFields(design, {hideMissing: true})`) and a hidden
    field is not saved (`collectFields`, qr/barcode included); "Mostrar los datos ocultos" brings them back. The
    catalog got `codigo_barras` and `numero_seguimiento` (migration `labels/0016`).
-   Secondary: `POST /api/v1/labels/element-layouts/` ("Guardar como diseño por elementos", kept on purpose) saves
-   it as `ElementLayout`/`LayoutElement` rows. The agent never writes to `apps.labels` directly. Tests:
+   The agent never writes to `apps.labels` directly. Tests:
    `apps/processing/tests/test_template_from_import.py`.
 
 `apps.documents.Document` is a different model: the generated *output* of a label batch (PDF/ZIP), created
@@ -2065,24 +2068,19 @@ and the email moved under the name (no Email column; email order stays in "Orden
   list, so a new permission still needs no change here. An unknown category renders under its raw name
   rather than disappearing, and each checkbox carries its key in `title=` since two permissions can read
   alike.
-- `assets/js/labels_api.js` — the only CRUD client for `apps.labels` (System 1): a real ES module,
-  dynamically `import()`-ed from `saved_labels.js`/`templates.js` and used directly by `editor_rotulos.html`.
+- `assets/js/labels_api.js` — the only CRUD client for templates: a real ES module,
+  dynamically `import()`-ed from `templates.js` and used directly by `editor_rotulos.html`.
 - `imprimir_rotulos.html` + `assets/js/print_labels.js` — **the** batch printing screen, and the only one:
   filter the caller's orders by store, status and creation-date range, tick them (the selection survives
   paging and filter changes), pick a template (default: each store's own) and layout, then
   `POST /api/v1/labels/batch/` with `order_ids`
   and land on `documentos.html` to download. `skip_existing` is on by default; an optional
   "mark as dispatched" runs `POST /orders/<id>/ship/` per order afterwards, and orders that can't be
-  shipped are reported without breaking the rest. Linked from `pedidos.html`, from `mis_rotulos.html` and
+  shipped are reported without breaking the rest. Linked from `pedidos.html` and
   from the `labels_print` menu item (`labels.batch`). With something ticked, a dark bar floats at the bottom
   (`#printDock`, `updatePrintDock`: count, template · format, "Generar rótulos" which clicks the real button) and
   hides while the real button is on screen (IntersectionObserver); "Seleccionar todos" is half-ticked when only
   some of the page are (2026-11-02).
-  `mis_rotulos.html` used to carry a second, collapsible batch panel of its own (`filters` selector: date
-  range + status). It was removed so each page has one function: its date-range capability moved here as
-  the `?date_from=`/`?date_to=` list filter, which is strictly better because the store filter keeps
-  applying — the backend's `filters` selector has no notion of store. `mis_rotulos.html` is now only the
-  catalogue of saved `Label` rows (list, preview, edit, duplicate, delete).
 - Orders that come from a store carry third-party text (buyer name/address, store name): any value
   inserted with `innerHTML`/`insertAdjacentHTML` must go through `escapeHtml` or use `textContent` instead.
 - `google.js`/`google_test.js`/`assets/apis/access.php`/`index_test.html` are unused leftovers from a PHP-era
@@ -2091,17 +2089,8 @@ and the email moved under the name (no Email column; email order stays in "Orden
   `composer install` from `assets/apis/composer.json`.
 - `importar_rotulo.html` + `assets/js/importar_rotulo.js` drive the three-step photo import
   (`apps.processing`): upload the photo, read it into a proposal, review it (scaled preview drawn from the
-  proposal's mm coordinates, detected values, confidence, discarded elements) and only then save it as an
-  `ElementLayout`. The `_revision` key is stripped before POSTing — it exists for the reviewer, not for the
-  serializer. Gated by `processing.import`; the menu entry used to read "Generar rótulo" (disabled), which
-  named something else entirely — generating labels is what `mis_rotulos.html` does.
-- `editor_layout.html` + `assets/js/editor_layout.js` is System 2's editor (`plantillas.edit`): drag
-  elements on a canvas, edit the selected one's type/variable/content/mm box, add and delete elements,
-  save with `PATCH /element-layouts/<id>/`. **Its preview is the server's own render**
-  (`POST /element-layouts/<id>/render/` with `format: "png"`), shown as an image next to the canvas, and
-  the `X-Layout-Missing`/`X-Layout-Truncated` headers surface as warnings. That is deliberate: the canvas
-  places things (one mm→px factor for everything), the server says what comes out — so this screen cannot
-  drift from the print output the way `editor_rotulos.html` does (see below).
+  proposal's mm coordinates, detected values, confidence, discarded elements) and only then open it in the editor as a new template. Gated by
+  `processing.import`.
 - **Bulk order actions, one page each** (backend in `apps/orders/bulk_views.py`):
   `cargar_seguimientos.html` + `tracking_import.js` (no longer linked: **since 2026-10-09 it's the
   "Cargar seguimientos desde planilla" button of Mis pedidos** → `assets/js/pedidos/seguimientos.js`, a wide
@@ -2161,8 +2150,8 @@ and the email moved under the name (no Email column; email order stays in "Orden
   "Alta manual" only with `orders.create_for_others` (admin) and is otherwise just "Importar pedidos".
 - **Narrow layouts (2026-11-06)**: `gestionuser.html` hides the two date columns up to 1380px and Pedidos between 901 and
   980px instead of cutting text (sorting by them stays in Filtros), and the admin menu becomes a top strip under 900px; in `.filters-row` Desde and Hasta always share a row.
-- **Templates are the main concept (2026-11-06)**: the dashboard's design card and `mis_plantillas.html`'s bar no longer
-  link Rótulos guardados or Diseños por elementos (both still work, through the function search). A template card
+- **Templates are the main concept (2026-11-06)**: the dashboard's design card and `mis_plantillas.html`'s bar link only
+  to templates. A template card
   says "Abrir" (own: edit, saved as a version) or "Usar como base" (a gallery one: saved as a copy), and opening an
   own template leaves one save button.
 - **The editor's default fields are markers (`{{destinatario}}`…), never sample data (2026-11-06)**: whatever is in
@@ -2171,8 +2160,8 @@ and the email moved under the name (no Email column; email order stays in "Orden
   remembers when turned off) shows samples without saving them. A new template, once saved, reopens as
   `?template=<id>`, so saving again updates it instead of creating a copy.
 - `editor_rotulos.html?nueva=plantilla` (reached from the gallery, `galeria_plantillas.html`) titles the page "Nueva plantilla" and its
-  main button saves a template ("Guardar plantilla", same path as "Guardar como plantilla"); plain
-  `editor_rotulos.html` still saves a `Label`.
+  main button saves a template ("Guardar plantilla"); with no `template`/`nueva`/`importacion` it redirects there, since the
+  editor only edits templates.
 
 ## Reglas
 

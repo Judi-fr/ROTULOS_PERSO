@@ -227,7 +227,7 @@ document.getElementById("statusFilter")?.addEventListener("change", (e) => {
 });
 
 // ---------------------------------------------------------------------------
-// Logout: misma lógica que pedidos.js/saved_labels.js (window.Auth.logout).
+// Logout: misma lógica que pedidos.js (window.Auth.logout).
 // ---------------------------------------------------------------------------
 const logoutBtn = document.getElementById("logoutBtn");
 if (logoutBtn) {
