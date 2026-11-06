@@ -47,10 +47,11 @@ test("conectar una tienda muestra solo la plataforma elegida", async ({ page }) 
   await expect(page.locator("#connectTiendanubeBtn")).toBeHidden();
 });
 
-test("una plantilla en blanco guarda marcadores, no datos de ejemplo, y no se duplica", async ({ page, request }) => {
+test("una plantilla de cero parte de la estándar, guarda marcadores y no se duplica", async ({ page, request }) => {
   await page.goto("/editor_rotulos.html?nueva=plantilla");
   const field = page.locator('.field[data-field="destinatario"]');
   await expect(page.locator("#samplesToggle")).toBeChecked();
+  await expect(page.locator(".label")).toContainText("Enviar a:");
   await expect(field).not.toContainText("{{");
   await page.click("#saveNewTemplateBtn");
   const name = `E2E ${Date.now()}`;
@@ -64,7 +65,10 @@ test("una plantilla en blanco guarda marcadores, no datos de ejemplo, y no se du
     const data = await window.Auth.apiFetch(`${window.APP_CONFIG.API_BASE}/labels/templates/`).then((r) => r.json());
     return (data.results || data).find((t) => t.name === wanted).design;
   }, name);
-  expect(design.destinatario.text).toBe("Destinatario: {{destinatario}}");
+  // Lo que distingue a la estándar: el recuadro punteado y el "Enviar a:".
+  expect(design.destinatario.text).toBe("{{destinatario}}");
+  expect(design.border).toEqual({ dashed: true });
+  expect(design.texts.map((t) => t.text)).toContain("Enviar a:");
 });
 
 test("restaurar una versión ofrece dos botones distintos", async ({ page }) => {
@@ -103,4 +107,12 @@ test("una dirección vieja del editor de rótulos abre una plantilla nueva", asy
   await page.goto("/editor_rotulos.html?id=1");
   await page.waitForURL(/nueva=plantilla/);
   await expect(page.locator("h1")).toHaveText("Nueva plantilla");
+});
+
+test("la galería ofrece la estándar una sola vez, como De cero", async ({ page }) => {
+  await page.goto("/galeria_plantillas.html");
+  const first = page.locator(".gallery-card").first();
+  await expect(first).toContainText("De cero");
+  await expect(first).toHaveAttribute("href", "editor_rotulos.html?nueva=plantilla");
+  await expect(page.locator(".gallery-name", { hasText: "Etiqueta de envío estándar" })).toHaveCount(0);
 });

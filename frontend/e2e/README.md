@@ -10,7 +10,7 @@ npx playwright install chromium   # o E2E_CHROME=/ruta/a/chrome para usar uno ya
 npm test
 ```
 
-Necesitan libres los puertos 8000 y 8001. Cada prueba cubre algo que se rompió alguna vez
+Usan los puertos 8100 y 8101, así que corren aunque tengas la app levantada. Cada prueba cubre algo que se rompió alguna vez
 o que no se puede ver desde la API; no repiten lo que ya prueban los tests del backend.
 
 Si algo falla: `npx playwright show-report` y el registro de la API en `backend.log`.

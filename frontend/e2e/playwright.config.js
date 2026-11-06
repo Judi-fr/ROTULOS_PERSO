@@ -5,6 +5,10 @@ const { defineConfig } = require("@playwright/test");
 // Para usar un Chromium ya instalado en vez de bajar el de Playwright.
 const executablePath = process.env.E2E_CHROME || undefined;
 
+// Puertos propios: las pruebas corren aunque la app de desarrollo esté levantada.
+const WEB_PORT = 8101;
+const API_PORT = 8100;
+
 module.exports = defineConfig({
   testDir: "./tests",
   // De a una: comparten la base, y el límite de intentos de login es por IP.
@@ -13,14 +17,23 @@ module.exports = defineConfig({
   expect: { timeout: 8000 },
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: "http://localhost:8001",
+    baseURL: `http://localhost:${WEB_PORT}`,
     locale: "es-AR",
     launchOptions: { executablePath },
     trace: "retain-on-failure",
   },
   globalSetup: require.resolve("./global-setup.js"),
   webServer: [
-    { command: "sh start_backend.sh", url: "http://localhost:8000/api/v1/health/", timeout: 120000, reuseExistingServer: false },
-    { command: "python3 -m http.server 8001 --bind 127.0.0.1 --directory ..", url: "http://localhost:8001/index.html", reuseExistingServer: false, stdout: "ignore", stderr: "ignore" },
+    {
+      command: `sh start_backend.sh ${API_PORT}`,
+      url: `http://localhost:${API_PORT}/api/v1/health/`,
+      timeout: 120000,
+      reuseExistingServer: false,
+    },
+    {
+      command: `node static_server.js ${WEB_PORT} ${API_PORT}`,
+      url: `http://localhost:${WEB_PORT}/index.html`,
+      reuseExistingServer: false,
+    },
   ],
 });

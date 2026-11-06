@@ -11,7 +11,7 @@ const ACCOUNTS = {
 module.exports = async () => {
   const browser = await chromium.launch({ executablePath: process.env.E2E_CHROME || undefined });
   for (const [name, [email, password]] of Object.entries(ACCOUNTS)) {
-    const context = await browser.newContext({ baseURL: "http://localhost:8001" });
+    const context = await browser.newContext({ baseURL: "http://localhost:8101" });
     const page = await context.newPage();
     await page.goto("/index.html");
     await page.fill("#user", email);

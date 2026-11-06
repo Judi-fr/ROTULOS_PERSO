@@ -1,4 +1,4 @@
-// Galería de "+ Nueva plantilla" (fase 5): "En blanco" y los diseños del
+// Galería de "+ Nueva plantilla" (fase 5): "De cero" y los diseños del
 // sistema que se ofrecen como punto de partida, en su orden
 // (GET /labels/templates/?gallery=1, ver apps/labels/gallery.py). Elegir uno
 // abre el editor con una copia: editor_rotulos.html?nueva=plantilla&template=<id>
@@ -12,6 +12,8 @@
   const API_BASE = window.APP_CONFIG.API_BASE;
   const grid = document.getElementById("galleryGrid");
   const EDITOR_URL = "editor_rotulos.html?nueva=plantilla";
+  // Empezar de cero ES empezar con esta (el editor la abre solo): una sola tarjeta.
+  const STANDARD_TEMPLATE_NAME = "Etiqueta de envío estándar";
 
   function item(index) {
     const li = document.createElement("li");
@@ -20,21 +22,31 @@
     return li;
   }
 
-  function blankCard() {
+  function fromScratchCard(standard) {
     const li = item(0);
     const link = document.createElement("a");
     link.className = "gallery-card gallery-card-blank";
     link.href = EDITOR_URL;
-    link.innerHTML =
-      '<span class="gallery-sheet gallery-sheet-blank" aria-hidden="true">' +
-      '<i class="ph ph-plus" aria-hidden="true"></i></span>';
+    const sheet = document.createElement("span");
+    sheet.className = "gallery-sheet";
+    if (standard?.preview) {
+      const img = document.createElement("img");
+      img.src = standard.preview;
+      img.alt = "Rótulo de muestra con la etiqueta de envío estándar";
+      img.loading = "lazy";
+      sheet.appendChild(img);
+    } else {
+      sheet.classList.add("gallery-sheet-blank");
+      sheet.setAttribute("aria-hidden", "true");
+      sheet.innerHTML = '<i class="ph ph-plus" aria-hidden="true"></i>';
+    }
     const name = document.createElement("span");
     name.className = "gallery-name";
-    name.textContent = "En blanco";
+    name.textContent = "De cero";
     const text = document.createElement("span");
     text.className = "gallery-text";
-    text.textContent = "Empezá de cero, con los datos en su lugar de siempre.";
-    link.append(name, text);
+    text.textContent = "Arrancá con la etiqueta de envío estándar y cambiá lo que quieras.";
+    link.append(sheet, name, text);
     li.appendChild(link);
     return li;
   }
@@ -86,17 +98,19 @@
       if (!response.ok) throw new Error(getErrorMessage(data, "No se pudieron cargar los diseños."));
       const templates = Array.isArray(data) ? data : data.results || [];
       grid.innerHTML = "";
-      grid.appendChild(blankCard());
-      templates.forEach((template, index) => grid.appendChild(templateCard(template, index + 1)));
+      grid.appendChild(fromScratchCard(templates.find((t) => t.name === STANDARD_TEMPLATE_NAME)));
+      templates
+        .filter((t) => t.name !== STANDARD_TEMPLATE_NAME)
+        .forEach((template, index) => grid.appendChild(templateCard(template, index + 1)));
       // Sin diseños en la galería (una base sin migrar) igual se puede
-      // empezar en blanco: se avisa, no se bloquea.
-      if (!templates.length) showMessage("Todavía no hay diseños para elegir. Podés empezar en blanco.");
+      // empezar de cero: se avisa, no se bloquea.
+      if (!templates.length) showMessage("Todavía no hay diseños para elegir. Podés empezar de cero.");
     } catch (error) {
       if (error && error.isSessionExpired) return;
       console.error("Error al cargar la galería:", error);
       grid.innerHTML = "";
-      grid.appendChild(blankCard());
-      showMessage("No se pudieron cargar los diseños. Podés empezar en blanco o probar de nuevo en un rato.");
+      grid.appendChild(fromScratchCard());
+      showMessage("No se pudieron cargar los diseños. Podés empezar de cero o probar de nuevo en un rato.");
     } finally {
       grid.removeAttribute("aria-busy");
     }

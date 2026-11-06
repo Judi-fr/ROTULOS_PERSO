@@ -56,7 +56,7 @@ source venv/bin/activate
   Mermaid `erDiagram` of every `apps.*` model, generated from the loaded models so it can't drift; the Django
   models they point to (`User`, `Group`) appear with only their PK. Regenerate it when models change.
 - Browser tests (`frontend/e2e/`, Playwright): `cd frontend/e2e && npm ci && npx playwright install chromium && npm test`
-  (or `E2E_CHROME=/path/to/chrome` for an installed one; needs ports 8000/8001 free). They bring up the API on their own
+  (or `E2E_CHROME=/path/to/chrome` for an installed one). Own ports 8100/8101, so they run beside the dev servers; they bring up the API on their own
   SQLite (`seed_demo` + `seed_e2e.py`), mail to the console, log in `backend.log`. Each test is something that broke or
   that the API can't show; stage `Browser` of the frontend pipeline runs them.
 - Template thumbnails: `python manage.py generate_template_thumbnails [--all]` — fills `LabelTemplate.preview`
@@ -811,8 +811,8 @@ Actividad (`team.manage`; their scripts return early without it) and **Estadíst
 `?order=` now open a new template) and all of `ElementLayout` (`element-layouts/`, `layout-variables/`, `fonts/`,
 `element_layout_render/`, `editor_layout.html`). **The models and tables stay, unused, so no data was lost**; dropping them
 is a separate migration. `Label` is still read by the batch's `skip_existing` (old rows count as printed), and
-`LayoutVariable` is the catalog the photo reading builds its schema from. The permission keys `plantillas.*`/`variables.*`
-gate nothing now but are still in the catalog.
+`LayoutVariable` is the catalog the photo reading builds its schema from. The permission keys `plantillas.*`/`variables.*`,
+which gated only that, were removed (migration `accounts/0038`).
 
 **`LabelTemplate` + `label_rendering.py`.** The editor
 (`editor_rotulos.html`) defines the design, the backend validates and renders it.
@@ -2161,7 +2161,9 @@ and the email moved under the name (no Email column; email order stays in "Orden
   `?template=<id>`, so saving again updates it instead of creating a copy.
 - `editor_rotulos.html?nueva=plantilla` (reached from the gallery, `galeria_plantillas.html`) titles the page "Nueva plantilla" and its
   main button saves a template ("Guardar plantilla"); with no `template`/`nueva`/`importacion` it redirects there, since the
-  editor only edits templates.
+  editor only edits templates. **Starting from scratch opens "Etiqueta de envío estándar"** (2026-11-06, user's ask): found by
+  name in `?gallery=1`, saved as the business's own copy; the gallery shows it once, as the "De cero" card. Both names are
+  pinned in `test_frontend_contracts.py`.
 
 ## Reglas
 

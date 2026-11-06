@@ -2468,6 +2468,7 @@
       import {
         fetchCodePreview,
         getTemplate,
+        listTemplates,
         createTemplate,
         updateTemplate,
       } from "./assets/js/labels_api.js";
@@ -3180,9 +3181,25 @@
         }
       }
 
+      // Crear una plantilla de cero arranca con la estándar del sistema: se guarda
+      // como copia del comercio. Si no se la encuentra quedan los campos de siempre.
+      const STANDARD_TEMPLATE_NAME = "Etiqueta de envío estándar";
+
+      async function loadStandardTemplate() {
+        try {
+          const gallery = await listTemplates({ gallery: 1 });
+          const standard = gallery.find((template) => template.nombre === STANDARD_TEMPLATE_NAME);
+          if (standard) await loadFromTemplate(standard.id);
+        } catch (err) {
+          if (err && err.isSessionExpired) throw err;
+          console.error("No se pudo abrir la plantilla estándar:", err);
+        }
+      }
+
       async function loadExisting() {
         if (params.get("importacion")) await loadFromImport(params.get("importacion"));
-        if (currentTemplateId) await loadFromTemplate(currentTemplateId);
+        else if (currentTemplateId) await loadFromTemplate(currentTemplateId);
+        else if (params.get("nueva") === "plantilla") await loadStandardTemplate();
         // Vista previa inicial de ambos códigos, con la config que haya
         // quedado (la de la plantilla cargada, o los defaults de una
         // nueva en blanco).

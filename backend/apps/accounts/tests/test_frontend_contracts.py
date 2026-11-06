@@ -15,6 +15,17 @@ def pages():
     return [path for path in sorted(FRONTEND.glob("*.html")) if path.name != "index_test.html"]
 
 
+class StandardTemplateNameTests(SimpleTestCase):
+    def test_el_frontend_busca_la_estandar_por_su_nombre_real(self):
+        # "De cero" abre esta plantilla buscándola por nombre: otro nombre no da
+        # error, solo deja al editor con los campos por defecto.
+        from apps.labels.gallery import STANDARD_TEMPLATE_NAME
+
+        for name in ("editor_rotulos.html", "assets/js/galeria_plantillas.js"):
+            source = (FRONTEND / name).read_text(encoding="utf-8")
+            self.assertIn(f'STANDARD_TEMPLATE_NAME = "{STANDARD_TEMPLATE_NAME}"', source, name)
+
+
 class PermissionKeysTests(SimpleTestCase):
     def test_las_pantallas_piden_permisos_que_existen(self):
         for page in pages():

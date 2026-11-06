@@ -13,4 +13,4 @@ export NOTICES_MAIL_ENABLED=False
 "$PYTHON" manage.py migrate --noinput >/dev/null
 "$PYTHON" manage.py seed_demo >/dev/null
 "$PYTHON" manage.py shell < ../frontend/e2e/seed_e2e.py >/dev/null
-exec "$PYTHON" manage.py runserver --noreload 127.0.0.1:8000 >"$LOG" 2>&1
+exec "$PYTHON" manage.py runserver --noreload "127.0.0.1:$1" >"$LOG" 2>&1
