@@ -155,10 +155,14 @@ function buildCard(template) {
   const actions = document.createElement("div");
   actions.className = "template-card-actions";
 
+  // La propia se abre para cambiarla; la que no se puede cambiar (las de la
+  // galería) es un punto de partida: se guarda como copia del comercio.
   const useBtn = document.createElement("a");
   useBtn.className = "btn btn-primary";
-  useBtn.textContent = "Usar";
-  useBtn.href = `${EDITOR_URL}?template=${template.id}`;
+  useBtn.textContent = template.canEdit ? "Abrir" : "Usar como base";
+  useBtn.href = template.canEdit
+    ? `${EDITOR_URL}?template=${template.id}`
+    : `${EDITOR_URL}?nueva=plantilla&template=${template.id}`;
   actions.appendChild(useBtn);
 
   // Historial de versiones (versiones_plantilla.html): verlas, compararlas y
@@ -169,20 +173,21 @@ function buildCard(template) {
   versionsLink.href = `versiones_plantilla.html?template=${template.id}`;
   actions.appendChild(versionsLink);
 
-  const duplicateBtn = document.createElement("button");
-  duplicateBtn.type = "button";
-  duplicateBtn.className = "btn btn-outline";
-  duplicateBtn.textContent = "Duplicar";
-  duplicateBtn.addEventListener("click", () => handleDuplicate(template));
-  actions.appendChild(duplicateBtn);
-
-  // Editar y Archivar siguen lo que dice el backend (can_edit / can_delete:
-  // plantilla propia privada + su permiso, migración 0029).
+  // Renombrar, Duplicar y Archivar siguen lo que dice el backend (can_edit /
+  // can_delete: plantilla propia privada + su permiso, migración 0029). En una
+  // que no se puede cambiar, duplicar sería lo mismo que "Usar como base".
   if (template.canEdit) {
+    const duplicateBtn = document.createElement("button");
+    duplicateBtn.type = "button";
+    duplicateBtn.className = "btn btn-outline";
+    duplicateBtn.textContent = "Duplicar";
+    duplicateBtn.addEventListener("click", () => handleDuplicate(template));
+    actions.appendChild(duplicateBtn);
+
     const editBtn = document.createElement("button");
     editBtn.type = "button";
     editBtn.className = "btn btn-outline";
-    editBtn.textContent = "Editar";
+    editBtn.textContent = "Renombrar";
     editBtn.addEventListener("click", () => openRenamePrompt(template));
     actions.appendChild(editBtn);
   }
@@ -206,7 +211,11 @@ function renderGrid(templates) {
     return;
   }
   gridEl.innerHTML = "";
-  templates.forEach((template) => gridEl.appendChild(buildCard(template)));
+  // Primero las propias: las de la galería son puntos de partida. Sin esto, las
+  // del comercio quedaban abajo de todas las de ejemplo.
+  [...templates]
+    .sort((a, b) => Number(Boolean(b.canEdit)) - Number(Boolean(a.canEdit)))
+    .forEach((template) => gridEl.appendChild(buildCard(template)));
 }
 
 async function loadTemplates() {
@@ -221,10 +230,7 @@ async function loadTemplates() {
   }
 }
 
-// "Editar" acá es solo renombrar/redescribir desde la grilla: el diseño en
-// sí (posiciones, tamaño) se edita abriendo la plantilla en el editor
-// ("Usar" ya cubre eso, y guardar de nuevo como plantilla actualiza el
-// diseño). Evita duplicar el editor completo para un caso de uso chico.
+// Renombrar desde la grilla: el diseño en sí se cambia con "Abrir".
 async function openRenamePrompt(template) {
   const name = await appPrompt("Nuevo nombre de la plantilla:", template.nombre || "");
   if (!name || name.trim() === template.nombre) return;

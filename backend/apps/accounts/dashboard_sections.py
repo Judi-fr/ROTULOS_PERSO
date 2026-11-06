@@ -55,9 +55,11 @@ def build_sections(user):
             "design", "Diseño de rótulos", "mdi mdi-view-grid-plus-outline", "mis_plantillas.html",
             "Tus plantillas y cómo sale cada rótulo.",
             [
-                ("Rótulos guardados", "mis_rotulos.html", "labels.view"),
+                # Lo principal es la plantilla: es con lo que se imprimen los pedidos.
+                # Rótulos guardados y Diseños por elementos no están acá para no
+                # sumar conceptos; siguen en el buscador de funciones (``menu``).
+                ("Nueva plantilla", "galeria_plantillas.html", "labels.template_create"),
                 ("Desde una foto", "importar_rotulo.html", "processing.import"),
-                ("Diseños por elementos", "editor_layout.html", "plantillas.edit"),
             ],
         )
     if can("stores.manage") or can("carriers.manage"):

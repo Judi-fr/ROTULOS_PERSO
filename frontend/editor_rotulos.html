@@ -1145,6 +1145,14 @@
   <body data-requires="labels.create,labels.template_create">
     <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
     <header class="topbar" id="appTopbar" data-links='[{"href": "mis_rotulos.html", "label": "Volver a mis rótulos"}]'></header>
+    <!-- Armando o cambiando una plantilla, se vuelve a las plantillas. -->
+    <script>
+      if (/[?&](nueva|template)=/.test(location.search)) {
+        document.getElementById("appTopbar").dataset.links = JSON.stringify([
+          { href: "mis_plantillas.html", label: "Volver a mis plantillas" },
+        ]);
+      }
+    </script>
     <!-- Después del <header>: topbar.js lo dibuja apenas carga, y en el
          <head> todavía no existía (la barra quedaba vacía, sin "Cerrar
          sesión"). -->
@@ -2604,6 +2612,17 @@
         saveTemplateVersionBtn.textContent = `Guardar cambios en «${template.nombre}»`;
         saveTemplateVersionBtn.title = `Queda como versión ${(template.currentVersion || 0) + 1}; las anteriores se pueden ver y restaurar desde Mis plantillas.`;
         saveTemplateVersionBtn.style.display = "";
+        // Cambiando una plantilla propia hay una sola forma de guardar: "Guardar
+        // rótulo" creaba otra cosa. Con ?order= sí se está armando un rótulo.
+        if (!currentOrderId) {
+          document.getElementById("saveBtn").style.display = "none";
+          saveTemplateVersionBtn.className = "primary";
+          document.querySelector(".editor-heading h1").textContent = `Plantilla «${template.nombre}»`;
+          // Este campo es el nombre de un rótulo: guardando la plantilla no se usaba.
+          nombreInput.value = template.nombre;
+          nombreInput.readOnly = true;
+          nombreInput.title = "El nombre se cambia con «Renombrar», en Mis plantillas.";
+        }
       }
 
       saveTemplateVersionBtn.addEventListener("click", async () => {

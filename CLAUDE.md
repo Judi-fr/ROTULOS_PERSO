@@ -2156,6 +2156,10 @@ and the email moved under the name (no Email column; email order stays in "Orden
   `tiendas.js`) and shows only that platform's `[data-platform]` blocks. A new platform needs a button and the attribute.
 - **Manual orders (2026-11-06)**: a merchant loads one with "+ Nuevo pedido" in `pedidos.html`. `importar.html` shows
   "Alta manual" only with `orders.create_for_others` (admin) and is otherwise just "Importar pedidos".
+- **Templates are the main concept (2026-11-06)**: the dashboard's design card and `mis_plantillas.html`'s bar no longer
+  link Rótulos guardados or Diseños por elementos (both still work, through the function search). A template card
+  says "Abrir" (own: edit, saved as a version) or "Usar como base" (a gallery one: saved as a copy), and opening an
+  own template leaves one save button.
 - **The editor's default fields are markers (`{{destinatario}}`…), never sample data (2026-11-06)**: whatever is in
   them is saved as the design's text and printed on every label. They used to read "María Gómez"/"Av. Siempre Viva
   742", so a template started "En blanco" put those on real parcels. The "Ver con datos de ejemplo" toggle (on by default,
