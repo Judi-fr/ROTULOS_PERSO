@@ -651,6 +651,8 @@ async function init() {
 document.querySelectorAll("[data-platform-pick]").forEach((button) => {
   button.addEventListener("click", () => {
     const chosen = button.dataset.platformPick;
+    // Eligió con la lista de tiendas todavía cargando: que no se le cierre la tarjeta.
+    connectCardTouched = true;
     document.querySelectorAll("[data-platform-pick]").forEach((other) => {
       const active = other === button;
       other.setAttribute("aria-pressed", active ? "true" : "false");

@@ -38,7 +38,9 @@ test("imprimir genera un lote con los pedidos sin rótulo", async ({ page }) => 
 test("conectar una tienda muestra solo la plataforma elegida", async ({ page }) => {
   await page.goto("/tiendas.html");
   const card = page.locator("#connectCard");
-  if (!(await card.evaluate((el) => el.open))) await card.locator("> summary").click();
+  // Con una tienda ya conectada la tarjeta se cierra sola al cargar la lista.
+  await expect(card).not.toHaveAttribute("open", "");
+  await card.locator("> summary").click();
   await expect(page.locator("#connectShopifyBtn")).toBeHidden();
   await page.click('[data-platform-pick="shopify"]');
   await expect(page.locator("#connectShopifyBtn")).toBeVisible();
@@ -82,4 +84,16 @@ test("restaurar una versión ofrece dos botones distintos", async ({ page }) => 
   await page.goto(`/versiones_plantilla.html?template=${id}`);
   await page.getByRole("button", { name: "Restaurar" }).first().click();
   await expect(page.locator("dialog[open] button")).toHaveText(["Volver", "Restaurar"]);
+});
+
+test("elegir la plataforma mientras carga la lista no cierra la tarjeta", async ({ page }) => {
+  // La tarjeta se cerraba al llegar la lista, con el formulario recién elegido.
+  await page.route("**/integrations/stores/**", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.continue();
+  });
+  await page.goto("/tiendas.html");
+  await page.click('[data-platform-pick="shopify"]');
+  await page.waitForTimeout(2500);
+  await expect(page.locator("#connectShopifyBtn")).toBeVisible();
 });
