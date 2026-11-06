@@ -142,6 +142,12 @@
   gap: 8px;
 }
 
+@media (max-width: 520px) {
+  .connect-picker-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .connect-solo > summary {
   display: none;
 }

@@ -69,6 +69,12 @@ class CaddyMediaTests(SimpleTestCase):
         for private in ("documents/", "store_labels/", "rotulos/"):
             self.assertNotRegex(config, rf"handle /media/{re.escape(private)}")
 
+    def test_el_frontend_no_se_puede_meter_en_un_frame_ajeno(self):
+        caddyfile = self.caddyfile()
+        frontend = caddyfile[caddyfile.index("# Todo lo demás es el frontend."):]
+        self.assertIn("X-Frame-Options SAMEORIGIN", frontend)
+        self.assertIn("X-Content-Type-Options nosniff", frontend)
+
     def test_public_images_still_are(self):
         config = self.caddyfile()
         for public in ("store_logos", "accounts/logos", "labels/templates"):

@@ -44,8 +44,15 @@
 		file_server
 	}
 
-	# Todo lo demás es el frontend.
+	# Todo lo demás es el frontend. Solo acá van estos encabezados: la vista
+	# previa de impresión de Shopify carga nuestro PDF de /api/ dentro de un
+	# frame, así que la API no puede prohibirlo.
 	handle {
+		header {
+			X-Frame-Options SAMEORIGIN
+			X-Content-Type-Options nosniff
+			Referrer-Policy strict-origin-when-cross-origin
+		}
 		reverse_proxy web:8080
 	}
 }

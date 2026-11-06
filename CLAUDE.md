@@ -189,6 +189,10 @@ not exposed at all, unlike the dev compose.
   `127.0.0.1:8000` for dev, which on a server would make the merchant's browser call *their own*
   machine. `.dockerignore` leaves out `assets/apis/` — 502 MB of the 504 the folder weighs, and nginx
   does not run PHP anyway — so the image is ~50 MB.
+- **Security headers (2026-11-06)**: Caddy adds `X-Frame-Options SAMEORIGIN`, `nosniff` and a referrer policy to the
+  frontend only (Shopify's print preview frames our PDF from `/api/`). Not yet run in a real Caddy.
+- **Launch order**: `docs/lanzamiento.md`; a guide to hand a new merchant: `docs/guia-primer-cliente.md` (names buttons:
+  if one is renamed, fix it there too).
 - **Asset versioning (2026-10-28)**: nginx caches `assets/` for 1 h, so after a deploy a browser kept the
   old CSS/JS. The Dockerfile (and the CI static artifact) runs `frontend/tools/version_assets.sh`, which
   rewrites every own CSS/JS reference in the `.html` to `?v=<md5 of its content>` (manual `?v=` included;
