@@ -433,7 +433,7 @@
   }
   .field input::placeholder{ color:var(--n-400); }
   .create-panel-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:8px; }
-  @media (max-width:800px){
+  @media (max-width:900px){
     /* El menú pasa a ser una tira arriba que se desliza: sin esto, en un
        celular no había forma de ir a otra sección de la administración. */
     .layout{ flex-direction:column; }

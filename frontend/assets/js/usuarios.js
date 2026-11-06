@@ -197,9 +197,9 @@ function renderUsers(users) {
       </td>
       <td><span class="badge ${roleClass[role] || "staff"}">${escapeHtml(roleText)}</span></td>
       <td class="status-cell"><span class="status ${statusKey}"><span class="dot"></span>${escapeHtml(statusText)}</span>${lockedLine}</td>
-      <td class="cell-muted">${escapeHtml(u.created_date || "-")}</td>
+      <td class="date-col cell-muted">${escapeHtml(u.created_date || "-")}</td>
       <td class="num-col${u.orders_count ? "" : " cell-muted"}">${u.orders_count ?? 0}</td>
-      <td class="cell-muted">${formatLastOrderDate(u.last_order_at)}</td>
+      <td class="date-col cell-muted">${formatLastOrderDate(u.last_order_at)}</td>
       <td class="actions-col">
         <div class="row-actions">
           <button class="more-btn" data-idx="${i}">

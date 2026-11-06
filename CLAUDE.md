@@ -2156,6 +2156,8 @@ and the email moved under the name (no Email column; email order stays in "Orden
   `tiendas.js`) and shows only that platform's `[data-platform]` blocks. A new platform needs a button and the attribute.
 - **Manual orders (2026-11-06)**: a merchant loads one with "+ Nuevo pedido" in `pedidos.html`. `importar.html` shows
   "Alta manual" only with `orders.create_for_others` (admin) and is otherwise just "Importar pedidos".
+- **Narrow layouts (2026-11-06)**: `gestionuser.html` hides the two date columns up to 1380px and Pedidos between 901 and
+  980px instead of cutting text (sorting by them stays in Filtros), and the admin menu becomes a top strip under 900px; in `.filters-row` Desde and Hasta always share a row.
 - **Templates are the main concept (2026-11-06)**: the dashboard's design card and `mis_plantillas.html`'s bar no longer
   link Rótulos guardados or Diseños por elementos (both still work, through the function search). A template card
   says "Abrir" (own: edit, saved as a version) or "Usar como base" (a gallery one: saved as a copy), and opening an

@@ -496,6 +496,28 @@
 
 /* --- Pantallas angostas ------------------------------------------------------ */
 
+/* Con el menú al lado no entran las siete columnas y se cortaba lo importante
+   ("Adminis…"): se sacan las fechas, por las que se puede seguir ordenando desde
+   Filtros, y lo demás respira. */
+@media (max-width: 1380px) {
+  .users-page th.date-col,
+  .users-page td.date-col {
+    display: none;
+  }
+
+  .users-page th.user-col { width: 38%; }
+  .users-page th.role-col { width: 26%; }
+  .users-page th.status-col { width: 16%; }
+}
+
+/* Lo más justo: el menú todavía va al costado. Debajo de 900px pasa arriba y vuelve a entrar. */
+@media (min-width: 901px) and (max-width: 980px) {
+  .users-page th.num-col,
+  .users-page td.num-col {
+    display: none;
+  }
+}
+
 @media (max-width: 1100px) {
   .users-pulse {
     grid-template-columns: repeat(3, minmax(0, 1fr));

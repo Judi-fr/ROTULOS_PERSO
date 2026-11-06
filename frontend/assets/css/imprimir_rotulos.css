@@ -12,6 +12,18 @@
   margin: 0;
 }
 
+/* Desde y Hasta siempre juntos: con 200px cada uno, según cuántos filtros hubiera,
+   "Hasta" caía solo en otro renglón. */
+.filters-row .field:has(> input[type="date"]) {
+  flex-basis: calc(50% - 7px);
+}
+
+@media (max-width: 480px) {
+  .filters-row .field:has(> input[type="date"]) {
+    flex-basis: 100%;
+  }
+}
+
 .selection-count {
   font-size: var(--text-sm);
   font-weight: 600;
