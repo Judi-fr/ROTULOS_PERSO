@@ -14,8 +14,8 @@ const roleClass = {
 };
 function formatLockoutRemaining(seconds) {
   const totalMinutes = Math.ceil((seconds || 0) / 60);
-  if (totalMinutes <= 1) return "Locked - menos de 1 min restante";
-  return `Locked - ${totalMinutes} min restantes`;
+  if (totalMinutes <= 1) return "Bloqueado: menos de 1 min";
+  return `Bloqueado: ${totalMinutes} min`;
 }
 function formatLastLogin(value) {
   if (!value) return "Nunca";
@@ -100,6 +100,9 @@ function buildQueryString(baseUrl = API_URL, { includePage = true } = {}) {
   const qs = params.toString();
   return qs ? `${baseUrl}?${qs}` : baseUrl;
 }
+
+// "Actualizar" no tenía nada conectado: la lista seguía igual aunque hubiera cambios.
+document.getElementById("refreshUsersBtn")?.addEventListener("click", () => loadUsers());
 
 async function loadUsers() {
   updateFilterIndicators();
@@ -202,7 +205,7 @@ function renderUsers(users) {
       <td class="date-col cell-muted">${formatLastOrderDate(u.last_order_at)}</td>
       <td class="actions-col">
         <div class="row-actions">
-          <button class="more-btn" data-idx="${i}">
+          <button class="more-btn" data-idx="${i}" aria-label="Más acciones">
             <i class="ph ph-dots-three-vertical" aria-hidden="true"></i>
           </button>
           <div class="dropdown" id="dd-${i}" style="display:none;">
@@ -211,7 +214,7 @@ function renderUsers(users) {
             ${canEditUsers ? `<a href="comercio_usuario.html?user=${u.id}"><i class="ph ph-storefront" aria-hidden="true"></i>Comercio</a>` : ""}
             <div class="sep"></div>
             ${canReactivateUsers && u.can_reactivate ? `<a href="#" class="reactivate-user" data-reactivate-id="${u.id}"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i>Reactivar</a>` : ""}
-            ${canUnlockUsers && u.is_locked ? `<a href="#" class="unlock-user" data-unlock-id="${u.id}"><i class="ph ph-lock-key-open" aria-hidden="true"></i>Unlock</a>` : ""}
+            ${canUnlockUsers && u.is_locked ? `<a href="#" class="unlock-user" data-unlock-id="${u.id}"><i class="ph ph-lock-key-open" aria-hidden="true"></i>Desbloquear</a>` : ""}
             ${deleteAction}
           </div>
         </div>
@@ -709,7 +712,7 @@ async function softDeleteUser(userId) {
   const userName = user ? user.display_name || user.email : `#${userId}`;
 
   const confirmed = await appConfirm(
-    `¿Desactivar al usuario "${userName}"?\n\nEl usuario será desactivado (soft delete), NO eliminado permanentemente.`
+    `¿Desactivar al usuario "${userName}"?\n\nNo va a poder entrar, pero sus datos se conservan y se puede volver a activar.`
   );
   if (!confirmed) return;
 

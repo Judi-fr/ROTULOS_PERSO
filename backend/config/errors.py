@@ -19,11 +19,14 @@ respuesta: el comerciante lo puede citar y se encuentra en el log.
 from __future__ import annotations
 
 import logging
+import math
 import uuid
 
 from django.conf import settings
 from django.http import JsonResponse
 from django.views import defaults
+from rest_framework.exceptions import Throttled
+from rest_framework.views import exception_handler
 
 # Bajo ``apps.`` para salir por el handler con formato (ver LOGGING en base.py).
 logger = logging.getLogger("apps.errors")
@@ -66,6 +69,17 @@ class ApiExceptionMiddleware:
         # django.request agrega un "Internal Server Error" sin ninguno de los dos.
         response._has_been_logged = True
         return response
+
+
+def api_exception_handler(exc, context):
+    """El de DRF, con el límite de pedidos en palabras de quien lo lee: su texto
+    es "Solicitud fue regulada (throttled)", y lo ve quien se equivoca al entrar."""
+    response = exception_handler(exc, context)
+    if response is not None and isinstance(exc, Throttled):
+        wait = math.ceil(exc.wait or 0)
+        when = f"en {wait} segundos" if 0 < wait < 90 else f"en {math.ceil(wait / 60)} minutos" if wait else "en un rato"
+        response.data = {"detail": f"Demasiados intentos seguidos. Probá de nuevo {when}."}
+    return response
 
 
 def page_not_found(request, exception, template_name=defaults.ERROR_404_TEMPLATE_NAME):

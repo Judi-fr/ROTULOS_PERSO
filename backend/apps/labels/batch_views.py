@@ -438,7 +438,7 @@ class LabelBatchView(APIView):
                     {
                         "detail": (
                             f"Los {skipped_existing_count} pedido(s) seleccionados ya tienen "
-                            "un rótulo generado (skip_existing)."
+                            "un rótulo generado."
                         )
                     }
                 )
@@ -728,7 +728,7 @@ class LabelBatchView(APIView):
             if skipped_existing_count:
                 notes.append(
                     f"{skipped_existing_count} pedido(s) omitido(s) por ya tener un rótulo "
-                    "generado (skip_existing)."
+                    "generado."
                 )
 
             if item_count == 0:

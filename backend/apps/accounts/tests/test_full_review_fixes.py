@@ -1,6 +1,7 @@
 """Lo que encontró la revisión completa de la app (2026-11-06)."""
 from django.conf import settings
 from django.test import SimpleTestCase, TestCase
+from rest_framework.exceptions import Throttled
 
 from apps.accounts.auth_views import validate_password_strength
 from apps.audit.services import clean_target_repr
@@ -8,6 +9,17 @@ from apps.carriers.catalog_views import ManualCarrierSerializer
 from apps.carriers.models import ManualCarrier
 from apps.labels.catalog_views import LabelSizeSerializer
 from apps.labels.models import LabelSize
+from config.errors import api_exception_handler
+
+
+class ThrottleMessageTests(SimpleTestCase):
+    def test_el_limite_se_explica_sin_palabras_tecnicas(self):
+        self.assertEqual(
+            api_exception_handler(Throttled(wait=37.2), {}).data["detail"],
+            "Demasiados intentos seguidos. Probá de nuevo en 38 segundos.",
+        )
+        self.assertIn("en 5 minutos", api_exception_handler(Throttled(wait=300), {}).data["detail"])
+        self.assertIn("en un rato", api_exception_handler(Throttled(), {}).data["detail"])
 
 
 class InternalUserInActivityTests(SimpleTestCase):

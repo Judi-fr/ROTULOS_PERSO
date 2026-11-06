@@ -343,6 +343,12 @@ document.getElementById("validateMappingBtn")?.addEventListener("click", async (
     document.getElementById("invalidCountValue").textContent = data.error_count;
     document.getElementById("totalRowsValue").textContent = data.total_rows;
     renderValidationErrors("validationErrorList", data.errors);
+    const warning = document.getElementById("validationWarning");
+    const noPostal = data.rows_without_postal_code || [];
+    warning.hidden = !noPostal.length;
+    warning.textContent = noPostal.length
+      ? `${noPostal.length} fila(s) sin código postal (${noPostal.slice(0, 10).join(", ")}${noPostal.length > 10 ? "…" : ""}): se importan igual, pero su rótulo sale sin ese dato.`
+      : "";
     setImportStep(2.5);
   } catch (err) {
     if (err.isSessionExpired) return;

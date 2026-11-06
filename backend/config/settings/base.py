@@ -124,6 +124,7 @@ DATABASES = {
 # ---------------------------------------------------------------------------
 
 REST_FRAMEWORK = {
+    "EXCEPTION_HANDLER": "config.errors.api_exception_handler",
     # Toda la API se autentica con JWT (djangorestframework-simplejwt).
     # El frontend manda el access token en el header:
     #   Authorization: Bearer <access>

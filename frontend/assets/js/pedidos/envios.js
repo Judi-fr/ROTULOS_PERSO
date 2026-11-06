@@ -202,7 +202,8 @@ window.OrderShipping = (() => {
       // El texto del transportista suma solo si dice algo más ("Entregado — Entregado"),
       // y algunos vienen como código pegado ("EnvioDespachado").
       const carrierText = (shipment.carrier_status || "").replace(/([a-záéíóúñ])([A-ZÁÉÍÓÚÑ])/g, "$1 $2").trim();
-      state.textContent = carrierText && carrierText.toLowerCase() !== String(shipment.status_label).toLowerCase()
+      // "Pendiente" tampoco suma: el envío recién creado ya dice que falta entregarlo.
+      state.textContent = shipment.status !== "pending" && carrierText && carrierText.toLowerCase() !== String(shipment.status_label).toLowerCase()
         ? `${shipment.status_label} — ${carrierText}`
         : shipment.status_label;
       line.append(" ", state);

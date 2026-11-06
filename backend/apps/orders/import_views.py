@@ -141,10 +141,14 @@ class OrderImportValidateView(APIView):
 
         valid_count = 0
         errors = []
+        rows_without_postal_code = []
         seen_external_ids = set()
         for row_number, row in enumerate(rows, start=2):
             data = apply_mapping(row, mapping)
             row_errors = validate_mapped_row(data)
+            # No es un error (el pedido se puede cargar), pero el rótulo sale incompleto.
+            if not row_errors and not (data.get("cp") or "").strip():
+                rows_without_postal_code.append(row_number)
             external_id = (data.get("external_id") or "").strip()
             if external_id:
                 if external_id in seen_external_ids:
@@ -166,6 +170,7 @@ class OrderImportValidateView(APIView):
                 "valid_count": valid_count,
                 "error_count": len(errors),
                 "errors": errors,
+                "rows_without_postal_code": rows_without_postal_code,
             }
         )
 

@@ -80,7 +80,7 @@ per line with `ts`/`level`/`logger`/`message`, every `extra={...}` the code pass
 
 DRF already answers its own errors in JSON and the frontend reads that shape (`getErrorMessage`), so that is
 untouched. What used to come out as Django's HTML page was the unexpected: an exception in a view and an unknown
-`/api/` route. `ApiExceptionMiddleware` (last in `MIDDLEWARE`, so first to see a view's exception) logs it under
+`/api/` route. `api_exception_handler` (DRF's `EXCEPTION_HANDLER`) only rewrites the 429 text. `ApiExceptionMiddleware` (last in `MIDDLEWARE`, so first to see a view's exception) logs it under
 `apps.errors` with a 12-char `error_id` and answers 500 `{detail, error_id}` — the merchant can quote the code
 and it's in the log; the response is marked `_has_been_logged` so `django.request` doesn't log it a second time
 without trace or code. `handler404`/`handler500` (in `config/urls.py`) answer JSON for `/api/` only; the admin

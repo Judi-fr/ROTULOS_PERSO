@@ -143,10 +143,12 @@ document.getElementById("saveSupportDetailBtn")?.addEventListener("click", async
   button.disabled = true;
   button.textContent = "Guardando...";
   try {
-    const payload = {
-      status: document.getElementById("supportDetailStatus").value,
-      response: document.getElementById("supportDetailResponse").value,
-    };
+    const payload = { response: document.getElementById("supportDetailResponse").value };
+    // El estado va solo si se cambió: mandarlo siempre anulaba la regla del backend
+    // de que responder un mensaje pendiente lo resuelve, y quedaba "Pendiente".
+    const chosenStatus = document.getElementById("supportDetailStatus").value;
+    const current = supportMessages.find((m) => Number(m.id) === Number(selectedSupportMessageId));
+    if (!current || chosenStatus !== current.status) payload.status = chosenStatus;
     const response = await apiFetch(`${SUPPORT_MESSAGES_URL}${selectedSupportMessageId}/`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },

@@ -2134,6 +2134,8 @@
       } catch (error) {
         /* sin almacenamiento: 100 % */
       }
+      // En un celular, sin una preferencia guardada, el rótulo entero a la vista.
+      if (zoom === 1 && window.innerWidth <= 480) zoom = 0.75;
 
       function setZoom(value) {
         zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(value / ZOOM_STEP) * ZOOM_STEP));
@@ -3371,7 +3373,7 @@
               // Una sola vez aunque falten varias.
               if (missingShown) return "";
               missingShown = true;
-              return "Una imagen no está disponible y no se imprime.";
+              return "Una imagen no se va a imprimir porque no está disponible. Si es tu logo, cargalo en Mi comercio → Datos del comercio.";
             }
             if (code === "barcode_unreadable") {
               return `El código de barras no va a poder leerse: necesita ${cm} cm de ancho y en el rótulo no hay tanto lugar desde donde empieza. Movelo más a la izquierda o usá un rótulo más ancho.`;
