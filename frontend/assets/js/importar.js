@@ -410,7 +410,10 @@ async function init() {
     if (err.isSessionExpired) return;
   }
 
-  const canManual = hasPermission("orders.create_manual");
+  // Un comerciante carga un pedido suelto con "+ Nuevo pedido" en Mis pedidos, que
+  // pide lo que el rótulo necesita. Este alta queda solo para dar de alta a nombre
+  // de otro usuario (admin).
+  const canManual = hasPermission("orders.create_manual") && hasPermission("orders.create_for_others");
   const canImport = hasPermission("orders.import");
   if (!canManual && !canImport) {
     window.location.replace("dashboard.html");
@@ -421,7 +424,11 @@ async function init() {
     : "none";
 
   if (!canManual) {
-    document.getElementById("tabManualBtn").style.display = "none";
+    document.querySelector(".tabs").style.display = "none";
+    document.querySelector(".main-heading h1").textContent = "Importar pedidos";
+    document.title = "Importar pedidos · Human Log Rótulos";
+    document.querySelector(".main-heading p").innerHTML =
+      'Subí un CSV o Excel con tus pedidos. Para cargar uno solo, usá <a href="pedidos.html#nuevo">+ Nuevo pedido</a>.';
     activateTab("import");
   }
   if (!canImport) {

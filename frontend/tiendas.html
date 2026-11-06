@@ -47,7 +47,18 @@
              setConnectCardOpen). -->
         <details class="card connect-card" id="connectCard" open>
           <summary class="card-title connect-card-title">Conectar una tienda</summary>
-          <div class="card-body connect-row">
+          <div class="card-body connect-picker">
+            <p class="connect-help">¿Dónde está tu tienda?</p>
+            <div class="connect-picker-options">
+              <button type="button" class="btn btn-outline" data-platform-pick="tiendanube" aria-pressed="false">Tiendanube</button>
+              <button type="button" class="btn btn-outline" data-platform-pick="shopify" aria-pressed="false">Shopify</button>
+              <button type="button" class="btn btn-outline" data-platform-pick="woocommerce" aria-pressed="false">WooCommerce</button>
+              <button type="button" class="btn btn-outline" data-platform-pick="vtex" aria-pressed="false">VTEX</button>
+              <button type="button" class="btn btn-outline" data-platform-pick="magento" aria-pressed="false">Magento</button>
+              <button type="button" class="btn btn-outline" data-platform-pick="empretienda" aria-pressed="false">Empretienda</button>
+            </div>
+          </div>
+          <div class="card-body connect-row" data-platform="tiendanube" hidden>
             <div>
               <p class="connect-platform">Tiendanube</p>
               <p class="connect-help">
@@ -82,7 +93,7 @@
               Conectar Tiendanube
             </button>
           </div>
-          <div class="card-body connect-row">
+          <div class="card-body connect-row" data-platform="shopify" hidden>
             <div>
               <p class="connect-platform">Shopify</p>
               <p class="connect-help">
@@ -108,7 +119,7 @@
                su propio Dev Dashboard (POST shopify/connect-manual/). Usa el
                dominio de arriba. Los permisos listados tienen que coincidir con
                SHOPIFY_SCOPES del backend. -->
-          <details class="card-body woo-manual" id="shopifyManual">
+          <details class="card-body woo-manual" id="shopifyManual" data-platform="shopify" hidden>
             <summary>Conectar con tu propia app de Shopify</summary>
             <p class="connect-help">
               Para cuando no pod&eacute;s instalar nuestra app. As&iacute; tambi&eacute;n entran los
@@ -134,7 +145,7 @@
               <button type="submit" class="btn btn-primary" id="shopifyManualBtn">Conectar con mi app</button>
             </form>
           </details>
-          <div class="card-body connect-row">
+          <div class="card-body connect-row" data-platform="woocommerce" hidden>
             <div>
               <p class="connect-platform">WooCommerce</p>
               <p class="connect-help">
@@ -160,7 +171,7 @@
           <!-- Camino manual de WooCommerce: claves de la API pegadas a mano
                (POST woocommerce/connect-manual/). Usa la misma dirección de
                arriba. -->
-          <details class="card-body woo-manual" id="wooManual">
+          <details class="card-body woo-manual" id="wooManual" data-platform="woocommerce" hidden>
             <summary>Cargar las claves de la API a mano</summary>
             <ol class="connect-help woo-steps">
               <li>En tu WordPress, and&aacute; a <strong>WooCommerce &rarr; Ajustes &rarr; Avanzado &rarr; API REST</strong>.</li>
@@ -183,7 +194,7 @@
                clave de aplicación con un rol propio y la pega
                (POST vtex/connect-manual/). Los recursos listados son los que
                pide apps/integrations/providers/vtex.py. -->
-          <details class="card-body woo-manual" id="vtexConnect">
+          <details class="card-body woo-manual connect-solo" id="vtexConnect" data-platform="vtex" open hidden>
             <summary class="connect-platform">VTEX</summary>
             <p class="connect-help">
               VTEX se conecta con una <strong>clave de aplicaci&oacute;n</strong> de tu cuenta. Con ella entran
@@ -214,7 +225,7 @@
           <!-- Magento (fase 1, JS: assets/js/magento/tiendas_magento.js): las credenciales de una Integración del admin
                (POST magento/connect-manual/). Los permisos listados son los que
                usa apps/integrations/providers/magento.py. -->
-          <details class="card-body woo-manual" id="magentoConnect">
+          <details class="card-body woo-manual connect-solo" id="magentoConnect" data-platform="magento" open hidden>
             <summary class="connect-platform">Magento</summary>
             <p class="connect-help">
               Magento se conecta con una <strong>Integraci&oacute;n</strong> de tu admin. Los pedidos entran
@@ -255,7 +266,7 @@
                tiene API, así que solo se agrega la tienda (POST
                empretienda/connect/) y sus ventas se importan con su planilla
                en importar_empretienda.html. -->
-          <details class="card-body woo-manual" id="empretiendaConnect">
+          <details class="card-body woo-manual connect-solo" id="empretiendaConnect" data-platform="empretienda" open hidden>
             <summary class="connect-platform">Empretienda</summary>
             <p class="connect-help">
               Empretienda no permite que otra app lea sus ventas, así que no se conecta sola: agreg&aacute;

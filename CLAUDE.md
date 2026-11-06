@@ -2148,10 +2148,15 @@ and the email moved under the name (no Email column; email order stays in "Orden
   `topbar.js` appends " · Human Log Rótulos" to the tab title; the admin sidebar says "Rótulos / Administración";
   mail subjects and the default sender say "Human Log · Rótulos". Since the 2026-10-29 redesign the app accent IS the
   logo green (see "Design system").
+- **Store connection picker (2026-11-06)**: `tiendas.html` first asks where the store is (`data-platform-pick` buttons,
+  `tiendas.js`) and shows only that platform's `[data-platform]` blocks. A new platform needs a button and the attribute.
+- **Manual orders (2026-11-06)**: a merchant loads one with "+ Nuevo pedido" in `pedidos.html`. `importar.html` shows
+  "Alta manual" only with `orders.create_for_others` (admin) and is otherwise just "Importar pedidos".
 - **The editor's default fields are markers (`{{destinatario}}`…), never sample data (2026-11-06)**: whatever is in
   them is saved as the design's text and printed on every label. They used to read "María Gómez"/"Av. Siempre Viva
-  742", so a template started "En blanco" put those on real parcels. The "Ver con datos de ejemplo" toggle shows
-  samples without saving them.
+  742", so a template started "En blanco" put those on real parcels. The "Ver con datos de ejemplo" toggle (on by default,
+  remembers when turned off) shows samples without saving them. A new template, once saved, reopens as
+  `?template=<id>`, so saving again updates it instead of creating a copy.
 - `editor_rotulos.html?nueva=plantilla` (reached from the gallery, `galeria_plantillas.html`) titles the page "Nueva plantilla" and its
   main button saves a template ("Guardar plantilla", same path as "Guardar como plantilla"); plain
   `editor_rotulos.html` still saves a `Label`.

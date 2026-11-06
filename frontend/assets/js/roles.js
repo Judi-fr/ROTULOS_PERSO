@@ -565,6 +565,12 @@ window.addEventListener("beforeunload", (event) => {
 // Pestañas: Roles de la plataforma / Perfiles de los comercios. La segunda la
 // carga roles_perfiles.js (window.TeamProfilesTab) la primera vez que se abre.
 function showRolesTab(name) {
+  // El aviso de una acción no sigue visible al pasar a otra pestaña.
+  const message = document.getElementById("pageMessage");
+  if (message) {
+    message.hidden = true;
+    message.style.display = "none";
+  }
   document.querySelectorAll(".reports-tab").forEach((tab) => {
     const active = tab.dataset.tab === name;
     tab.classList.toggle("active", active);

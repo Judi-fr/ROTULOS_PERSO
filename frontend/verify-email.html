@@ -30,9 +30,9 @@
         <div class="access-card">
         <div class="access-brand"><img src="assets/images/humanlog-logo.png" alt="Human Log"><span>Rótulos</span></div>
           <h1>Confirmar tu email</h1>
-          <p class="access-lead">Estamos verificando el enlace que abriste desde tu correo.</p>
+          <p class="access-lead" id="verifyLead">Estamos verificando el enlace que abriste desde tu correo.</p>
           <p id="verifyMsg" class="page-message" role="status" hidden></p>
-          <a class="access-submit" href="index.html">Ir al login</a>
+          <a class="access-submit" id="verifyNext" href="index.html">Ir al login</a>
         </div>
       </main>
     </div>
@@ -48,7 +48,15 @@
         msg.textContent = text;
         msg.className = `page-message ${ok ? "success" : "error"}`;
         msg.hidden = false;
+        document.getElementById("verifyLead").hidden = true;
       };
+
+      // Con la sesión abierta no hace falta volver a entrar.
+      if (localStorage.getItem("user")) {
+        const next = document.getElementById("verifyNext");
+        next.href = "dashboard.html";
+        next.textContent = "Ir al panel";
+      }
 
       const token = new URLSearchParams(window.location.search).get("token") || "";
 

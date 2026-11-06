@@ -646,6 +646,25 @@ async function init() {
   await loadStores();
 }
 
+// Primero se elige la plataforma y aparecen solo sus pasos: las seis juntas, con
+// sus instrucciones técnicas a la vista, abrumaban a quien tiene una sola tienda.
+document.querySelectorAll("[data-platform-pick]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const chosen = button.dataset.platformPick;
+    document.querySelectorAll("[data-platform-pick]").forEach((other) => {
+      const active = other === button;
+      other.setAttribute("aria-pressed", active ? "true" : "false");
+      other.classList.toggle("btn-primary", active);
+      other.classList.toggle("btn-outline", !active);
+    });
+    document.querySelectorAll("[data-platform]").forEach((section) => {
+      section.hidden = section.dataset.platform !== chosen;
+    });
+    const message = document.getElementById("connectMessage");
+    if (message) message.hidden = true;
+  });
+});
+
 document.getElementById("refreshStoresBtn")?.addEventListener("click", loadStores);
 // Se marca con el clic en el título y no con el evento "toggle": ese evento
 // también salta cuando lo abre o cierra setConnectCardOpen.

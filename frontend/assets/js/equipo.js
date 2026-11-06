@@ -463,7 +463,18 @@ function tabAllowed(tab) {
   return !perms.length || perms.some((key) => sessionHasPermission(key));
 }
 
+// El aviso de una acción no sigue visible al pasar a otra pestaña.
+let shownTeamTab = null;
+
 function showTeamTab(name) {
+  if (shownTeamTab && shownTeamTab !== name) {
+    const message = document.getElementById("pageMessage");
+    if (message) {
+      message.hidden = true;
+      message.style.display = "none";
+    }
+  }
+  shownTeamTab = name;
   const all = [...document.querySelectorAll(".app-tab")];
   all.forEach((tab) => {
     tab.hidden = !tabAllowed(tab);

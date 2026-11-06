@@ -36,6 +36,8 @@ const FIELD_LABELS = {
   border: "Recuadro",
   rules: "Reglas según los datos del envío",
   locked: "Elementos bloqueados",
+  shapes: "Formas e imágenes",
+  palette: "Colores",
 };
 
 const PROP_LABELS = {
@@ -48,6 +50,23 @@ const PROP_LABELS = {
   width: "ancho",
   hide_if_empty: "ocultar si está vacío",
   shrink_to_fit: "achicar para que entre",
+  font_family: "tipografía",
+  italic: "cursiva",
+  uppercase: "mayúsculas",
+  letter_spacing: "espacio entre letras",
+  max_lines: "cantidad de líneas",
+  line_height: "espacio entre líneas",
+  color: "color",
+  prefix: "etiqueta",
+  prefix_bold: "etiqueta en negrita",
+  invert: "invertido",
+  frame: "recuadro",
+  rotate: "rotación",
+  size: "tamaño",
+  height: "alto",
+  data: "dato",
+  symbology: "tipo de código",
+  show_text: "mostrar el número",
 };
 
 function sameValue(a, b) {
@@ -86,7 +105,7 @@ function diffVersions(older, newer) {
 
 function describeChange(before, after) {
   const isPlainObject = (value) => value && typeof value === "object" && !Array.isArray(value);
-  if (!isPlainObject(before) || !isPlainObject(after)) return "cambió";
+  if (!isPlainObject(before) || !isPlainObject(after)) return "";
   const props = [...new Set([...Object.keys(before), ...Object.keys(after)])]
     .filter((prop) => !sameValue(before[prop], after[prop]))
     .map((prop) => PROP_LABELS[prop] || prop);

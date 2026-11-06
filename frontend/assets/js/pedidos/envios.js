@@ -199,7 +199,12 @@ window.OrderShipping = (() => {
     if (shipment) {
       const state = document.createElement("span");
       state.className = `shipment-state ${shipment.status}`;
-      state.textContent = shipment.carrier_status ? `${shipment.status_label} — ${shipment.carrier_status}` : shipment.status_label;
+      // El texto del transportista suma solo si dice algo más ("Entregado — Entregado"),
+      // y algunos vienen como código pegado ("EnvioDespachado").
+      const carrierText = (shipment.carrier_status || "").replace(/([a-záéíóúñ])([A-ZÁÉÍÓÚÑ])/g, "$1 $2").trim();
+      state.textContent = carrierText && carrierText.toLowerCase() !== String(shipment.status_label).toLowerCase()
+        ? `${shipment.status_label} — ${carrierText}`
+        : shipment.status_label;
       line.append(" ", state);
     }
     return line;

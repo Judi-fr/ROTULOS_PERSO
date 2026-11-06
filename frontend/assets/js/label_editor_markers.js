@@ -132,11 +132,13 @@
   const SAMPLES_PREF_KEY = "labelEditorSamples";
   const sampleHooks = { onChange: null };
   let sampleValues = null;
-  let samplesOn = false;
+  // Prendido salvo que el comerciante lo haya apagado: un {{marcador}} en el
+  // lienzo no le dice cómo va a quedar su rótulo.
+  let samplesOn = true;
   try {
-    samplesOn = localStorage.getItem(SAMPLES_PREF_KEY) === "1";
+    samplesOn = localStorage.getItem(SAMPLES_PREF_KEY) !== "0";
   } catch (err) {
-    samplesOn = false;
+    samplesOn = true;
   }
 
   let samplesSuspended = false;

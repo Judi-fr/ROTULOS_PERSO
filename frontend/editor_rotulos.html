@@ -427,6 +427,9 @@
       .tool-group > button {
         width: 100%;
       }
+      .design-exports { margin-top: 10px; font-size: var(--text-sm); color: var(--muted); }
+      .design-exports summary { cursor: pointer; }
+      .design-exports .button-stack { margin-top: 8px; }
       .button-stack {
         grid-template-columns: 1fr;
         gap: 8px;
@@ -1682,20 +1685,22 @@
             <h2 class="panel-title">Guardar y exportar</h2>
             <div class="tool-group button-stack">
             <button id="saveAsTemplateBtn">Guardar como plantilla</button>
-            <button id="exportPngBtn">Exportar PNG</button>
-            <button id="exportPdfBtn">Exportar PDF</button>
-            <!-- Vista previa rápida (arriba) vs. rótulo definitivo (acá): el
-                 PNG/PDF de arriba los arma html2canvas sobre lo que se ve en
-                 pantalla; este lo arma el backend con ReportLab a partir de
-                 los datos guardados, es el que va a imprenta. Por eso exige
-                 que el rótulo ya esté guardado (necesita un id). -->
-            <button id="exportServerPdfBtn" title="Guardá el rótulo primero para poder descargar el PDF del servidor">
-              Descargar PDF (servidor)
-            </button>
-            <button id="printBtn" title="Guardá el rótulo primero para poder imprimirlo">
-              Imprimir
-            </button>
+            <!-- El rótulo definitivo lo arma el backend a partir de los datos
+                 guardados: por eso estos dos solo aparecen con el rótulo ya
+                 guardado (necesitan un id). -->
+            <button id="exportServerPdfBtn">Descargar PDF</button>
+            <button id="printBtn">Imprimir</button>
             </div>
+            <p class="hint" id="outputHint" hidden></p>
+            <!-- Una imagen del diseño tal como se ve, con los marcadores: no es el
+                 rótulo de un pedido. -->
+            <details class="design-exports">
+              <summary>Bajar una imagen del diseño</summary>
+              <div class="tool-group button-stack">
+                <button id="exportPngBtn">Imagen (PNG)</button>
+                <button id="exportPdfBtn">PDF del diseño</button>
+              </div>
+            </details>
           </section>
         </aside>
       </div>
@@ -2489,8 +2494,17 @@
       // El PDF del servidor (y la impresión, que lo reusa) lee el rótulo
       // YA guardado (necesita un id): solo se habilitan editando uno
       // existente, nunca antes del primer guardado.
-      exportServerPdfBtn.disabled = !editingId;
-      printBtn.disabled = !editingId;
+      exportServerPdfBtn.hidden = !editingId;
+      printBtn.hidden = !editingId;
+      const outputHint = document.getElementById("outputHint");
+      if (!editingId) {
+        outputHint.hidden = false;
+        outputHint.textContent = params.get("nueva") === "plantilla"
+          ? "Para imprimir con esta plantilla, guardala y elegila en Imprimir rótulos."
+          : params.get("template")
+            ? "Para imprimir con esta plantilla, elegila en Imprimir rótulos."
+            : "Guardá el rótulo para poder descargarlo o imprimirlo.";
+      }
 
       exportServerPdfBtn.addEventListener("click", async () => {
         if (!editingId) return;
@@ -2534,7 +2548,7 @@
         if (!name) return;
         saveAsTemplateBtn.disabled = true;
         try {
-          await createTemplate({
+          const created = await createTemplate({
             nombre: name.trim(),
             size: {
               widthCm: parseFloat(document.getElementById("widthCm").value) || 10,
@@ -2542,6 +2556,12 @@
             },
             fields: collectFields(),
           });
+          // Armando una plantilla nueva, seguir acá y volver a guardar creaba una
+          // copia: se pasa a editar la que se acaba de crear.
+          if (params.get("nueva") === "plantilla" && created?.id) {
+            window.location.replace(`editor_rotulos.html?template=${created.id}&guardada=1`);
+            return;
+          }
           showStatus(`Plantilla "${name.trim()}" guardada.`);
         } catch (err) {
           if (err.isSessionExpired) return;
@@ -2567,6 +2587,11 @@
         labelSaveBtn.after(templateSaveBtn);
         labelSaveBtn.style.display = "none";
         saveAsTemplateBtn.style.display = "none";
+      }
+
+      if (params.get("guardada")) {
+        showStatus("Plantilla guardada. Lo que cambies ahora se guarda en esta misma.");
+        history.replaceState(null, "", `editor_rotulos.html?template=${params.get("template")}`);
       }
 
       // --- Guardar el diseño como versión nueva de la plantilla abierta ----
