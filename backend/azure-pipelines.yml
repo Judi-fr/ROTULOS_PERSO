@@ -27,9 +27,6 @@ pool:
 variables:
   PYTHON_VERSION: "3.13"
   PIP_CACHE_DIR: $(Pipeline.Workspace)/.pip
-  # Lo único obligatorio de los settings sin .env (config/settings/base.py).
-  # Es solo para correr los tests: nada de esto llega a un servidor.
-  SECRET_KEY: ci-solo-para-tests-no-es-un-secreto
   DJANGO_SETTINGS_MODULE: config.settings.dev
   LOG_LEVEL: WARNING
 
@@ -66,9 +63,15 @@ stages:
             displayName: Lint (flake8)
 
           # Un modelo cambiado sin su migración rompe el deploy, no los tests.
+          # SECRET_KEY va en cada paso (`env`): como variable del pipeline no
+          # llegó al proceso en la primera corrida real (KeyError). Es lo único
+          # obligatorio de los settings sin .env y solo sirve para estos pasos:
+          # nada de esto llega a un servidor.
           - script: python manage.py makemigrations --check --dry-run
             workingDirectory: backend
             displayName: Migraciones al día
+            env:
+              SECRET_KEY: ci-solo-para-tests-no-es-un-secreto
 
           # set -e: un paso de script termina con el código del ÚLTIMO
           # comando, y sin esto un test fallido quedaba tapado por el echo.
@@ -79,6 +82,8 @@ stages:
               echo "Cobertura total: $(coverage report --format=total)%"
             workingDirectory: backend
             displayName: Tests con cobertura
+            env:
+              SECRET_KEY: ci-solo-para-tests-no-es-un-secreto
 
           - task: PublishCodeCoverageResults@2
             condition: succeededOrFailed()
