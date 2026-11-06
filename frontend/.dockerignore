@@ -14,5 +14,7 @@ Dockerfile
 # version_assets.sh, que el Dockerfile corre y después borra.
 tools/*
 !tools/version_assets.sh
+# Las pruebas de navegador tampoco.
+e2e/
 # El pipeline de CI no se sirve.
 azure-pipelines.yml

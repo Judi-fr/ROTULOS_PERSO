@@ -1,0 +1,7 @@
+{
+  "name": "rotulos-e2e",
+  "private": true,
+  "description": "Pruebas de navegador: hacen clic de verdad en la app. Ver README.md.",
+  "scripts": { "test": "playwright test" },
+  "devDependencies": { "@playwright/test": "1.65.0" }
+}

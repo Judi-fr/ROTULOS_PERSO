@@ -1,7 +1,8 @@
 # Pipeline del frontend (T#178-180). No hay build ni framework (HTML, CSS y
 # JS planos), así que "build" es: chequear que todo compile y que no haya
 # enlaces rotos (tools/check_frontend.mjs), armar la imagen de nginx y
-# publicar los archivos estáticos.
+# publicar los archivos estáticos. Antes corre las pruebas de navegador (e2e/),
+# que usan también la API: por eso se dispara con cambios del backend.
 #
 # Es solo CI: NO despliega (ver docs/despliegue.md).
 #
@@ -12,13 +13,13 @@ trigger:
   branches:
     include: [master, marco]
   paths:
-    include: [frontend/*]
+    include: [frontend/*, backend/*]
 
 pr:
   branches:
     include: [master, marco]
   paths:
-    include: [frontend/*]
+    include: [frontend/*, backend/*]
 
 pool:
   vmImage: ubuntu-latest
@@ -38,9 +39,50 @@ stages:
           - script: node frontend/tools/check_frontend.mjs
             displayName: JS que compila y enlaces que existen
 
+  - stage: Browser
+    displayName: Pruebas de navegador
+    dependsOn: Check
+    jobs:
+      - job: e2e
+        displayName: Playwright
+        timeoutInMinutes: 30
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: "22.x"
+            displayName: Node 22
+
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: "3.13"
+            displayName: Python 3.13
+
+          - script: pip install -r backend/requirements-dev.txt
+            displayName: Dependencias de la API
+
+          - script: |
+              set -euo pipefail
+              cd frontend/e2e
+              npm ci
+              npx playwright install --with-deps chromium
+            displayName: Playwright y Chromium
+
+          - script: |
+              set -euo pipefail
+              cd frontend/e2e
+              E2E_PYTHON=python npm test
+            displayName: Hacer clic en la app
+
+          - task: PublishPipelineArtifact@1
+            condition: failed()
+            inputs:
+              targetPath: frontend/e2e
+              artifact: e2e-fallas
+            displayName: Publicar qué falló (informe y registro de la API)
+
   - stage: Build
     displayName: Artefactos
-    dependsOn: Check
+    dependsOn: [Check, Browser]
     condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
     jobs:
       - job: artifacts
@@ -52,7 +94,7 @@ stages:
               set -euo pipefail
               mkdir -p $(Build.ArtifactStagingDirectory)/web
               tar -C frontend \
-                  --exclude=assets/apis --exclude=tools \
+                  --exclude=assets/apis --exclude=tools --exclude=e2e \
                   --exclude=Dockerfile --exclude=nginx.conf --exclude=docker-entrypoint.sh \
                   --exclude=.dockerignore --exclude=azure-pipelines.yml --exclude='*.md' \
                   -cf - . | tar -C $(Build.ArtifactStagingDirectory)/web -xf -

@@ -39,3 +39,10 @@ backend/apps/printing/agent/*.spec
 
 # Backups de producción (scripts/backup.sh)
 backups/
+
+# Pruebas de navegador
+frontend/e2e/node_modules/
+frontend/e2e/test-results/
+frontend/e2e/playwright-report/
+frontend/e2e/.auth-*.json
+frontend/e2e/backend.log

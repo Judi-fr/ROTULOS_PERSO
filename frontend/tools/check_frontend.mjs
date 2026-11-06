@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // El prototipo PHP (ver CLAUDE.md): no es parte de la app ni entra a la imagen.
-const SKIP_DIRS = new Set(["apis", "node_modules", "tools"]);
+const SKIP_DIRS = new Set(["apis", "e2e", "node_modules", "tools"]);
 // Restos del prototipo de Google que se conservan a propósito (CLAUDE.md).
 const SKIP_HTML = new Set(["index_test.html"]);
 
