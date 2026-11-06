@@ -109,10 +109,14 @@ test("una dirección vieja del editor de rótulos abre una plantilla nueva", asy
   await expect(page.locator("h1")).toHaveText("Nueva plantilla");
 });
 
-test("la galería ofrece la estándar una sola vez, como De cero", async ({ page }) => {
+test("la galería ofrece De cero y también la predeterminada para elegirla", async ({ page }) => {
   await page.goto("/galeria_plantillas.html");
   const first = page.locator(".gallery-card").first();
   await expect(first).toContainText("De cero");
   await expect(first).toHaveAttribute("href", "editor_rotulos.html?nueva=plantilla");
-  await expect(page.locator(".gallery-name", { hasText: "Etiqueta de envío estándar" })).toHaveCount(0);
+  const standard = page.locator(".gallery-card", { hasText: "Etiqueta de envío estándar" });
+  await expect(standard).toHaveCount(1);
+  await standard.click();
+  await page.waitForURL(/nueva=plantilla&template=\d+/);
+  await expect(page.locator(".label")).toContainText("Enviar a:");
 });

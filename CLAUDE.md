@@ -2162,8 +2162,8 @@ and the email moved under the name (no Email column; email order stays in "Orden
 - `editor_rotulos.html?nueva=plantilla` (reached from the gallery, `galeria_plantillas.html`) titles the page "Nueva plantilla" and its
   main button saves a template ("Guardar plantilla"); with no `template`/`nueva`/`importacion` it redirects there, since the
   editor only edits templates. **Starting from scratch opens "Etiqueta de envío estándar"** (2026-11-06, user's ask): found by
-  name in `?gallery=1`, saved as the business's own copy; the gallery shows it once, as the "De cero" card. Both names are
-  pinned in `test_frontend_contracts.py`.
+  name in `?gallery=1`, saved as the business's own copy; it is ALSO a normal card of the gallery, selectable like any other (the user asked for
+  both). The name is pinned in `test_frontend_contracts.py`.
 
 ## Reglas
 

@@ -12,8 +12,6 @@
   const API_BASE = window.APP_CONFIG.API_BASE;
   const grid = document.getElementById("galleryGrid");
   const EDITOR_URL = "editor_rotulos.html?nueva=plantilla";
-  // Empezar de cero ES empezar con esta (el editor la abre solo): una sola tarjeta.
-  const STANDARD_TEMPLATE_NAME = "Etiqueta de envío estándar";
 
   function item(index) {
     const li = document.createElement("li");
@@ -22,31 +20,22 @@
     return li;
   }
 
-  function fromScratchCard(standard) {
+  // Sin plantilla elegida, el editor abre la predeterminada (loadStandardTemplate).
+  function fromScratchCard() {
     const li = item(0);
     const link = document.createElement("a");
     link.className = "gallery-card gallery-card-blank";
     link.href = EDITOR_URL;
-    const sheet = document.createElement("span");
-    sheet.className = "gallery-sheet";
-    if (standard?.preview) {
-      const img = document.createElement("img");
-      img.src = standard.preview;
-      img.alt = "Rótulo de muestra con la etiqueta de envío estándar";
-      img.loading = "lazy";
-      sheet.appendChild(img);
-    } else {
-      sheet.classList.add("gallery-sheet-blank");
-      sheet.setAttribute("aria-hidden", "true");
-      sheet.innerHTML = '<i class="ph ph-plus" aria-hidden="true"></i>';
-    }
+    link.innerHTML =
+      '<span class="gallery-sheet gallery-sheet-blank" aria-hidden="true">' +
+      '<i class="ph ph-plus" aria-hidden="true"></i></span>';
     const name = document.createElement("span");
     name.className = "gallery-name";
     name.textContent = "De cero";
     const text = document.createElement("span");
     text.className = "gallery-text";
-    text.textContent = "Arrancá con la etiqueta de envío estándar y cambiá lo que quieras.";
-    link.append(sheet, name, text);
+    text.textContent = "Arranca con la plantilla predeterminada y cambiás lo que quieras.";
+    link.append(name, text);
     li.appendChild(link);
     return li;
   }
@@ -98,10 +87,8 @@
       if (!response.ok) throw new Error(getErrorMessage(data, "No se pudieron cargar los diseños."));
       const templates = Array.isArray(data) ? data : data.results || [];
       grid.innerHTML = "";
-      grid.appendChild(fromScratchCard(templates.find((t) => t.name === STANDARD_TEMPLATE_NAME)));
-      templates
-        .filter((t) => t.name !== STANDARD_TEMPLATE_NAME)
-        .forEach((template, index) => grid.appendChild(templateCard(template, index + 1)));
+      grid.appendChild(fromScratchCard());
+      templates.forEach((template, index) => grid.appendChild(templateCard(template, index + 1)));
       // Sin diseños en la galería (una base sin migrar) igual se puede
       // empezar de cero: se avisa, no se bloquea.
       if (!templates.length) showMessage("Todavía no hay diseños para elegir. Podés empezar de cero.");

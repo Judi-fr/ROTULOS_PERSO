@@ -21,9 +21,8 @@ class StandardTemplateNameTests(SimpleTestCase):
         # error, solo deja al editor con los campos por defecto.
         from apps.labels.gallery import STANDARD_TEMPLATE_NAME
 
-        for name in ("editor_rotulos.html", "assets/js/galeria_plantillas.js"):
-            source = (FRONTEND / name).read_text(encoding="utf-8")
-            self.assertIn(f'STANDARD_TEMPLATE_NAME = "{STANDARD_TEMPLATE_NAME}"', source, name)
+        source = (FRONTEND / "editor_rotulos.html").read_text(encoding="utf-8")
+        self.assertIn(f'STANDARD_TEMPLATE_NAME = "{STANDARD_TEMPLATE_NAME}"', source)
 
 
 class PermissionKeysTests(SimpleTestCase):
