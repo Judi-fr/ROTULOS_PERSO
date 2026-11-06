@@ -218,10 +218,17 @@ the repo is on GitHub, so each is created in Azure DevOps as "Existing Azure Pip
 nothing is deployed** and there is no image registry, so images are published as pipeline artifacts
 (`docker save | gzip`, tagged with the commit and `latest`; `docker load` on any machine). In a PR only the
 checks run.
+**Registered in Azure DevOps 2026-11-06** as `backend-ci`, `frontend-ci` and `deploy-prod` (the last never run), on
+branch `marco`, through the OAuth connection "Narwini". **They don't trigger by themselves**: that account has only
+write access to `Judi-fr/ROTULOS_PERSO`, ADO could not create the webhook, so they were created through the REST API
+with `triggers: []` and are queued by hand. The YAML `trigger:`/`pr:` blocks only take effect once someone with admin
+access on the repo authorizes the connection or installs the Azure Pipelines GitHub App.
 - `backend/azure-pipelines.yml`: Python 3.13, `pip install -r requirements-dev.txt`, `flake8`,
   `makemigrations --check`, `coverage run manage.py test` → `coverage.xml` published, then the API image.
-  The agent has no `.env`: only `SECRET_KEY`, `DJANGO_SETTINGS_MODULE=config.settings.dev` and `LOG_LEVEL`
-  come from the pipeline, and the whole suite was run that way (a copy without `.env`). SQLite, like local.
+  The agent has no `.env`: `DJANGO_SETTINGS_MODULE=config.settings.dev` and `LOG_LEVEL` come from the pipeline, and
+  **`SECRET_KEY` is exported inside each script**: neither `variables:` nor the step's `env:` reached the process in
+  ADO (`KeyError`, cause not determined, though the compiled YAML has it). First green run: 1795 tests, 91 %
+  coverage, ~21 min end to end. SQLite, like local.
 - **Lint = real errors only** (`.flake8`: `E9` + pyflakes `F`, tests may keep unused imports/locals). Not
   black/pycodestyle: the code never followed a formatter and enforcing one would rewrite ~300 files at once.
 - `frontend/azure-pipelines.yml`: `tools/check_frontend.mjs` (no dependencies: every `assets/**/*.js` and
@@ -339,8 +346,8 @@ exact midnight. It reads `.get()`, so it takes query params or a JSON body dict 
   `{access, refresh, user: {..., role, permissions}}` shape.
 - Refresh tokens rotate and get blacklisted on rotation/logout (`SIMPLE_JWT` + `token_blacklist` app);
   password reset revokes all outstanding refresh tokens.
-- Password rules (`validate_password_strength`, `auth_views.py`): 6+ chars, one uppercase, one digit, plus
-  Django's own validators — enforced on register, admin-create, change-password, and reset-confirm.
+- Password rules (`validate_password_strength`, `auth_views.py`): 8+ chars (Django's own minimum, so the screens say 8), one uppercase, one digit, plus
+  Django's validators — enforced on register, admin-create, change-password, and reset-confirm.
 - **Login lockout is progressive (`LoginLockout`, 2026-10-30, migration `accounts/0036`)**: 3 wrong passwords in a row
   lock the account (423) for 1 minute, and each further lockout doubles it (1, 2, 4… 32 min, capped at 1 hour).
   `lockout_count` survives a lockout expiring; only a successful login or the admin's `users/<id>/unlock/` resets it.
@@ -1912,6 +1919,9 @@ and the email moved under the name (no Email column; email order stays in "Orden
   undone; the browser asks before leaving with one pending). A status change pushes to the store and a cancelled
   order can't come back, so not sending is the only honest undo. Used by `estado_pedidos.html` (6 s, 10 s to
   cancel; its confirm is gone), the pickup manifest's "marcar como despachados" and the scan screen.
+- **Page without access (2026-11-06)**: `<body data-requires="key,key">` (any one is enough) + `applyPageAccess` in
+  `utils.js` show "No tenés acceso a esta pantalla" instead of an empty page or forms that later fail (reached by
+  a saved address); the backend still decides. A new merchant page needs the attribute.
 - `assets/js/topbar.js` — the shared top bar for the non-admin pages. Since 2026-10-26: "Panel" (home) and the
   business switcher on the left, the page's `data-links` in the middle as light links, and an account menu on the
   right (avatar → Mi cuenta, Mi actividad, Ayuda, Cerrar sesión). A link to `dashboard.html` or to something in the
@@ -2138,6 +2148,10 @@ and the email moved under the name (no Email column; email order stays in "Orden
   `topbar.js` appends " · Human Log Rótulos" to the tab title; the admin sidebar says "Rótulos / Administración";
   mail subjects and the default sender say "Human Log · Rótulos". Since the 2026-10-29 redesign the app accent IS the
   logo green (see "Design system").
+- **The editor's default fields are markers (`{{destinatario}}`…), never sample data (2026-11-06)**: whatever is in
+  them is saved as the design's text and printed on every label. They used to read "María Gómez"/"Av. Siempre Viva
+  742", so a template started "En blanco" put those on real parcels. The "Ver con datos de ejemplo" toggle shows
+  samples without saving them.
 - `editor_rotulos.html?nueva=plantilla` (reached from the gallery, `galeria_plantillas.html`) titles the page "Nueva plantilla" and its
   main button saves a template ("Guardar plantilla", same path as "Guardar como plantilla"); plain
   `editor_rotulos.html` still saves a `Label`.
@@ -2155,7 +2169,7 @@ and the email moved under the name (no Email column; email order stays in "Orden
   las páginas grandes existentes sin pedirlo.
 - **Funciones compartidas del frontend van en `assets/js/utils.js`** — no copiarlas en cada página.
 - Después de crear una migración, correr `python manage.py migrate` sobre la base local además de probarla.
-- Nunca ejecutar `git pull`, `git push` ni `git commit`. Solo copia local.
+- `git commit` y `git push` solo en la rama `marco` (autorizado por el usuario, 2026-11-06). Nunca a otra rama, y nunca `git pull` ni merges a `master`.
 - Nunca modificar tests para que pasen: corregir la implementación.
 - Nunca usar URLs placeholder. La API real es `http://127.0.0.1:8000/api/v1/`.
 - No borrar archivos de Google/OAuth (`google.js`, `google_test.js`, `access.php`, `oauth-test/`,

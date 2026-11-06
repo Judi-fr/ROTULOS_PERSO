@@ -22,7 +22,7 @@ from rest_framework.generics import ListAPIView
 from rest_framework.views import APIView
 
 from apps.audit.serializers import AuditLogSerializer
-from apps.audit.services import record
+from apps.audit.services import clean_target_repr, record
 from apps.audit.views import AuditLogPagination, filter_logs
 from apps.integrations.models import StoreConnection
 
@@ -451,6 +451,8 @@ class TeamActivitySerializer(AuditLogSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
         data["actor"] = self.context.get("people", {}).get(instance.actor_id)
+        # Las filas ya guardadas pueden traer el usuario interno del comercio.
+        data["target_repr"] = clean_target_repr(data.get("target_repr"))
         return data
 
 

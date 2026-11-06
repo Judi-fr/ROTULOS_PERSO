@@ -4,6 +4,7 @@
 from decimal import Decimal
 
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 
 from apps.common.catalogs import CatalogViewSet
 
@@ -17,6 +18,7 @@ class LabelSizeSerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
         # Los mismos límites que una plantilla (LabelTemplateSerializer).
         extra_kwargs = {
+            "name": {"validators": [UniqueValidator(LabelSize.objects.all(), message="Ya hay un tamaño con ese nombre.")]},
             "width_cm": {"min_value": Decimal("5"), "max_value": Decimal("30")},
             "height_cm": {"min_value": Decimal("5"), "max_value": Decimal("40")},
         }

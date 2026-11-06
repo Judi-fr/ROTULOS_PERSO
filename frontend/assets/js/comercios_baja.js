@@ -1,5 +1,5 @@
 // Comercios dados de baja (comercios_baja.html, admin con users.view): los
-// que su dueño dio de baja desde Mi cuenta. Reactivar (users.edit) se lo
+// que su dueño dio de baja desde Mi comercio. Reactivar (users.edit) se lo
 // devuelve al dueño, si el comercio que tiene ahora está vacío.
 
 const API_BASE = window.APP_CONFIG.API_BASE;
@@ -15,7 +15,7 @@ function renderList(teams) {
   if (!teams.length) {
     list.innerHTML = appEmptyState({
       title: "No hay comercios dados de baja",
-      text: "Cuando un dueño dé de baja su comercio desde Mi cuenta, va a aparecer acá.",
+      text: "Cuando un dueño dé de baja su comercio desde Mi comercio, va a aparecer acá.",
     });
     return;
   }

@@ -6,9 +6,10 @@ import re
 import unittest
 from importlib import import_module
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APITestCase
 
 from apps.accounts.tests.team_helpers import new_business
@@ -117,3 +118,15 @@ class GalleryApiTests(APITestCase):
         }, format="json")
         self.assertEqual(response.status_code, 201, response.data)
         self.assertIsNone(LabelTemplate.objects.get(pk=response.data["id"]).gallery_order)
+
+
+class EditorDefaultsTests(SimpleTestCase):
+    def test_el_editor_no_arranca_con_datos_inventados(self):
+        # Los textos por defecto se guardan tal cual en el diseño: con un nombre
+        # de ejemplo, cada rótulo real salía con ese destinatario y esa dirección.
+        html = (settings.BASE_DIR.parent / "frontend" / "editor_rotulos.html").read_text(encoding="utf-8")
+        canvas = html[html.index('data-field="remitente"'):html.index('id="pedidoField"') + 200]
+        for invented in ("Juan Pérez", "María Gómez", "Siempre Viva", "000123"):
+            self.assertNotIn(invented, canvas)
+        for marker in ("remitente", "destinatario", "domicilio", "cp", "localidad", "pedido"):
+            self.assertIn("{{%s}}" % marker, canvas)

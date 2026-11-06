@@ -9,6 +9,7 @@ porque una falla acá no puede tumbar un login, un alta de usuario, etc.
 from __future__ import annotations
 
 import logging
+import re
 
 from django.db import transaction
 
@@ -42,6 +43,18 @@ def _team_id(actor, target):
     if isinstance(target, Team):
         return target.pk
     return audit_team_id(actor)
+
+
+INTERNAL_USER_IN_TEXT = re.compile(r"\s*\([^()]*@datos\.invalid\)")
+
+
+def clean_target_repr(text):
+    """Saca del texto el usuario interno de un comercio (``comercio-…@datos.invalid``).
+
+    El ``__str__`` de pedidos y lotes incluye el mail del dueño de la fila, que
+    desde los equipos es ese usuario interno: nadie tiene que verlo.
+    """
+    return INTERNAL_USER_IN_TEXT.sub("", text or "")
 
 
 def record(
@@ -85,7 +98,7 @@ def record(
         if target is not None:
             target_type = target_type or target.__class__.__name__.lower()
             target_id = target_id or str(getattr(target, "pk", "") or "")
-            target_repr = target_repr or str(target)
+            target_repr = target_repr or clean_target_repr(str(target))
 
         # ``atomic()`` (savepoint si ya hay una transacción abierta, p. ej. la
         # que envuelve cada test) evita que un fallo acá deje inutilizable la

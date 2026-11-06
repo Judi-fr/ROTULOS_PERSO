@@ -40,7 +40,7 @@ async function apply() {
   const label = document.getElementById("targetStatus").selectedOptions[0]?.textContent.trim().toLowerCase() || status;
   try {
     const data = await appUndoable(
-      status === "cancelled" ? `Se cancelan ${count}` : `${count}: ${label}`,
+      status === "cancelled" ? `${orderIds.length === 1 ? "Se cancela" : "Se cancelan"} ${count}` : `${count}: ${label}`,
       async () => {
         const response = await apiFetch(`${API_BASE}/orders/bulk-status/`, {
           method: "POST",

@@ -782,8 +782,12 @@
 }
 
 .order-search input {
+  box-sizing: border-box;
   width: 100%;
-  padding-left: 36px;
+  padding: 9px 12px 9px 36px;
+  border: 1px solid var(--field-border);
+  background: var(--surface);
+  font: inherit;
 }
 
 /* "Ejemplo" junto al número de un pedido de ejemplo (Order.is_sample). */

@@ -16,6 +16,7 @@ from rest_framework.views import APIView
 from apps.accounts.role_permissions import HasRolePermission
 from apps.accounts.teams import data_owner
 from apps.audit.services import record
+from apps.carriers.models import CarrierShipment
 
 from .models import Address, Order
 
@@ -66,11 +67,15 @@ class SampleOrdersView(APIView):
 
     def delete(self, request):
         samples = self.samples(request)
-        kept = samples.filter(carrier_shipments__isnull=False).distinct()
+        # Un envío cancelado ya no existe para el transportista: no retiene el
+        # pedido (por eso el aviso puede decir "cancelá ese envío").
+        live = CarrierShipment.objects.exclude(status=CarrierShipment.Status.CANCELLED)
+        kept = samples.filter(carrier_shipments__in=live).distinct()
         removable = samples.exclude(pk__in=kept.values("pk"))
         addresses = list(removable.values_list("address_id", flat=True))
         deleted = removable.count()
         with transaction.atomic():
+            CarrierShipment.objects.filter(order__in=removable).delete()
             removable.delete()
             Address.objects.filter(pk__in=addresses, origin=Address.Origin.SHIPMENT, orders__isnull=True).delete()
         return Response({"deleted": deleted, "kept": kept.count()})

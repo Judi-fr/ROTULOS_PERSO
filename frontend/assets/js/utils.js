@@ -57,6 +57,38 @@ function sessionHasPermission(key) {
   return Array.isArray(permissions) ? permissions.includes(key) : true;
 }
 
+// Pantalla para la que este usuario no tiene el acceso (<body data-requires="a,b">:
+// alcanza con uno). Sin esto, quien llegaba por una dirección guardada veía la
+// pantalla vacía o con formularios que después fallaban. Solo presenta: el
+// backend rechaza igual. El contenido se esconde en vez de borrarse porque el
+// script de la página sigue usando esos elementos, y vuelve si el acceso llega
+// mientras está abierta (Auth refresca la sesión al cargar).
+function applyPageAccess() {
+  const needed = (document.body.dataset.requires || "").split(",").map((key) => key.trim()).filter(Boolean);
+  const main = document.querySelector("main");
+  if (!needed.length || !main) return;
+  const allowed = needed.some(sessionHasPermission);
+  let notice = document.getElementById("pageAccessNotice");
+  if (!allowed && !notice) {
+    notice = document.createElement("div");
+    notice.id = "pageAccessNotice";
+    notice.innerHTML = appEmptyState({
+      icon: "list",
+      title: "No tenés acceso a esta pantalla",
+      text: "Si la necesitás para tu trabajo, pedile a quien administra el comercio que te dé este acceso.",
+      actionLabel: "Volver al panel",
+      actionHref: "dashboard.html",
+    });
+    main.prepend(notice);
+  }
+  if (notice) notice.hidden = allowed;
+  // Con una clase y no con `hidden`: el script de la página sigue mostrando sus
+  // avisos (el 403 de lo que pide al cargar) y volvería a dejarlos visibles.
+  document.body.classList.toggle("no-page-access", !allowed);
+}
+document.addEventListener("DOMContentLoaded", applyPageAccess);
+window.addEventListener("auth:user-updated", applyPageAccess);
+
 function showMessage(text, type = "error") {
   const el = document.getElementById("pageMessage");
   if (!el) return;

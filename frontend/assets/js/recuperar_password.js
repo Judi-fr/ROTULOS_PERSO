@@ -46,10 +46,11 @@ form.addEventListener("submit", async (event) => {
         "Si existe una cuenta con ese email, te enviamos un enlace para restablecer la contraseña.",
       "success"
     );
-    // La tarjeta entera se esconde tras el éxito: reenviar otra vez desde la
-    // misma pantalla solo sirve para chocar con el throttling, y dejar solo el
-    // formulario oculto deja el título colgado sobre un cuerpo vacío.
-    form.closest(".profile-card").hidden = true;
+    // Tras el éxito se esconden el campo y el botón: reenviar desde la misma
+    // pantalla solo sirve para chocar con el throttling. El aviso está dentro
+    // del formulario, así que el formulario en sí queda visible.
+    form.querySelector(".access-field").hidden = true;
+    submitBtn.hidden = true;
   } catch (error) {
     showMessage("Error de red. Revisá tu conexión.");
   } finally {

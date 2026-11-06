@@ -80,6 +80,9 @@
 .scan-manual-row input {
   flex: 1;
   min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--field-border);
+  background: var(--surface);
   font-family: "Geist Mono", ui-monospace, monospace;
 }
 

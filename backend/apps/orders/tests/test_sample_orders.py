@@ -74,3 +74,15 @@ class SampleOrderTests(APITestCase):
         employee, _ = add_employee(self.owner, "empleado@example.com", accesses=["orders.view"])
         self.assertEqual(self.create(employee).status_code, 403)
         self.assertEqual(self.client.delete(URL, **bearer(employee)).status_code, 403)
+
+    def test_un_envio_cancelado_no_retiene_el_ejemplo(self):
+        self.create()
+        sample = Order.objects.filter(user=self.biz, is_sample=True).first()
+        account = CarrierAccount.objects.create(owner=self.biz, carrier="andreani")
+        CarrierShipment.objects.create(
+            account=account, order=sample, carrier="andreani", contract="400006709", tracking_number="1",
+            status=CarrierShipment.Status.CANCELLED,
+        )
+        response = self.client.delete(URL, **bearer(self.owner))
+        self.assertEqual(response.data["kept"], 0)
+        self.assertFalse(Order.objects.filter(pk=sample.pk).exists())

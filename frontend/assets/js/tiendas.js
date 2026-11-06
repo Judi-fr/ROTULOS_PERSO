@@ -464,6 +464,10 @@ function renderSenderForm(store) {
     payload.label_printer_dpmm = printerSelect.value ? Number(printerSelect.value) : null;
     if (carrierSelect) payload.dispatch_carrier = carrierSelect.value;
     if (logoInput.files && logoInput.files[0]) {
+      if (logoInput.files[0].size > 2 * 1024 * 1024) {
+        showFeedback(feedback, "El logo pesa más de 2 MB: elegí una imagen más liviana.", false);
+        return;
+      }
       try {
         payload.logo = await readFileAsDataUrl(logoInput.files[0]);
       } catch {

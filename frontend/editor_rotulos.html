@@ -1139,7 +1139,7 @@
       }
     </style>
   </head>
-  <body>
+  <body data-requires="labels.create,labels.template_create">
     <!-- La barra la dibuja assets/js/topbar.js; acá solo los links propios. -->
     <header class="topbar" id="appTopbar" data-links='[{"href": "mis_rotulos.html", "label": "Volver a mis rótulos"}]'></header>
     <!-- Después del <header>: topbar.js lo dibuja apenas carga, y en el
@@ -1274,19 +1274,19 @@
               </div>
 
               <div class="field" data-field="remitente" contenteditable="true">
-                Remitente: Juan Pérez
+                Remitente: {{remitente}}
               </div>
               <div class="field" data-field="destinatario" contenteditable="true">
-                Destinatario: María Gómez
+                Destinatario: {{destinatario}}
               </div>
               <div class="field" data-field="domicilio" contenteditable="true">
-                Domicilio: Av. Siempre Viva 742
+                Domicilio: {{domicilio}}
               </div>
               <div class="field" data-field="cp" contenteditable="true">
-                CP: 1000
+                CP: {{cp}}
               </div>
               <div class="field" data-field="localidad" contenteditable="true">
-                Localidad/Provincia: CABA, Bs. As.
+                Localidad/Provincia: {{localidad}}
               </div>
               <div
                 class="field"
@@ -1294,7 +1294,7 @@
                 id="pedidoField"
                 contenteditable="true"
               >
-                N° de Pedido: 000123
+                {{pedido}}
               </div>
             </div>
           </div>
@@ -3089,10 +3089,9 @@
         applyCodeConfigChange();
       });
 
-      // --- Autocompletar domicilio/CP/localidad desde la dirección del
-      // pedido (?order=<id>). El destinatario/remitente los sigue
-      // completando el usuario: la dirección del pedido no guarda un
-      // nombre de destinatario.
+      // --- Autocompletar destinatario y dirección desde el pedido
+      // (?order=<id>). El remitente y el número quedan como marcadores: se
+      // resuelven al imprimir, porque el rótulo guarda su vínculo al pedido.
       async function prefillFromOrder(orderId) {
         const order = await getOrderInfo(orderId);
         const addr = order?.address;
@@ -3101,6 +3100,7 @@
           const el = document.querySelector(`.field[data-field="${field}"]`);
           if (el) window.LabelEditorMarkers.setFieldText(el, text);
         };
+        if (addr.recipient_name) setText("destinatario", `Destinatario: ${addr.recipient_name}`);
         setText("domicilio", `Domicilio: ${[addr.street, addr.number].filter(Boolean).join(" ")}`);
         setText("cp", `CP: ${addr.postal_code || ""}`);
         setText(
@@ -3478,9 +3478,13 @@
         );
         const payload = {
           nombre: nombreInput.value.trim() || "Rótulo sin nombre",
-          cliente: window.LabelEditorMarkers.rawText(
-            document.querySelector('.field[data-field="destinatario"]'),
-          ).trim(),
+          // Con el marcador todavía puesto no hay un nombre que mostrar en Mis rótulos.
+          cliente: (() => {
+            const text = window.LabelEditorMarkers.rawText(
+              document.querySelector('.field[data-field="destinatario"]'),
+            ).trim();
+            return text.includes("{{") ? "" : text;
+          })(),
           thumbnail,
           size: {
             widthCm: parseFloat(document.getElementById("widthCm").value) || 10,

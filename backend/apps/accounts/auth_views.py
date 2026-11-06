@@ -157,13 +157,14 @@ def validate_email_format(email):
 
 
 def validate_password_strength(password):
-    """Reglas de contraseña: mínimo 6 caracteres, una mayúscula y un número.
+    """Reglas de contraseña: mínimo 8 caracteres (el de los validadores de
+    Django, que corren después), una mayúscula y un número.
 
     Devuelve un mensaje de error (enumerando lo que falta), o None si es válida.
     """
     faltantes = []
-    if len(password) < 6:
-        faltantes.append("al menos 6 caracteres")
+    if len(password) < 8:
+        faltantes.append("al menos 8 caracteres")
     if not re.search(r"[A-Z]", password):
         faltantes.append("una letra mayúscula")
     if not re.search(r"\d", password):

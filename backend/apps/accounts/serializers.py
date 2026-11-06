@@ -442,7 +442,10 @@ class ChangePasswordSerializer(serializers.Serializer):
     """
 
     current_password = serializers.CharField(required=True, write_only=True)
-    new_password = serializers.CharField(required=True, write_only=True, min_length=8)
+    new_password = serializers.CharField(
+        required=True, write_only=True, min_length=8,
+        error_messages={"min_length": "La contraseña nueva debe tener al menos 8 caracteres."},
+    )
     confirm_password = serializers.CharField(required=True, write_only=True)
 
     def validate(self, data):

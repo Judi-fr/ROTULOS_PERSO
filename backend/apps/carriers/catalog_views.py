@@ -2,6 +2,7 @@
 sin API (``ManualCarrier``). Ver ``apps/common/catalogs.py``."""
 
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 
 from apps.common.catalogs import CatalogViewSet
 
@@ -14,6 +15,9 @@ class ManualCarrierSerializer(serializers.ModelSerializer):
         model = ManualCarrier
         fields = ["id", "name", "tracking_url_template", "is_active"]
         read_only_fields = ["id"]
+        extra_kwargs = {
+            "name": {"validators": [UniqueValidator(ManualCarrier.objects.all(), message="Ya hay un transportista con ese nombre.")]},
+        }
 
     def validate_name(self, value):
         value = value.strip()

@@ -305,11 +305,9 @@ export async function deleteRotulo(id) {
   return true;
 }
 
-// Pedido propio (apps.orders), para autocompletar domicilio/CP/localidad en
+// Pedido propio (apps.orders), para autocompletar destinatario y dirección en
 // el editor cuando el rótulo se crea a partir de un envío concreto
-// (?order=<id> en editor_rotulos.html). Remitente/destinatario los sigue
-// completando el usuario: la dirección del pedido no guarda un nombre de
-// destinatario.
+// (?order=<id> en editor_rotulos.html).
 export async function getOrderInfo(orderId) {
   try {
     const response = await apiFetch(`${ORDERS_URL}${orderId}/`);

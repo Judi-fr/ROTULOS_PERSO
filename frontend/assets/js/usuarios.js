@@ -1240,9 +1240,11 @@ async function handleAdminSubmit(e) {
     if (!response.ok) {
       const messages = [];
       if (data && typeof data === "object") {
+        const labels = { email: "Email", first_name: "Nombre", last_name: "Apellido", full_name: "Nombre", role: "Rol", status: "Estado" };
         for (const [field, errors] of Object.entries(data)) {
-          if (Array.isArray(errors)) messages.push(`${field}: ${errors.join(", ")}`);
-          else if (typeof errors === "string") messages.push(`${field}: ${errors}`);
+          const text = Array.isArray(errors) ? errors.join(", ") : errors;
+          if (typeof text !== "string") continue;
+          messages.push(labels[field] ? `${labels[field]}: ${text}` : text);
         }
       }
       throw new Error(messages.length ? messages.join("\n") : `Error HTTP: ${response.status}`);

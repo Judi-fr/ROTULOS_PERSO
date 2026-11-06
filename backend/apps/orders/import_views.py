@@ -148,7 +148,7 @@ class OrderImportValidateView(APIView):
             external_id = (data.get("external_id") or "").strip()
             if external_id:
                 if external_id in seen_external_ids:
-                    row_errors.append(f"external_id {external_id!r} repetido en el archivo.")
+                    row_errors.append(f"ID externo {external_id!r} repetido en el archivo.")
                 seen_external_ids.add(external_id)
             if row_errors:
                 errors.append({"fila": row_number, "columna": None, "mensaje": " ".join(row_errors)})

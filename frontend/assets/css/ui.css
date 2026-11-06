@@ -161,6 +161,9 @@ code, kbd, samp { font-family: var(--font-mono); font-size: 0.92em; }
 .btn-danger:hover:not(:disabled) { background: var(--danger-700); border-color: var(--danger-700); }
 .btn-small, .btn-sm { min-height: 30px; padding: 0 10px; font-size: var(--text-sm); border-radius: var(--radius-sm); }
 
+/* Pantalla sin el acceso necesario (applyPageAccess en utils.js): solo el aviso. */
+body.no-page-access main > *:not(#pageAccessNotice) { display: none !important; }
+
 /* Campos de formulario: misma altura, borde y foco en todas las páginas */
 input[type="text"], input[type="email"], input[type="password"], input[type="number"], input[type="tel"],
 input[type="search"], input[type="url"], input[type="date"], input[type="datetime-local"], input:not([type]), select, textarea {

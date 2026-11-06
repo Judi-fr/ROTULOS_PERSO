@@ -184,7 +184,8 @@ function renderVersions() {
 async function handleRestore(version, button) {
   const ok = await appConfirm(
     `¿Volver la plantilla a la versión ${version.number}? ` +
-      "La actual no se pierde: queda en el historial y podés volver a ella."
+      "La actual no se pierde: queda en el historial y podés volver a ella.",
+    { confirmLabel: "Restaurar" }
   );
   if (!ok) return;
   button.disabled = true;

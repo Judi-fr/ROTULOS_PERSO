@@ -38,7 +38,7 @@ function renderAuthMethodStats(authMethod) {
   container.innerHTML = `
     <div class="metrics-stat">
       <span class="metrics-stat-value">${local}</span>
-      <span class="metrics-stat-label">Local (email/password)</span>
+      <span class="metrics-stat-label">Email y contraseña</span>
     </div>
     <div class="metrics-stat">
       <span class="metrics-stat-value">${google}</span>
@@ -134,7 +134,7 @@ const REPORTS_USER_IDS = [
 
 function renderUsersMetrics(data) {
   renderMetricsBars("metricsRoleDistribution", data.role_distribution, {
-    labelKey: "label", countKey: "count",
+    labelKey: "label", countKey: "count", labelFormatter: translateRole,
   });
   renderMetricsBars("metricsSignupsByMonth", data.signups_by_month, {
     labelKey: "month", countKey: "count", labelFormatter: formatMonthLabel,

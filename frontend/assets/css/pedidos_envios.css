@@ -476,4 +476,6 @@
 .dispatch-order-packages {
   width: 56px;
   padding: 4px 6px;
+  border: 1px solid var(--field-border);
+  font: inherit;
 }

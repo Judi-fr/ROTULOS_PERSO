@@ -136,6 +136,11 @@
     document.getElementById("logoInput").addEventListener("change", async (event) => {
       const file = event.target.files[0];
       if (!file) return;
+      if (file.size > 2 * 1024 * 1024) {
+        event.target.value = "";
+        showMessage("El logo pesa más de 2 MB: elegí una imagen más liviana.");
+        return;
+      }
       try {
         logoChange = await readFile(file);
         showLogo(logoChange);

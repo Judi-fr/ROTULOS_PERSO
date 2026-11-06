@@ -540,6 +540,10 @@ AUTH_COOKIE_SAMESITE = "Lax"
 # Validación de contraseñas
 # ---------------------------------------------------------------------------
 
+# Logos y fotos viajan en base64 dentro del JSON (un tercio más) con tope de 2 MB:
+# con el default de Django (2,5 MB) una imagen de 1,9 MB se rechazaba sin motivo.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 4 * 1024 * 1024
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
