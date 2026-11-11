@@ -21,6 +21,8 @@ from django.core.mail import send_mail
 from django.db import transaction
 from django.utils import timezone
 
+from apps.common.mail import branded_html
+
 from .models import user_email_verified
 from .team_models import Team, TeamInvitation, TeamJoinRequest, TeamMember, TeamProfile
 from .teams import (
@@ -177,18 +179,31 @@ def _send_invitation(invitation):
 def _mail_invitation(invitation):
     team_name = str(invitation.team)
     who = invitation.invited_by.email if invitation.invited_by else "El dueño"
+    expires = f"{timezone.localtime(invitation.expires_at):%d/%m/%Y}"
     send_mail(
         f"Te invitaron al comercio {team_name}",
         (
             f"{who} te invitó a trabajar en el comercio «{team_name}» en Human Log · Rótulos.\n\n"
             "Para aceptar, entrá con tu cuenta (o creala con este mismo mail) y abrí:\n"
             f"{settings.TEAM_INVITATION_URL}\n\n"
-            f"La invitación vence el {timezone.localtime(invitation.expires_at):%d/%m/%Y}.\n"
+            f"La invitación vence el {expires}.\n"
             "Si no esperabas este mail, ignoralo: nadie entra a un comercio sin aceptar."
         ),
         settings.DEFAULT_FROM_EMAIL,
         [invitation.email],
         fail_silently=False,
+        html_message=branded_html(
+            heading=f"Te invitaron al comercio {team_name}",
+            paragraphs=[
+                f"{who} te invitó a trabajar en el comercio «{team_name}».",
+                "Para aceptar, entrá con tu cuenta (o creala con este mismo mail) y abrí la invitación.",
+            ],
+            action=("Ver la invitación", settings.TEAM_INVITATION_URL),
+            footnote=(
+                f"La invitación vence el {expires}. Si no esperabas este mail, ignoralo: "
+                "nadie entra a un comercio sin aceptar."
+            ),
+        ),
     )
 
 

@@ -212,11 +212,21 @@ a { color: var(--accent-600); text-underline-offset: 2px; }
 a:hover { color: var(--accent-700); }
 
 /* Selector de archivo: el del navegador ("Seleccionar archivo · Sin archivos
-   seleccionados") desentonaba con el resto; el botón queda como .btn-outline. */
-input[type="file"] { max-width: 100%; font-size: var(--text-sm); color: var(--n-500); }
+   seleccionados") desentonaba con el resto; el botón queda como .btn-outline.
+   El campo no lleva caja propia (!important: las reglas de campos de cada
+   página, más específicas, le ponían borde, relleno y fondo, y quedaba un botón
+   dentro de una caja con el texto cortado: "Sin archiv…ccionados"). */
+input[type="file"] {
+  /* 360px: el ancho propio del navegador (unos 250px) no alcanza para "Sin
+     archivos seleccionados" y lo cortaba por el medio. */
+  width: min(100%, 360px); max-width: 100%; font-size: var(--text-xs) !important; color: var(--n-500);
+  padding: 0 !important; border: 0 !important; background: none !important; box-shadow: none !important;
+  outline: none; height: auto; min-height: 0;
+}
+input[type="file"]:focus-visible::file-selector-button { box-shadow: var(--ring); border-color: var(--accent-500); }
 input[type="file"]::file-selector-button {
-  margin-right: 10px; padding: 8px 14px; border: 1px solid var(--n-150); border-radius: var(--radius-md);
-  background: var(--n-0); color: var(--n-900); font: inherit; font-weight: 600; cursor: pointer;
+  margin-right: 10px; padding: 8px 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-md);
+  background: var(--n-0); color: var(--n-900); font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer;
   transition: background 0.18s, border-color 0.18s;
 }
 input[type="file"]::file-selector-button:hover { background: var(--accent-50); border-color: var(--accent-300); }

@@ -1,0 +1,107 @@
+/* Página de error (404.html): la sirve nginx para cualquier dirección que no
+   existe. Sin sesión ni JS de la app; la paleta viene de ui.css. */
+
+body.error-page {
+  margin: 0;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(90% 60% at 0% 0%, var(--accent-50) 0%, transparent 60%),
+    var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: 1.55;
+}
+
+.error-header {
+  padding: 20px 24px;
+}
+
+.error-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 700;
+  font-size: var(--text-lg);
+  text-decoration: none;
+}
+
+.error-brand img {
+  width: 28px;
+  height: 28px;
+}
+
+/* Alineado a la izquierda y algo por encima del centro: se lee como un
+   documento, no como un cartel. */
+.error-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 24px 24px 18dvh;
+  box-sizing: border-box;
+  animation: error-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes error-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+.error-code {
+  margin: 0 0 14px;
+  color: var(--accent-600);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  letter-spacing: 0.04em;
+}
+
+.error-main h1 {
+  margin: 0 0 12px;
+  font-size: clamp(2rem, 6vw, 3rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+
+.error-text {
+  margin: 0 0 28px;
+  max-width: 52ch;
+  color: var(--muted);
+  font-size: var(--text-lg);
+  text-wrap: pretty;
+}
+
+.error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.error-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.error-help {
+  margin: 36px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--text-base);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .error-main {
+    animation: none;
+  }
+}

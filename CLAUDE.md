@@ -2134,10 +2134,22 @@ and the email moved under the name (no Email column; email order stays in "Orden
   with no photo). Show/hide with the `hidden` property; something shown with `style.display` must not carry `hidden`.
 - **Legal pages (2026-10-29, DRAFT)**: `privacidad.html` and `terminos.html` (public, no JS, `assets/css/legal.css`),
   written from what the app really stores and shares (buyer email/phone only from some platforms and never on the
-  label; Anthropic only for photo import; Google Fonts/jsDelivr; no analytics). Company data is marked
-  `.legal-todo` (yellow) and the whole text needs review by the company before publishing. Linked from the login,
+  label; Anthropic only for photo import; Google Fonts/jsDelivr; no analytics). The company data still missing is an
+  HTML comment `COMPLETAR` next to each sentence, which reads complete without it (2026-11-11: the yellow
+  `[COMPLETAR]` marks made the pages look like a draft); the whole text still needs review by the company before publishing. Linked from the login,
   the register form ("Al crear tu cuenta aceptás…") and the end of `ayuda.html`. **If what the app stores or who it
   shares data with changes, update `privacidad.html`.**
+- **Launch look (2026-11-11)**: `404.html` + `assets/css/error.css` (absolute asset paths: nginx serves it for any
+  missing address through `error_page 404`, still answering 404; the local static server doesn't use it). Every
+  page carries `apple-touch-icon.png` and `theme-color`; `index`, `register`, `privacidad` and `terminos` carry
+  description + Open Graph tags with `assets/images/og.png`, which `docker-entrypoint.sh` turns into an absolute
+  URL (`SITE_URL`, default `API_BASE` without `/api/v1`). The left side of the access pages shows
+  `rotulo-ejemplo.png`, a real gallery template rendered with the sample data (the company lockup was a small
+  white-background image and looked blurry). File inputs have no box of their own (`ui.css`, with `!important`).
+- **Mails with design (2026-11-11)**: `apps/common/mail.branded_html(heading, paragraphs, action, items, footnote)`
+  builds the `html_message` of the verification, password-reset, team-invitation and merchant-notice mails; the
+  plain-text body is unchanged. Tables, inline styles, no images, everything escaped. The admin alerts and the
+  privacy report stay plain text. Tests: `apps/common/tests/test_mail.py`.
 - **Brand: "Human Log · Rótulos"** (company · product, decided 2026-10-28). Access pages show the cropped Human Log
   logo (`humanlog-logo.png` / `humanlog-lockup.png`, cut from `LogoLogin.png`; `HLLogoFinal.jpg`, the globe one, is
   no longer used) + "Rótulos"; the shared topbar's home link is the app mark (`favicon.svg`) + "Rótulos" and

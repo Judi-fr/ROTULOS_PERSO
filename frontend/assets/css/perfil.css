@@ -159,11 +159,18 @@
   background: var(--bg);
 }
 
+/* Ocupa el resto de la fila: encogida a su contenido, el selector de archivo
+   quedaba angosto y el navegador cortaba "Sin archivos seleccionados". */
 .profile-photo-actions {
   display: flex;
+  flex: 1 1 280px;
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
+}
+
+.profile-photo-actions input[type="file"] {
+  align-self: stretch;
 }
 
 .profile-photo-actions .field-hint {

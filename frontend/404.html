@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>Página no encontrada · Human Log Rótulos</title>
+  <!-- Rutas absolutas: nginx sirve esta página para CUALQUIER dirección que no
+       existe (también /carpeta/algo), y una ruta relativa se resolvería mal. -->
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon.svg" />
+  <link rel="apple-touch-icon" href="/assets/images/apple-touch-icon.png" />
+  <meta name="theme-color" content="#308028" />
+  <link rel="stylesheet" href="/assets/css/ui.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/error.css" />
+</head>
+<body class="error-page">
+  <header class="error-header">
+    <a class="error-brand" href="/index.html"><img src="/assets/images/favicon.svg" alt=""><span>Rótulos</span></a>
+  </header>
+
+  <main class="error-main">
+    <p class="error-code">Error 404</p>
+    <h1>Esta página no existe</h1>
+    <p class="error-text">Puede que el link esté mal escrito o que la página haya cambiado de lugar. Tus pedidos y tus rótulos siguen donde estaban.</p>
+    <div class="error-actions">
+      <a class="btn btn-primary" href="/dashboard.html"><i class="ph ph-house" aria-hidden="true"></i> Ir al panel</a>
+      <button type="button" class="btn btn-outline" id="errorBack"><i class="ph ph-arrow-left" aria-hidden="true"></i> Volver atrás</button>
+    </div>
+    <p class="error-help">¿Llegaste desde un botón de la app? <a href="/ayuda.html">Avisanos</a> y lo arreglamos.</p>
+  </main>
+
+  <script>
+    // Sin historial (link abierto en una pestaña nueva) no hay adónde volver.
+    var back = document.getElementById("errorBack");
+    if (window.history.length > 1) {
+      back.addEventListener("click", function () { window.history.back(); });
+    } else {
+      back.hidden = true;
+    }
+  </script>
+</body>
+</html>

@@ -42,16 +42,30 @@ body.access-page {
   overflow: hidden;
 }
 
-/* humanlog-lockup.png mide 366 px: más ancho se vería borroso. */
+/* Un rótulo de verdad (rotulo-ejemplo.png: una plantilla de la galería con los
+   datos de muestra, 900 px de ancho): es lo que el comercio viene a hacer, y a
+   este tamaño se ve nítido también en pantallas de alta densidad. Antes iba el
+   logo de la empresa, una imagen chica con fondo blanco que se veía borrosa. */
 .access-aside img {
-  width: 100%;
-  max-width: 366px;
-  padding: 28px;
+  display: block;
+  width: min(300px, 62%);
+  height: auto;
+  margin: auto;
+  padding: 12px;
   background: var(--n-0);
   box-sizing: content-box;
-  margin: auto 0;
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 48px -24px rgba(48, 60, 30, 0.28), var(--shadow-sm);
+  transform: rotate(-2deg);
+  animation: access-label-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes access-label-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) rotate(0deg);
+  }
 }
 
 .access-aside-text {
@@ -378,6 +392,10 @@ a.access-submit:hover { color: var(--n-0); }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .access-aside img {
+    animation: none;
+  }
+
   .access-card {
     animation: none;
   }

@@ -23,6 +23,8 @@ from django.conf import settings
 from django.core.mail import send_mail
 from django.utils import timezone
 
+from apps.common.mail import branded_html
+
 from .models import MerchantNotice
 
 logger = logging.getLogger(__name__)
@@ -155,8 +157,20 @@ def _send(person, items, business):
         lines.append(f"- {notice.title}")
         if notice.detail:
             lines.append(f"  {notice.detail[:300]}")
-    lines += ["", f"Ver los avisos: {settings.FRONTEND_URL.rstrip('/')}/notificaciones.html"]
-    send_mail(f"{settings.MONITORING_SUBJECT_PREFIX} {subject}", "\n".join(lines), settings.DEFAULT_FROM_EMAIL, [person.email])
+    notices_url = f"{settings.FRONTEND_URL.rstrip('/')}/notificaciones.html"
+    lines += ["", f"Ver los avisos: {notices_url}"]
+    send_mail(
+        f"{settings.MONITORING_SUBJECT_PREFIX} {subject}",
+        "\n".join(lines),
+        settings.DEFAULT_FROM_EMAIL,
+        [person.email],
+        html_message=branded_html(
+            heading=subject,
+            paragraphs=[f"Hay algo para revisar en tu comercio «{business}»:"],
+            items=[(notice.title, notice.detail[:300]) for notice in items],
+            action=("Ver los avisos", notices_url),
+        ),
+    )
 
 
 def visible_notices(user):

@@ -36,6 +36,7 @@ from rest_framework_simplejwt.token_blacklist.models import (
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
+from apps.common.mail import branded_html
 from apps.audit.services import record
 
 from .auth_cookies import clear_auth_cookies, deliver_tokens, refresh_from_request, wants_cookies
@@ -456,6 +457,12 @@ def _send_verification_email(user, token):
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[user.email],
             fail_silently=False,
+            html_message=branded_html(
+                heading="Confirmá tu email",
+                paragraphs=["Gracias por registrarte. Para terminar de crear tu cuenta, confirmá que este email es tuyo."],
+                action=("Confirmar mi email", verification_url),
+                footnote="Si no fuiste vos, podés ignorar este correo.",
+            ),
         )
     except Exception as exc:  # noqa: BLE001 - no bloquear el registro por un fallo de SMTP
         print(f"No se pudo enviar el email de verificación a {user.email}: {exc}")
@@ -680,6 +687,12 @@ class PasswordResetRequestView(APIView):
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[user.email],
                 fail_silently=False,
+                html_message=branded_html(
+                    heading="Restablecé tu contraseña",
+                    paragraphs=["Recibimos un pedido para restablecer la contraseña de tu cuenta."],
+                    action=("Elegir una contraseña nueva", reset_url),
+                    footnote="Si no fuiste vos, ignorá este correo: tu contraseña actual sigue siendo válida.",
+                ),
             )
         except Exception as exc:  # noqa: BLE001 - ver el docstring: no delatar la cuenta
             print(f"No se pudo enviar el email de reset a {user.email}: {exc}")

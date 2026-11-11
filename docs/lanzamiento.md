@@ -10,7 +10,7 @@ cada paso están en `docs/despliegue.md` y `docs/cambio-de-dominio.md`; esto es 
 - [ ] **Dominio** definitivo, con el DNS apuntando al servidor. Sin HTTPS no hay Tiendanube.
 - [ ] **Mail** para producción: SMTP con un remitente del dominio de la empresa.
 - [ ] **Textos legales:** `privacidad.html` y `terminos.html` son borradores. Faltan los datos de
-      la empresa (marcados en amarillo) y la revisión de alguien de la empresa. Esto incluye
+      la empresa (comentarios `COMPLETAR` dentro de los dos archivos: ya no se ven en la página) y la revisión de alguien de la empresa. Esto incluye
       decidir en qué país quedan los datos de los compradores.
 - [ ] **Repo público:** decidir si `backend/db.sqlite3-*` y `.claude/settings.local.json` siguen en el
       repo, o si el repo pasa a privado. Si alguna clave de esas bases se reutilizó, cambiarla.

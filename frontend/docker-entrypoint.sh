@@ -19,6 +19,18 @@ window.APP_CONFIG = {
 };
 JS
 
+# La imagen que muestran WhatsApp y las redes al compartir un link (og:image)
+# tiene que ser una URL completa: quien la pide no es un navegador parado en la
+# página. Sale del mismo dominio que la API; con una API_BASE relativa no hay
+# dominio que poner y queda como está.
+SITE_URL="${SITE_URL:-${API_BASE%/api/v1}}"
+case "$SITE_URL" in
+  http*)
+    sed -i "s|content=\"assets/images/og.png\"|content=\"${SITE_URL}/assets/images/og.png\"|" \
+      /usr/share/nginx/html/*.html
+    ;;
+esac
+
 echo "config.js generado con API_BASE=${API_BASE}"
 # Sin `exec`: este script lo corre el entrypoint oficial de nginx desde
 # /docker-entrypoint.d/, y es ESE el que después arranca el servidor. Si acá
