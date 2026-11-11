@@ -254,10 +254,10 @@ function renderTodayStats(summary, noticeCount) {
   const box = document.getElementById("todayStats");
   const problems = summary.shipment_problems + noticeCount;
   const stats = [
-    { key: "to_print", label: "Para imprimir", value: summary.to_print, href: TO_PRINT_URL },
-    { key: "to_dispatch", label: "Para despachar", value: summary.to_dispatch, href: TO_DISPATCH_URL },
-    { key: "on_the_way", label: "En camino", value: summary.on_the_way, href: ON_THE_WAY_URL },
-    { key: "problems", label: "Con problemas", value: problems, href: noticeCount ? "notificaciones.html" : "pedidos.html", alert: problems > 0 },
+    { key: "to_print", label: "Para imprimir", hint: "Sin rótulo todavía", icon: "printer", value: summary.to_print, href: TO_PRINT_URL },
+    { key: "to_dispatch", label: "Para despachar", hint: "Con el rótulo impreso", icon: "package", value: summary.to_dispatch, href: TO_DISPATCH_URL },
+    { key: "on_the_way", label: "En camino", hint: "Despachados, sin entregar", icon: "truck", value: summary.on_the_way, href: ON_THE_WAY_URL },
+    { key: "problems", label: "Con problemas", hint: "Envíos con novedad y avisos", icon: "warning-circle", value: problems, href: noticeCount ? "notificaciones.html" : "pedidos.html", alert: problems > 0 },
   ];
   const previous = lastStats;
   lastStats = Object.fromEntries(stats.map((stat) => [stat.key, Number(stat.value) || 0]));
@@ -265,10 +265,16 @@ function renderTodayStats(summary, noticeCount) {
     ...stats.map((stat) => {
       const link = document.createElement("a");
       const changed = previous && previous[stat.key] !== lastStats[stat.key];
-      link.className = `today-stat${stat.alert ? " is-alert" : ""}${changed ? " is-changed" : ""}`;
+      const value = Number(stat.value) || 0;
+      link.className = `today-stat${stat.alert ? " is-alert" : ""}${changed ? " is-changed" : ""}${value ? "" : " is-zero"}`;
       link.href = stat.href;
-      link.innerHTML = `<span class="today-stat-label">${escapeHtml(stat.label)}</span>
-        <span class="today-stat-value">${Number(stat.value) || 0}</span>`;
+      link.innerHTML = `<span class="today-stat-top">
+          <span class="today-stat-icon"><i class="ph ph-${stat.icon}" aria-hidden="true"></i></span>
+          <span class="today-stat-label">${escapeHtml(stat.label)}</span>
+          <i class="ph ph-arrow-up-right today-stat-go" aria-hidden="true"></i>
+        </span>
+        <span class="today-stat-value">${value}</span>
+        <span class="today-stat-hint">${escapeHtml(stat.hint)}</span>`;
       return link;
     })
   );
@@ -628,3 +634,10 @@ if (!hasSession()) {
 } else {
   loadDashboard();
 }
+
+// La fecha de hoy sobre el título ("martes 11 de noviembre").
+(function showToday() {
+  const el = document.getElementById("dashboardDate");
+  if (!el) return;
+  el.textContent = new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
+})();

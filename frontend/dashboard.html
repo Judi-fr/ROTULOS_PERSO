@@ -19,7 +19,7 @@
 
     <link rel="stylesheet" href="assets/css/base.css" />
     <link rel="stylesheet" href="assets/css/app.css" />
-    <link rel="stylesheet" href="assets/css/dashboard.css?v=2026-10-29" />
+    <link rel="stylesheet" href="assets/css/dashboard.css?v=2026-11-11" />
   </head>
   <body>
     <div class="layout">
@@ -28,28 +28,32 @@
       <header class="topbar" id="appTopbar" data-links='[{"href": "gestionuser.html", "label": "Administración", "perm": "users.view"}]'></header>
 
       <main class="main">
-        <div class="main-heading">
-          <h1 id="dashboardTitle">Hoy</h1>
-          <p>Lo que tu comercio tiene pendiente y por dónde seguir.</p>
-        </div>
-
-        <!-- Buscador de funciones (dashboard.js, setupToolSearch): busca en
+        <!-- Cabecera: la fecha y el título a la izquierda, el buscador de
+             funciones a la derecha (dashboard.js, setupToolSearch: busca en
              todas las herramientas a las que el usuario tiene acceso, también
-             las que no entran en las tarjetas. -->
-        <div class="tool-search" id="toolSearch" role="search">
-          <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
-          <input
-            type="search"
-            id="toolSearchInput"
-            placeholder="Buscar una función: planilla, impresora, tarifas…"
-            autocomplete="off"
-            role="combobox"
-            aria-expanded="false"
-            aria-controls="toolSearchResults"
-            aria-label="Buscar una función"
-          />
-          <kbd class="tool-search-key" aria-hidden="true">/</kbd>
-          <ul id="toolSearchResults" class="tool-search-results" role="listbox" hidden></ul>
+             las que no entran en las tarjetas). -->
+        <div class="dash-head">
+          <div class="main-heading">
+            <span class="dash-date" id="dashboardDate"></span>
+            <h1 id="dashboardTitle">Hoy</h1>
+            <p>Lo que tu comercio tiene pendiente y por dónde seguir.</p>
+          </div>
+
+          <div class="tool-search" id="toolSearch" role="search">
+            <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
+            <input
+              type="search"
+              id="toolSearchInput"
+              placeholder="Buscar una función…"
+              autocomplete="off"
+              role="combobox"
+              aria-expanded="false"
+              aria-controls="toolSearchResults"
+              aria-label="Buscar una función: planilla, impresora, tarifas"
+            />
+            <kbd class="tool-search-key" aria-hidden="true">/</kbd>
+            <ul id="toolSearchResults" class="tool-search-results" role="listbox" hidden></ul>
+          </div>
         </div>
 
         <p id="dashboardMessage" class="dashboard-message" role="status" aria-live="polite" style="display:none;"></p>
@@ -113,6 +117,6 @@
     <script src="assets/js/utils.js?v=2026-10-29"></script>
     <script src="assets/js/topbar.js"></script>
     <script src="assets/js/dashboard_week.js"></script>
-    <script src="assets/js/dashboard.js?v=2026-10-29"></script>
+    <script src="assets/js/dashboard.js?v=2026-11-11"></script>
   </body>
 </html>

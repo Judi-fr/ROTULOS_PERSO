@@ -2139,6 +2139,10 @@ and the email moved under the name (no Email column; email order stays in "Orden
   `[COMPLETAR]` marks made the pages look like a draft); the whole text still needs review by the company before publishing. Linked from the login,
   the register form ("Al crear tu cuenta aceptás…") and the end of `ayuda.html`. **If what the app stores or who it
   shares data with changes, update `privacidad.html`.**
+- **Dashboard look (2026-11-11)**: the heading row carries today's date, the title and the function search on the
+  right; the four numbers are ONE strip with hairline divisions (the grid's background paints them), each with an
+  icon, a hint line and a muted value when it is 0; the section cards keep their symmetric shape but the tools are
+  a borderless list and "Abrir <sección>" is a link at the card's foot, not a filled button.
 - **Launch look (2026-11-11)**: `404.html` + `assets/css/error.css` (absolute asset paths: nginx serves it for any
   missing address through `error_page 404`, still answering 404; the local static server doesn't use it). Every
   page carries `apple-touch-icon.png` and `theme-color`; `index`, `register`, `privacidad` and `terminos` carry
