@@ -180,3 +180,159 @@
 .main:has(.print-dock:not([hidden])) {
   padding-bottom: 110px;
 }
+
+/* =========================================================================
+   Imprimir rótulos (imprimir_rotulos.html, main.print-main), 2026-11-11.
+   Este archivo lo comparten otras pantallas de acciones masivas: todo lo de
+   abajo va con .print-main para no tocarlas.
+   ========================================================================= */
+
+.print-main {
+  max-width: 1180px;
+}
+
+.print-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 20px;
+  align-items: start;
+}
+
+.print-main .print-layout > .profile-card {
+  margin: 0;
+}
+
+/* "Cómo imprimir" acompaña al bajar: el botón queda siempre a la vista (y la
+   barra flotante, que aparece solo cuando no se ve, no hace falta). */
+.print-main .print-side {
+  position: sticky;
+  top: 16px;
+}
+
+.print-main .print-side .filters-row {
+  flex-direction: column;
+  gap: 12px;
+}
+
+.print-main .print-side .filters-row .field {
+  flex: none;
+}
+
+.print-side-count {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.print-side-count strong {
+  color: var(--ink);
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.print-main .print-side .field-checkbox {
+  margin-top: 12px;
+  align-items: flex-start;
+  font-size: var(--text-sm);
+}
+
+.print-main .print-side .field-checkbox input {
+  margin-top: 2px;
+}
+
+.print-side-btn {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 18px;
+  gap: 8px;
+}
+
+/* Filtros: compactos, arriba de la lista dentro de la misma tarjeta. */
+.print-main .print-orders .filters-row {
+  gap: 10px;
+}
+
+.print-main .print-orders .filters-row .field {
+  flex: 1 1 150px;
+}
+
+.print-main .print-orders .filters-row .field:has(> input[type="date"]) {
+  flex-basis: calc(50% - 5px);
+}
+
+.print-main .filters-hint {
+  margin: 8px 0 16px;
+  font-size: var(--text-xs);
+}
+
+.print-main .select-all-row {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--n-50);
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+/* La lista: filas en una caja (antes, una tarjeta con borde por pedido). */
+.print-main .print-order-list {
+  gap: 0;
+  max-height: 560px;
+  border: 1px solid var(--line);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.print-main .print-order {
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 0;
+  transition: background var(--speed) var(--ease);
+}
+
+.print-main .print-order + .print-order {
+  border-top: 1px solid var(--line);
+}
+
+.print-main .print-order:hover {
+  background: var(--n-50);
+}
+
+.print-main .print-order:has(input:checked) {
+  background: var(--accent-50);
+}
+
+.print-main .print-order input {
+  margin: 0;
+  flex: none;
+}
+
+.print-main .print-order-title {
+  font-weight: 600;
+}
+
+.print-main .print-order-list > .empty-state {
+  margin: 0;
+  padding: 28px 16px;
+}
+
+@media (max-width: 960px) {
+  .print-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .print-main .print-side {
+    position: static;
+  }
+}

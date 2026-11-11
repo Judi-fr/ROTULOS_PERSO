@@ -42,6 +42,12 @@ function updateSelectionCount() {
   const count = selectedIds.size;
   document.getElementById("selectionCount").textContent =
     count === 1 ? "1 seleccionado" : `${count} seleccionados`;
+  // El mismo número en el panel "Cómo imprimir", junto al botón.
+  const sideCount = document.getElementById("printSideCount");
+  if (sideCount) {
+    sideCount.textContent = String(count);
+    document.getElementById("printSideCountLabel").textContent = count === 1 ? "pedido tildado" : "pedidos tildados";
+  }
   syncSelectAll();
   updatePrintDock();
 }
@@ -270,7 +276,7 @@ async function printLabels() {
   if (templateId) payload.template_id = Number(templateId);
 
   const button = document.getElementById("printBtn");
-  const originalText = button.textContent;
+  const originalHtml = button.innerHTML; // con el ícono: textContent lo perdía
   button.disabled = true;
   button.textContent = "Generando...";
   showPrintMsg("Generando los rótulos...", true);
@@ -332,7 +338,7 @@ async function printLabels() {
     showPrintMsg(err.message || "No se pudieron generar los rótulos.", false);
   } finally {
     button.disabled = false;
-    button.textContent = originalText;
+    button.innerHTML = originalHtml;
   }
 }
 

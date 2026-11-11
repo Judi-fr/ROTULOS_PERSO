@@ -22,7 +22,7 @@
     <link rel="stylesheet" href="assets/css/pedidos.css" />
     <link rel="stylesheet" href="assets/css/acciones_masivas.css" />
     <link rel="stylesheet" href="assets/css/pedidos_envios.css" />
-    <link rel="stylesheet" href="assets/css/pedidos_tiendas.css" />
+    <link rel="stylesheet" href="assets/css/pedidos_tiendas.css?v=2026-11-11" />
   </head>
   <body data-requires="orders.view">
     <div class="layout">
@@ -30,23 +30,24 @@
       <header class="topbar" id="appTopbar" data-links='[{"href": "importar.html", "label": "Importar planilla", "perm": "orders.import"}, {"href": "exportar_pedidos.html", "label": "Exportar", "perm": "orders.export"}, {"href": "estado_pedidos.html", "label": "Cambiar estado", "perm": "orders.dispatch"}, {"href": "imprimir_rotulos.html", "label": "Imprimir rótulos", "perm": "labels.batch"}, {"href": "escanear.html", "label": "Escanear", "perm": "orders.dispatch"}, {"href": "dashboard.html", "label": "Volver al panel"}]'></header>
 
       <main class="main orders-main">
-        <div class="main-heading">
-          <h1>Mis pedidos</h1>
-          <p>Elegí pedidos y despachalos: el transportista, el número y el link de seguimiento se cargan solos.</p>
+        <!-- Título y las dos acciones de la página en una fila: antes las
+             acciones iban en el título de una tarjeta que repetía "Pedidos". -->
+        <div class="orders-head">
+          <div class="main-heading">
+            <h1>Mis pedidos</h1>
+            <p>Elegí pedidos y despachalos: el transportista, el número y el link de seguimiento se cargan solos.</p>
+          </div>
+          <!-- Para transportistas sin API: su planilla de seguimientos (pedidos/seguimientos.js). -->
+          <div class="profile-card-tools orders-head-tools">
+            <button type="button" class="btn btn-outline" id="trackingImportBtn" hidden>Cargar seguimientos desde planilla</button>
+            <button type="button" class="btn btn-primary" id="openNewOrderBtn"><i class="ph ph-plus" aria-hidden="true"></i> Nuevo pedido</button>
+          </div>
         </div>
 
         <p id="pageMessage" class="page-message" role="status" aria-live="polite" style="display:none;"></p>
 
         <!-- Pedidos -->
-        <section class="profile-card">
-          <div class="profile-card-title">
-            <span>Pedidos</span>
-            <!-- Para transportistas sin API: su planilla de seguimientos (pedidos/seguimientos.js). -->
-            <div class="profile-card-tools">
-              <button type="button" class="btn btn-outline btn-small" id="trackingImportBtn" hidden>Cargar seguimientos desde planilla</button>
-              <button type="button" class="btn btn-primary btn-small" id="openNewOrderBtn">+ Nuevo pedido</button>
-            </div>
-          </div>
+        <section class="profile-card orders-card" aria-label="Pedidos">
           <div class="profile-card-body">
             <div class="orders-layout">
               <!-- Columna de tiendas: una por tienda conectada, con su color (los

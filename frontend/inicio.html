@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Human Log · Rótulos</title>
+  <!--
+    Página de presentación (2026-11-11). Pública, sin sesión: nginx la sirve en
+    la raíz del dominio (nginx.conf, "location = /"); index.html sigue siendo el
+    login. Todo lo que muestra es lo que la app hace de verdad: el rótulo de
+    "Probá tu rótulo" copia el diseño "Destacado" de la galería, y las imágenes
+    de rotulo-*.png salieron del mismo renderer que imprime (datos de muestra).
+    No habla de precios ni de planes. Las dos fotos del Correo Central son de
+    dominio público (créditos al pie y en assets/images/presentacion/credits.json).
+  -->
+  <meta name="description" content="Los pedidos de tu tienda entran solos: imprimí los rótulos de envío y despachá con Andreani, Correo Argentino u OCA desde un solo lugar.">
+  <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg" />
+  <link rel="apple-touch-icon" href="assets/images/apple-touch-icon.png" />
+  <meta name="theme-color" content="#308028" />
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Human Log · Rótulos">
+  <meta property="og:title" content="Human Log · Rótulos">
+  <meta property="og:description" content="Los pedidos de tu tienda entran solos: imprimí los rótulos de envío y despachá con tu transportista desde un solo lugar.">
+  <meta property="og:image" content="assets/images/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="assets/css/ui.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/inicio.css" />
+</head>
+<body class="home">
+  <a class="home-skip" href="#contenido">Saltar al contenido</a>
+
+  <!-- ===== Primera pantalla: una columna sobre un mismo eje ===== -->
+  <header class="home-top">
+    <a class="home-mark" href="inicio.html" aria-label="Rótulos, inicio">
+      <img src="assets/images/favicon.svg" alt="" width="32" height="32">
+      <span>Rótulos</span>
+    </a>
+    <a class="home-signin" href="index.html" id="homeSignin">Entrar</a>
+  </header>
+
+  <main id="contenido">
+    <section class="home-hero" aria-labelledby="heroTitle">
+      <div class="home-axis">
+        <h1 id="heroTitle" class="reveal">Los pedidos entran solos.<br>El rótulo sale listo.</h1>
+        <p class="home-hero-text reveal">Rótulos trae las ventas de tu tienda online, imprime el rótulo de envío de cada una y las despacha con Andreani, Correo Argentino u OCA.</p>
+        <div class="home-hero-actions reveal">
+          <a class="home-btn" href="register.html">Crear mi cuenta</a>
+          <a class="home-link" href="#probar">Probar un rótulo <span aria-hidden="true">↓</span></a>
+        </div>
+      </div>
+      <!-- Lo primero que asoma: dos pedidos de Mis pedidos, como se ven en la app. -->
+      <div class="home-peek reveal" data-ui aria-hidden="true">
+        <div class="ui-row">
+          <span class="ui-check"></span>
+          <span class="ui-row-main"><b>#1043</b> 2x Remera<span> · Lucía Ruiz · San Martín 1500, Mendoza</span></span>
+          <span class="ui-status ui-status-new">Creado</span>
+        </div>
+        <div class="ui-row is-hover">
+          <span class="ui-check is-on"></span>
+          <span class="ui-row-main"><b>#1042</b> 1x Buzo<span> · Juan Pérez · Bv. Oroño 850, Rosario</span></span>
+          <span class="ui-status">Rótulo impreso</span>
+        </div>
+        <span class="ui-pointer"></span>
+      </div>
+    </section>
+
+    <!-- ===== Probá tu rótulo: el rótulo cambia con cada dato ===== -->
+    <section class="home-try" id="probar" aria-labelledby="tryTitle">
+      <div class="home-try-head">
+        <h2 id="tryTitle" class="reveal">Probá tu rótulo</h2>
+        <p class="reveal">Escribí los datos de un envío y mirá cómo sale. Es el diseño «Destacado» de la galería, en 10 × 15 cm: lo mismo que imprime la app.</p>
+      </div>
+
+      <div class="try-panel reveal" data-ui>
+        <div class="try-stage">
+          <!-- El rótulo. Sin JavaScript queda con los datos de muestra. -->
+          <article class="label" id="demoLabel" aria-label="Vista del rótulo">
+            <header class="label-band">
+              <span id="lbStore">Bazar Las Lilas</span>
+              <span>Pedido #<span id="lbOrder">1043</span></span>
+            </header>
+            <div class="label-body">
+              <span class="label-small">ENVIAR A</span>
+              <strong class="label-name" id="lbName">Lucía Ruiz</strong>
+              <span class="label-line" id="lbStreet">San Martín 1500</span>
+              <span class="label-line" id="lbCity">Mendoza, Mendoza</span>
+            </div>
+            <div class="label-cp">CP <span id="lbCp">5500</span></div>
+            <div class="label-tags">
+              <span class="label-fragile" id="lbFragile">FRÁGIL</span>
+            </div>
+            <span class="label-ship">Envío: <span id="lbCarrier">Andreani</span> a domicilio</span>
+            <div class="label-codes">
+              <figure class="label-barcode">
+                <svg id="lbBarcode" role="img" aria-label="Código de barras del seguimiento"></svg>
+              </figure>
+              <div class="label-qr" id="lbQr" role="img" aria-label="QR del seguimiento"></div>
+            </div>
+          </article>
+        </div>
+
+        <form class="try-controls" id="demoForm" autocomplete="off">
+          <label class="try-row"><span>Tu tienda</span><input name="store" value="Bazar Las Lilas" maxlength="28"></label>
+          <label class="try-row"><span>Recibe</span><input name="name" value="Lucía Ruiz" maxlength="30"></label>
+          <label class="try-row"><span>Dirección</span><input name="street" value="San Martín 1500" maxlength="34"></label>
+          <label class="try-row"><span>Localidad</span><input name="city" value="Mendoza, Mendoza" maxlength="34"></label>
+          <label class="try-row"><span>Código postal</span><input name="cp" value="5500" maxlength="8" inputmode="numeric"></label>
+          <div class="try-row" role="radiogroup" aria-label="Transportista">
+            <span>Correo</span>
+            <span class="try-seg">
+              <label><input type="radio" name="carrier" value="Andreani" checked><span>Andreani</span></label>
+              <label><input type="radio" name="carrier" value="Correo Argentino"><span>Correo</span></label>
+              <label><input type="radio" name="carrier" value="OCA"><span>OCA</span></label>
+            </span>
+          </div>
+          <div class="try-row" role="radiogroup" aria-label="Color de la banda">
+            <span>Color</span>
+            <span class="try-swatches">
+              <label title="Azul"><input type="radio" name="band" value="#1f3a8a" checked><span style="background:#1f3a8a"></span></label>
+              <label title="Verde"><input type="radio" name="band" value="#2f6b2a"><span style="background:#2f6b2a"></span></label>
+              <label title="Bordó"><input type="radio" name="band" value="#8a1f3a"><span style="background:#8a1f3a"></span></label>
+              <label title="Negro"><input type="radio" name="band" value="#1c1a17"><span style="background:#1c1a17"></span></label>
+            </span>
+          </div>
+          <label class="try-row"><span>Frágil</span><input type="checkbox" name="fragile" class="try-switch" checked></label>
+        </form>
+        <a class="try-more" href="#galeria">Ver los ocho diseños</a>
+      </div>
+      <p class="try-note reveal">En la app lo cambiás todo desde el editor: lugar de cada dato, letras, colores, íconos y tu logo.</p>
+
+      <!-- Los ocho diseños de la galería, salidos del renderer real. -->
+      <div class="home-gallery" id="galeria" aria-label="Diseños de la galería">
+        <figure class="reveal"><img src="assets/images/presentacion/rotulo-estandar.png" alt="Rótulo con el diseño Etiqueta de envío estándar" width="560" height="840" loading="lazy"><figcaption>Estándar</figcaption></figure>
+        <figure class="reveal"><img src="assets/images/presentacion/rotulo-moderno.png" alt="Rótulo con el diseño Moderno" width="560" height="840" loading="lazy"><figcaption>Moderno</figcaption></figure>
+        <figure class="reveal"><img src="assets/images/presentacion/rotulo-con-la-marca.png" alt="Rótulo con el diseño Con la marca" width="560" height="840" loading="lazy"><figcaption>Con la marca</figcaption></figure>
+        <figure class="reveal"><img src="assets/images/presentacion/rotulo-destacado.png" alt="Rótulo con el diseño Destacado" width="560" height="840" loading="lazy"><figcaption>Destacado</figcaption></figure>
+        <figure class="reveal"><img src="assets/images/presentacion/rotulo-editorial.png" alt="Rótulo con el diseño Editorial" width="560" height="840" loading="lazy"><figcaption>Editorial</figcaption></figure>
+        <figure class="reveal"><img src="assets/images/presentacion/rotulo-banda-lateral.png" alt="Rótulo con el diseño Banda lateral" width="560" height="840" loading="lazy"><figcaption>Banda lateral</figcaption></figure>
+        <figure class="reveal"><img src="assets/images/presentacion/rotulo-postal.png" alt="Rótulo con el diseño Postal" width="560" height="840" loading="lazy"><figcaption>Postal</figcaption></figure>
+        <figure class="reveal"><img src="assets/images/presentacion/rotulo-celdas.png" alt="Rótulo con el diseño Celdas" width="560" height="840" loading="lazy"><figcaption>Celdas</figcaption></figure>
+      </div>
+    </section>
+
+    <!-- ===== Del pedido al correo: el fragmento fijo cambia con cada frase ===== -->
+    <section class="home-flow" aria-labelledby="flowTitle">
+      <div class="flow-text">
+        <h2 id="flowTitle" class="reveal">Del pedido al correo</h2>
+        <div class="flow-step is-active" data-step="1">
+          <p class="flow-say">Entra la venta y aparece sola en Mis pedidos.</p>
+          <p class="flow-sub">De Tiendanube, Shopify, WooCommerce, VTEX o Magento, o de la planilla de Empretienda.</p>
+        </div>
+        <div class="flow-step" data-step="2">
+          <p class="flow-say">Después imprimís todos los rótulos de una vez.</p>
+          <p class="flow-sub">Un PDF por rótulo o en hojas A4, o directo a la Zebra del depósito.</p>
+        </div>
+        <div class="flow-step" data-step="3">
+          <p class="flow-say">Al despachar, el seguimiento vuelve a la tienda.</p>
+          <p class="flow-sub">El comprador recibe el número sin que lo cargues a mano.</p>
+        </div>
+      </div>
+      <div class="flow-stage">
+        <div class="flow-ui" data-ui data-state="1" id="flowUi" aria-hidden="true">
+          <div class="ui-head"><b>Mis pedidos</b><span>Bazar Las Lilas · Tiendanube</span></div>
+          <div class="ui-row flow-new">
+            <span class="ui-check is-on"></span>
+            <span class="ui-row-main"><b>#1043</b> 2x Remera<span> · Lucía Ruiz · Mendoza</span></span>
+            <span class="ui-status ui-status-new" data-s1="Creado" data-s2="Rótulo impreso" data-s3="En camino">Creado</span>
+          </div>
+          <div class="ui-row">
+            <span class="ui-check is-on"></span>
+            <span class="ui-row-main"><b>#1041</b> 1x Gorra<span> · Martín Gómez · Rosario</span></span>
+            <span class="ui-status" data-s1="Creado" data-s2="Rótulo impreso" data-s3="En camino">Creado</span>
+          </div>
+          <div class="ui-row">
+            <span class="ui-check"></span>
+            <span class="ui-row-main"><b>#1038</b> 3x Medias<span> · Sofía Castro · Córdoba</span></span>
+            <span class="ui-status ui-status-done">Entregado</span>
+          </div>
+          <div class="ui-foot flow-only-1"><span class="ui-dot"></span>Entró hace un minuto desde Tiendanube</div>
+          <div class="ui-foot flow-only-2"><span class="ui-file">PDF</span>2 rótulos listos · Plantilla Destacado<span class="ui-btn">Descargar</span></div>
+          <div class="ui-foot flow-only-3"><span class="ui-check is-on"></span>Andreani 360002611223450 · seguimiento enviado a Tiendanube</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Lo que hace por vos, en frases con su interruptor ===== -->
+    <section class="home-switches" aria-label="Lo que podés dejar en automático">
+      <div class="sw-band" data-color="green">
+        <div class="sw-text">
+          <p class="sw-say">Saltear los pedidos que ya tienen rótulo.</p>
+          <p class="sw-then">Si alguien del depósito ya los imprimió, no salen dos veces.</p>
+        </div>
+        <button type="button" class="sw-toggle" role="switch" aria-checked="true" aria-label="Saltear los pedidos que ya tienen rótulo" data-ui><span></span></button>
+      </div>
+      <div class="sw-band" data-color="blue">
+        <div class="sw-text">
+          <p class="sw-say">Mandarlos directo a la Zebra del depósito.</p>
+          <p class="sw-then">Sin descargar nada: el agente imprime en ZPL a 203 o 300 dpi.</p>
+        </div>
+        <button type="button" class="sw-toggle" role="switch" aria-checked="false" aria-label="Mandarlos directo a la Zebra del depósito" data-ui><span></span></button>
+      </div>
+      <div class="sw-band" data-color="amber">
+        <div class="sw-text">
+          <p class="sw-say">Mostrar el precio del envío en tu checkout.</p>
+          <p class="sw-then">El comprador ve lo que cobra Andreani, Correo Argentino u OCA para su código postal.</p>
+        </div>
+        <button type="button" class="sw-toggle" role="switch" aria-checked="true" aria-label="Mostrar el precio del envío en tu checkout" data-ui><span></span></button>
+      </div>
+      <div class="sw-band" data-color="stone">
+        <div class="sw-text">
+          <p class="sw-say">Despachar escaneando el código del rótulo.</p>
+          <p class="sw-then">Con la cámara del celular o una pistola lectora: el pedido pasa a despachado.</p>
+        </div>
+        <button type="button" class="sw-toggle" role="switch" aria-checked="false" aria-label="Despachar escaneando el código del rótulo" data-ui><span></span></button>
+      </div>
+    </section>
+
+    <!-- ===== Con qué funciona: tabla corrida a la derecha ===== -->
+    <section class="home-works" aria-labelledby="worksTitle">
+      <h2 id="worksTitle" class="reveal"><span class="works-soft">Tu tienda, tu correo</span><br>y tu impresora</h2>
+      <div class="works-grid">
+        <figure class="works-photo reveal" id="worksPhoto">
+          <img class="is-on" src="assets/images/presentacion/correos-telegrafos-1876.jpg" alt="El edificio del Correo de Buenos Aires en 1876, fotografía de archivo" width="1328" height="939" loading="lazy">
+          <img src="assets/images/presentacion/palacio-correos-1928.jpg" alt="El Palacio de Correos y Telégrafos de Buenos Aires en 1928, fotografía de archivo" width="1273" height="927" loading="lazy">
+          <figcaption>El correo de Buenos Aires, en 1876 y en 1928.</figcaption>
+        </figure>
+        <div class="works-table">
+          <span class="works-name">Funciona con</span>
+          <table>
+            <caption class="home-sr">Tiendas, transportistas e impresoras con las que funciona Rótulos</caption>
+            <tbody>
+              <tr><th scope="row">Tienda</th><td>Tiendanube</td><td>Rótulos desde Ventas</td></tr>
+              <tr><th scope="row">Tienda</th><td>Shopify</td><td>Desde el menú Imprimir</td></tr>
+              <tr><th scope="row">Tienda</th><td>WooCommerce</td><td>Con nuestro plugin</td></tr>
+              <tr><th scope="row">Tienda</th><td>VTEX</td><td>Seguimiento en la factura</td></tr>
+              <tr><th scope="row">Tienda</th><td>Magento</td><td>Envío con seguimiento</td></tr>
+              <tr><th scope="row">Tienda</th><td>Empretienda</td><td>Con su planilla de ventas</td></tr>
+              <tr class="works-group"><th scope="row">Correo</th><td>Andreani</td><td>Cotiza, despacha, etiqueta</td></tr>
+              <tr><th scope="row">Correo</th><td>Correo Argentino</td><td>Paq.ar y MiCorreo</td></tr>
+              <tr><th scope="row">Correo</th><td>OCA</td><td>e-Pak, domicilio o sucursal</td></tr>
+              <tr class="works-group"><th scope="row">Impresora</th><td>Térmica Zebra</td><td>ZPL a 203 o 300 dpi</td></tr>
+              <tr><th scope="row">Impresora</th><td>La de siempre</td><td>PDF por rótulo o A4</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Preguntas ===== -->
+    <section class="home-faq" aria-labelledby="faqTitle">
+      <h2 id="faqTitle" class="reveal">Preguntas</h2>
+      <div class="faq-list">
+        <details name="faq" open>
+          <summary>¿Puedo probar antes de conectar mi tienda?</summary>
+          <p>Sí. Al crear tu cuenta podés cargar pedidos de ejemplo e imprimir sus rótulos para ver cómo salen. Cuando conectás tu tienda, los borrás con un botón.</p>
+        </details>
+        <details name="faq">
+          <summary>¿Tengo que saber de sistemas para conectarla?</summary>
+          <p>No. Tiendanube y Shopify se conectan instalando la app; WooCommerce, con nuestro plugin; VTEX y Magento, pegando las claves que te da tu tienda. Los pedidos nuevos entran solos desde ese momento.</p>
+        </details>
+        <details name="faq">
+          <summary>¿Qué datos del comprador salen en el rótulo?</summary>
+          <p>Solo lo necesario para entregar: nombre, dirección, código postal y localidad. Nunca productos, precios, email ni teléfono: el rótulo va pegado afuera de la caja.</p>
+        </details>
+        <details name="faq">
+          <summary>¿Puedo poner mi logo y mi propio diseño?</summary>
+          <p>Sí. Elegís uno de los ocho diseños y lo cambiás en el editor: lugar de cada dato, letras, colores, íconos y tu logo. Si ya tenés un rótulo, le sacás una foto y la app arma la plantilla.</p>
+        </details>
+        <details name="faq">
+          <summary>¿Funciona con mi impresora?</summary>
+          <p>Con cualquier impresora que imprima un PDF, en una hoja por rótulo o varios por A4. Con una térmica Zebra, en su propio lenguaje (ZPL), y con un pequeño programa en la PC del depósito le mandás los rótulos sin descargar nada.</p>
+        </details>
+        <details name="faq">
+          <summary>¿Puede usarlo la gente del depósito?</summary>
+          <p>Sí. Invitás a cada persona con su propia cuenta y elegís qué puede hacer: el perfil «Depósito» imprime y despacha, pero no toca los datos del comercio ni las tiendas.</p>
+        </details>
+        <details name="faq">
+          <summary>¿Dónde quedan los datos de mis compradores?</summary>
+          <p>Cada comercio ve solo lo suyo, las claves de tiendas y correos se guardan cifradas y los PDF con datos de compradores se descargan solo con tu sesión. Todo el detalle está en la <a href="privacidad.html">política de privacidad</a>.</p>
+        </details>
+      </div>
+    </section>
+
+    <!-- ===== Cierre: la frase con el lugar del email ===== -->
+    <section class="home-cta" aria-label="Crear tu cuenta">
+      <form class="cta-line" action="register.html" method="get" id="ctaForm">
+        <span>Empezá con</span>
+        <label class="home-sr" for="ctaEmail">Tu email</label>
+        <input type="email" name="email" id="ctaEmail" placeholder="tu email" autocomplete="email">
+        <button type="submit">hoy</button>
+      </form>
+      <p class="cta-after">Te llevamos a crear tu cuenta con ese email. Tarda un minuto.</p>
+    </section>
+  </main>
+
+  <!-- ===== Pie de mosaicos ===== -->
+  <footer class="home-foot">
+    <div class="tile tile-say">
+      <p>Los rótulos de envío de tu tienda, en un solo lugar.</p>
+      <p class="tile-legal">Human Log · Rótulos. Fotos del correo: <a href="https://commons.wikimedia.org/wiki/File:Direcci%C3%B3n_General_de_Correos_y_Tel%C3%A9grafos_(1876).jpg">«Dirección General de Correos y Telégrafos (1876)»</a> y <a href="https://commons.wikimedia.org/wiki/File:Palacio_de_Correos_y_Tel%C3%A9grafos.jpg">«Palacio de Correos y Telégrafos»</a>, <a href="https://creativecommons.org/publicdomain/mark/1.0/">dominio público</a>, vía Wikimedia Commons.</p>
+    </div>
+    <nav class="tile tile-nav" aria-label="Pie">
+      <a href="index.html">Entrar</a>
+      <a href="register.html">Crear cuenta</a>
+      <a href="privacidad.html">Privacidad</a>
+      <a href="terminos.html">Términos</a>
+    </nav>
+    <div class="tile tile-time">
+      <p>Argentina</p>
+      <p class="tile-clock"><time id="homeClock">—</time></p>
+    </div>
+    <div class="tile tile-help">
+      <p>¿Dudas? Escribinos desde Ayuda, adentro de la app.</p>
+      <a href="ayuda.html">Ir a Ayuda</a>
+    </div>
+    <div class="tile tile-word" aria-hidden="true">Rótulos</div>
+    <a class="tile tile-go" href="register.html">
+      <span>Crear mi cuenta</span>
+      <svg viewBox="0 0 48 48" width="48" height="48" aria-hidden="true"><path d="M10 38 L38 10 M16 10 H38 V32" fill="none" stroke="currentColor" stroke-width="4"/></svg>
+    </a>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" defer></script>
+  <script src="assets/js/inicio.js" defer></script>
+</body>
+</html>

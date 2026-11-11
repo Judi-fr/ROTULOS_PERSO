@@ -155,12 +155,12 @@ function renderOrderList(orders) {
       ? {
           icon: "box",
           title: "Todavía no hay pedidos",
-          text: "Los de tus tiendas aparecen acá apenas entran. Para un envío por fuera, usá «+ Nuevo pedido», arriba.",
+          text: "Los de tus tiendas aparecen acá apenas entran. Para un envío por fuera, usá «Nuevo pedido», arriba.",
         }
       : {
           icon: "box",
           title: "Todavía no hay pedidos",
-          text: "Conectá tu tienda y los pedidos entran solos, o cargá uno a mano con «+ Nuevo pedido», arriba.",
+          text: "Conectá tu tienda y los pedidos entran solos, o cargá uno a mano con «Nuevo pedido», arriba.",
           actionLabel: "Conectar una tienda",
           actionHref: "tiendas.html",
         };

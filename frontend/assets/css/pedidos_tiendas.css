@@ -803,3 +803,146 @@
   font-size: var(--text-xs);
   font-weight: 600;
 }
+
+/* =========================================================================
+   Pulido 2026-11-11: más sobrio. Cada grupo es UNA caja con los pedidos como
+   filas separadas por una línea (antes, una tarjeta con borde grueso de color
+   por pedido), el título de la página lleva las acciones y la columna de
+   tiendas pierde la etiqueta en mayúsculas. El color de cada tienda queda en
+   su cuadrado con iniciales, en la columna y en el encabezado de su grupo.
+   ========================================================================= */
+
+.orders-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px 24px;
+  margin: 0 0 22px;
+}
+
+.orders-head .main-heading p {
+  margin-bottom: 0;
+}
+
+.orders-head-tools {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.orders-card {
+  padding-top: 0;
+}
+
+.orders-card > .profile-card-body {
+  padding-top: 20px;
+}
+
+.orders-layout .store-filter-label {
+  padding: 0 10px 2px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-2);
+}
+
+/* Grupo = caja con encabezado gris claro y filas. */
+.order-group {
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: clip;
+}
+
+.order-group + .order-group {
+  margin-top: 16px;
+}
+
+.order-group-head {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--n-50);
+}
+
+.order-group-name strong {
+  font-weight: 600;
+}
+
+.order-group-count {
+  padding: 0;
+  background: none;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* Filtrando una tienda no hay grupos: la lista misma es la caja. */
+.order-list:has(> .order-item) {
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: clip;
+}
+
+.orders-column .order-item,
+.order-list .order-item:not(.from-store),
+.order-item.from-store {
+  border: 0;
+  border-radius: 0;
+  padding: 14px 16px;
+  box-shadow: none;
+}
+
+.orders-column .order-item + .order-item {
+  border-top: 1px solid var(--line);
+}
+
+.orders-column .order-item:hover {
+  background: var(--n-50);
+  box-shadow: none;
+}
+
+.orders-column .order-item.selected {
+  background: var(--accent-50);
+}
+
+.orders-column .order-item-title {
+  font-weight: 600;
+}
+
+.orders-column .order-desc {
+  color: var(--ink-2);
+}
+
+.orders-column .order-item-address {
+  color: var(--muted);
+}
+
+/* Estado: texto con punto, sin pastilla de fondo (diez pastillas de color
+   por pantalla competían con las acciones). */
+.orders-column .status-badge {
+  padding: 0;
+  background: none;
+  font-weight: 600;
+}
+
+/* El pie de cada fila solo se ve con las acciones; el historial y "rótulo
+   impreso" quedan a la izquierda, en gris. */
+.orders-column .order-item-bottom {
+  margin-top: 8px;
+}
+
+/* Buscador y transportistas: mismos bordes suaves que la lista. */
+.order-search input {
+  border-color: var(--line-strong);
+  border-radius: var(--radius-md);
+}
+
+@media (max-width: 860px) {
+  .orders-head-tools {
+    width: 100%;
+  }
+}

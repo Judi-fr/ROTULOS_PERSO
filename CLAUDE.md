@@ -2139,6 +2139,21 @@ and the email moved under the name (no Email column; email order stays in "Orden
   `[COMPLETAR]` marks made the pages look like a draft); the whole text still needs review by the company before publishing. Linked from the login,
   the register form ("Al crear tu cuenta aceptás…") and the end of `ayuda.html`. **If what the app stores or who it
   shares data with changes, update `privacidad.html`.**
+- **Presentation page (2026-11-11, `inicio.html` + `assets/css/inicio.css` + `assets/js/inicio.js`)**: public, no
+  session, served at the domain root by nginx (`location = /` → `/inicio.html`); `index.html` stays the login and links
+  to it ("Qué es Rótulos"). Built with the taste-skill (direction "The product performs", `.taste-skill/` is gitignored):
+  a quiet hero, "Probá tu rótulo" (an HTML copy of the gallery's "Destacado" label that changes with the visitor's data,
+  carrier and colour; barcode/QR via `jsbarcode@3.11.6` and `qrcode-generator@1.4.4` from jsDelivr), the eight gallery
+  designs as PNG (`assets/images/presentacion/rotulo-*.png`, rendered by the real renderer with the sample data — re-render
+  them if the gallery changes), a pinned "Mis pedidos" fragment that follows three steps, switch bands, the platforms/
+  carriers/printers table, FAQ, and "Empezá con [email] hoy" → `register.html?email=` (register prefills it). Two public
+  domain photos of the Buenos Aires post office, credited in the footer (`presentacion/credits.json`). **No prices or
+  plans** on it. If a platform, carrier or what the label prints changes, fix the table and the FAQ there too.
+- **Mis pedidos / Imprimir rótulos polish (2026-11-11)**: Mis pedidos puts "Nuevo pedido" and the tracking import beside
+  the title, and each store group is ONE box with the orders as rows (`pedidos_tiendas.css`, end of file). Imprimir
+  rótulos is two columns: filters + list on the left, "Cómo imprimir" sticky on the right with the count and "Generar
+  rótulos" (the floating `printDock` now only shows on one-column widths, since the real button stays visible). Its
+  styles are scoped to `main.print-main`, because `imprimir_rotulos.css` is shared with the bulk-action pages.
 - **Dashboard look (2026-11-11)**: the heading row carries today's date, the title and the function search on the
   right; the four numbers are ONE strip with hairline divisions (the grid's background paints them), each with an
   icon, a hint line and a muted value when it is 0; the section cards keep their symmetric shape but the tools are

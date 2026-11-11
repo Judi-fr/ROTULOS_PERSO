@@ -77,6 +77,14 @@
     // como primera validación en views.py (EMAIL_REGEX).
     const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
+    // Viene de la página de presentación (inicio.html, "Empezá con [email]"):
+    // el email ya escrito, para no tipearlo dos veces.
+    (function prefillEmail() {
+      const email = new URLSearchParams(window.location.search).get('email');
+      const input = document.getElementById('email');
+      if (email && input && !input.value) input.value = email.trim().slice(0, 254);
+    })();
+
     // Client ID del OAuth client "Web application" (Google Cloud Console).
     // Es un identificador público (va en el HTML servido al navegador), no un
     // secreto: la verificación real del token ocurre en el backend contra
